@@ -1296,12 +1296,71 @@ Negative prompt: ${negatives}.`;
 }
 
 /**
+ * The Veo 3 prompt for a REAL person — the Real Owner Face ads (2026-10-08, the owner's own words).
+ *
+ * The owner: "For all the real person videos we need only this prompt based on gender of the video
+ * specification":
+ *
+ *     With a very sweet voice she needs to say :-
+ *
+ *     {Your Voice}
+ *
+ *     with appropriate gestures
+ *
+ *     Negative prompt :-
+ *     No text on the screen
+ *
+ * — "he" for a man. Nothing else: no camera move, no action, no keep sentence. A real person's face is
+ * the client's own photograph; every extra instruction about the person is one more thing the video
+ * model may "improve", and in their ads the face was changing (a bindi appeared that the owner does not
+ * wear). The frame (`withRealPersonComposition` + utils/frameBrand.withOwnerFaceLock) carries the person
+ * exactly as photographed, and this prompt only gives the words and the gestures. The line is the clip's
+ * spoken words, exactly — `spokenLinesIn` reads it back so a refine can never change it.
+ */
+export function assembleRealPersonVeoPrompt(input: { gender: "male" | "female"; line: string }): string {
+  const pronoun = input.gender === "male" ? "he" : "she";
+  return `With a very sweet voice ${pronoun} needs to say :-
+
+${input.line.replace(/\s+/g, " ").trim()}
+
+with appropriate gestures
+
+Negative prompt :-
+No text on the screen`;
+}
+
+/** The heading of the composition line code adds to a real person's frame prompt. */
+export const REAL_PERSON_COMPOSITION_HEADING = "COMPOSITION FOR THE VIDEO";
+
+/**
+ * A real person's frame, composed for the video it starts (2026-10-08).
+ *
+ * Their clip is the owner's prompt above — the line, said "with appropriate gestures" — not a walk. A
+ * frame caught mid-step (the composition every other cast gets) would start a walk the prompt never asks
+ * for, so the person is caught where they stand, mid-gesture, ready to speak. In the client's own photo
+ * (a background plate) the photograph's framing is kept. Idempotent.
+ */
+export function withRealPersonComposition(prompt: string, options: { plate?: boolean } = {}): string {
+  if (!prompt.trim() || prompt.includes(REAL_PERSON_COMPOSITION_HEADING)) return prompt;
+  const framing = options.plate
+    ? "the photograph's own framing and camera angle, unchanged; the person placed into it on the real floor"
+    : "three-quarter body (head to knees) at eye level, the face large and clear";
+  return `${prompt.trimEnd()}\n\n${REAL_PERSON_COMPOSITION_HEADING}: the person speaks this clip's line to the camera with `
+    + `natural, appropriate gestures — ${framing}; standing in place facing the camera (or turned slightly toward what the line is `
+    + `about), relaxed, one hand caught mid-gesture at chest height as if speaking, feet planted; clear space around the arms; every `
+    + `object fully in view; never mid-step and never a stiff, posed stance.`;
+}
+
+/**
  * The spoken lines inside a prompt — used to check a refined prompt kept them word for word. Reads the
  * 2026-10-05 form ("… says in Telugu:\n"…"") and the older one ("… perfectly lip-synced:\n"…"") a saved
  * kit may still hold.
  */
 export function spokenLinesIn(prompt: string): string[] {
-  return [...prompt.matchAll(/(?:lip-synced|\bsays\b[^\n"]*):\n"([^"]*)"/g)].map((m) => m[1]);
+  const quoted = [...prompt.matchAll(/(?:lip-synced|\bsays\b[^\n"]*):\n"([^"]*)"/g)].map((m) => m[1]);
+  // A real person's prompt (assembleRealPersonVeoPrompt): the line is the paragraph after "needs to say :-".
+  const realPerson = [...prompt.matchAll(/needs to say\s*:-[ \t]*\r?\n\s*\n([\s\S]*?)(?=\r?\n[ \t]*\r?\n|$)/g)].map((m) => m[1].trim());
+  return [...quoted, ...realPerson];
 }
 
 /**

@@ -10,7 +10,7 @@
  */
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, writeBatch,
-  orderBy, limit, serverTimestamp, Timestamp, arrayUnion, type Query, type DocumentData,
+  orderBy, limit, serverTimestamp, Timestamp, arrayUnion, runTransaction, type Query, type DocumentData,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
@@ -26,6 +26,9 @@ import { discountAwaitingApproval } from "@/utils/saleDiscount";
 import { promiseDueMs, deadlineState, canExtendPromise, extendPromise } from "@/utils/promiseSla";
 import { initialProgress, isProgressComplete, isTrackComplete, TRACK_FIELDS } from "@/utils/orderProgress";
 import { penaltyAmount, totalPenalties } from "@/utils/penalty";
+import {
+  timestampMs, orderIdOfSale, saleIdOf, saleIdOfOrderId, findSaleIndex, leadSaleItems, withSaleIds,
+} from "@/utils/saleIdentity";
 import type {
   AppUser, Lead, Order, OrderProgress, OrderProgressField, OrderTrack, OrderUpdateNote,
   PenaltyClipType, PenaltyEntry, PromiseDeadline, SaleDetail, UserRole, WorkAssignment,
@@ -33,21 +36,18 @@ import type {
 
 const ACTIVE_ORDER_STATUSES = ["unassigned", "assigned", "completed"] as const;
 
-function tsToMs(ts: any): number {
-  if (!ts) return 0;
-  if (typeof ts.toMillis === "function") return ts.toMillis();
-  if (typeof ts.seconds === "number") return ts.seconds * 1000;
-  return 0;
-}
+/** Epoch ms of a timestamp, exactly — see utils/saleIdentity.timestampMs. */
+const tsToMs = timestampMs;
 
 /**
- * Deterministic order doc id, stable across `saleItems` index shifts.
- * Prefers the sale's `submittedAt` (set once at sale time, never changes); falls back to the
- * leadId+index key for legacy items with no submittedAt.
+ * Deterministic order doc id: `o_<saleId>` — one sale, one order (utils/saleIdentity).
+ *
+ * The same id this function has always produced (`o_<leadId>_<submittedAtMs>`, or the position key
+ * `o_<leadId>__<index>` for the oldest sales), now read from the sale's stored `saleId` when it has
+ * one, so it no longer depends on the sale's position or on how its timestamp was read back.
  */
 export function orderDocId(leadId: string, item: SaleDetail, itemIndex: number): string {
-  const subMs = tsToMs(item.submittedAt);
-  return subMs ? `o_${leadId}_${subMs}` : `o_${leadId}__${itemIndex}`;
+  return orderIdOfSale(leadId, item, itemIndex);
 }
 
 /** Sequential, readable work id (W001 / P002 / C003 / O004) — mirrors the WorkAssign convention. */
@@ -78,8 +78,13 @@ export function nextWorkUniqueId(category: string, existing: WorkAssignment[]): 
  * One query for both roles rather than two, and only on CREATION — `upsertOrderForSale` runs again
  * on every edit of the sale, and re-announcing a job somebody is already making is how a team
  * learns to ignore the bell.
+ *
+ * One row per person (2026-10-08). The key was `order_new_<orderId>` for EVERYBODY, and a keyed
+ * notification is one document — so each recipient's write replaced the last one's, and only the
+ * last tech admin or team leader in the list was left with the bell. The recipient is now part of
+ * the key, as `notifyTechTeamLeaders` has always done (`orderNotificationIds` finds them again).
  */
-async function notifyTechSideOfNewOrder(order: {
+export async function notifyTechSideOfNewOrder(order: {
   id: string; businessName?: string; category: string; soldByName?: string;
   promise?: PromiseDeadline | null;
 }): Promise<void> {
@@ -89,18 +94,256 @@ async function notifyTechSideOfNewOrder(order: {
       where("role", "in", ["tech_admin", "tech_team_leader"]),
     ));
     const promise = order.promise?.label ? ` · due in ${order.promise.label}` : "";
-    await Promise.all(snap.docs.map((d) => sendNotification({
-      userId: d.id,
-      type: "order_new",
-      title: "New order in the queue",
-      message: `${serviceCategoryLabel(order.category)} for "${order.businessName || "a client"}"${order.soldByName ? `, sold by ${order.soldByName}` : ""}${promise}.`,
-      link: "/tech-admin/orders",
-      // The order is the event. Without this, a sale saved twice in the same minute — which the
-      // form allows, and members do — would ring everyone twice for one job.
-      dedupeKey: `order_new_${order.id}`,
-    })));
+    await Promise.all(snap.docs.map((d) => {
+      const role = (d.data() as AppUser).role;
+      return sendNotification({
+        userId: d.id,
+        type: "order_new",
+        title: "New order in the queue",
+        message: `${serviceCategoryLabel(order.category)} for "${order.businessName || "a client"}"${order.soldByName ? `, sold by ${order.soldByName}` : ""}${promise}.`,
+        // The queue the recipient can open — a team leader's lives under /team-leader.
+        link: role === "tech_team_leader" ? "/team-leader/orders" : "/tech-admin/orders",
+        // The order is the event. Without this, a sale saved twice in the same minute would ring
+        // everyone twice for one job.
+        dedupeKey: `order_new_${order.id}_${d.id}`,
+      });
+    }));
   } catch (err) {
     console.error("[orders] new-order notify failed:", err);
+  }
+}
+
+/** The document id `sendNotification` writes a keyed notification under. */
+const notificationDocId = (key: string) => key.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 1500);
+
+/**
+ * The notification documents that announced an order: the "new order" bell of each tech admin and
+ * team leader (plus the single shared row written before 2026-10-08), and — for a social-media month —
+ * each Social Media Team Lead's "new month" bell.
+ */
+export function orderNotificationIds(orderId: string, techSideUids: string[], smmLeadUids: string[] = []): string[] {
+  return [
+    notificationDocId(`order_new_${orderId}`),
+    ...techSideUids.map((uid) => notificationDocId(`order_new_${orderId}_${uid}`)),
+    ...smmLeadUids.map((uid) => notificationDocId(`smm_new_${orderId}_${uid}`)),
+  ];
+}
+
+/**
+ * Take a removed sale's bells off the tech side: "New order in the queue" for an order that no longer
+ * exists sends people looking for a job that is not there. Never throws.
+ */
+export async function removeOrderNotifications(orderId: string, opts: { smm?: boolean } = {}): Promise<void> {
+  try {
+    const [tech, leads] = await Promise.all([
+      getDocs(query(collection(db, "users"), where("role", "in", ["tech_admin", "tech_team_leader"]))),
+      opts.smm ? getDocs(query(collection(db, "users"), where("smmLeader", "==", true))) : Promise.resolve(null),
+    ]);
+    const ids = orderNotificationIds(orderId, tech.docs.map((d) => d.id), leads ? leads.docs.map((d) => d.id) : []);
+    await Promise.all(ids.map(async (id) => {
+      try { await deleteDoc(doc(db, "notifications", id)); } catch { /* one bell left behind is not worth failing for */ }
+    }));
+  } catch (err) {
+    console.warn("[orders] could not clear the removed order's notifications:", err);
+  }
+}
+
+/**
+ * What an order copies from its sale — written when the order is created and refreshed on every
+ * save of the sale. One definition for `upsertOrderForSale` and the sale transactions in
+ * `services/sales`, so the order a sale makes cannot depend on which screen saved it.
+ */
+export function orderSaleFields(
+  lead: Pick<Lead, "id" | "phone" | "realName" | "displayName" | "assignedTo">,
+  item: SaleDetail,
+  itemIndex: number,
+  soldByName: string,
+  salesAdminId: string | null,
+) {
+  const phone = normalizePhone(lead.phone);
+  return {
+    /** The sale this order is for — its one permanent id (utils/saleIdentity). */
+    saleId: saleIdOf(lead.id, item, itemIndex),
+    clientPhone: phone,
+    clientPhoneId: phoneLockId(lead.phone),
+    // The business this ad is FOR — taken from what the sales member typed on this sale, not
+    // from the lead. The lead name is the *client*, and one client can order ads for several
+    // different businesses, so only the per-sale business name is meaningful to the tech team.
+    businessName: item.requirement?.businessName?.trim() || lead.realName || lead.displayName || "",
+    // The client behind the sale, kept alongside so the queue can show both when they differ.
+    clientName: lead.realName || lead.displayName || "",
+    category: item.category,
+    packageKey: item.packageKey || "custom",
+    customDescription: item.customDescription ?? null,
+    amount: item.amount || 0,
+    // Bulk videos — which kind, how many, at what unit price, and whether the member moved the
+    // discount. The tech side needs the kind and the count to know what the job actually is;
+    // the two admins need the rest.
+    quantity: item.quantity ?? null,
+    bulkAdType: item.bulkAdType ?? null,
+    unitAmount: item.unitAmount ?? null,
+    suggestedDiscountPercent: item.suggestedDiscountPercent ?? null,
+    discountMode: item.discountMode ?? null,
+    discountAmount: item.discountAmount ?? null,
+    discountPercent: item.discountPercent ?? null,
+    discountEdited: item.discountEdited ?? false,
+    // What the client earned, and the real service behind a Custom order — the two things that
+    // let the tech side derive a duration, a clip count, a price and a deadline for a sale the
+    // price list has no row for. See utils/serviceCatalog.productionCategory.
+    earnedDiscount: item.earnedDiscount ?? null,
+    earnedDiscountAmount: item.earnedDiscountAmount ?? null,
+    customBaseCategory: item.customBaseCategory ?? null,
+    customDurationSeconds: item.customDurationSeconds ?? null,
+    leadId: lead.id,
+    // Where the sale sat in its lead's list when this was written. A position moves when an
+    // earlier sale is deleted — `saleId` is the link; these two are kept for older readers.
+    saleItemIndex: itemIndex,
+    saleItemKey: `${lead.id}__${itemIndex}`,
+    saleSubmittedAtMs: tsToMs(item.submittedAt),
+    soldBy: lead.assignedTo,
+    soldByName,
+    fromAd: isAdCategory(item.category),
+    salesAdminId,
+    promise: item.promise ?? null,
+    // The client's ad brief, captured at sale time — pre-fills New Assignment for the tech team.
+    requirement: item.requirement ?? null,
+    updatedAt: serverTimestamp(),
+  };
+}
+
+export type OrderSaleFields = ReturnType<typeof orderSaleFields>;
+
+/** What a sale's order still owes, for the two kinds that owe more than a single ad. */
+export function orderProgressForSale(item: SaleDetail): OrderProgress | null {
+  return initialProgress({
+    category: productionCategory(item),
+    packageKey: item.packageKey,
+    quantity: item.quantity,
+    bulkAdType: item.bulkAdType,
+  });
+}
+
+/** A brand-new order for a sale: in the queue, nobody on it yet. */
+export function newOrderForSale(saleFields: OrderSaleFields, progress: OrderProgress | null, saleVerified: boolean): Record<string, unknown> {
+  return {
+    ...saleFields,
+    status: "unassigned",
+    saleVerified,
+    progress,
+    penalties: [],
+    penaltyTotal: 0,
+    penaltyClips: 0,
+    workAssignmentId: null,
+    assignedTo: null,
+    assignedToName: null,
+    techAdminId: null,
+    lastDeadlineNotifiedAt: null,
+    createdAt: serverTimestamp(),
+    completedAt: null,
+    verifiedAt: null,
+    deliveredAmount: null,
+  };
+}
+
+/**
+ * What an existing order takes when its sale is saved again — every edit and every approval — or null
+ * when the order must not be touched. Its lifecycle (status, the job, who has it) is never part of it:
+ * an edit keeps the assignment.
+ */
+export function orderUpdateForSale(
+  existing: Order,
+  saleFields: OrderSaleFields,
+  progress: OrderProgress | null,
+  saleVerified?: boolean,
+): Record<string, unknown> | null {
+  // An order an admin permanently deleted stays deleted — never resurrect it from the sale.
+  if (existing.deleted || existing.status === "deleted") return null;
+  // Reactivate a previously-cancelled order (reject → re-verify); keep any active/assigned state.
+  const statusPatch = existing.status === "cancelled" ? { status: "unassigned" as const } : {};
+  // saleVerified only ever moves false → true — a later sale-time refresh must not un-verify it.
+  const verifiedPatch = saleVerified || existing.saleVerified ? { saleVerified: true } : {};
+  /**
+   * Progress is seeded, never re-seeded. This runs again on every sale edit, and rewriting it
+   * would reset counters the tech team had spent a fortnight filling in — so an order that
+   * already has progress keeps exactly what it has, and only one that has none (a sale edited
+   * INTO a bulk or monthly category) gets it now.
+   */
+  const progressPatch = !existing.progress && progress ? { progress } : {};
+  /**
+   * The deadline the order already carries wins over the sale's when the tech side gave it one
+   * (2026-10-03): a social-media month's own last day (`monthPromise`, "smm_month") or the one
+   * extension somebody used. This runs again on every edit and on the sales admin's approval, and
+   * writing the sale's few-day promise back undid both — a set-up month went "overdue" the morning
+   * after its sale was verified, and an extended job lost the time it had been given.
+   */
+  const promisePatch = existing.promise && (existing.promise.presetKey === "smm_month" || existing.promise.extension)
+    ? { promise: existing.promise } : {};
+  return { ...saleFields, ...statusPatch, ...verifiedPatch, ...progressPatch, ...promisePatch };
+}
+
+/**
+ * What follows an order being written for a sale: the client's chat and, for a social-media month,
+ * its plan. Idempotent and never fatal — each is safe on every save.
+ */
+export async function afterOrderWrite(params: {
+  orderId: string;
+  lead: Pick<Lead, "id" | "phone" | "assignedTo">;
+  item: SaleDetail;
+  saleFields: OrderSaleFields;
+  soldByName: string;
+  salesAdminId: string | null;
+}): Promise<void> {
+  const { orderId: id, lead, item, saleFields, soldByName, salesAdminId } = params;
+  /**
+   * The client's chat, opened with the sale rather than with the assignment.
+   *
+   * This is the window the seller actually needs it in: the client sends their logo, their
+   * tagline and their change of mind to the person who sold to them, in pieces, over the days
+   * before anyone is given the job. All of it now lands in the room the tech team inherits.
+   *
+   * Team-only until somebody is assigned — see `clientReady`. Safe to call on every edit; it
+   * creates once and patches the descriptive fields thereafter. Awaited but never fatal: a sale
+   * must not fail because its chat could not be opened.
+   *
+   * Opened BEFORE the social-media month below (2026-10-03): a renewal's month gives its team
+   * their jobs straight away, and each job joins this room — it has to exist first.
+   */
+  await ensureSaleOrderChat({
+    orderId: id,
+    category: item.category,
+    businessName: saleFields.businessName,
+    clientName: saleFields.clientName,
+    clientPhone: saleFields.clientPhone,
+    soldByUid: lead.assignedTo,
+    soldByName,
+    salesAdminUid: salesAdminId,
+  });
+
+  /**
+   * A social-media month gets its plan the moment it is sold.
+   *
+   * Not at assignment time, which is where it would be more convenient to put it: the plan is
+   * what was PROMISED, and the person who knows that is the one who just got off the phone. By
+   * the time the month reaches the tech team it is a checklist of eight posters and eight ads on
+   * the right accounts, waiting for titles and dates, rather than a package name somebody has to
+   * interpret. Idempotent, and never fatal — see `ensureCampaignForOrder`.
+   */
+  if (item.category === "social_media_management") {
+    await ensureCampaignForOrder(campaignInputFromSale({
+      order: {
+        id,
+        leadId: lead.id,
+        saleItemKey: saleFields.saleItemKey,
+        clientPhone: saleFields.clientPhone,
+        clientPhoneId: saleFields.clientPhoneId,
+        clientName: saleFields.clientName,
+        businessName: saleFields.businessName,
+        soldBy: lead.assignedTo,
+        salesAdminId,
+      },
+      item,
+      soldByName,
+    }));
   }
 }
 
@@ -108,6 +351,10 @@ async function notifyTechSideOfNewOrder(order: {
  * Create (or refresh) the Order for a just-verified sale item. Idempotent: re-verifying the same
  * sale never duplicates, and an order that progressed past "unassigned" keeps its lifecycle.
  * Never throws — the sales-approval flow must not break if this fails.
+ *
+ * A sale RECORDED or EDITED from the sale form no longer comes here (2026-10-08): it goes through
+ * `services/sales`, which writes the sale and its order in one transaction. This remains for the
+ * approvals, the held-sale release and an older sale's month being set up again.
  */
 export async function upsertOrderForSale(params: {
   lead: Lead;
@@ -143,107 +390,19 @@ export async function upsertOrderForSale(params: {
     any rejected sale is (`cancelOrderForSale`, which flags work already out with a member).
   */
   try {
+    const saleFields = orderSaleFields(lead, item, itemIndex, soldByName, salesAdminId);
     const id = orderDocId(lead.id, item, itemIndex);
     const ref = doc(db, "orders", id);
-    const phone = normalizePhone(lead.phone);
-    const saleFields = {
-      clientPhone: phone,
-      clientPhoneId: phoneLockId(lead.phone),
-      // The business this ad is FOR — taken from what the sales member typed on this sale, not
-      // from the lead. The lead name is the *client*, and one client can order ads for several
-      // different businesses, so only the per-sale business name is meaningful to the tech team.
-      businessName: item.requirement?.businessName?.trim() || lead.realName || lead.displayName || "",
-      // The client behind the sale, kept alongside so the queue can show both when they differ.
-      clientName: lead.realName || lead.displayName || "",
-      category: item.category,
-      packageKey: item.packageKey || "custom",
-      customDescription: item.customDescription ?? null,
-      amount: item.amount || 0,
-      // Bulk videos — which kind, how many, at what unit price, and whether the member moved the
-      // discount. The tech side needs the kind and the count to know what the job actually is;
-      // the two admins need the rest.
-      quantity: item.quantity ?? null,
-      bulkAdType: item.bulkAdType ?? null,
-      unitAmount: item.unitAmount ?? null,
-      suggestedDiscountPercent: item.suggestedDiscountPercent ?? null,
-      discountMode: item.discountMode ?? null,
-      discountAmount: item.discountAmount ?? null,
-      discountPercent: item.discountPercent ?? null,
-      discountEdited: item.discountEdited ?? false,
-      // What the client earned, and the real service behind a Custom order — the two things that
-      // let the tech side derive a duration, a clip count, a price and a deadline for a sale the
-      // price list has no row for. See utils/serviceCatalog.productionCategory.
-      earnedDiscount: item.earnedDiscount ?? null,
-      earnedDiscountAmount: item.earnedDiscountAmount ?? null,
-      customBaseCategory: item.customBaseCategory ?? null,
-      customDurationSeconds: item.customDurationSeconds ?? null,
-      leadId: lead.id,
-      saleItemIndex: itemIndex,
-      saleItemKey: `${lead.id}__${itemIndex}`,
-      saleSubmittedAtMs: tsToMs(item.submittedAt),
-      soldBy: lead.assignedTo,
-      soldByName,
-      fromAd: isAdCategory(item.category),
-      salesAdminId,
-      promise: item.promise ?? null,
-      // The client's ad brief, captured at sale time — pre-fills New Assignment for the tech team.
-      requirement: item.requirement ?? null,
-      updatedAt: serverTimestamp(),
-    };
-
-    // What this order still owes, for the two kinds that owe more than a single ad.
-    const progress = initialProgress({
-      category: productionCategory(item),
-      packageKey: item.packageKey,
-      quantity: item.quantity,
-      bulkAdType: item.bulkAdType,
-    });
+    const progress = orderProgressForSale(item);
 
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      const existing = snap.data() as Order;
+      const patch = orderUpdateForSale(snap.data() as Order, saleFields, progress, params.saleVerified);
       // An order an admin permanently deleted stays deleted — never resurrect it from the sale.
-      if (existing.deleted || existing.status === "deleted") return;
-      // Reactivate a previously-cancelled order (reject → re-verify); keep any active/assigned state.
-      const statusPatch = existing.status === "cancelled" ? { status: "unassigned" as const } : {};
-      // saleVerified only ever moves false → true — a later sale-time refresh must not un-verify it.
-      const verifiedPatch = params.saleVerified || existing.saleVerified ? { saleVerified: true } : {};
-      /**
-       * Progress is seeded, never re-seeded. This runs again on every sale edit, and rewriting it
-       * would reset counters the tech team had spent a fortnight filling in — so an order that
-       * already has progress keeps exactly what it has, and only one that has none (a sale edited
-       * INTO a bulk or monthly category) gets it now.
-       */
-      const progressPatch = !existing.progress && progress ? { progress } : {};
-      /**
-       * The deadline the order already carries wins over the sale's when the tech side gave it one
-       * (2026-10-03): a social-media month's own last day (`monthPromise`, "smm_month") or the one
-       * extension somebody used. This runs again on every edit and on the sales admin's approval, and
-       * writing the sale's few-day promise back undid both — a set-up month went "overdue" the morning
-       * after its sale was verified, and an extended job lost the time it had been given.
-       */
-      const promisePatch = existing.promise && (existing.promise.presetKey === "smm_month" || existing.promise.extension)
-        ? { promise: existing.promise } : {};
-      await updateDoc(ref, { ...saleFields, ...statusPatch, ...verifiedPatch, ...progressPatch, ...promisePatch });
+      if (!patch) return;
+      await updateDoc(ref, patch);
     } else {
-      await setDoc(ref, {
-        ...saleFields,
-        status: "unassigned",
-        saleVerified: !!params.saleVerified,
-        progress,
-        penalties: [],
-        penaltyTotal: 0,
-        penaltyClips: 0,
-        workAssignmentId: null,
-        assignedTo: null,
-        assignedToName: null,
-        techAdminId: null,
-        lastDeadlineNotifiedAt: null,
-        createdAt: serverTimestamp(),
-        completedAt: null,
-        verifiedAt: null,
-        deliveredAmount: null,
-      });
+      await setDoc(ref, newOrderForSale(saleFields, progress, !!params.saleVerified));
 
       /*
         Only here, in the create branch. The update branch above runs on every edit of the sale,
@@ -261,57 +420,8 @@ export async function upsertOrderForSale(params: {
       }
     }
 
-    /**
-     * The client's chat, opened with the sale rather than with the assignment.
-     *
-     * This is the window the seller actually needs it in: the client sends their logo, their
-     * tagline and their change of mind to the person who sold to them, in pieces, over the days
-     * before anyone is given the job. All of it now lands in the room the tech team inherits.
-     *
-     * Team-only until somebody is assigned — see `clientReady`. Safe to call on every edit; it
-     * creates once and patches the descriptive fields thereafter. Awaited but never fatal: a sale
-     * must not fail because its chat could not be opened.
-     *
-     * Opened BEFORE the social-media month below (2026-10-03): a renewal's month gives its team
-     * their jobs straight away, and each job joins this room — it has to exist first.
-     */
-    await ensureSaleOrderChat({
-      orderId: id,
-      category: item.category,
-      businessName: saleFields.businessName,
-      clientName: saleFields.clientName,
-      clientPhone: phone,
-      soldByUid: lead.assignedTo,
-      soldByName,
-      salesAdminUid: salesAdminId,
-    });
-
-    /**
-     * A social-media month gets its plan the moment it is sold.
-     *
-     * Not at assignment time, which is where it would be more convenient to put it: the plan is
-     * what was PROMISED, and the person who knows that is the one who just got off the phone. By
-     * the time the month reaches the tech team it is a checklist of eight posters and eight ads on
-     * the right accounts, waiting for titles and dates, rather than a package name somebody has to
-     * interpret. Idempotent, and never fatal — see `ensureCampaignForOrder`.
-     */
-    if (item.category === "social_media_management") {
-      await ensureCampaignForOrder(campaignInputFromSale({
-        order: {
-          id,
-          leadId: lead.id,
-          saleItemKey: saleFields.saleItemKey,
-          clientPhone: phone,
-          clientPhoneId: saleFields.clientPhoneId,
-          clientName: saleFields.clientName,
-          businessName: saleFields.businessName,
-          soldBy: lead.assignedTo,
-          salesAdminId,
-        },
-        item,
-        soldByName,
-      }));
-    }
+    // The client's chat and, for a social-media month, its plan (see `afterOrderWrite`).
+    await afterOrderWrite({ orderId: id, lead, item, saleFields, soldByName, salesAdminId });
   } catch (err) {
     console.error("[orders] upsertOrderForSale failed:", err);
   }
@@ -352,10 +462,46 @@ export async function releaseHeldSales(
 }
 
 /**
+ * A sales admin took an approval back: the sale is pending again (2026-10-08).
+ *
+ * Since 2026-10-05 a pending sale is one the tech side already has, so its order stays where it is —
+ * only marked "Pending approval" again. Revoking used to run `cancelOrderForSale`: a waiting order was
+ * DELETED (and the pending sale then had no order, with nothing to ever make one again) and work already
+ * out with a member was stopped. Only a REJECTED sale leaves the queue. An order that went missing is
+ * made again, as at sale time. Never throws.
+ */
+export async function markOrderSaleUnverified(params: {
+  lead: Lead;
+  item: SaleDetail;
+  itemIndex: number;
+  soldByName: string;
+  salesAdminId?: string | null;
+}): Promise<void> {
+  const { lead, item, itemIndex, soldByName } = params;
+  try {
+    const ref = doc(db, "orders", orderDocId(lead.id, item, itemIndex));
+    const snap = await getDoc(ref);
+    const order = snap.exists() ? (snap.data() as Order) : null;
+    if (order && (order.deleted || order.status === "deleted")) return;
+    // Missing, or cancelled by a rejection being taken back: back in the queue exactly as a
+    // re-approval brings it back (the order, its chat and its month), then marked unapproved.
+    if (!order || order.status === "cancelled") {
+      await upsertOrderForSale({ lead, item, itemIndex, soldByName, salesAdminId: params.salesAdminId ?? null, saleVerified: false });
+    }
+    if ((await getDoc(ref)).exists()) {
+      await updateDoc(ref, { saleVerified: false, updatedAt: serverTimestamp() });
+    }
+  } catch (err) {
+    console.error("[orders] markOrderSaleUnverified failed:", err);
+  }
+}
+
+/**
  * Append a sales member's update note to an assigned order and tell the people doing the work.
  *
- * Once an order is assigned, work has started — the sale can no longer be edited or deleted freely,
- * so this is how the sales member passes on a change the client asked for. Never throws.
+ * A free-text note for the people doing the work. Since 2026-10-08 the sale itself can be edited
+ * after assignment too (services/sales.updateSale changes the job and tells the tech side); a note is
+ * for what the form has no field for. Never throws.
  */
 export async function addOrderUpdateNote(params: {
   order: Order;
@@ -398,6 +544,9 @@ export async function cancelOrderForSale(params: {
   /**
    * Set when a sales member deleted the sale outright (rather than an admin rejecting it). Work
    * already assigned is flagged instead of disappearing, so the tech side finds out.
+   *
+   * No screen passes it since 2026-10-08: a sale with work can no longer be deleted, and one without is
+   * deleted by services/sales.deleteSale. Jobs flagged before keep their `saleDeleted` banner.
    */
   deletedByName?: string | null;
 }): Promise<void> {
@@ -1368,16 +1517,25 @@ export async function removeOrderPenalty(params: {
  */
 async function mirrorPenaltyToSale(order: Order, penaltyTotal: number, penaltyClips: number): Promise<void> {
   if (!order.leadId) return;
+  /*
+    Found by the sale's id, in a transaction (2026-10-08). It used `order.saleItemIndex` — where the
+    sale sat when its order was made — so after an earlier sale on the lead was deleted, the penalty
+    was written onto a DIFFERENT sale; and it wrote the whole list back from one read, over anything
+    saved in between.
+  */
+  const saleId = order.saleId || saleIdOfOrderId(order.id);
+  if (!saleId) return;
   try {
     const leadRef = doc(db, "leads", order.leadId);
-    const snap = await getDoc(leadRef);
-    if (!snap.exists()) return;
-    const lead = snap.data() as Lead;
-    const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
-    const index = order.saleItemIndex;
-    if (index == null || !items[index]) return;
-    const updated = items.map((it, i) => (i === index ? { ...it, penaltyTotal, penaltyClips } : it));
-    await updateDoc(leadRef, { saleItems: updated, saleDetails: updated[updated.length - 1] });
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(leadRef);
+      if (!snap.exists()) return;
+      const items = withSaleIds(order.leadId, leadSaleItems(snap.data() as Lead));
+      const index = findSaleIndex(order.leadId, items, saleId);
+      if (index < 0) return;
+      const updated = items.map((it, i) => (i === index ? { ...it, penaltyTotal, penaltyClips } : it));
+      tx.update(leadRef, { saleItems: updated, saleDetails: updated[updated.length - 1] });
+    });
   } catch (err) {
     console.error("[orders] mirrorPenaltyToSale failed:", err);
   }

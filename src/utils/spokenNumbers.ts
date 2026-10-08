@@ -11,6 +11,7 @@
  * Pure — unit-tested. Languages other than Telugu and English are left to the prompt and the
  * validator, which already refuse digits.
  */
+import { withFestivalSpellings } from "./festivalNames";
 
 // ── Telugu ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -204,7 +205,11 @@ export function fixedWordsIn(lines: string[]): string[] {
   return FIXED_WORDS.filter((f) => all.includes(f.word)).map((f) => f.word);
 }
 
-/** Both at once — what every spoken line goes through before it is used. */
+/**
+ * All of it at once — what every spoken line goes through before it is used: numbers as words, the
+ * fixed words, and (Telugu) the festival's fixed spelling — దసరా, never a transliteration of
+ * "Dussehra" (utils/festivalNames, 2026-10-08).
+ */
 export function speakableLine(text: string, language?: string): string {
-  return withFixedWords(spellOutNumbers(text, language));
+  return withFestivalSpellings(withFixedWords(spellOutNumbers(text, language)), language);
 }

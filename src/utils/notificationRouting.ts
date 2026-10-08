@@ -12,12 +12,26 @@
  * mistake checkable instead of a matter of remembering.
  */
 
-/** Types that open a centered popup. Each is about the recipient's own work. */
+/**
+ * Types that open a centered popup. Each is about the recipient's own work.
+ *
+ * `sale_edited` (2026-10-08, owner): a sale the tech team is already working on was changed by the
+ * salesperson — the job changed under the member holding it, and the tech admin and team leaders must
+ * see it at once, not when they next open the bell. Each recipient gets their own row
+ * (services/sales.notifySaleEdited), so it is never a team-wide FYI.
+ */
 export const POPUP_NOTIFICATION_TYPES = [
   "work_assigned",
   "work_editing",
   "attendance_update",
+  "sale_edited",
 ] as const;
+
+/**
+ * Who the centered popup is shown to. The tech admin joined on 2026-10-08 for `sale_edited` — the only
+ * popup type a tech admin is ever sent.
+ */
+export const POPUP_ROLES = ["tech_member", "sales_member", "tech_team_leader", "tech_admin"] as const;
 
 /**
  * Types sent to a team leader ABOUT SOMEONE ELSE. Informative, never interruptive — a leader who is

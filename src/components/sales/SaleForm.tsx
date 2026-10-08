@@ -22,7 +22,9 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { uploadToCloudinary } from "@/services/cloudinary";
-import { upsertOrderForSale } from "@/services/orders";
+import { recordSale, updateSale, isSaleWriteError } from "@/services/sales";
+import { describeSaleChanges, saleHasWork } from "@/utils/saleEdit";
+import { saleIdOf } from "@/utils/saleIdentity";
 import { logActivity, type ActivityActorRole } from "@/services/activityLog";
 import { applySaleFreeze, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
@@ -60,7 +62,7 @@ import {
 } from "@/utils/smmPricing";
 import FieldHint from "@/components/common/FieldHint";
 import { DEFAULT_SMM_CLIPS_PER_VIDEO, dayLabel, normaliseClipsPerVideo } from "@/utils/smmPackage";
-import type { AppUser, Lead, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
+import type { AppUser, Lead, Order, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
 import type { SmmRenewalPrefill } from "@/types/smm";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
@@ -91,72 +93,8 @@ function withoutBulkFields(item: SaleDetail): SaleDetail {
   return rest;
 }
 
-/**
- * A human-readable list of what changed between two versions of a sale, for the edit log.
- * Only fields a sales member can actually change are compared.
- */
-function describeSaleChanges(prev: SaleDetail, next: SaleDetail): string[] {
-  const out: string[] = [];
-  const pkg = (i: SaleDetail) => (i.packageKey && i.packageKey !== "custom" ? i.packageKey : "Custom");
-  if (prev.category !== next.category) out.push(`Service: ${categoryLabel(prev.category)} → ${categoryLabel(next.category)}`);
-  // The kind of video is what the tech team builds, so switching it is a bigger change than the
-  // package and has to be named — a bulk order that turned cinematic costs twice as much to make.
-  if (isBulkCategory(next.category) && effectiveAdCategory(prev.category, prev.bulkAdType) !== effectiveAdCategory(next.category, next.bulkAdType)) {
-    out.push(`Video type: ${categoryLabel(effectiveAdCategory(prev.category, prev.bulkAdType))} → ${categoryLabel(effectiveAdCategory(next.category, next.bulkAdType))}`);
-  }
-  if (pkg(prev) !== pkg(next)) out.push(`Package: ${pkg(prev)} → ${pkg(next)}`);
-  if ((prev.customDescription || "") !== (next.customDescription || "")) {
-    out.push(`Description: ${prev.customDescription || "—"} → ${next.customDescription || "—"}`);
-  }
-  // Quantity and discount are the two levers on a bulk price, so a changed total is only half the
-  // story — the log has to say which of them moved.
-  if ((prev.quantity || 0) !== (next.quantity || 0)) out.push(`Quantity: ${prev.quantity || 0} → ${next.quantity || 0} videos`);
-  if ((prev.discountPercent || 0) !== (next.discountPercent || 0) || (prev.discountAmount || 0) !== (next.discountAmount || 0)) {
-    const shown = (i: SaleDetail) => (discountSummary(i).replace(" · ", "").replace(" off", "") || "none");
-    out.push(`Discount: ${shown(prev)} → ${shown(next)}`);
-  }
-  if ((prev.amount || 0) !== (next.amount || 0)) out.push(`Amount: ${formatCurrency(prev.amount || 0)} → ${formatCurrency(next.amount || 0)}`);
-  // A month's committed content IS the promise — changing it changes what the tech team owes, so
-  // it is named in the log rather than folded into a price change nobody can interpret later.
-  const smmLine = (i: SaleDetail) => {
-    const c = i.smm?.commitments;
-    if (!c) return "";
-    return `${c.poster || 0} posters, ${c.ai_ad || 0} AI ads, ${c.real_video || 0} real videos`;
-  };
-  if (smmLine(prev) !== smmLine(next)) out.push(`Committed content: ${smmLine(prev) || "—"} → ${smmLine(next) || "—"}`);
-  const smmAccounts = (i: SaleDetail) => (i.smm?.platforms || []).join(", ");
-  if (smmAccounts(prev) !== smmAccounts(next)) out.push(`Accounts: ${smmAccounts(prev) || "—"} → ${smmAccounts(next) || "—"}`);
-  if ((prev.promise?.label || "") !== (next.promise?.label || "")) out.push(`Delivery: ${prev.promise?.label || "—"} → ${next.promise?.label || "—"}`);
-
-  const pr = prev.requirement || {};
-  const nr = next.requirement || {};
-  if ((pr.language || "") !== (nr.language || "")) out.push(`Language: ${pr.language || "—"} → ${nr.language || "—"}`);
-  // Changing the occasion changes the whole video, so it is logged by name rather than folded into
-  // a generic "requirement updated" — a member already building a Diwali ad has to hear about it.
-  if ((pr.festival || "") !== (nr.festival || "")) out.push(`Occasion: ${pr.festival || "—"} → ${nr.festival || "—"}`);
-  const model = (v?: string) => (v === "male" ? "Male" : v === "female" ? "Female" : "—");
-  if ((pr.modelGender || "") !== (nr.modelGender || "")) out.push(`Model: ${model(pr.modelGender)} → ${model(nr.modelGender)}`);
-  const attire = (r: typeof pr) => (r.attireType ? attireLabel(r.attireType, r.customAttire, r.specialCategory) : "—");
-  if (attire(pr) !== attire(nr)) out.push(`Attire: ${attire(pr)} → ${attire(nr)}`);
-  if ((pr.aspectRatio || "") !== (nr.aspectRatio || "")) out.push(`Ratio: ${pr.aspectRatio || "—"} → ${nr.aspectRatio || "—"}`);
-  if ((pr.notes || "") !== (nr.notes || "")) out.push(`Tech notes updated`);
-  // The client reads this one back in their own confirmation, so a change to it is a change to
-  // what we have promised to put on screen — not the same event as an internal note being edited.
-  if ((pr.businessInfo || "") !== (nr.businessInfo || "")) out.push(`Business info / what to include updated`);
-  if ((pr.businessName || "") !== (nr.businessName || "")) out.push(`Business: ${pr.businessName || "—"} → ${nr.businessName || "—"}`);
-  if ((pr.businessWhatsapp || "") !== (nr.businessWhatsapp || "")) out.push(`Contact: ${pr.businessWhatsapp || "—"} → ${nr.businessWhatsapp || "—"}`);
-  if ((pr.businessAddress || "") !== (nr.businessAddress || "")) out.push(`Address: ${pr.businessAddress || "—"} → ${nr.businessAddress || "—"}`);
-  // Switching the special category or the background changes what the tech team must produce,
-  // so both are logged by name rather than folded into a generic "requirement updated".
-  const special = (r: typeof pr) => getCharacterPack(r.specialCategory)?.label || "Normal ad";
-  if (special(pr) !== special(nr)) out.push(`Special category: ${special(pr)} → ${special(nr)}`);
-  // Logged on EVERY ad now. Flipping an ad from a built location to the client's own photographs
-  // changes what has to be collected before anyone can start, and it used to be invisible unless
-  // the sale happened to carry a character pack.
-  const loc = (r: typeof pr) => (r.realLocationProvided ? "Real — client's photos" : "AI — location created");
-  if (loc(pr) !== loc(nr)) out.push(`Background: ${loc(pr)} → ${loc(nr)}`);
-  return out;
-}
+/* `describeSaleChanges` — the edit log's lines — lives in utils/saleEdit (2026-10-08), shared with
+   services/sales and the tech side's notifications. */
 
 export default function SaleForm({
   lead, updateLead, onDone, editItem, initialCategory, onBehalfOf, lockCategory, renewal, initialBusinessName,
@@ -168,9 +106,13 @@ export default function SaleForm({
    * a caller can carry on from it. (`heldForApproval` went on 2026-10-05: an over-discounted sale now
    * reaches the tech side at once, so there is no held sale for a caller to explain.)
    */
-  onDone: (result?: { leadId?: string; itemIndex?: number; item?: SaleDetail }) => void;
-  /** Present when editing an existing sale rather than adding a new one. */
-  editItem?: { index: number; item: SaleDetail };
+  onDone: (result?: { leadId?: string; itemIndex?: number; item?: SaleDetail; saleId?: string }) => void;
+  /**
+   * Present when editing an existing sale rather than adding a new one. `order` is the sale's order on
+   * the tech side when the caller has it: a sale the tech team has started opens with its service
+   * locked and says the edit will reach the job (2026-10-08). The save itself re-reads everything.
+   */
+  editItem?: { index: number; item: SaleDetail; order?: Order | null };
   /**
    * What to open on. Set when the member arrived from an upsell in My Clients, where they had
    * already chosen what they were selling — asking them to pick it a second time is how a Wishes
@@ -215,6 +157,17 @@ export default function SaleForm({
   );
   const editing = !!editItem;
   const ed = editItem?.item;
+  /**
+   * The tech team has started on this sale (2026-10-08). It can still be edited — the client rings the
+   * salesperson, not the tech team — but not into a different service: the job a member is building
+   * would no longer be the job that was sold. `services/sales.updateSale` enforces the same.
+   */
+  const workStarted = editing && saleHasWork(editItem?.order);
+  const workLabel = workStarted
+    ? [editItem?.order?.assignedToName].filter(Boolean).join(" · ")
+    : "";
+  /** One save at a time: a second tap while the first is writing must not record a second sale. */
+  const savingRef = useRef(false);
   const renewPackage = renewal?.packageKey && (PACKAGES.social_media_management || []).some((p) => p.label === renewal.packageKey)
     ? renewal.packageKey : "";
   // Promotional is what the team sells most, so it's the default; the ₹499 "15 Seconds + Poster"
@@ -802,6 +755,9 @@ export default function SaleForm({
   const behalfDetail = () => (onBehalfOf ? { onBehalfOf: onBehalfOf.name, onBehalfOfUid: onBehalfOf.uid } : {});
 
   const handleSave = async (opts: { keepOpen?: boolean } = {}) => {
+    // A second tap while the first save is still writing (the button only disables on the next
+    // render) used to record the sale twice — two sales, two orders, two jobs for one client.
+    if (savingRef.current) return;
     if (amount <= 0) {
       toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
       return;
@@ -842,12 +798,27 @@ export default function SaleForm({
       toast({ title: "Describe the character", description: "Say who or what the custom character is — the whole character is built from your description.", variant: "destructive" });
       return;
     }
+    savingRef.current = true;
     setSaving(true);
-    const promise = buildPromise({
-      presetKey: slaPreset || CUSTOM_PRESET_KEY,
-      customHours: slaPreset === CUSTOM_PRESET_KEY ? Math.max(1, Math.round(customDays * 24)) : undefined,
-      startMs: Date.now(),
-    });
+    /*
+      The delivery promise. Its countdown starts at the SALE (business rule), so an edit keeps the
+      promise it had — and a promise changed on an edit still counts from the sale. It was rebuilt from
+      "now" on every save, so correcting a typo in the brief quietly pushed the deadline out, on the
+      order and on the job, by however long the sale had been running.
+    */
+    const customHours = slaPreset === CUSTOM_PRESET_KEY ? Math.max(1, Math.round(customDays * 24)) : undefined;
+    // Compared the way the form shows it (a custom promise in whole days), so an untouched picker
+    // never counts as a change.
+    const promiseUnchanged = !!ed?.promise
+      && (ed.promise.presetKey || CUSTOM_PRESET_KEY) === (slaPreset || CUSTOM_PRESET_KEY)
+      && (slaPreset !== CUSTOM_PRESET_KEY || Math.max(1, Math.round((ed.promise.hours || 0) / 24)) === customDays);
+    const promise = promiseUnchanged && ed?.promise
+      ? ed.promise
+      : buildPromise({
+          presetKey: slaPreset || CUSTOM_PRESET_KEY,
+          customHours,
+          startMs: (editing && (tsToMs(ed?.promise?.startAt) || tsToMs(ed?.submittedAt))) || Date.now(),
+        });
     /**
      * The brief that travels with the sale.
      *
@@ -924,8 +895,8 @@ export default function SaleForm({
       earnedDiscount: discount.reasons.length > 0 ? earned : null,
       earnedDiscountAmount: discount.earnedAmount || 0,
       /*
-        Over 10% total is more than a member may give alone, so the sale waits for the sales admin
-        before it reaches the tech team at all — see services/orders.upsertOrderForSale.
+        Over 10% total is more than a member may give alone, so the DISCOUNT waits for the sales
+        admin; the sale itself reaches the tech team at once (2026-10-05, services/orders).
       */
       discountNeedsApproval: discount.needsApproval,
       discountApproval: discount.needsApproval
@@ -993,9 +964,32 @@ export default function SaleForm({
         : {}),
     };
 
-    const existingItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+    const soldByName = saleFormUser?.name || lead.displayName || "";
+    const salesAdminId = saleFormUser?.createdBy || null;
+    /** A save that was refused or failed: the form stays open with everything typed, and says why. */
+    const failed = (err: unknown) => {
+      savingRef.current = false;
+      setSaving(false);
+      toast({
+        title: isSaleWriteError(err) ? "Not saved" : "Couldn't save the sale",
+        description: isSaleWriteError(err)
+          ? err.message
+          : "Nothing was saved — check the connection and try again. Nothing reached the tech team either.",
+        variant: "destructive",
+      });
+    };
 
-    // ── Edit an existing sale ────────────────────────────────────────────────
+    /*
+      ── Saving goes through services/sales (2026-10-08) ─────────────────────────────────────────
+      The sale and its order are written in ONE transaction, found by the sale's permanent id — not
+      by its position in the lead's list, and never from this form's copy of the whole list. This
+      form used to write the list back itself (through an `updateLead` that swallowed its own error)
+      and then the order separately: an order with no sale behind it when the first write failed, a
+      second sale and order on the member's retry, and an edit saved over whichever sale had moved
+      into this one's position.
+    */
+
+    // ── Edit an existing sale — the same sale, by its id ─────────────────────
     if (editing && ed && editItem) {
       const updatedItem: SaleDetail = {
         // A sale edited OUT of bulk keeps none of the bulk arithmetic. Spreading the old item
@@ -1007,37 +1001,56 @@ export default function SaleForm({
         ...saleShape,
         amount: finalAmount,
         paymentScreenshotUrl: screenshotUrl || null,
-        // submittedAt is kept, so the order's deterministic id stays stable.
         promise,
         requirement,
       };
-      const changes = describeSaleChanges(ed, updatedItem);
-      if (changes.length === 0) { setSaving(false); onDone(); return; }
-      updatedItem.editedAt = Timestamp.now();
-      updatedItem.editLog = [
-        ...(ed.editLog || []),
-        // Whoever actually made the edit — on a sale recorded for somebody, not the seller.
-        { at: Timestamp.now(), byName: authUser?.name || saleFormUser?.name || "", changes },
-      ];
-      const items = existingItems.map((it, i) => (i === editItem.index ? updatedItem : it));
-      await updateLead(lead.id, { saleItems: items, saleDetails: items[items.length - 1] });
-      // Reflect the change in the tech Orders queue (idempotent; keeps status/assignment).
-      try {
-        await upsertOrderForSale({
-          lead, item: updatedItem, itemIndex: editItem.index,
-          soldByName: saleFormUser?.name || lead.displayName || "",
-          salesAdminId: saleFormUser?.createdBy || null,
-        });
-      } catch { /* best-effort */ }
-      if (saleFormUser) {
-        await logActivity({
-          ...activityActor(),
-          adminId: saleFormUser.createdBy, action: "edited_sale_item",
-          details: { leadId: lead.id, leadName: lead.displayName, amount, category, changes, ...behalfDetail() },
-        });
+      // Nothing changed on the form: nothing to save, and nobody to tell.
+      if (describeSaleChanges(ed, updatedItem).length === 0) {
+        savingRef.current = false;
+        setSaving(false);
+        onDone();
+        return;
       }
+      const saleId = saleIdOf(lead.id, ed, editItem.index);
+      let result: Awaited<ReturnType<typeof updateSale>>;
+      try {
+        result = await updateSale({
+          leadId: lead.id,
+          saleId,
+          base: ed,
+          next: updatedItem,
+          // Whoever actually made the edit — on a sale recorded for somebody, not the seller.
+          editor: { uid: authUser?.uid || null, name: authUser?.name || saleFormUser?.name || "" },
+          soldByName,
+          salesAdminId,
+          knownLanguages: languages,
+        });
+      } catch (err) {
+        failed(err);
+        return;
+      }
+      const changes = result.changes.map((c) => c.text);
+      if (saleFormUser && result.changed) {
+        // The edit is saved; a lost activity line must not report it as failed.
+        try {
+          await logActivity({
+            ...activityActor(),
+            adminId: saleFormUser.createdBy, action: "edited_sale_item",
+            details: { leadId: lead.id, leadName: lead.displayName, amount, category, changes, saleId, ...behalfDetail() },
+          });
+        } catch { /* best-effort */ }
+      }
+      savingRef.current = false;
       setSaving(false);
-      toast({ title: "Sale updated", description: `${changes.length} change${changes.length === 1 ? "" : "s"} saved and logged.` });
+      const counted = `${changes.length} change${changes.length === 1 ? "" : "s"}`;
+      toast({
+        title: "Sale updated",
+        description: !result.changed
+          ? "It already had these details — nothing to change."
+          : result.hasWork
+            ? `${counted} saved. The job was updated, and the tech admin, team leader and the member on it have been told.`
+            : `${counted} saved and logged.`,
+      });
       onDone();
       return;
     }
@@ -1061,32 +1074,33 @@ export default function SaleForm({
         ? { enteredBy: { uid: authUser.uid, name: authUser.name, role: authUser.role || null } }
         : {}),
     };
-    const updatedItems = [...existingItems, newItem];
-    await updateLead(lead.id, { saleDone: true, saleItems: updatedItems, saleDetails: newItem });
-    // Push straight to the tech Orders queue — approval is no longer a gate, so the tech team can
-    // start immediately. `saleVerified: false` marks it as awaiting the sales admin's sign-off.
+    // The sale and its order together — the tech team can start at once (approval is not a gate;
+    // the order reads "Pending approval" until the sales admin signs it off).
+    let recorded: Awaited<ReturnType<typeof recordSale>>;
     try {
-      await upsertOrderForSale({
-        lead, item: newItem, itemIndex: updatedItems.length - 1,
-        soldByName: saleFormUser?.name || lead.displayName || "",
-        salesAdminId: saleFormUser?.createdBy || null,
-        saleVerified: false,
-      });
-    } catch { /* best-effort: the sale is recorded even if the order write fails */ }
+      recorded = await recordSale({ leadId: lead.id, item: newItem, soldByName, salesAdminId });
+    } catch (err) {
+      failed(err);
+      return;
+    }
     if (saleFormUser) {
-      await logActivity({
-        ...activityActor(),
-        adminId: saleFormUser.createdBy,
-        action: "submitted_sale",
-        details: {
-          leadId: lead.id,
-          leadName: lead.displayName,
-          amount,
-          category,
-          packageKey: packageKey || "custom",
-          ...behalfDetail(),
-        },
-      });
+      // The sale is saved; a lost activity line must not report it as failed.
+      try {
+        await logActivity({
+          ...activityActor(),
+          adminId: saleFormUser.createdBy,
+          action: "submitted_sale",
+          details: {
+            leadId: lead.id,
+            leadName: lead.displayName,
+            amount,
+            category,
+            packageKey: packageKey || "custom",
+            saleId: recorded.saleId,
+            ...behalfDetail(),
+          },
+        });
+      } catch { /* best-effort */ }
     }
     // Freeze this client so no other member can poach the number while it's sold.
     // Mirror the freeze onto the lead (for the member's list + admin Frozen tab) only after the
@@ -1106,6 +1120,7 @@ export default function SaleForm({
         /* non-fatal: the sale is already recorded */
       }
     }
+    savingRef.current = false;
     setSaving(false);
     /*
       What happened, in the terms the member needs. Every sale is with the tech team now
@@ -1123,7 +1138,7 @@ export default function SaleForm({
     // Staying open for the next service on the same client, rather than closing and making them
     // find the button again.
     if (opts.keepOpen) { resetForNextService(); return; }
-    onDone({ leadId: lead.id, itemIndex: updatedItems.length - 1, item: newItem });
+    onDone({ leadId: lead.id, itemIndex: recorded.itemIndex, item: recorded.item, saleId: recorded.saleId });
   };
 
   /**
@@ -1168,7 +1183,19 @@ export default function SaleForm({
           client is moving up or down.
         </div>
       )}
-      {editing ? (
+      {editing && workStarted ? (
+        /* Work has started (2026-10-08): the edit still goes through — to the same sale, its order and
+           the job — and the people doing the work are told. The service itself is locked. */
+        <div data-test="sale-edit-work-started" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-foreground">
+          <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
+            <AlertTriangle size={12} className="shrink-0" /> The tech team is already working on this sale{workLabel ? ` (${workLabel})` : ""}
+          </p>
+          <p className="mt-0.5 text-muted-foreground">
+            Your changes go straight to the job, and the tech admin, the team leader and the member on it get a popup
+            with what changed. The service can't be changed now.
+          </p>
+        </div>
+      ) : editing ? (
         <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2 flex items-center gap-1.5">
           <Pencil size={12} /> Editing sale — every change is logged and sent to the tech team
         </div>
@@ -1184,10 +1211,15 @@ export default function SaleForm({
         </div>
       )}
 
-      {lockCategory || renewal ? (
-        <p data-test="sale-category-locked" className="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground">
-          {categoryLabel(category)}
-        </p>
+      {lockCategory || renewal || workStarted ? (
+        <div data-test="sale-category-locked" className="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground">
+          <span className="flex items-center gap-1.5">
+            {workStarted && <Lock size={12} className="shrink-0 text-muted-foreground" />}
+            {categoryLabel(category)}
+          </span>
+          {/* Its own line: beside the service name it squeezed "Promotional Ad" onto two lines at 390 px. */}
+          {workStarted && <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">Locked while the tech team works on it</span>}
+        </div>
       ) : (
       <select
         value={category}
@@ -1209,6 +1241,8 @@ export default function SaleForm({
           <select
             value={bulkAdType}
             data-test="bulk-type"
+            // What the videos ARE is locked once the tech team is making them (2026-10-08).
+            disabled={workStarted}
             onChange={(e) => {
               setBulkAdType(e.target.value);
               // The new kind has its own package list, so the old selection means nothing here.
@@ -1272,8 +1306,10 @@ export default function SaleForm({
                 min={2}
                 data-test="bulk-quantity"
                 value={quantity || ""}
+                // How many videos is locked once the tech team is making them (2026-10-08).
+                disabled={workStarted}
                 onChange={(e) => setQuantity(Number(e.target.value) || 0)}
-                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono"
+                className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono disabled:opacity-60"
               />
             </div>
             <div className="flex-1 space-y-1">
@@ -1376,7 +1412,8 @@ export default function SaleForm({
               type="button"
               onClick={() => { setCustomBase(""); setCustomPriceTouched(false); }}
               data-test="custom-base-none"
-              className={`h-8 rounded-lg border px-3 text-[11px] font-medium transition-colors ${
+              disabled={workStarted && customBase !== ""}
+              className={`h-8 rounded-lg border px-3 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 !customBase ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
               }`}
             >
@@ -1388,7 +1425,9 @@ export default function SaleForm({
                 type="button"
                 onClick={() => { setCustomBase(key); setCustomPriceTouched(false); }}
                 data-test={`custom-base-${key}`}
-                className={`h-8 rounded-lg border px-3 text-[11px] font-medium transition-colors ${
+                // The service behind a Custom sale is locked once the tech team has started (2026-10-08).
+                disabled={workStarted && customBase !== key}
+                className={`h-8 rounded-lg border px-3 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   customBase === key ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
                 }`}
               >

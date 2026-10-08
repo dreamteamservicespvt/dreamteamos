@@ -24,18 +24,18 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | Collection (doc id) | Type | Key fields / notes |
 |---|---|---|
 | `users/{uid}` | `AppUser` | `role`, `name`, `email`, `phone`, `createdBy` (**team key**), `isActive`, `salary` (mirrors package), `salaryPackageId`, `dailyTarget`, `earningsOption` (`stipend_plus_5`/`incentive_10`), `employmentType`, `externalCreator`, `smmLeader`, `employeeId`, `avatar`, `dob`, `businessWhatsapp`, `signatureUrl`, `designation`, `googleDriveBaseUrl`, `activeFlowAccountId` (the Flow account in use). Deprecated: `target`, `monthlyTarget` |
-| `leads/{auto}` | `Lead` | `assignedTo` (sales member), `assignedBy`, `phone` (+91…), `displayName`, `realName`, `status` (`not_called`/`answered`/`not_answered`/`call_later`/`not_interested`), `notes`, `saleDone`, **`saleItems: SaleDetail[]`** (legacy `saleDetails`), freeze mirrors (`frozen`, `saleFrozen*`), `duplicateCleared`, `isCustomEntry` |
+| `leads/{auto}` | `Lead` | `assignedTo` (sales member), `assignedBy`, `phone` (+91…), `displayName`, `realName`, `status` (`not_called`/`answered`/`not_answered`/`call_later`/`not_interested`), `notes`, `saleDone`, **`saleItems: SaleDetail[]`** (legacy `saleDetails`), freeze mirrors (`frozen`, `saleFrozen*`), `duplicateCleared`, `isCustomEntry`. **2026-10-08:** each `SaleDetail` carries **`saleId`** (`<leadId>_<ms recorded>`, immutable; older sales get it derived by `utils/saleIdentity.saleIdOf` and stamped on the next write) — written only through `services/sales` transactions, found by id, never by position |
 | `numberLocks/{digitsPhone}` | `NumberLock` | `ownerId`, `ownerLeadId`, `reserveExpiresAt` (+24h), `saleFrozen`, `saleFrozenUntil`, `timeline[]` (`claimed`/`taken_over`/`sold`/`admin_override`) |
 | `schedulePools/{auto}` | `SchedulePool` | `createdBy`, `assignedTo`, `numbers[]`, `releasedCount`, `dailyLimit`, `minCompletionPercent`, `isActive`, `lastReleasedDate` |
-| `orders/{o_<leadId>_<submittedAtMs>}` (legacy `o_<leadId>__<idx>`) | `Order` | client (`clientPhone`, `clientPhoneId`, `businessName`, `clientName`), sale copy (`category`, `packageKey`, `amount`, bulk/discount fields, `requirement`, `promise`), link (`leadId`, `saleItemIndex`, `saleItemKey`, `saleSubmittedAtMs`), attribution (`soldBy`, `soldByName`, `salesAdminId`, `fromAd`), `saleVerified`, **`status`**, `workAssignmentId`, `assignedTo`, `progress` (SMM/bulk), `bulkVideos[]`, `penalties[]`/`penaltyTotal`, `updateNotes[]`, `feedback` (after-sale call), `clientReview` (mirror), tombstone/restore/retire fields |
-| `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At`, `driveUploadedAt` / `driveUploadPath` / `driveFileName` (the member's word that the file is in their Drive, 2026-10-03; cleared on each hand-in) |
+| `orders/{o_<saleId>}` = `o_<leadId>_<submittedAtMs>` (legacy `o_<leadId>__<idx>`) | `Order` | client (`clientPhone`, `clientPhoneId`, `businessName`, `clientName`), sale copy (`category`, `packageKey`, `amount`, bulk/discount fields, `requirement`, `promise`), link (`leadId`, **`saleId`** (2026-10-08), `saleItemIndex` / `saleItemKey` (where the sale sat when written — positions move), `saleSubmittedAtMs`), attribution (`soldBy`, `soldByName`, `salesAdminId`, `fromAd`), `saleVerified`, **`status`**, `workAssignmentId`, `assignedTo`, `progress` (SMM/bulk), `bulkVideos[]`, `penalties[]`/`penaltyTotal`, `updateNotes[]`, `feedback` (after-sale call), `clientReview` (mirror), tombstone/restore/retire fields |
+| `work_assignments/{auto}` | `WorkAssignment` | `assignedTo`, `assignedBy`, `category` (`wishes`/`promotional`/`cinematic`/`bulk_ads`/`social_media_management`/`poster`), `clipCount`, `duration`, `pricePerUnit`, `uniqueId` (W/P/C/PS/O + number), **`accessCode`** (4 digits), `status`, `sessions[]`, `totalDurationSeconds`, `date`, ad spec (`modelGender`, `attireType`, `customAttire`, `aspectRatio`, `language`, `festival`, `characterPack`, `customCharacter` (Custom Character only), `realLocationProvided`, poster fields), brief (`requirementNotes`, `businessInfo`, `businessAddress`), `orderId`, `saleId` (2026-10-08, from the order), `chatId`, `promise`, `tracks[]`, `savedGenerationId`, `saleDeleted*`, `reassignedFrom/By/At`, `driveUploadedAt` / `driveUploadPath` / `driveFileName` (the member's word that the file is in their Drive, 2026-10-03; cleared on each hand-in) |
 | `clients/{digitsPhone}` | `Client` | profile assets, `works[]`, totals, `reviews[]` (server-written), `salesAdminIds[]`, `soldByIds[]` (array-contains scope), `firstSoldBy`, review/loyalty mirror |
 | `order_chats/{chatId}` (+`messages`) | `OrderChatDoc` | `chatId` = order id for sold work, else assignment id (`utils/orderChatId.orderChatIdOf`). `participants[]`, `accessCode`, `status` (`open`/`locked`), `clientReady`, `activeAt` heartbeats, `unreadCounts`, `clientReview`, member/seller/assigner ids |
 | `smm_campaigns/{orderId or auto}` | `SmmCampaign` | `origin` (`sale` / legacy `direct` / `no_sale` — no order, amount 0, `soldBy` = the salesperson), `orderId` ("" for direct and no-sale months), `watchers[]`, `soldBy`, `team`, `items[]` (content with approval, chases, per-platform `postUrls`, extra work's `extraType`/`extraDuration`, `carriedFrom`), `adRuns[]` (day reports, budgets), `budgetPayments[]`, `cycle` (start → same date next month), `commitments`, `renewal` (+`nextCampaignId`), `status` (`active`/`completed`/`renewed`/`lapsed`/`removed`/`deleted`), `deletedAt`/`deletedByName`; 2026-10-03: `clipsPerVideo`, `pageLinks`, `renewalOf`, `monthNumber`, `setupAt/ByName/ByUid`, `history`, `carriedOut[]`, `businessNameEdited`. Related: `SaleDetail.enteredBy`, `SmmSaleSpec.clipsPerVideo/renewalOf`, `WorkAssignment.smmCampaignId`. 2026-10-05: `platforms` is set in setup too (`setMonthPlatforms`; the sale keeps its own); a client's months are read together with `where clientPhoneId ==` for the client calendar (single-field index); a `history` month now keeps `team` + `watchers` (who did its work — no job cards), and an earlier month added in front of a later one sets that month's `renewalOf` and renumbers `monthNumber` down the run (no new fields). Later 2026-10-05, **On hold** (no new field): a month past its end with no renewal decision stays `active`; a `history` month is now `active` too while nothing follows it (was always `completed`), `completed` once the client has a next or later month, `lapsed` when not renewing; `app_settings/smm_history_hold` (`doneAt`, `checked`, `moved`, `byUid`, `byName`) records the one-time move of older `completed` history months back to `active` |
 | `smm_templates/{auto}` | `SmmTemplate` | saved client message wording (company-wide) |
 | `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts`, `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus), `voiceBrief`, `scriptQa` (the voice-over's quality-gate score, pass and drafts)), all form settings incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
 | `cinematic_projects/{auto}` | `CinematicAdsProject` | `createdBy`, `name`, `currentStep`, `stepsCompleted`, brief, stories, boards, cast, clips, editing guide, deliverables, `delivered`, `updatedAt` (ms). `File` objects stripped |
-| `notifications/{auto or dedupeKey}` | — | `userId`, `type`, `title`, `message`, `read`, `link`, `meta`, `createdAt` |
+| `notifications/{auto or dedupeKey}` | — | `userId`, `type`, `title`, `message`, `read`, `link`, `meta`, `createdAt`. 2026-10-08: `order_new_<orderId>_<uid>` (one per recipient), `sale_edited_<saleId>_<editMs>_<uid>` with `meta { saleId, orderId, uniqueId, changes[] }` |
 | `fcmTokens/{token}` | — | `userId`, `token`, device id |
 | `activityLogs/{auto}` | `ActivityLogEntry` | actor, `action`, `details`, `adminId` (sales + tech feeds) |
 | `sessions/{auto}` | — | `userId`, `loginAt`, `logoutAt`, `duration` (minutes) |
@@ -43,6 +43,9 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `flow_account_secrets/{same id}`, `paid_account_secrets/{id}` | `AccountSecret` | `password` only — read on Show/Copy |
 | `flow_usage/{auto}` | `FlowUsageEntry` | one ad (or manual entry) on one account: `accountId`, `userId`, `teamAdminId`, `assignmentId`/`uniqueId`/`businessName`, `rows[]` (seconds × count), `credits`, `cycleStart`, `date`, `month` (`yyyy-MM`), `source` (`completion`/`manual`), `editedBy*` |
 | `paid_accounts/{auto}` | `PaidAccount` | `provider` (`chatgpt`/`grok`/`other`), `label`, `email`, `plan`, `renewsOn`, `assignedTo[]`, `assignedNames`, `teamAdminId`, `history[]` |
+| `invoices/{auto}` (2026-10-08) | `Invoice` (`types/invoice.ts`) | content: `issueDate`, `dueDate`, `seller` + `payment` snapshots, `customer`, **`items[]` embedded with a stable `id`** (one read, one atomic write), `tax` {`mode` gst/none, `pricesIncludeTax`, `placeOfSupply`, `defaultRate`}, `roundOff`, `terms`, `notes`; `number` (null = draft; `DTS/26-27/0001`, never changes once set), `sequence`, `financialYear`, `status` (`draft`/`issued`/`paid`/`cancelled`; Overdue derived), `totals` {taxable, tax, grandTotal in paise, itemCount — written from `invoiceMath`}, `ownerId/Name/Role` (members see their own), `revision`, `history[]` (ms `at`), `duplicatedFrom`, `sourceOrderId`, `issuedAt/ByUid/ByName`, `paidAt`, `cancelledAt` |
+| `invoice_counters/{2026-27}` · `invoice_numbers/{DTS-26-27-0001}` | — | the FY serial (`seq`, only goes up) and the create-only number register (`number`, `invoiceId`, `fy`, `sequence`, `byUid`), both written in `generateInvoice`'s one transaction |
+| `invoice_settings/access` · `invoice_settings/defaults` | `InvoiceAccessSettings` / `InvoiceDefaults` | the team-leader switch `teamLeadersEnabled` (tech/main admin); what a new invoice starts with: `payment`, `terms`, `notes`, `taxRate`, `pricesIncludeTax`, `dueDays` (the four admins) |
 
 ### HR / pay / other collections
 `employee_profiles/{uid}` (`EmployeeProfile`: PAN, Aadhaar, addresses, CTC, stage, probation,
@@ -65,8 +68,9 @@ code, generated password after completion) · `member_credentials/{uid}` (**read
 ```
 users(admin) 1─* users(member)            via member.createdBy
 users(sales_member) 1─* leads             via lead.assignedTo
-leads 1─* saleItems (embedded)            1 saleItem ─1 orders (orderDocId; saleItemKey idempotency)
-orders 1─0..1 work_assignments            order.workAssignmentId ⇄ assignment.orderId
+leads 1─* saleItems (embedded)            1 saleItem ─1 orders (o_<saleId>; written together in one transaction)
+orders 1─0..1 work_assignments            order.workAssignmentId ⇄ assignment.orderId (+ assignment.saleId); written
+                                          together; a one-ad order never gets a second job, a deleted sale none
 orders 1─1 order_chats                    chat id = order id (sold work)
 orders 1─0..1 smm_campaigns               campaign id = order id (social_media_management)
 work_assignments *─1 users(tech_member)   assignment.assignedTo
@@ -75,13 +79,17 @@ clients(phone digits) 1─* works           built from orders/assignments on com
 users 1─1 employee_profiles / employee_bank / public_badges / member_credentials (doc id = uid)
 users(tech) 1─* flow_accounts             via ownerId (target count) and holderId (in use)
 flow_accounts 1─* flow_usage              via accountId; usedByCycle mirrors the entries' credits
+users 1─* invoices                        via invoice.ownerId; invoices 1─0..1 invoice_numbers (number ⇄ invoiceId)
+orders 0..1─* invoices                    via invoice.sourceOrderId ("Fill from a sale"; informational only)
 ```
 
 ### Status fields
 - **Order.status:** `unassigned` (in the queue) → `assigned` (work linked) → `completed` (member
   submitted; "Awaiting verify") → `verified` (leaves the active queue). `cancelled` (sale
-  rejected or deleted — over-discounted no longer, since 2026-10-05; reactivates on re-verify). `deleted` (permanent tombstone;
-  never recreated by the sale; can be restored; tech_admin can purge).
+  rejected — over-discounted no longer, since 2026-10-05; reactivates on re-verify; a revoked approval no longer
+  cancels, 2026-10-08). `deleted` (permanent tombstone;
+  never recreated by the sale; can be restored; tech_admin can purge). Since 2026-10-08 a sale DELETED before any
+  work removes its order document outright (with its chat and month); a sale with work cannot be deleted.
 - **WorkAssignment.status:** see §16.
 - **SaleDetail.verificationStatus:** `pending` → `verified` or `rejected`.
 - **ReviewTask.status:** `requested` → `review_uploaded` → `verified` → `completed`.
@@ -90,6 +98,9 @@ flow_accounts 1─* flow_usage              via accountId; usedByCycle mirrors t
 - **Onboarding invite:** `sent`, `offer_accepted`, `completed`, `declined`, `revoked`.
 - **Leave:** `pending`, `approved`, `rejected`, `cancelled`. **Check-in:** `checked_in`,
   `pending_approval`, `approved`, `rejected`.
+- **Invoice.status** (2026-10-08): `draft` (no number; autosaves; deletable) → `issued` (numbered by
+  `generateInvoice`; still editable, keeps its number, `revision` +1) → `paid` / `cancelled` (and back to
+  `issued`); a numbered invoice is never deleted. "Overdue" = issued and past `dueDate`, computed on read.
 
 ## 27. POTENTIAL RISKS (need verification)
 

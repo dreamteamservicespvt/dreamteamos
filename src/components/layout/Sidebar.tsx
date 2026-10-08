@@ -17,6 +17,7 @@ import InstallAppButton from "@/components/layout/InstallAppButton";
 import MemberAvatar from "@/components/MemberAvatar";
 import BrandLogo from "@/components/common/BrandLogo";
 import { useMyDesignation } from "@/hooks/useEmployeeProfile";
+import { useInvoiceAccess } from "@/hooks/useInvoiceSettings";
 import type { AppUser } from "@/types";
 
 interface SidebarProps {
@@ -32,6 +33,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  // The Invoices link for a team leader follows the Tech Admin's switch, live. Listened to only for
+  // team leaders — no other role's menu depends on it.
+  const { teamLeadersEnabled } = useInvoiceAccess(user?.role === "tech_team_leader");
+  const navAccess = { invoiceBuilder: teamLeadersEnabled };
 
   // Dropdown groups (e.g. "Communication" bundling Team Chat / Meetings / Chat Monitor) —
   // undefined means "not yet toggled by the user", so it defaults to open exactly when it
@@ -42,14 +47,14 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   // Auto-open the group holding the active route (e.g. after a deep link or refresh).
   useEffect(() => {
     if (!user) return;
-    const items = getNavItems(user.role, user);
+    const items = getNavItems(user.role, user, navAccess);
     const activeGroup = items.find((i) => i.children && isChildActive(i));
     if (activeGroup) setOpenGroups((prev) => (prev[activeGroup.title] ? prev : { ...prev, [activeGroup.title]: true }));
   }, [location.pathname, user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!user) return null;
 
-  const navItems = getNavItems(user.role, user);
+  const navItems = getNavItems(user.role, user, navAccess);
   /**
    * Where the logo goes. The same helper "/" redirects through, so it is right for every role —
    * and for an external creator, whose home is the ad tool rather than a dashboard.

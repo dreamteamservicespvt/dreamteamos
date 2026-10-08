@@ -23,7 +23,7 @@ import { briefAsInstructions, mergeBriefIntoInstructions } from '@/utils/adRequi
 import { assignmentFormSpec, jobClipCount, jobKitSpec, kitSpec, staleKitChanges } from '@/utils/assignmentFormSpec';
 import { CHATGPT_URL, GEMINI_URL } from './generation/mission';
 import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender, packSpeakers, withCustomCharacter } from '@/services/characterPacks';
-import { attireLabel, attireOptionLabel, attireOptionsFor, castLabelFor } from '@/utils/adRequirement';
+import { attireLabel, attireOptionLabel, attireOptionsFor, castLabelFor, resolveModelSpec } from '@/utils/adRequirement';
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
 import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
 import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
@@ -1895,12 +1895,31 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                     ) : (
                     <select
                       value={getCharacterPack(formData.characterPack)?.id ?? (formData.characterPack || '')}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        characterPack: e.target.value || undefined,
-                        // Default to using the client's photos — that is the whole point of the format.
-                        locationMode: e.target.value ? (prev.locationMode || 'real_provided') : undefined,
-                      }))}
+                      onChange={(e) => setFormData(prev => {
+                        const characterPack = e.target.value || undefined;
+                        /*
+                          A human entry decides the gender, and the attire must suit it — the rule every
+                          other form applies (utils/adRequirement.resolveModelSpec). Without it, choosing
+                          "Real Owner Face (Male)" kept the form's default Traditional: the dropdown showed
+                          Professional (its first male option) while the frames dressed him in a kurta
+                          (2026-10-08).
+                        */
+                        const spec = resolveModelSpec({
+                          characterPack,
+                          modelGender: prev.gender || ModelGender.FEMALE,
+                          attireType: prev.attireType,
+                          customAttire: prev.customAttire,
+                        });
+                        return {
+                          ...prev,
+                          characterPack,
+                          gender: spec.modelGender,
+                          attireType: spec.attireType,
+                          customAttire: spec.attireType === AttireType.CUSTOM ? (prev.customAttire || '') : prev.customAttire,
+                          // Default to using the client's photos — that is the whole point of the format.
+                          locationMode: e.target.value ? (prev.locationMode || 'real_provided') : undefined,
+                        };
+                      })}
                       className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
                         isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-amber-800" : "bg-white border-slate-300 text-slate-700 focus:ring-amber-200")}
                     >

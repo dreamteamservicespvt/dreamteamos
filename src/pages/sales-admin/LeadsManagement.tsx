@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { deleteLeadWithSales, isSaleWriteError } from "@/services/sales";
 import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
 import type { AppUser, Lead, NumberLock } from "@/types";
@@ -407,12 +408,19 @@ function HolderRow({
     if (!confirmed) return;
     setBusy("delete");
     try {
-      await deleteDoc(doc(db, "leads", lead.id));
+      // The lead and every sale on it, everywhere (services/sales, 2026-10-08) — deleting the lead
+      // document alone left each sale's order in the tech queue. Refused while the tech team is
+      // working on one of its sales.
+      await deleteLeadWithSales(lead.id);
       // Free the number's lock so it's no longer "frozen/reserved" and can be re-added.
       try { await releaseLockForDeletedLead({ phone: lead.phone, leadId: lead.id }); } catch { /* lead already deleted */ }
       toast({ title: "Deleted", description: "Lead removed and number freed." });
-    } catch {
-      toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: isSaleWriteError(err) ? "Can't delete this lead" : "Error",
+        description: isSaleWriteError(err) ? err.message : "Failed to delete.",
+        variant: "destructive",
+      });
     } finally {
       setBusy(null);
     }

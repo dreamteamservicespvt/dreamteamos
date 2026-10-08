@@ -177,6 +177,13 @@ service cloud.firestore {
     // `app_settings/smm_history_hold` and puts such months back to `active`; both go through the
     // catch-all below (staff). Add SMM sale reads the number's months with
     // `where('clientPhoneId','==',…)` (single-field index), as the "already has a month" check does.
+    //
+    // 2026-10-08 — no rule change. A sale and its order are now written in ONE transaction from the
+    // salesperson's (or sales admin's) browser — services/sales: `leads` + `orders`; deleting a sale nobody
+    // has started also deletes its `order_chats` room and `smm_campaigns` month and the tech side's
+    // `notifications` it rang (`order_new_*`, `smm_new_*`); editing a sale the tech team has started also writes
+    // its `work_assignments` job and sends `sale_edited` notifications. A rule limiting any of these to their
+    // owner would make sales fail to save, edit or delete — those paths would need a server function first.
 
     // ── AI Accounts: Flow accounts, their passwords, the credit ledger, paid logins ─────────────
     // (types/aiAccounts.) Passwords live in their own collections so a list never carries them, and
@@ -213,6 +220,61 @@ service cloud.firestore {
       allow write: if isTechManager();
     }
 
+    // ── Invoices (2026-10-08) ──────────────────────────────────────────────────────────────────
+    // Who (owner, 2026-10-08): salespeople and the Main / Tech / Sales / Accounts Admin always; a
+    // Tech Team Leader only while `invoice_settings/access.teamLeadersEnabled` is true; a tech member
+    // never. A member reads their own invoices (`where ownerId ==`); the four admins read them all.
+    // Numbers (`DTS/26-27/0001`) are handed out in ONE transaction by services/invoices.generateInvoice:
+    // the year's counter only ever goes up, the number register can only be CREATED (never changed or
+    // deleted), and an invoice can only take a number that is in the register in the same commit —
+    // and can never change or lose it afterwards. Only a draft (no number) can be deleted.
+    function invoiceAdmin() { return isStaff() && role() in ['main_admin', 'tech_admin', 'sales_admin', 'accounts_admin']; }
+    function leaderInvoicesOn() {
+      return get(/databases/$(database)/documents/invoice_settings/access).data.get('teamLeadersEnabled', false) == true;
+    }
+    function canUseInvoices() {
+      return isStaff() && (role() in ['main_admin', 'tech_admin', 'sales_admin', 'accounts_admin', 'sales_member']
+        || (role() == 'tech_team_leader' && leaderInvoicesOn()));
+    }
+    function registered(number) {
+      return existsAfter(/databases/$(database)/documents/invoice_numbers/$(number.replace('/', '-')));
+    }
+
+    match /invoices/{invoiceId} {
+      // `resource == null`: a new invoice's id is listened to (and read inside the numbering
+      // transaction) before it exists — there is nothing in it to leak, and refusing it would make
+      // every new invoice look "denied".
+      allow read:   if canUseInvoices() && (resource == null || resource.data.ownerId == request.auth.uid || invoiceAdmin());
+      allow create: if canUseInvoices() && request.resource.data.ownerId == request.auth.uid
+                    && (request.resource.data.number == null || registered(request.resource.data.number));
+      allow update: if canUseInvoices() && (resource.data.ownerId == request.auth.uid || invoiceAdmin())
+                    && request.resource.data.ownerId == resource.data.ownerId
+                    && ((resource.data.number == null
+                          && (request.resource.data.number == null || registered(request.resource.data.number)))
+                        || (resource.data.number != null && request.resource.data.number == resource.data.number));
+      allow delete: if canUseInvoices() && (resource.data.ownerId == request.auth.uid || invoiceAdmin())
+                    && resource.data.number == null;
+    }
+    match /invoice_counters/{fy} {
+      allow read:   if canUseInvoices();
+      allow create: if canUseInvoices() && request.resource.data.seq is int && request.resource.data.seq >= 1;
+      allow update: if canUseInvoices() && request.resource.data.seq is int && request.resource.data.seq > resource.data.seq;
+      allow delete: if false;
+    }
+    match /invoice_numbers/{key} {
+      allow read:   if canUseInvoices();
+      allow create: if canUseInvoices() && request.resource.data.byUid == request.auth.uid
+                    && existsAfter(/databases/$(database)/documents/invoices/$(request.resource.data.invoiceId));
+      allow update, delete: if false;
+    }
+    // The switch belongs to the Tech Admin and the Main Admin; the defaults (bank account, terms) to the
+    // four admins — a changed bank account on every new invoice is a fraud, not a typo.
+    match /invoice_settings/{docId} {
+      allow read:  if isStaff();
+      allow write: if (docId == 'access' && isStaff() && role() in ['main_admin', 'tech_admin'])
+                   || (docId == 'defaults' && invoiceAdmin());
+    }
+
     // ── Everything else the app runs on ────────────────────────────────────────────────────────
     // Staff-only, which is what it always should have been. Nothing outside this file needs it.
     //
@@ -224,14 +286,15 @@ service cloud.firestore {
     // list is the change that makes their rules real, and should be tested against each HR screen.)
     match /{collection}/{document=**} {
       allow read, write: if isStaff() && !(collection in [
-        'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets'
+        'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets',
+        'invoices', 'invoice_counters', 'invoice_numbers', 'invoice_settings'
       ]);
     }
   }
 }
 ```
 
-## After publishing, check these six things
+## After publishing, check these seven things
 
 1. Open an ID card and scan its QR (or visit `/verify/<uid>` signed out) — it must say **Verified
    employee**. If it says "could not be verified", press **Republish all badges** in
@@ -260,6 +323,11 @@ service cloud.firestore {
 6. AI Accounts: sign in as a tech member and open **My AI Accounts** — their own Flow accounts list
    and **Show** reveals a password. Then sign in as a different member: that account must not be
    listed at all. The tech admin and a team leader see every account on **AI Accounts**.
+7. Invoices: sign in as a salesperson, make an invoice and press **Generate invoice** — it must come
+   back numbered `DTS/26-27/000N` (if it says "permission", `invoice_counters` / `invoice_numbers`
+   did not publish). A second salesperson must not see it in **Invoices**; the Accounts Admin must.
+   With the switch off (Tech Admin → Settings → Invoice Builder), a team leader opening `/invoices`
+   sees "isn't turned on for you", and a tech member is sent away by the route guard.
 
 ## Status
 

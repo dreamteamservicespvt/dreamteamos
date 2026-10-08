@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { collection, addDoc, updateDoc, doc, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
+import { deleteLeadWithSales, isSaleWriteError } from "@/services/sales";
 import { adminAssignNumber, transferLockOwnership, releaseLockForDeletedLead } from "@/services/numberLock";
 import { fetchTeamMembers, subscribeMemberLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
@@ -458,12 +459,24 @@ export default function MemberLeadsDetail() {
     if (!confirmed) return;
     try {
       const phone = leads.find((l) => l.id === leadId)?.phone;
-      await deleteDoc(doc(db, "leads", leadId));
+      // The lead and every sale on it, everywhere (services/sales, 2026-10-08) — deleting the lead
+      // document alone left each sale's order in the tech queue. Refused while the tech team is
+      // working on one of its sales.
+      const { removedSales } = await deleteLeadWithSales(leadId);
       // Free the number's lock so it's no longer "frozen/reserved" and can be re-added.
       if (phone) { try { await releaseLockForDeletedLead({ phone, leadId }); } catch { /* lead already deleted */ } }
-      toast({ title: "Deleted", description: "Lead removed and number freed." });
-    } catch {
-      toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
+      toast({
+        title: "Deleted",
+        description: removedSales > 0
+          ? `Lead removed with its ${removedSales} sale${removedSales === 1 ? "" : "s"} (and from the tech queue); number freed.`
+          : "Lead removed and number freed.",
+      });
+    } catch (err) {
+      toast({
+        title: isSaleWriteError(err) ? "Can't delete this lead" : "Error",
+        description: isSaleWriteError(err) ? err.message : "Failed to delete.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -498,13 +511,30 @@ export default function MemberLeadsDetail() {
     try {
       const ids = Array.from(selectedLeads);
       const phoneById = new Map(ids.map((id) => [id, leads.find((l) => l.id === id)?.phone]));
-      await Promise.all(ids.map((id) => deleteDoc(doc(db, "leads", id))));
+      // Each lead with its sales, everywhere (services/sales) — one at a time, so a lead the tech team
+      // is working on is skipped and named instead of failing the rest.
+      const deleted: string[] = [];
+      const kept: string[] = [];
+      for (const id of ids) {
+        try {
+          await deleteLeadWithSales(id);
+          deleted.push(id);
+        } catch (err) {
+          if (!isSaleWriteError(err)) throw err;
+          kept.push(leads.find((l) => l.id === id)?.displayName || phoneById.get(id) || id);
+        }
+      }
       // Free each number's lock so deleted numbers don't stay "frozen/reserved".
-      await Promise.all(ids.map(async (id) => {
+      await Promise.all(deleted.map(async (id) => {
         const phone = phoneById.get(id);
         if (phone) { try { await releaseLockForDeletedLead({ phone, leadId: id }); } catch { /* already deleted */ } }
       }));
-      toast({ title: "Deleted", description: `${ids.length} lead${ids.length > 1 ? "s" : ""} removed and number(s) freed.` });
+      toast({
+        title: kept.length ? "Some leads were kept" : "Deleted",
+        description: `${deleted.length} lead${deleted.length === 1 ? "" : "s"} removed and number(s) freed.`
+          + (kept.length ? ` Kept ${kept.length} — the tech team is working on a sale there: ${kept.slice(0, 3).join(", ")}${kept.length > 3 ? "…" : ""}.` : ""),
+        variant: kept.length ? "destructive" : undefined,
+      });
       setSelectedLeads(new Set());
       setSelectMode(false);
     } catch {

@@ -13,6 +13,13 @@ import { CUSTOM_FESTIVAL_OPTION } from "@/utils/festivals";
 
 const at = (iso: string) => ({ seconds: Math.floor(Date.parse(iso) / 1000) });
 const updateDoc = vi.fn();
+/*
+  Saving goes through services/sales since 2026-10-08 (the sale and its order in one transaction), so
+  the form is checked on what it hands that service: `next` is the sale exactly as the form built it,
+  `base` the copy it opened on.
+*/
+const updateSale = vi.fn(async (p: { next: unknown }) => ({ changed: true, changes: [{ text: "x", money: false }], item: p.next, itemIndex: 0, hasWork: false, orderId: "o1" }));
+const { describeSaleChanges } = await import("@/utils/saleEdit");
 
 const leads = [
   { id: "l1", phone: "9876543210", displayName: "Ravi", status: "answered",
@@ -63,6 +70,10 @@ vi.mock("@/services/numberLock", () => ({
   clearedLeadFreezeFields: vi.fn(),
 }));
 vi.mock("@/services/orders", () => ({ upsertOrderForSale: vi.fn(), cancelOrderForSale: vi.fn(), addOrderUpdateNote: vi.fn(), orderDocId: () => "o1" }));
+vi.mock("@/services/sales", () => ({
+  recordSale: vi.fn(), updateSale, deleteSale: vi.fn(), deleteLeadWithSales: vi.fn(), mutateSaleItems: vi.fn(),
+  isSaleWriteError: () => false,
+}));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/components/dashboard/DayPicker", () => ({ default: () => null }));
 vi.mock("@/components/sales/NumberTimelineButton", () => ({ default: () => null }));
@@ -160,10 +171,10 @@ describe("Add Sale — the occasion on a wishes video", () => {
     // And a NEW wishes sale is offered the full promotional list, not the retired label.
     expect(Array.from(pkg.options).map((o) => o.value)).toContain("1 Minute + Poster");
 
-    updateDoc.mockClear();
+    updateSale.mockClear();
     fireEvent.click(screen.getByText(/^Save changes —/));
-    await vi.waitFor(() => expect(updateDoc).toHaveBeenCalled());
-    const saved = updateDoc.mock.calls.at(-1)![1].saleItems[0];
+    await vi.waitFor(() => expect(updateSale).toHaveBeenCalled());
+    const saved = updateSale.mock.calls.at(-1)![0].next as Record<string, any>;
     expect(saved.packageKey).toBe("20 Seconds");
     expect(saved.amount).toBe(499);
   });
@@ -171,14 +182,16 @@ describe("Add Sale — the occasion on a wishes video", () => {
   it("stores the occasion on the sale's brief", async () => {
     openWishesEdit();
     fireEvent.change(screen.getByTestId("sale-festival"), { target: { value: "Ganesh Chaturthi" } });
-    updateDoc.mockClear();
+    updateSale.mockClear();
     fireEvent.click(screen.getByText(/^Save changes —/));
 
-    await vi.waitFor(() => expect(updateDoc).toHaveBeenCalled());
-    const saved = updateDoc.mock.calls.at(-1)![1].saleItems[0];
+    await vi.waitFor(() => expect(updateSale).toHaveBeenCalled());
+    const call = updateSale.mock.calls.at(-1)![0] as unknown as { base: any; next: any };
+    const saved = call.next;
     expect(saved.category).toBe("wishes");
     expect(saved.requirement.festival).toBe("Ganesh Chaturthi");
-    // And the change is named in the sale's own edit log, not buried as "requirement updated".
-    expect(saved.editLog.at(-1).changes).toContain("Occasion: Diwali → Ganesh Chaturthi");
+    // And the change is named in the sale's own edit log (written by services/sales from exactly
+    // this list), not buried as "requirement updated".
+    expect(describeSaleChanges(call.base, call.next)).toContain("Occasion: Diwali → Ganesh Chaturthi");
   });
 });

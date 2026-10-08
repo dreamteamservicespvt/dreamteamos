@@ -66,6 +66,37 @@ describe("the AI platform inputs", () => {
     expect(screen.getByTestId("owner-image-slot").textContent).toMatch(/UPLOAD OWNER IMAGE/i);
   });
 
+  /*
+    2026-10-08: choosing "Real Owner Face (Male)" kept the form's default Traditional — the attire picker
+    showed his first option, Professional, while the run dressed him in a kurta. The entry now sets his
+    gender and an attire he actually has, exactly as every other form does (resolveModelSpec).
+  */
+  it("gives a Real Owner Face (Male) ad his gender and an attire he has — what the picker shows is what runs", async () => {
+    vi.mocked(gemini.generateAdAssets).mockClear();
+    vi.mocked(gemini.generateAdAssets).mockResolvedValue({
+      businessInfo: {}, mainFramePrompts: [], headerPrompt: "", posterPrompt: "", voiceOverScript: "", veoPrompts: [],
+      hasProductImages: false, productImageCount: 0, stockImagePrompts: null,
+    } as any);
+    open();
+    choosePack("owner_face_male");
+    const slot = screen.getByTestId("owner-image-slot");
+    fireEvent.change(slot.querySelector("input[type=file]")!, {
+      target: { files: [new File([new Uint8Array([1, 2, 3])], "owner.jpg", { type: "image/jpeg" })] },
+    });
+    // The run's other gates: a name board in place of a logo, and a built location (no store photos here).
+    fireEvent.click(screen.getByLabelText(/NO LOGO/));
+    fireEvent.change(screen.getByPlaceholderText("BUSINESS NAME"), { target: { value: "Sri Lakshmi Silks" } });
+    fireEvent.click(screen.getByText("🏙️ AI — build the location"));
+    fireEvent.change(screen.getByTestId("business-content"), { target: { value: "Sri Lakshmi Silks, Kakinada — pattu sarees." } });
+    fireEvent.click(screen.getByText("Start Generation"));
+    await vi.waitFor(() => expect(gemini.generateAdAssets).toHaveBeenCalled());
+    expect(vi.mocked(gemini.generateAdAssets).mock.calls[0][0]).toMatchObject({
+      characterPack: "owner_face_male", gender: "male", attireType: "professional",
+    });
+    // The tests below read the first recorded run as theirs.
+    vi.mocked(gemini.generateAdAssets).mockClear();
+  });
+
   it("asks who the Custom Character is", () => {
     open();
     expect(screen.queryByTestId("platform-custom-character")).toBeNull();

@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/store/authStore";
 import { defaultRouteForUser } from "@/utils/roleHelpers";
+import { INVOICE_ROUTE_ROLES } from "@/utils/invoiceAccess";
 import Login from "@/pages/auth/Login";
 import AppLayout from "@/components/layout/AppLayout";
 import { Loader2 } from "lucide-react";
@@ -118,6 +119,10 @@ const SocialMedia = lazy(() => import("@/pages/shared/SocialMedia"));
 const SmmCampaignPage = lazy(() => import("@/pages/shared/SmmCampaignPage"));
 const Meeting = lazy(() => import("@/pages/shared/Meeting"));
 const AdminChatMonitor = lazy(() => import("@/pages/shared/AdminChatMonitor"));
+// Invoice Builder (2026-10-08): the register, the workspace, and the team-leader switch's door.
+const Invoices = lazy(() => import("@/pages/shared/Invoices"));
+const InvoiceBuilder = lazy(() => import("@/pages/shared/InvoiceBuilder"));
+const InvoiceAccessGate = lazy(() => import("@/components/invoice/InvoiceAccessGate"));
 const ClientChat = lazy(() => import("@/pages/client/ClientChat"));
 const ClientChatResume = lazy(() => import("@/pages/client/ClientChat").then((m) => ({ default: m.ClientChatResume })));
 
@@ -214,6 +219,19 @@ const App = () => (
           ]} />}>
             <Route path="/smm" element={<SocialMedia />} />
             <Route path="/smm/:campaignId" element={<SmmCampaignPage />} />
+          </Route>
+
+          {/*
+            Invoice Builder — one route, six roles, un-prefixed for the same reason as /smm.
+            Salespeople, the Sales / Tech / Main / Accounts Admin always; a Tech Team Leader only while
+            the switch in invoice_settings/access is on (InvoiceAccessGate); a tech member never (the
+            route guard). `/invoices/new` swaps itself for a fresh id before anything is typed.
+          */}
+          <Route element={<AppLayout allowedRoles={INVOICE_ROUTE_ROLES} />}>
+            <Route element={<InvoiceAccessGate />}>
+              <Route path="/invoices" element={<Invoices />} />
+              <Route path="/invoices/:invoiceId" element={<InvoiceBuilder />} />
+            </Route>
           </Route>
 
           {/* Main Admin */}

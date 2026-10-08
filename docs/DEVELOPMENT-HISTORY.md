@@ -9,7 +9,144 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-05 (latest, evening): SMM "On hold", and the month the board could not show** (`.claude/rules/smm.md`
+- **2026-10-08 (latest): the Invoice Builder — a new module** (session "invoice builder"; new
+  `.claude/rules/invoices.md` §9.22; `roles-routes.md` flags / §8.1 / §8.2 / §10, `data-model.md` collections /
+  relationships / statuses, `architecture.md` §11 Documents / §22, `people.md` §9.16, `docs/firestore-rules.md`;
+  CLAUDE.md Context map / §32 / §33).
+  - **The owner's request:** a world-class invoice workspace replacing the separate "Easy Invoice" app — editor +
+    live A4 preview, GST (CGST / SGST / IGST, inclusive or on top), items with discounts and reordering, bank
+    details and a UPI QR, terms, notes, drafts, generate, duplicate, delete, a PDF that matches the preview, no
+    duplicate numbers, unsaved-change protection, phone to desktop; access: sales person, sales admin, tech admin
+    yes, tech team leader by a switch, tech member never — enforced in the database too. Asked first and answered:
+    Main Admin and Accounts Admin also get it; ONE switch for all team leaders (tech admin / main admin, in
+    Settings); numbers `DTS/26-27/0001` per financial year; a generated invoice stays editable and keeps its number.
+  - **Audit:** no invoice code or collection existed in DTS-OS. The old app lived in another Firebase project
+    (`invoicegenerator-21b78`, collection `invoices`) with free-text numbers (`INV-<date>-<random>`, no uniqueness),
+    tax always on top and computed in three places, and the QR fetched from api.qrserver.com — nothing to migrate.
+    Reused: `company_settings` identity + logo (`useCompany`, `useCompanyLogo`), the HR counter's transaction
+    pattern, the print CSS (`agreementPrint`, split into `printDocumentPages`), jsPDF + html2canvas + `qrcode`,
+    Cloudinary, `useConfirm`, `holdUpdates`, a salesperson's in-memory orders.
+  - **Built:** `utils/invoiceMath` (the ONE engine, integer paise, tax per rate group; inclusive prices keep the
+    total exact and CGST = SGST — the owner's Inv. 4232 reproduces: 17,400 → 14,745.76 + 1,327.12 + 1,327.12),
+    `utils/gst` (state codes, GSTIN check character, IGST by place of supply), `utils/invoiceNumber`,
+    `utils/invoiceLayout` (pure page plan: rows never split, repeated table header, totals never alone, headings
+    kept with text), `utils/invoiceDraft`, `utils/invoiceAccess`, `utils/invoicePdf`; `services/invoices` (one
+    numbering transaction: FY counter + create-only `invoice_numbers` register + the invoice; Generate twice =
+    same number) and `services/invoiceSettings`; `components/invoice/*`; pages `Invoices` and `InvoiceBuilder`;
+    `hooks/useLeaveGuard`; routes `/invoices`, `/invoices/:id` (+ `InvoiceAccessGate`), one nav item per role
+    (`requiresInvoiceSwitch` for team leaders, live in the Sidebar), `InvoiceAccessCard` on the tech / main admin
+    Settings; rules for the four new collections, kept out of the catch-all. `company.numberInIndianWords` split
+    out of `amountInWords` (payslip text unchanged).
+  - **Found and fixed in the browser run:** the UPI QR printed as an empty square in the PDF (html2canvas paints an
+    inline-block's background over its image → the frame is a plain block with no fill); every PDF line sat ~5 px
+    low (html2canvas measures baselines with a probe `<img>` that Tailwind makes `display:block` → the probe is
+    put back inline during capture, `withTrueBaselines`). Also, from review: an export double-click could hang,
+    deleting a never-saved draft could bring it back via the leave-the-page save, an issued invoice's save waited
+    on the network offline, and Status could not be changed without pressing Edit.
+  - **Tested:** 70 new unit tests (`invoiceMath` incl. 300 random invoices, `invoiceRules`, `invoiceService` on
+    memoryFirestore); real headless Chrome on the real pages over memoryFirestore, 15 checks A–O all passing after
+    the two fixes — access for all 7 roles and the switch both ways, create / autosave, IGST / on-top / No GST /
+    round-off, add / duplicate / reorder / delete items, discounts and mixed rates, QR, a 45-item 3-sheet invoice,
+    numbering 0001→0002, double Generate, validation, edit after issue, Paid / Cancelled, PDF (light + dark ink,
+    pages = sheets, QR present), print, 390 / 768 / 1440 with no horizontal scroll, refresh, the on-device copy and
+    the leave prompt, duplicate / delete, Fill from a sale, zero console errors. Build ✅, typecheck 1 known error,
+    full vitest ✅. Not driven: live Firebase (rules unpublished), two people generating in the same second
+    (the fake store does not serialise transactions — the logic is Firestore's), a real printer.
+- **2026-10-08: Sales → Tech on one permanent `saleId`; Real Owner Face keeps the client's face; దసరా**
+  (session dts-os-db; `.claude/rules/sales.md` §9.4 / §24 / §25, `orders-work.md` §16 / §24 / §27, `data-model.md`
+  leads / orders / work_assignments / notifications, `ai-ads.md` §17.2 / §24 / §27, `backend-security.md` §18,
+  `roles-routes.md` §7 / §8.2, `architecture.md` §9.20 / §22 / §23, `docs/firestore-rules.md` note; CLAUDE.md §32 / §33).
+  - **The owner's three items:** (1) "Fix the Sales → Tech workflow using a permanent saleId" — editing a sale
+    created duplicate sales for Tech, deleted unassigned sales still appeared for Tech members, sales did not
+    synchronise; the rules: one immutable saleId, create = one sale, edit = the same saleId (never a new sale),
+    upsert on the tech side, UNASSIGNED + delete = gone everywhere, ASSIGNED + delete = blocked, ASSIGNED + edit =
+    same saleId + assignment kept + a popup to the tech admin, team leader and member, no duplicate / stale /
+    orphaned records, transactions; test CREATE → EDIT → ASSIGN → EDIT → DELETE UNASSIGNED → DELETE ASSIGNED.
+    (2) Real-face ads sometimes changed the face — added a bindi — "check male and female both"; correct the frame
+    and the video prompts; "for all the real person videos we need only this prompt based on gender": "With a
+    very sweet voice she needs to say :- {Your Voice} with appropriate gestures · Negative prompt :- No text on the
+    screen". (3) "Dusshera" was spelled wrongly in the voice-over script; the correct spelling is దసరా.
+  - **Root causes (1):** a sale had no id — every writer found it by its POSITION in `leads.saleItems[]` and wrote
+    the whole list back from its own copy (SaleForm's edit, My Leads' delete and payment, Sales Approvals,
+    `mirrorPenaltyToSale` via `order.saleItemIndex`): an edit form open while an earlier sale was deleted saved over
+    another sale (two rows of one sale), an approval could undo an edit or drop a just-added sale. The sale and its
+    order were written separately and My Leads' `updateLead` swallowed its own error — an order with no sale, then a
+    second sale + order on the retry; the save button had no in-flight guard (a double tap = two sales). An edit
+    rebuilt the delivery promise from "now" (the deadline moved on every edit). Deleting removed the sale first and
+    the order best-effort (a failure left it), never the chat or the "new order" bells; deleting a LEAD (custom lead,
+    the sales admin's Leads pages, single and bulk) never touched its orders at all. `createWorkAssignment` wrote the
+    job and then updated the order — a job for a sale deleted a moment earlier, or a second job for one ad (two
+    people, or a double tap from a stale Assign form); the Work Assign pages failed silently. Revoking an approval
+    deleted the pending sale's order. The "new order" bell had one dedupe key for every recipient, so each write
+    replaced the last (only one tech admin / leader kept it). `timestampMs` lost the milliseconds of a JSON'd
+    timestamp (a second order id for the same sale).
+  - **Fix (1):** `utils/saleIdentity` (`saleId` = `<leadId>_<ms>`, order `o_<saleId>` — the id orders already
+    had, no migration; `withSaleIds` stamps older sales; exact `timestampMs`; `leadHoldsSaleOf`), `utils/saleEdit`
+    (`saleChangeList` — moved from SaleForm, money-tagged, now naming the advance, the screenshot, a Custom sale's
+    service and length, a month's video length, a custom character; `mergeSaleEdit` three-way merge;
+    `lockedServiceChange`; `saleHasWork`; `jobPatchForSaleEdit`; `saleEditNotice`), `services/sales` (`recordSale`,
+    `updateSale`, `deleteSale`, `deleteLeadWithSales`, `mutateSaleItems`, `healOrphanOrdersOnOpen`,
+    `notifySaleEdited` — all transactions), `orders.ts` (`orderSaleFields` / `newOrderForSale` /
+    `orderUpdateForSale` / `afterOrderWrite` shared by the upsert and the transactions, per-recipient
+    `order_new_<orderId>_<uid>` + role links, `removeOrderNotifications`, `markOrderSaleUnverified`, the penalty
+    mirror by id), `workAssign.ts` (the job + the order in one transaction, `AssignmentRefusedError`), SaleForm
+    (service + in-flight guard, promise kept, work-started banner, service locked), My Leads (rows / edit / log /
+    note by `saleId`, Edit always, Delete with a confirm or "Can't delete — work started (Ravi)", payments and
+    custom-lead delete through the service), Sales Approvals (every handler by id; delete through `deleteSale`;
+    revoke keeps the order), MemberLeadsDetail / LeadsManagement (`deleteLeadWithSales`, bulk keeps and names the
+    blocked leads), both Work Assign pages + `AssignTracksDialog` (toast on refusal; a gone order closes the form),
+    Orders + Work Assign (orphan sweep on open), `UpdatePopup` + `notificationRouting` (`sale_edited` popup with its
+    change list, `POPUP_ROLES` adds the tech admin), types (`saleId` on SaleDetail / Order / WorkAssignment).
+  - **Root causes (2):** the owner-face frames' WARDROBE line (default female attire Traditional) was "a designer
+    silk saree … with tasteful traditional jewellery" and overrode "keep what she wears in the photograph" — a
+    "traditional look" the image model completed with a bindi; the male owner had no forehead-mark rule at all; the
+    identity rules lived only in the frame writer's system prompt ("plain English, no negative list" output), and the
+    one line the finished prompt carried about the face is the 📎 attach directive, which Copy strips; the studio's
+    pack picker never set the entry's gender / attire, so "Real Owner Face (Male)" ran with the default Traditional
+    (a kurta) while the picker showed Professional. Veo got the five-part motion prompt (walks, camera, keep sentence).
+  - **Fix (2):** `frameBrand.withOwnerFaceLock` — `FACE LOCK:` in every owner-face frame BODY (survives Copy; re-stamped
+    after a main-frame refine), by gender: the photograph's face, skin, hairline, hair / beard and forehead; a bare
+    forehead stays bare, a mark the photo shows stays; nothing added (bindi, tilak, kumkum, sindoor, vibhuti, nose
+    ring, face jewellery, make-up, new beard); only the clothes follow the outfit. `characterCastBlock` says the same;
+    `ownerWardrobeDirective` (no jewellery, "the clothes only"); the male entry's negatives (catalogue TS + JSON);
+    `resolveModelSpec` in `packWardrobe` and in the studio's pack picker. Video: `assembleRealPersonVeoPrompt` — ONLY
+    the owner's template, "she"/"he" by the entry's gender; `writeVeoPrompts` returns it with no director call (first
+    run, regenerate and the final-script rewrite); `spokenLinesIn` reads it (a refine still cannot change the words).
+    Frames: no walking plan / 🎬 notes; `withRealPersonComposition` (standing, mid-gesture, never mid-step).
+  - **Root cause / fix (3):** the occasion went into the Telugu prompts as the list's Latin "Dussehra" / "Dasara"
+    (inside the Telugu greeting template too) and the writer transliterated it its own way. `utils/festivalNames`:
+    the Telugu name in the greeting and the rule "Write the festival's name in Telugu exactly as దసరా" through
+    `wishAudienceRule` (writer, repair, refine, character dialogue + its worked example), and
+    `withFestivalSpellings` in `speakableLine` (Telugu only) rewriting every misspelling (దుస్సెహ్రా, దుస్సేరా,
+    దసెరా, దస్సరా, దశరా, దసరాా, a bare దసర, the Latin forms; case endings kept; never దశరథ / విజయదశమి).
+  - **Files:** new `src/services/sales.ts`, `src/utils/{saleIdentity,saleEdit,festivalNames}.ts`; changed
+    `services/{orders,workAssign,geminiService,characterCatalogue}.ts`, `services/prompts/{motion,characterAd,festivalWish}.ts`,
+    `utils/{frameBrand,spokenNumbers,notificationRouting}.ts`, `components/sales/SaleForm.tsx`,
+    `components/layout/UpdatePopup.tsx`, `components/work/AssignTracksDialog.tsx`, `components/ai-platform/AIPlatformApp.tsx`,
+    `pages/sales-member/MyLeads.tsx`, `pages/sales-admin/{SalesApprovals,MemberLeadsDetail,LeadsManagement}.tsx`,
+    `pages/tech-admin/{Orders,WorkAssign}.tsx`, `pages/tech-team-leader/WorkAssign.tsx`, `types/index.ts`,
+    `docs/video-category-catalogue.json`; tests new `saleIdentity`, `saleEdit`, `saleSyncOct08` (the owner's sequence +
+    every duplicate / orphan path, real services on the in-memory Firestore), `saleRowsOct08` (UI), `realOwnerFaceOct08`
+    (incl. a full run on a faked Gemini, both genders), `festivalNames`; updated `bulkSaleForm`, `wishesFestivalForm`,
+    `smmAddSaleUi` (they now check what the form hands `services/sales`), `notificationRouting`, `aiPlatformInputs`.
+  - **Tested:** build ✅ (main ≈457 KB, geminiService ≈833 KB), vitest ✅ — 212 files / 3235 tests passed but with 5
+    unhandled errors from this batch (`.catch()` chained on `logActivity` / `sendNotification`, which a test stub returns
+    `undefined` from — spotted by the parallel invoice session); fixed with try/await and `services/sales.quietly`, the
+    full suite is now 215 files / 3305 tests (incl. the invoice session's), all pass, no unhandled errors; typecheck (1 known error),
+    eslint on the changed files: no new findings beyond the tests' existing `any` style. **Browser** (a throwaway
+    harness in the scratchpad driving the real My Leads, Orders, Work Assign, My Work and UpdatePopup on the
+    in-memory Firestore, 390 and 1440 px — the owner's sequence, all 9 checks pass): CREATE (1 sale with its
+    saleId, exactly 1 order `o_<saleId>`, its chat, a bell for the tech admin and the team leader, listed once);
+    EDIT unassigned (same sale and order, the queue renamed, no popup); ASSIGN from the queue (1 job with orderId +
+    saleId, the order assigned); EDIT assigned (Edit + "Can't delete — work started (Ravi)", the banner and the
+    locked service, English → Hindi reached the job, 3 `sale_edited` rows); the POPUP for the member and the tech
+    admin (changes listed, no ₹); DELETE UNASSIGNED (sale, order, chat and bells gone, the queue's Not assigned 0);
+    DELETE ASSIGNED (no button; `deleteSale` refused, every document unchanged); a STALE Assign form after the sale
+    was deleted ("Not assigned — This sale was deleted…", no job). No horizontal scroll; no console error but the
+    refusal's own log. Not driven: live Firebase (transaction retries), push delivery, a team leader's popup on
+    screen and the team leader's Work Assign copy; no Gemini run and no image or Flow generation — the owner-face
+    frames / videos and దసరా are checked by unit tests and a full run on a faked Gemini.
+- **2026-10-05 (evening): SMM "On hold", and the month the board could not show** (`.claude/rules/smm.md`
   §9.9 / §24 / §25 / §27, `data-model.md` smm_campaigns + app_settings, `docs/firestore-rules.md` note; CLAUDE.md §32).
   - **The owner's report:** adding an old client's earlier month (AIRAVATH, +13213899564, 24 Aug → 24 Sep) with
     "Add a month that had no sale" was refused — "AIRAVATH already has a month on these dates (25 Aug → 4 Oct 2026).

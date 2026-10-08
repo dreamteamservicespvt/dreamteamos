@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import ThemeSelector from "@/components/ThemeSelector";
 import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
 import MyIdCardCard from "@/components/MyIdCardCard";
+import InvoiceAccessCard from "@/components/invoice/InvoiceAccessCard";
 import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function Settings() {
@@ -222,6 +223,8 @@ export default function Settings() {
         </form>
       </div>
       <MyIdCardCard />
+      {/* Whether Tech Team Leaders may make invoices — the Main Admin can set it as well as the Tech Admin. */}
+      <InvoiceAccessCard />
       <ThemeSelector />
     </div>
   );

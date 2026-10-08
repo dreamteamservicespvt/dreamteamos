@@ -184,6 +184,8 @@ export interface WorkAssignment {
   promise?: PromiseDeadline;
   // Link back to the originating Order (set when assigned from the Orders queue)
   orderId?: string;
+  /** The sale behind the job (2026-10-08), copied from its order at assignment. Absent on direct jobs. */
+  saleId?: string;
   /**
    * The client chat this job belongs to — the ORDER's id for work that came from a sale.
    *
@@ -340,6 +342,14 @@ export interface SalePayment {
 }
 
 export interface SaleDetail {
+  /**
+   * The sale's one permanent id (2026-10-08) — `<leadId>_<ms it was recorded>`; its order is
+   * `o_<saleId>`. Set when the sale is created and never changed: every edit, delete and tech-side
+   * sync finds the sale by it, never by its position in `saleItems`. Absent on sales recorded before
+   * it existed — `utils/saleIdentity.saleIdOf` gives them the same id their order already has, and the
+   * next write through `services/sales` stamps it on.
+   */
+  saleId?: string;
   category: string;
   packageKey: string;
   /**
@@ -833,8 +843,15 @@ export interface Order {
   penaltyClips?: number;
   // Link back to the originating sale
   leadId: string;
+  /**
+   * The sale this order is for (2026-10-08) — the order's id is `o_<saleId>`. The link that holds:
+   * `saleItemIndex` / `saleItemKey` say where the sale sat when the order was written, which moves
+   * when an earlier sale on the lead is deleted. Absent on orders written before it existed (read it
+   * from the id with `utils/saleIdentity.saleIdOfOrderId`).
+   */
+  saleId?: string;
   saleItemIndex: number;
-  saleItemKey: string;          // `${leadId}__${index}` — idempotency key
+  saleItemKey: string;          // `${leadId}__${index}` — where the sale sat when this was written
   saleSubmittedAtMs: number;    // stable reconciliation key (survives saleItems splice)
   // Attribution
   soldBy: string;               // sales member uid

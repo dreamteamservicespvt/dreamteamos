@@ -35,7 +35,9 @@ import { VOICE_NOTE_SYSTEM_PROMPT, voiceNoteUserPrompt } from "./prompts/voiceNo
 import { parseVoiceBrief, voiceBriefAsText, voiceBriefForProfile } from "@/utils/voiceBrief";
 import { audioMimeTypeOf } from "@/utils/fileHelpers";
 import { sameWords, splitScriptVerbatim, verbatimScriptText } from "@/utils/customScript";
-import { nameBoardInPlaceOfLogo, withOwnerImageDirective } from "@/utils/frameBrand";
+import { nameBoardInPlaceOfLogo, withOwnerFaceLock, withOwnerImageDirective } from "@/utils/frameBrand";
+import { resolveModelSpec } from "@/utils/adRequirement";
+import type { AttireType, ModelGender } from "@/types/aiPlatform";
 import { parseClipPromptEdits, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
 import { cleanOverlayDesign, overlayDesignOf, overlayImagePrompt } from "@/utils/overlayImage";
 import { speakableLine, withoutFixedWords } from "@/utils/spokenNumbers";
@@ -49,6 +51,7 @@ import {
   packPerformer,
   packVeoSubject,
   wardrobeDirective,
+  ownerWardrobeDirective,
 } from "./prompts/characterAd";
 import {
   CORE_MESSAGE_SYSTEM_PROMPT, fallbackCoreMessageBrief, parseCoreMessageBrief, type CoreMessageBrief,
@@ -75,8 +78,9 @@ import {
   isBetterDraft, parseScriptQa, qaDecision, qaInstructions, qaSummary, type ScriptQaReport, type ScriptQaSummary,
 } from "@/utils/scriptQa";
 import {
-  assembleVeoPrompt, cameraShot, pairNamesOf, parseVeoDirections, planClipMotion, spokenLinesIn, stagingPath, walkHint,
-  withMotionComposition, withScaleAnchor, type ClipMotionPlan, type PairNames, type VeoSpeech,
+  assembleVeoPrompt, assembleRealPersonVeoPrompt, cameraShot, pairNamesOf, parseVeoDirections, planClipMotion, spokenLinesIn,
+  stagingPath, walkHint, withMotionComposition, withRealPersonComposition, withScaleAnchor, type ClipMotionPlan, type PairNames,
+  type VeoSpeech,
 } from "./prompts/motion";
 import {
   VEO_REFINE_PLAN_SYSTEM_PROMPT, VEO_REFINE_SYSTEM_PROMPT, VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT, VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT,
@@ -87,7 +91,7 @@ import {
 } from "@/utils/voiceOverRefine";
 import {
   getCharacterPack, packSpeakers, packNameSpellings, isHumanPack, isKidsPack, packAdKind, packCastGender,
-  withCustomCharacter, type CharacterPack,
+  packModelGender, withCustomCharacter, type CharacterPack,
 } from "./characterPacks";
 import {
   castNamesFromFrames, castPeopleFor, castSheetBlock, castSheetFor, castWardrobeLine, kidsWardrobeLine, themeTextOf, withCastSheet,
@@ -582,6 +586,22 @@ const packWardrobe = (pack: CharacterPack | null, formData: AdFormData, cast: Ca
     the cast sheet (2026-10-01) has none in its frames to point to.
   */
   if (formData.attireType !== 'custom' && castWardrobeLine(cast)) return castWardrobeLine(cast);
+  /*
+    The client's own face (Real Owner Face): the ordered clothes, never a "traditional look" on the face —
+    no jewellery, bindi or tilak the photograph does not show (2026-10-08, ownerWardrobeDirective). The
+    attire is read as the form shows it: the entry's gender decides which attires exist, so the studio's
+    default Traditional left on "Real Owner Face (Male)" is his first option, Professional — what the picker
+    displayed while the frames dressed him in a kurta (utils/adRequirement.resolveModelSpec).
+  */
+  if (pack.usesClientFace) {
+    const attire = resolveModelSpec({
+      characterPack: pack.id,
+      modelGender: (packModelGender(pack) || formData.gender || 'female') as ModelGender,
+      attireType: formData.attireType as AttireType,
+      customAttire: formData.customAttire,
+    }).attireType;
+    return ownerWardrobeDirective(attire, formData.customAttire, packCastGender(pack)) || undefined;
+  }
   // The male & female duo is dressed per person from one choice — see wardrobeDirective.
   return wardrobeDirective(formData.attireType, formData.customAttire, packCastGender(pack), isKidsPack(pack)) || undefined;
 };
@@ -1002,6 +1022,14 @@ IMPORTANT:
   // A refine is a model rewrite like any other: a number it adds that the business never gave goes.
   if (sectionType === 'header' || sectionType === 'poster') {
     return stripUnverifiedNumbers(refined, verifiedKeys(factsFromProfile(businessInfo)));
+  }
+  // A Real Owner Face frame keeps its face lock through a refine — the model may drop a stamp it was
+  // given (utils/frameBrand.withOwnerFaceLock, 2026-10-08). Each clip's prompt, between the separators.
+  if (sectionType === 'mainFrame' && pack?.usesClientFace) {
+    return refined
+      .split(/(\s*###\s*CLIP\s*###\s*)/i)
+      .map((part, i) => (i % 2 === 0 && part.trim() ? withOwnerFaceLock(part.trim(), packModelGender(pack)) : part))
+      .join('');
   }
   return refined;
 };
@@ -3487,7 +3515,13 @@ Segment 2: <text>`;
    * frames are composed for it first; the video prompts are then written to perform it — from the same
    * spoken words, choices and client-photo clips (writeVeoPrompts), so both plans are identical.
    */
-  const motionPlan = planClipMotion(segmentCount, formData.adType, packPerformer(pack),
+  /*
+    A real person — the client's own face (Real Owner Face) — is not staged in walks (2026-10-08): their
+    video is the owner's short prompt, the line said with appropriate gestures (writeVeoPrompts), so the
+    frames are composed for that, in place (withRealPersonComposition below), and get no 🎬 walking notes.
+  */
+  const realPerson = !!pack?.usesClientFace;
+  const motionPlan = realPerson ? [] : planClipMotion(segmentCount, formData.adType, packPerformer(pack),
     motionOptionsFor(
       pack,
       pack ? dialogueClips.map(clip => clip.map(line => line.text).join(' ')) : parsedSegments,
@@ -3928,6 +3962,17 @@ ${sceneContext ? `
         return plan ? `${attachmentDirective(plan, clientLocations)}\n\n${withBackgroundPlate(prompt, plan)}` : prompt;
       });
     }
+    /*
+      A real person's frames (2026-10-08): composed in place, mid-gesture, for the owner's short video
+      prompt — and each carries, in the text the member pastes, that the face is the photograph's: the
+      forehead as photographed, nothing added (withOwnerFaceLock — the bindi the owner reported).
+    */
+    if (realPerson) {
+      mainFramePrompts = mainFramePrompts.map((prompt, i) => withOwnerFaceLock(
+        withRealPersonComposition(prompt, { plate: clipPhotoPlan[i] !== undefined && clipPhotoPlan[i]?.photoIndex !== null }),
+        packModelGender(pack),
+      ));
+    }
     // Last, so it joins the photo line: the member attaches the owner's face to every frame.
     if (ownerFace) mainFramePrompts = mainFramePrompts.map(withOwnerImageDirective);
 
@@ -4103,6 +4148,16 @@ const writeVeoPrompts = async (
 ): Promise<string[]> => {
   if (clips.length === 0) return [];
   const pack = packFor(formData);
+  /*
+    A real person — the client's own face (Real Owner Face) — gets ONLY the owner's prompt (2026-10-08):
+    the clip's words, "with appropriate gestures", and "No text on the screen", by the video's gender. No
+    director call and no camera or keep sentence: every extra word about a real face is one more thing the
+    video model may change (assembleRealPersonVeoPrompt).
+  */
+  if (pack?.usesClientFace) {
+    const gender = packModelGender(pack) || (formData.gender === 'male' ? 'male' : 'female');
+    return clips.map(c => assembleRealPersonVeoPrompt({ gender, line: c.speech.map(s => s.line).join(' ') }));
+  }
   const aspectRatio = formData.aspectRatio === '16:9' ? '16:9' : '9:16';
   const language = formData.language || 'Telugu';
   /** The invented people as the frames name them — the same names veoClipsFromScript gave the lines. */

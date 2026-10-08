@@ -132,7 +132,9 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
 - **In-app:** `sendNotification({userId,type,title,message,link?,meta?,dedupeKey?})` writes
   `notifications`. A `dedupeKey` makes the doc id deterministic, and repeats within 10 minutes
   (same text) are skipped entirely. `hooks/useNotifications.ts` powers the Topbar bell (mark
-  read, clear). `UpdatePopup` shows popup types (`utils/notificationRouting.isPopupNotification`).
+  read, clear). `UpdatePopup` shows popup types (`utils/notificationRouting.isPopupNotification`:
+  `work_assigned`, `work_editing`, `attendance_update`, and since 2026-10-08 `sale_edited`) to `POPUP_ROLES`
+  (tech member, sales member, team leader, and — for `sale_edited` — the tech admin).
   `useNotificationTap` handles taps.
 - **Push:** the same call fire-and-forgets `POST /api/send-notification` → FCM data message.
   Web: `public/firebase-messaging-sw.js` renders it (call actions, vibration, tags). Native:
@@ -140,7 +142,13 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   `fcmTokens` and are registered in `initFCM` (AppLayout). The web token needs
   `VITE_FIREBASE_VAPID_KEY`.
 - **Fan-outs:** `notifyTechTeamLeaders` (team leaders sharing `createdBy`),
-  `notifyTechSideOfNewOrder` (all tech admins + team leaders on order **creation** only),
+  `notifyTechSideOfNewOrder` (all tech admins + team leaders on order **creation** only; since 2026-10-08 one
+  document per person — `order_new_<orderId>_<uid>`, linking to `/tech-admin/orders` or `/team-leader/orders` —
+  where one shared key had made each recipient's write replace the last; `orders.removeOrderNotifications`
+  deletes them, and a sold month's `smm_new_<orderId>_<uid>`, when the sale is deleted),
+  `services/sales.notifySaleEdited` (2026-10-08: a sale the tech side has started was edited → `sale_edited`, a
+  POPUP, to every tech admin, team leader and job holder, one per person per edit, `meta.changes` listed in the
+  popup; members and leaders never get price lines),
   deadline sweep, SMM due reminders (seller nudged for approvals and budget), birthdays, order-chat
   alerts via `api/order-chat`.
 - **Common types:** `work_assigned`, `work_completed`, `work_verified`, `work_editing`,

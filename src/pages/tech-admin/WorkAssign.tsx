@@ -32,6 +32,8 @@ import OccasionPicker from '@/components/work/OccasionPicker';
 import { bulkCategoryLabel } from '@/utils/serviceCatalog';
 import { fetchOrder, activeOrdersQuery } from '@/services/orders';
 import { createWorkAssignment, nextWorkUniqueId } from '@/services/workAssign';
+import { healOrphanOrdersOnOpen } from '@/services/sales';
+import { useToast } from '@/hooks/use-toast';
 import { assignBulkVideos } from '@/services/bulkVideos';
 import { verifyAssignments, awaitingVerification } from '@/services/workVerify';
 import MemberWorkloadCard from '@/components/work/MemberWorkloadCard';
@@ -60,6 +62,10 @@ export default function WorkAssign() {
   // Live orders — the "not assigned" side of the ads-status board.
   const ordersQuery = useMemo(() => activeOrdersQuery(), []);
   const { data: orders } = useFirestoreQuery<Order>(ordersQuery, []);
+  const { toast } = useToast();
+  // Waiting orders whose sale no longer exists (deleted before 2026-10-08 without reaching the tech
+  // side) leave the queue — once a session, one read per lead (services/sales).
+  useEffect(() => { if (orders.length) void healOrphanOrdersOnOpen(orders); }, [orders]);
   // `isActive !== false`, not `isActive`: member records created before the flag existed have no
   // `isActive` field at all, and a truthy test silently drops every one of them from the team.
   // External creators aren't team members — they never get assigned work, so they're excluded here.
@@ -352,6 +358,21 @@ export default function WorkAssign() {
       setMemberSearch('');
     } catch (error) {
       console.error('Failed to create assignment:', error);
+      // Said on screen: a refused assignment (the sale was deleted, the order was assigned by someone
+      // else meanwhile) used to fail with nothing but a console line (services/workAssign, 2026-10-08).
+      const refused = (error as { name?: string })?.name === 'AssignmentRefusedError';
+      toast({
+        title: refused ? 'Not assigned' : 'Could not assign',
+        description: refused ? (error as Error).message : 'Nothing was created — try again.',
+        variant: 'destructive',
+      });
+      // The order is gone or closed: close the form, so a second press cannot make a job with no
+      // sale behind it.
+      if (refused && (error as { code?: string }).code !== 'already_assigned') {
+        setSourceOrder(null);
+        setShowForm(false);
+        setForm(blankAssignmentForm());
+      }
     } finally {
       setSubmitting(false);
     }

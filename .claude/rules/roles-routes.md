@@ -42,7 +42,7 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
 | `accounts_admin` (Accounts Admin) | Finance bookkeeping | main_admin | `/accounts/dashboard` | Accounts dashboard; revenue summary; daily expenses CRUD; salary management (edit `users.salary`, `salary_receipts`) | No `/smm`, no chat, no profile page (`getProfileRoute` → "") |
 | `tech_team_leader` (Tech Team Leader) | Supervises a tech team under a tech admin | tech_admin | `/team-leader/work-assign` | Orders queue (remove/restore, **not purge**); Work Assign; unassign/reassign; verify / send back; work reports; attendance and leave; HR centre (send agreements, **cannot delete** documents); activity history; Tools; **AI Accounts** (same as the tech admin); own profile/HR docs; SMM overseer; extend promises | No pricing UI on their Work Assign page; no payroll route; no dashboard |
 | `tech_member` (Tech Member) | Produces ads | tech_admin (or hiring link) | `/tech/dashboard` | Daily check-in/out (mandatory prompt); My Work (open job with access code, AI platform, submit, undo completion); Recent Ads; analytics; salary dashboard; SMM months they are on (worked from Social Media — their month job opens from the month's page, not My Work); bulk video slots assigned to them; extend promise on own job; team chat and meetings; profile, KYC, documents; **My AI Accounts** (own Flow accounts and credits; a video job asks for its Flow credits before it is marked complete) | Cannot assign work, including to themselves |
-| `sales_member` (Sales Executive) | Calls leads and sells | sales_admin (or hiring link) | `/sales/dashboard` | My Leads (claim numbers, call statuses, record/edit/delete sales, freeze sold numbers 1–7 days, dispute proof); client chats for own orders; My Clients (feedback, upsell); review tasks; performance; salary and settlements (request payout); leaderboard (**month view only**); scripts, training; activity history; SMM months they sold, and their renewals and renewal money ("My Social Media" card) | Discounts over 10% need sales admin approval (the sale still reaches the tech side at once, since 2026-10-05); sale edits locked once work is assigned (send update notes instead) |
+| `sales_member` (Sales Executive) | Calls leads and sells | sales_admin (or hiring link) | `/sales/dashboard` | My Leads (claim numbers, call statuses, record/edit/delete sales, freeze sold numbers 1–7 days, dispute proof); client chats for own orders; My Clients (feedback, upsell); review tasks; performance; salary and settlements (request payout); leaderboard (**month view only**); scripts, training; activity history; SMM months they sold, and their renewals and renewal money ("My Social Media" card) | Discounts over 10% need sales admin approval (the sale still reaches the tech side at once, since 2026-10-05); a sale the tech team has started can be edited (not its service; the job follows and the tech side gets a popup) but never deleted (2026-10-08) |
 
 **Flags (additive, not roles):**
 - `externalCreator: true` on a `tech_member`: navigation is only **Create Ad** + **My Profile**.
@@ -55,6 +55,9 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
   `canRecordSmmSaleForSeller`), and is notified when a month is sold (`smm_new_month`). Keeps their normal role. Appointed by the tech admin
   or main admin in the Team Lead panel at the top of `/smm` (`SmmTeamLeadPanel`, `canAppointSmmLead`)
   or the megaphone toggle in My Team; both go through `services/smm.setSmmTeamLead` (notifies them).
+- **Invoice Builder switch** (2026-10-08) — not a per-user flag: ONE company-wide setting,
+  `invoice_settings/access.teamLeadersEnabled`, decides whether Tech Team Leaders may use `/invoices`. Set by
+  the tech admin or main admin in Settings → Invoice Builder (`InvoiceAccessCard`). See `invoices.md` §9.22.
 
 **Non-account actors:**
 - **Client (guest)**: opens `/c/:chatId`. `api/order-chat` mints a custom token with an
@@ -85,7 +88,9 @@ legacy users without the field active.
    no `orderChat` claim), `isAdmin` (main/tech/sales admin), `isManager` (+ team leader). Special
    rules cover `employee_profiles`, `public_badges`, `member_credentials`, `hr_documents`,
    `company_settings`, `hr_counters`, `onboarding_invites`, `cinematic_projects`, `order_chats`
-   (+messages), `calls`. Everything else falls to a catch-all: **any staff may read and write**.
+   (+messages), `calls`, the AI-account collections, and (2026-10-08) `invoices`, `invoice_counters`,
+   `invoice_numbers`, `invoice_settings` (`canUseInvoices`, `invoiceAdmin`; kept out of the catch-all).
+   Everything else falls to a catch-all: **any staff may read and write**.
    Publication status: **[NOT CONFIRMED]**. It was verified as *not published* on 2026-08-03.
 
 > Consequence: almost every "who can do what" below is a UI rule. A signed-in staff account can
@@ -102,7 +107,9 @@ legacy users without the field active.
 | Deactivate / delete users | ✅ all | ✅ own team | | | ✅ own team | | |
 | View stored passwords (`member_credentials`) | ✅ | ✅ | | | ✅ | | |
 | Distribute numbers / schedule pools | | | | | ✅ | claim own | |
-| Record / edit own sale | | | | | | ✅ | |
+| Record / edit own sale (also after work starts, 2026-10-08 — not its service) | | | | | | ✅ | |
+| Delete a sale — only while nobody on the tech side has started it (2026-10-08) | | | | | ✅ | ✅ own | |
+| `sale_edited` popup when a started sale is edited | | ✅ | ✅ | ✅ job holder | | | |
 | Verify / reject sale, approve >10% discount | | | | | ✅ | | |
 | See Orders queue | | ✅ | ✅ | | | own sold orders | |
 | Remove / restore orders | | ✅ | ✅ | | | | |
@@ -138,6 +145,9 @@ legacy users without the field active.
 | Manage AI Accounts (any Flow/paid account: add, assign, disable, delete; settings) | ✅ (no route) | ✅ | ✅ | | | | |
 | Add own Flow accounts, "using now", record / correct own credits | | ✅ | ✅ | ✅ | | | |
 | Chat monitor | | ✅ | | | ✅ | | |
+| Invoice Builder: make, generate, edit, PDF (2026-10-08; also enforced in the rules) | ✅ | ✅ | only while the switch is on | | ✅ | ✅ | ✅ |
+| See every invoice (others see their own) · set invoice defaults (bank, terms) | ✅ | ✅ | | | ✅ | | ✅ |
+| Team-leader Invoice Builder switch | ✅ | ✅ | | | | | |
 
 ## 9. APPLICATION MODULES (the entries for this module)
 
@@ -170,6 +180,14 @@ is lazy. Chunk loading shows `PageFallback` inside the shell (app pages) or `Rou
 | `/smm` | `shared/SocialMedia.tsx` | One card per client month the viewer can see (`useSmmCampaigns`): status in words, a ring of every post, worst first, status counts that filter; Insights (charts) one switch away; **Calendar** (2026-10-05) — pick a client, see every month we ran for them day by day (`?view=calendar&client=<phone digits>` deep-links it; `?view=` also takes `cards` / `insights`); Add SMM sale for the tech side |
 |---|---|---|
 | `/smm/:campaignId` | `shared/SmmCampaignPage.tsx` | One month: content table (List, or Calendar = the client's whole run as a normal calendar, ‹ month › + Today, opened on this month), item dialog, ads, money, reports (with the same calendar), messages; `?tab=report` (or `ads` / `money`) opens on that tab |
+
+### Invoice Builder — main, tech, sales and accounts admin, sales member; team leader while the switch is on (2026-10-08)
+| Route | Page | Purpose |
+|---|---|---|
+| `/invoices` | `shared/Invoices.tsx` | The register: search, status filters with counts, amount waiting to be paid, Open / Duplicate / Delete draft |
+| `/invoices/:invoiceId` | `shared/InvoiceBuilder.tsx` | The workspace (editor + live A4 preview); `/invoices/new` swaps itself for a fresh id |
+Both sit under `AppLayout allowedRoles={INVOICE_ROUTE_ROLES}` → `InvoiceAccessGate` (the team-leader switch). A
+tech member is sent to `/login` by the guard. Nav: one "Invoices" item per allowed role (`INVOICES_NAV`); see `invoices.md`.
 
 ### main_admin — `/main-admin/*`
 `dashboard` (Dashboard) · `team` (TeamManagement: all users, create admins) · `revenue`

@@ -14,7 +14,9 @@ import {
 
 describe("what is allowed to take over the screen", () => {
   it("pops up only for work the recipient has to act on themselves", () => {
-    expect([...POPUP_NOTIFICATION_TYPES]).toEqual(["work_assigned", "work_editing", "attendance_update"]);
+    // `sale_edited` (2026-10-08, owner): a sale the recipient's work comes from was changed — sent to
+    // each person on its own row, never as a team-wide FYI.
+    expect([...POPUP_NOTIFICATION_TYPES]).toEqual(["work_assigned", "work_editing", "attendance_update", "sale_edited"]);
   });
 
   /** The regression itself: no team-wide FYI may ever be a popup type. */

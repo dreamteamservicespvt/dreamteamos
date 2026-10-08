@@ -4,11 +4,11 @@ import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/f
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
-import { ClipboardList, CalendarCheck2, ExternalLink, BellRing, CheckCircle2, HelpCircle } from "lucide-react";
+import { ClipboardList, CalendarCheck2, ExternalLink, BellRing, CheckCircle2, HelpCircle, FilePenLine } from "lucide-react";
 import { ATTENDANCE_META, AttendanceStatus } from "@/services/techAttendance";
-import { isPopupNotification } from "@/utils/notificationRouting";
+import { isPopupNotification, POPUP_ROLES } from "@/utils/notificationRouting";
 
-const MEMBER_ROLES = new Set(["tech_member", "sales_member", "tech_team_leader"]);
+const MEMBER_ROLES = new Set<string>(POPUP_ROLES);
 
 /**
  * How each popup-worthy notification is dressed. WHICH types pop up at all is decided in
@@ -18,6 +18,8 @@ const POPUP_TYPES: Record<string, { icon: typeof ClipboardList; accent: string }
   work_assigned: { icon: ClipboardList, accent: "text-primary bg-primary/15" },
   work_editing: { icon: ClipboardList, accent: "text-amber-500 bg-amber-500/15" },
   attendance_update: { icon: CalendarCheck2, accent: "text-emerald-500 bg-emerald-500/15" },
+  // A sale already being worked on was edited (2026-10-08) — what changed is listed under the message.
+  sale_edited: { icon: FilePenLine, accent: "text-sky-500 bg-sky-500/15" },
 };
 
 interface PopupNotification {
@@ -26,7 +28,7 @@ interface PopupNotification {
   title: string;
   message: string;
   link?: string;
-  meta?: { status?: AttendanceStatus; date?: string };
+  meta?: { status?: AttendanceStatus; date?: string; changes?: string[]; uniqueId?: string | null };
   createdAt?: { seconds?: number };
 }
 
@@ -116,6 +118,14 @@ export default function UpdatePopup() {
                 <h3 className="font-display font-bold text-foreground">{current.title}</h3>
               </div>
               <p className="text-sm text-muted-foreground mt-1">{current.message}</p>
+              {/* A sale edit lists every change, one per line — the message only has room for four. */}
+              {current.type === "sale_edited" && !!current.meta?.changes?.length && (
+                <ul data-test="sale-edited-changes" className="mt-2 max-h-40 space-y-0.5 overflow-y-auto rounded-md border border-border bg-background/60 p-2 text-xs text-foreground">
+                  {current.meta.changes.map((c, i) => (
+                    <li key={i} className="flex gap-1.5"><span className="text-sky-500">•</span><span className="min-w-0 break-words">{c}</span></li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
           <div className="flex gap-2 mt-4">

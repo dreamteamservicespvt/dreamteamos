@@ -34,6 +34,7 @@
 | `.claude/rules/smm.md` | §9.9 Social Media Management | any file named `*smm*` / `*Smm*`, `components/smm`, the Social Media pages |
 | `.claude/rules/ai-ads.md` | §9.7 AI Ads Platform, §9.8 Cinematic Ads, §17 advertisement generation | `components/ai-platform`, `components/cinematic-ads`, Gemini / prompt services, ad utils |
 | `.claude/rules/ai-accounts.md` | §9.21 AI Accounts (Flow credits, paid logins) | `components/ai-accounts`, AI Accounts pages, `aiAccounts` / `flowCredits` |
+| `.claude/rules/invoices.md` | §9.22 Invoice Builder (GST invoices, `DTS/26-27/0001` numbers, live A4 preview, PDF) | `components/invoice`, Invoices pages, `invoice*` utils / services, `utils/gst`, `useLeaveGuard` |
 | `.claude/rules/chat.md` | §9.10 client order chat + calls, §9.12 team chat / calls / meetings | chat, order-chat and call files, `api/order-chat.ts` |
 | `.claude/rules/people.md` | §9.13 attendance & leave, §9.14 payroll & commission, §9.15 HR & documents, §9.16 finance | HR, agreements, payroll, attendance, onboarding, accounts-admin, salary pages |
 | `docs/DEVELOPMENT-HISTORY.md` | §31 development history (newest first) | never; read it on demand |
@@ -213,41 +214,45 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-05)
+## 32. CURRENT PROJECT STATE (as of 2026-10-08)
 
-- Committed and pushed to `main` @ `715f332` (2026-10-05 18:07): everything up to 2026-10-04 (the SMM work,
-  the Drive step, the context split, the client cards and Insights) and all of 2026-10-05 before the item below —
-  the SMM client calendar, "Accounts it covers", the Veo 3 rebuild with its dynamic pass, the wardrobe stylist and
-  the Kids' outfits (`ai-ads.md` §17.2), an old client's earlier SMM months, renewals kept true, the renewal money
-  card, Social Media → Money, the 11 AM / 5 PM post-status popup, over-10% sales reaching the tech side (§31).
-- 2026-10-05 (evening), complete in the working tree, **not yet committed** (check `git status` — parallel
-  sessions work in this tree): SMM **On hold** — a month that ended without a renewal stays on the board, a past
-  month too, and Add SMM sale lists every month on the number and links the month a no-sale month clashes with
-  (the owner's AIRAVATH "already has a month" that was nowhere on the board; §31, `smm.md`).
+- Committed and pushed to `main` @ `d7a9956` (2026-10-05 19:46): everything through 2026-10-05 — the SMM client
+  calendar, "Accounts it covers", the Veo 3 rebuild with its dynamic pass, the wardrobe stylist and the Kids'
+  outfits, an old client's earlier SMM months, renewals kept true, renewal money, the post-status popup, over-10%
+  sales reaching the tech side, and SMM **On hold** (§31).
+- 2026-10-08, complete in the working tree, **not yet committed** (check `git status` — parallel sessions work in
+  this tree): **Sales → Tech on one permanent `saleId`** (`services/sales`: a sale and its order in one
+  transaction; an edit updates the same sale, order and job and pops up for the tech admin, team leader and
+  member; an unassigned sale is deleted everywhere, an assigned one never; no job for a deleted sale, no second job;
+  orphan orders swept — `sales.md`, `orders-work.md`), **Real Owner Face** (a face lock in every frame, only the
+  owner's Veo template by gender — `ai-ads.md`) and **దసరా** in Telugu scripts (§31); and the **Invoice Builder**
+  (`/invoices`: editor + live A4 preview, GST engine, `DTS/26-27/0001` numbers, PDF / print, team-leader switch,
+  new rules for `invoices` / `invoice_counters` / `invoice_numbers` / `invoice_settings` — `invoices.md` §9.22).
 - `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
   fixes and AI Accounts; PR #2: the SMM delete / team lead / extra-work change), resolved to
   origin/main's implementation (§31, 2026-10-02) and pushed.
-- `npm run build` ✅ (main chunk ≈457 KB, vendor-firebase ≈665 KB, geminiService chunk ≈828 KB; AI
-  Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages).
-- `npx vitest run` ✅ 206 files, 3172 tests, all pass (2026-10-05, after SMM On hold). Under heavy parallel load a
-  few UI tests can time out; they pass when re-run alone.
+- `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈833 KB; AI
+  Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages; Invoices lazy `InvoiceBuilder` ≈84 KB,
+  `Invoices` ≈10 KB).
+- `npx vitest run` ✅ 215 files, 3305 tests, all pass, no unhandled errors (2026-10-08, after the saleId /
+  owner-face / దసరా batch and the Invoice Builder).
+  Under heavy parallel load a few UI tests can time out; they pass when re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work: SMM On hold (an ended month with no renewal stays on the board, past months too) and Add SMM
-  sale listing every month on the number (2026-10-05, evening); before it SMM renewals kept true + renewal money (card, Money tab) + the post-status popup, and sales over 10% off reaching the tech side at once (2026-10-05); the SMM earlier months and the Kids dressed for the ad, beside the wardrobe stylist (2026-10-05), after the Veo dynamic pass (every clip a moving commercial shot, never a walk-back, 2026-10-05) after the Veo 3 video-prompt rebuild (short motion-first prompts, the same day) and the SMM client calendar and "Accounts it covers" in setup (2026-10-05); before them one clear card per SMM client (2026-10-04), after the Overview dashboard (now Insights); before them the SMM month that had no sale (not counted; renewed as a sale) and the month
-  deadline fixes, the renewal countdown popup; before them SMM — every month is a sale, Add SMM sale,
-  setup with clips per video, renewal by the salesperson, team-leader delete, the visual board
-  (2026-10-03); before it the six AdGen fixes (frame-bounded video, duo heights, background plates, cast
-  sheets, Kids, spoken address) and AI Accounts (2026-10-01); before them the AdGen integrity batch
-  (verified contact facts, script quality gate, final script, fixed-distance duo camera, colour lock, job strip), the one-screen layout, the two-hander
-  speaker-label fix and the studio UI, before them the AdGen.ai batch (§31), Cinematic Ads, SMM, Poster Creation, load-time splitting.
+- Most recent work (newest first; detail in §31): the Invoice Builder; Sales → Tech on one `saleId`, Real Owner
+  Face and దసరా (2026-10-08); SMM On hold, renewals kept true + renewal money + the post-status popup, over-10% sales reaching
+  tech, the SMM earlier months, the wardrobe stylist and Kids' outfits, the Veo 3 rebuild and dynamic pass, the SMM
+  client calendar (2026-10-05); one card per SMM client and Insights (2026-10-04); SMM as sales, setup, renewal and
+  the board (2026-10-03); the six AdGen fixes and AI Accounts (2026-10-01); earlier AdGen, Cinematic Ads, SMM work.
 - Open follow-ups the owner must act on: replace the invalid and "reported as leaked" Gemini keys
   (§26.3); publish `docs/firestore-rules.md` in the console (it now also protects the Flow / ChatGPT /
-  Grok passwords); move secrets out of source; authenticate `/api/send-notification`; generate a few
+  Grok passwords and the invoices, their numbers and the team-leader switch); check the invoice defaults
+  (Invoices → any invoice → Payment details / Terms → "Save as default") and make one real invoice + PDF; move secrets out of source; authenticate `/api/send-notification`; generate a few
   clips in Flow (Frames to Video) from the dynamic-pass prompts — a single presenter, a human duo, Motu &
   Patlu (watch Patlu's height), a client photo — and compare each with the old prompt on the same frame: no
   Veo video has been made from them yet; make the frames of a duo ad with a logo and check that the styled
-  outfits stay identical in every clip.
+  outfits stay identical in every clip; make a Real Owner Face frame (a man and a woman, Traditional attire) in
+  ChatGPT / Gemini from the new prompts and check no bindi or tilak appears, then one Flow clip from the template.
 
 ---
 
@@ -276,17 +281,19 @@ users with the same `createdBy`. Guard is `AppLayout allowedRoles` in `App.tsx`;
 **Permissions.** Enforced in the UI plus a few server checks. Firestore rules are coarse and were
 unpublished as of 2026-08 [NOT CONFIRMED now]. Key rules: >10% discount needs sales admin approval (the sale still reaches tech at once); only
 tech admin purges orders; members never assign; one promise extension; feedback before upsell;
-SMM posting needs client approval.
+SMM posting needs client approval; a sale the tech team started can be edited (not its service) but never deleted.
 
-**Entities.** `users`, `leads` (sales embedded in `saleItems[]`), `numberLocks`, `orders` (id
-`o_<leadId>_<ms>`), `work_assignments`, `order_chats`, `clients` (id = phone digits),
+**Entities.** `users`, `leads` (sales embedded in `saleItems[]`, each with a `saleId`), `numberLocks`, `orders` (id
+`o_<saleId>` = `o_<leadId>_<ms>`), `work_assignments`, `order_chats`, `clients` (id = phone digits),
 `smm_campaigns` (id = order id), `ai_generations`, `cinematic_projects`, `notifications`, HR
 (`employee_profiles`, `hr_documents`, `agreements`, `company_settings`, `onboarding_invites`,
 `member_credentials`, `public_badges`), pay (`payroll_*`, `salary_*`, `commission_settlements`,
 `leave_requests`, `daily_checkins`, `attendance`, `holidays`, `salesCheckins`), AI accounts
-(`flow_accounts`, `flow_usage`, `paid_accounts`, and their `*_secrets`).
+(`flow_accounts`, `flow_usage`, `paid_accounts`, and their `*_secrets`), invoices (`invoices` with embedded
+lines, `invoice_counters`, `invoice_numbers`, `invoice_settings` — §9.22; one engine, `utils/invoiceMath`).
 
-**Core pipeline.** `SaleForm` → `upsertOrderForSale` (order + team-only chat + SMM campaign) →
+**Core pipeline.** `SaleForm` → `services/sales.recordSale` (the sale with its permanent `saleId` + order
+`o_<saleId>` in one transaction; then team-only chat + SMM campaign; edits / deletes by `saleId` too) →
 `SalesApprovals` verify → `createWorkAssignment` → member `MyWork` → `AIPlatformApp` →
 the credit step (`useCreditGate`: the Flow credits the ad used) → `useCompleteWork` (completed) →
 `verifyAssignments` (verified → client record). Statuses: order
@@ -304,7 +311,8 @@ five-part Veo prompt that never describes the frame; most clips walk; every pair
 walks only together, side by side, filmed sideways at one distance; deities never walk; a client photo
 gets only a push-in or a still camera; frames are caught mid-movement; never a goodbye wave. Client photos are background
 plates, invented people get a cast sheet — dressed by a wardrobe stylist that sees the logo, inside the ordered
-attire, never two alike — and the last clip says the verified address (§17.2). "Input Final Script" on row 4 rewrites 5 · 6 · 7 from a pasted script (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
+attire, never two alike — and the last clip says the verified address (§17.2). A Real Owner Face ad keeps the client's
+photographed face (a FACE LOCK in every frame) and its video is only the owner's template, by gender. "Input Final Script" on row 4 rewrites 5 · 6 · 7 from a pasted script (`FinalScriptPanel`). Poster mode → `generatePosterConcepts`. Cinematic Ads (tech admin) is a separate
 7-step, project-persisted pipeline. All prompts are in `services/prompts.ts` +
 `services/prompts/*`. **`aiadsdts/` is dead; never edit it.**
 

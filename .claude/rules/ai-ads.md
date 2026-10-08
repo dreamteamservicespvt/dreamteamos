@@ -10,7 +10,7 @@ paths:
   - "src/pages/tech-member/CreateAd.tsx"
   - "src/pages/shared/Tools.tsx"
   - "docs/video-category-*"
-  - "src/utils/{adPipeline,adRequirement,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
+  - "src/utils/{adPipeline,adRequirement,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
 ---
 
 # AI ad generation (AI Ads Platform video + poster, Cinematic Ads, Gemini pipeline) — DTS-OS module context
@@ -169,7 +169,20 @@ cached; small images and anything the browser cannot redraw go as they are).
 5. Main-frame prompts per clip (`MAIN_FRAME_SYSTEM_PROMPT` / `MULTI_FRAME_SYSTEM_PROMPT` with the
    scene plan; `CHARACTER_MULTI_FRAME_SYSTEM_PROMPT` with `sceneBackgrounds` / `nameBoard`). Stamped
    in code: motion composition, `withSceneBackground`, `frameBrand.nameBoardInPlaceOfLogo` when there
-   is no logo file, `withOwnerImageDirective` for Real Owner Face, the photo attach line, a **cast sheet** for invented
+   is no logo file, `withOwnerImageDirective` for Real Owner Face, the photo attach line. **Real Owner Face
+   keeps the client's face as photographed (2026-10-08 — the owner: the frames "were adding a bindi to the face",
+   "check male and female both"):** every frame's BODY carries `FACE LOCK:` (`frameBrand.withOwnerFaceLock`,
+   by gender — the same face, features, skin tone, hairline, hair (beard) and forehead as the photograph: a bare
+   forehead stays bare, a mark the photograph shows stays; nothing added — no bindi, tilak, kumkum, sindoor,
+   vibhuti, nose ring, face jewellery, make-up or new beard; only the clothes follow the outfit), because the
+   📎 attach line is stripped by Copy and the system prompt's rules never reach the image tool; a main-frame
+   refine re-stamps it. The writer's identity block says the same (`characterCastBlock`), the male entry's
+   negatives now name the forehead mark (catalogue TS + JSON), and the owner's WARDROBE line is
+   `ownerWardrobeDirective` — the ordered outfit without "tasteful traditional jewellery", "the clothes only: her
+   face, forehead, hair and any jewellery stay exactly as in the owner's photograph". The attire is read as the
+   form shows it (`resolveModelSpec` in `packWardrobe`; the studio's pack picker now sets the entry's gender and a
+   suitable attire too — "Real Owner Face (Male)" kept the default Traditional, so the picker showed Professional
+   while the frames dressed him in a kurta). And a **cast sheet** for invented
    people (`utils/castSheet`: Normal Ad, human duos, Kids — one fixed face and outfit per person,
    faces seeded by the business name; the Veo prompt names each speaker by how they look, "the woman in the
    deep teal saree"). **The outfits come from the wardrobe stylist (2026-10-05)**: `styleCastWardrobe` — one
@@ -270,6 +283,17 @@ cached; small images and anything the browser cannot redraw go as they are).
    in the teal saree" once read as a product) — the same scene-plan choices and the same plate clips (`plates`:
    from `clipPhotoPlan` on the frame side, from each frame's `BACKGROUND PLATE` stamp on the video side;
    `regenerateVeoForClips` too).
+   **A real person — Real Owner Face (`usesClientFace`: `owner_face_male` / `owner_face_female`) — is the
+   exception (2026-10-08, the owner: "for all the real person videos we need only this prompt based on gender"):**
+   its Veo prompt is ONLY the owner's template, by the entry's gender (`assembleRealPersonVeoPrompt`):
+   `With a very sweet voice she needs to say :-` · blank line · the clip's spoken line · blank line ·
+   `with appropriate gestures` · blank line · `Negative prompt :-` / `No text on the screen` ("he" for a man). No
+   motion plan, no director call, no camera, keep sentence or other negatives (`writeVeoPrompts` returns early, so
+   the first run, a per-clip regenerate and the Input Final Script rewrite all give it); `spokenLinesIn` reads its
+   line, so a Veo refine still cannot change the words. Its frames get no walking plan and no 🎬 notes: the frame
+   writer is told the owner says each line to the camera with natural gestures, and each frame is stamped
+   `COMPOSITION FOR THE VIDEO` (`withRealPersonComposition`: standing in place, mid-gesture, never mid-step; a
+   client photo keeps its framing).
    **Frames are composed for the move, caught mid-movement** (`withMotionComposition`, `compositionFor`): a
    walking clip's still is caught MID-STEP (one foot forward, arms in a natural swing, clear floor in the
    direction of the walk; a pair both mid-step side by side at one distance; a deity mid-blessing in place), and
@@ -307,7 +331,15 @@ for "and" — with every misspelling of it — is written **`mariyu`, in Latin l
 Telugu line (2026-09-25: the team reads the script aloud and wants one fixed spelling on the page).
 Nothing explains it anywhere: the written word IS the spelling to say, so the Veo prompt no longer
 carries a PRONUNCIATION line. `withoutFixedWords` exempts it from the validator's "no Latin letters
-in spoken content" rule. (`everydaySpeech` no longer swaps it for ఇంకా.) An **English** script is
+in spoken content" rule. (`everydaySpeech` no longer swaps it for ఇంకా.) **The festival దసరా (2026-10-08,
+owner: "the correct spelling is దసరా"):** in a Telugu script Dussehra is always written దసరా —
+`utils/festivalNames.withFestivalSpellings`, run by `speakableLine` (Telugu only), rewrites every
+transliteration the writer produced (దుస్సెహ్రా, దుస్సేరా, దసెరా, దస్సరా, దశరా, దసరాా, a bare దసర, the Latin
+Dussehra / Dasara…, keeping a case ending: దుస్సెహ్రాకు → దసరాకు; never దశరథ or విజయదశమి), and the prompts give the
+writer the Telugu name: `prompts/festivalWish` puts దసరా in the Telugu greeting and `wishAudienceRule` (writer,
+repair, refine, character dialogue) adds "Write the festival's name in Telugu exactly as దసరా" (`festivalNameIn`,
+`festivalSpellingRule`); the character prompt's worked example uses it too. Only దసరా has a fixed Telugu
+spelling so far; other festivals keep their Latin name in the prompt. An **English** script is
 written and judged as **Indian English** (the writer rules, the language directive and the quality gate):
 how an educated person from Andhra Pradesh speaks English — Indian expressions, rupees and lakhs,
 Indian places and festivals, never American or British slang, idioms, spellings or culture.
@@ -427,6 +459,14 @@ Gemini calls use the shared fallback.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
+- **AI ads — a real person's face (owner, 2026-10-08):** a Real Owner Face ad shows the client exactly as their
+  photograph does — face, skin, hair, beard and forehead — for a man and a woman: nothing is added to the face
+  (no bindi, tilak, kumkum, sindoor, nose ring or make-up the photograph does not show; a mark the photograph
+  shows stays), and the ordered outfit changes the clothes only. Its video prompt is only the owner's template —
+  "With a very sweet voice she (he) needs to say :- <the line> with appropriate gestures · Negative prompt :- No
+  text on the screen" — by the video's gender; its frames show the owner standing, mid-gesture, ready to speak.
+- **AI ads — దసరా (owner, 2026-10-08):** a Telugu script always spells the festival దసరా.
+
 - **AI ads — what the invented cast wears (2026-10-05, the owner's answers):** the ordered attire is the
   STYLE and is never overruled (Traditional stays ethnic, Professional formal, In-shirt & Pant a shirt and
   trousers, Custom the team's own words); inside it every invented person — both duos, the Kids, the Normal Ad
@@ -522,6 +562,17 @@ Gemini calls use the shared fallback.
 - In-app image or video generation; publishing to social platforms.
 
 ## 27. POTENTIAL RISKS (need verification)
+
+- **The Real Owner Face fix (2026-10-08) has not been seen on a generated image or video.** It is checked by unit
+  tests and a full run on a faked Gemini (both genders: the template on every clip, no director call, the face
+  lock and the in-place composition on every frame body, no jewellery line, the male attire) — but no frame was
+  made in ChatGPT / Gemini from the new prompts and no clip in Flow. Watch: whether the image model still adds a
+  mark (then move the FACE LOCK to the top of the body, or ask for the owner's photo to be the edit base); and
+  whether Veo, given only the template, keeps the frame's face and moves naturally (the template has no keep
+  sentence and no camera, by the owner's choice). A Veo refine of these prompts keeps the line (spokenLinesIn) but
+  the refine planner was written for the five-part prompt.
+- దసరా (2026-10-08) is fixed by a list of misspellings: a transliteration not on it stays as written (the prompt
+  now names దసరా, so the writer should not produce one). Other festivals' Telugu spellings are not fixed.
 
 - `cinematic_projects` list query (`where createdBy` + `orderBy updatedAt`) needs a composite
   index; no index file is in the repo [NOT CONFIRMED in console].

@@ -68,6 +68,8 @@ notice_period → exited`.
 **9.16 Finance** ✅ (basic). `pages/accounts-admin/*`, `pages/main-admin/Accounts.tsx`,
 `RevenueOverview.tsx`, `pages/shared/Profit.tsx`, `utils/profitAnalytics.ts`. Collections
 `expenses` (CRUD), `other_income` (read only; **nothing in the code writes it**), `salary_receipts`.
+Client invoices (GST, numbered `DTS/26-27/0001`, PDF) are their own module since 2026-10-08 — the accounts admin
+uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to revenue or P&L.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 

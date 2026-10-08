@@ -14,6 +14,12 @@ import { MemoryRouter } from "react-router-dom";
 const at = (iso: string) => ({ seconds: Math.floor(Date.parse(iso) / 1000) });
 
 const updateDoc = vi.fn();
+/*
+  Saving goes through services/sales since 2026-10-08 (the sale and its order in one transaction), so
+  the form is checked on what it hands that service: `next` is the sale exactly as the form built it.
+*/
+const updateSale = vi.fn(async (p: { next: unknown }) => ({ changed: true, changes: [{ text: "x", money: false }], item: p.next, itemIndex: 0, hasWork: false, orderId: "o1" }));
+const recordSale = vi.fn(async (p: { item: unknown }) => ({ saleId: "l1_1", orderId: "o_l1_1", itemIndex: 0, item: p.item, lead: {} }));
 
 const leads = [
   {
@@ -68,6 +74,10 @@ vi.mock("@/services/numberLock", () => ({
   clearedLeadFreezeFields: vi.fn(),
 }));
 vi.mock("@/services/orders", () => ({ upsertOrderForSale: vi.fn(), cancelOrderForSale: vi.fn(), addOrderUpdateNote: vi.fn(), orderDocId: () => "o1" }));
+vi.mock("@/services/sales", () => ({
+  recordSale, updateSale, deleteSale: vi.fn(), deleteLeadWithSales: vi.fn(), mutateSaleItems: vi.fn(),
+  isSaleWriteError: () => false,
+}));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/components/dashboard/DayPicker", () => ({ default: () => null }));
 vi.mock("@/components/sales/NumberTimelineButton", () => ({ default: () => null }));
@@ -170,15 +180,15 @@ describe("Add Sale — bulk videos", () => {
       }];
       try {
         renderMyLeads();
-        updateDoc.mockClear();
+        updateSale.mockClear();
         fireEvent.click(screen.getAllByText("Edit")[0]);
         expect((screen.getByTestId("sale-package") as HTMLSelectElement).value).toBe("40 Seconds");
         // 10 × ₹999 less the ladder's 10% — the list price the package carried when it was sold,
         // read from the sale when it recorded one and from the retired list when it did not.
         expect(total(), String(unitAmount)).toBe("₹8,991");
         fireEvent.click(screen.getByText(/^Save changes/));
-        await vi.waitFor(() => expect(updateDoc).toHaveBeenCalled());
-        const saved = updateDoc.mock.calls.at(-1)![1].saleItems[0];
+        await vi.waitFor(() => expect(updateSale).toHaveBeenCalled());
+        const saved = updateSale.mock.calls.at(-1)![0].next as Record<string, unknown>;
         expect(saved.packageKey).toBe("40 Seconds");
         expect(saved.unitAmount).toBe(999);
       } finally {
@@ -192,14 +202,17 @@ describe("Add Sale — bulk videos", () => {
     // The old item is spread onto the edited one, so without an explicit strip the quantity and
     // discount survived a category change and the order kept announcing itself as "×10".
     renderMyLeads();
-    updateDoc.mockClear();
+    updateSale.mockClear();
     fireEvent.click(screen.getAllByText("Edit")[0]);
     fireEvent.change(screen.getByTestId("sale-category"), { target: { value: "cinematic" } });
     fireEvent.change(screen.getByTestId("sale-package"), { target: { value: "30 Seconds + Poster" } });
     fireEvent.click(screen.getByText(/^Save changes/));
 
-    await vi.waitFor(() => expect(updateDoc).toHaveBeenCalled());
-    const saved = updateDoc.mock.calls.at(-1)![1].saleItems[0];
+    await vi.waitFor(() => expect(updateSale).toHaveBeenCalled());
+    // The same sale, by its id — an edit never records a second one.
+    expect(updateSale.mock.calls.at(-1)![0]).toMatchObject({ leadId: "l2", saleId: `l2_${Date.parse("2026-08-01T10:00:00")}` });
+    expect(recordSale).not.toHaveBeenCalled();
+    const saved = updateSale.mock.calls.at(-1)![0].next as Record<string, unknown>;
     expect(saved.category).toBe("cinematic");
     expect(saved.amount).toBe(1999);
     for (const key of ["quantity", "bulkAdType", "unitAmount", "discountPercent", "discountAmount", "discountMode", "discountEdited"]) {

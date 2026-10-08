@@ -32,6 +32,19 @@ export async function printAgreementElement(paperEl: HTMLElement): Promise<void>
   document.querySelector(`.${ROOT_CLASS}`)?.remove();
 
   const { pages, stage } = await paginateDocument(paperEl);
+  stage.remove();
+  await printDocumentPages(pages);
+}
+
+/**
+ * Print sheets that are already laid out — each one a complete A4 page (`[data-document-page]`).
+ *
+ * Shared by the HR letters above and the Invoice Builder, whose sheets come from its own page plan
+ * (`utils/invoiceLayout`). The sheets are MOVED into the print root, so a caller holding sheets that
+ * React owns passes clones.
+ */
+export async function printDocumentPages(pages: HTMLElement[]): Promise<void> {
+  document.querySelector(`.${ROOT_CLASS}`)?.remove();
 
   const root = document.createElement("div");
   root.className = ROOT_CLASS;
@@ -58,7 +71,6 @@ export async function printAgreementElement(paperEl: HTMLElement): Promise<void>
     root.appendChild(page);
   });
 
-  stage.remove();
   document.body.appendChild(root);
   document.body.classList.add(BODY_CLASS);
 

@@ -10,6 +10,7 @@
  * really says it all use one list: the three groups are spoken as a plain comma list, the way people
  * say them out loud.
  */
+import { festivalNameIn, festivalSpellingRule } from "@/utils/festivalNames";
 
 /** The three groups, as the greeting says them. Matching uses the stem, so case endings are fine. */
 export const WISH_AUDIENCE_TELUGU = [
@@ -27,22 +28,32 @@ export const WISH_AUDIENCE_ENGLISH = "friends, well-wishers and customers";
 const isTeluguLanguage = (language?: string) =>
   ((language || "Telugu").trim() || "Telugu").toLowerCase() === "telugu";
 
-/** The shape of the greeting the wish clip must follow, for a prompt. */
+/**
+ * The shape of the greeting the wish clip must follow, for a prompt. In Telugu the festival is named in
+ * its Telugu spelling where it has one — దసరా, not the list's "Dussehra" dropped into a Telugu sentence
+ * for the writer to transliterate its own way (utils/festivalNames, 2026-10-08).
+ */
 export function wishOpeningLine(festivalName: string, language?: string): string {
-  const occasion = (festivalName || "").trim() || "the festival";
+  const occasion = festivalNameIn((festivalName || "").trim(), language) || "the festival";
   return isTeluguLanguage(language)
     ? `"{Business Name} తరఫున మా ${WISH_AUDIENCE_LINE} ${occasion} హృదయపూర్వక శుభాకాంక్షలు"`
     : `warm ${occasion} wishes from {Business Name} to all its ${WISH_AUDIENCE_ENGLISH}`;
 }
 
-/** The rule as the prompts state it — one sentence, used wherever a wish clip is described. */
+/**
+ * The rule as the prompts state it — one sentence, used wherever a wish clip is described (the writer,
+ * the repair, the refine and the character dialogue prompts). In Telugu it also fixes the festival's
+ * spelling where it has one (festivalSpellingRule — దసరా).
+ */
 export function wishAudienceRule(festivalName: string, language?: string): string {
-  const occasion = (festivalName || "").trim() || "the festival";
+  const named = (festivalName || "").trim();
+  const occasion = festivalNameIn(named, language) || "the festival";
+  const spelling = named ? festivalSpellingRule(named, language) : "";
   return isTeluguLanguage(language)
     ? `The wish is addressed to the business's own people, in these exact words and this order: `
       + `"${WISH_AUDIENCE_LINE}" — మిత్రులు (friends), శ్రేయోభిలాషులు (well-wishers) and కస్టమర్లు `
       + `(customers). All three are named, as a plain comma list, and the business is `
-      + `the one sending the ${occasion} wish.`
+      + `the one sending the ${occasion} wish.${spelling ? ` ${spelling}` : ""}`
     : `The wish is addressed to the business's own people — its ${WISH_AUDIENCE_ENGLISH} — all three `
       + `named, with the business as the one sending the ${occasion} wish.`;
 }

@@ -4,7 +4,7 @@ import {
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
   ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2, Search,
-  MessageSquarePlus, Megaphone, KeyRound,
+  MessageSquarePlus, Megaphone, KeyRound, ReceiptIndianRupee,
 } from "lucide-react";
 
 export interface NavItem {
@@ -15,7 +15,18 @@ export interface NavItem {
   badge?: string;
   /** When present, this item is a collapsible dropdown group instead of a direct link. */
   children?: NavItem[];
+  /**
+   * Shown only while the Invoice Builder's team-leader switch is on (`invoice_settings/access`) —
+   * see `getNavItems`. The one menu item that depends on a setting rather than a role.
+   */
+  requiresInvoiceSwitch?: boolean;
 }
+
+/**
+ * Invoices — the same link for every role that may make one (owner, 2026-10-08). One entry per role,
+ * placed beside the screen it belongs with (Clients, Accounts, Revenue), never in a submenu.
+ */
+const INVOICES_NAV: NavItem = { title: "Invoices", path: "/invoices", icon: ReceiptIndianRupee };
 
 const NAV: Record<UserRole, NavItem[]> = {
   main_admin: [
@@ -30,6 +41,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Session History", path: "/main-admin/sessions", icon: Clock },
     { title: "Accounts", path: "/main-admin/accounts", icon: Wallet },
+    INVOICES_NAV,
     { title: "Profit & Loss", path: "/main-admin/profit", icon: PiggyBank },
     { title: "Settings", path: "/main-admin/settings", icon: Settings },
   ],
@@ -44,6 +56,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Payroll", path: "/tech-admin/payroll", icon: Wallet },
     { title: "My Team", path: "/tech-admin/team", icon: Users },
     { title: "Clients", path: "/tech-admin/clients", icon: Contact },
+    INVOICES_NAV,
     // The WORK half of every feedback rating is this department's own report card, so it is a
     // top-level link rather than something to go looking for.
     { title: "Feedback & Upsell", path: "/tech-admin/feedback-upsell", icon: MessageSquarePlus },
@@ -81,6 +94,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "My Team", path: "/sales-admin/team", icon: Users },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Clients", path: "/sales-admin/clients", icon: Contact },
+    INVOICES_NAV,
     // Monthly retainers. A top-level link for every role that touches one: a month that is
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
     { title: "Social Media", path: "/smm", icon: Megaphone },
@@ -129,6 +143,7 @@ const NAV: Record<UserRole, NavItem[]> = {
   accounts_admin: [
     { title: "Dashboard", path: "/accounts/dashboard", icon: LayoutDashboard },
     { title: "Revenue Summary", path: "/accounts/revenue", icon: TrendingUp },
+    INVOICES_NAV,
     { title: "Daily Expenses", path: "/accounts/expenses", icon: Wallet },
     { title: "Salary Management", path: "/accounts/salary", icon: Users },
   ],
@@ -181,6 +196,9 @@ const NAV: Record<UserRole, NavItem[]> = {
         { title: "Settlements", path: "/sales/settlements", icon: Wallet },
       ],
     },
+    // Billing the clients they sold to. A top-level link (2026-10-08), placed after the agreed
+    // first six (salesNav.test) rather than pushing Clients and Salary down.
+    INVOICES_NAV,
     {
       title: "Communication", icon: MessageSquare,
       children: [
@@ -207,6 +225,8 @@ const NAV: Record<UserRole, NavItem[]> = {
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
     { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
     { title: "Feedback & Upsell", path: "/team-leader/feedback-upsell", icon: MessageSquarePlus },
+    // Only while the Tech Admin has the team-leader switch on (Settings → Invoice Builder).
+    { ...INVOICES_NAV, requiresInvoiceSwitch: true },
     { title: "Attendance", path: "/team-leader/attendance", icon: CalendarClock },
     { title: "HR & Documents", path: "/team-leader/hr", icon: FileCheck },
     { title: "Activity History", path: "/team-leader/activity", icon: History },
@@ -249,9 +269,14 @@ export function getProfileRoute(role?: UserRole | null): string {
   }
 }
 
-export function getNavItems(role: UserRole, user?: Pick<AppUser, "externalCreator"> | null): NavItem[] {
+export function getNavItems(
+  role: UserRole,
+  user?: Pick<AppUser, "externalCreator"> | null,
+  access?: { invoiceBuilder?: boolean },
+): NavItem[] {
   if (user?.externalCreator) return EXTERNAL_CREATOR_NAV;
-  return NAV[role] || [];
+  const items = NAV[role] || [];
+  return access?.invoiceBuilder ? items : items.filter((i) => !i.requiresInvoiceSwitch);
 }
 
 export function getRoleLabel(role: UserRole): string {

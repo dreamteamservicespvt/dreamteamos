@@ -7,6 +7,7 @@ import { packLocationSubject, packStagingRole, realLocationFormula } from "./rea
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { wishAudienceRule } from "./festivalWish";
+import { festivalNameIn } from "@/utils/festivalNames";
 import {
   VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, withoutApproach,
   withoutStillness, withoutTravel, type ClipMotionPlan, type Performer,
@@ -55,12 +56,23 @@ export const characterCastBlock = (pack: CharacterPack, wardrobe?: string, castS
    * to reach for a recognisable existing character is the one instruction guaranteed to lose the
    * client’s actual face. So each family is told what its own identity anchor is.
    */
+  /*
+    The face is the photograph's, forehead included (2026-10-08, owner: real-face frames came back with a
+    BINDI the owner does not wear — "check male and female both"). An ordered outfit changes the clothes,
+    never the face: a Traditional saree read to the image model as "a traditional Indian woman", and it
+    completed the look with a forehead mark. Code also stamps this into every finished prompt
+    (utils/frameBrand.withOwnerFaceLock), because this block never reaches the image tool.
+  */
   const identity = pack.usesClientFace
     ? `${cast} IS THE CLIENT THEMSELF, built from the photograph supplied with this job.
 That photograph is the only source of this face. Reproduce it exactly: the same bone structure, the same
 age, the same skin tone, the same hair, the same build — in EVERY clip, from every angle.
 Do NOT beautify, slim, de-age, lighten, restyle or “improve” them, and do NOT substitute a model who merely
-resembles them. If the owner’s own family would not say “that is them”, the frame is WRONG.`
+resembles them. If the owner’s own family would not say “that is them”, the frame is WRONG.
+Add NOTHING to the face or forehead that the photograph does not show: no bindi, tilak, kumkum, sindoor or
+vibhuti mark, no nose ring or new face jewellery, no added make-up, no new beard or moustache. A bare forehead
+in the photograph stays bare; a mark the photograph shows stays exactly as it is. The outfit below changes the
+CLOTHES only — a traditional outfit is never a reason to add a bindi, a tilak or jewellery to the face.`
     : pack.family === "god"
       ? `${cast} — ${pack.franchise}.
 Depict the deity with full devotional accuracy and respect: the established iconography, attributes, vahana,
@@ -170,6 +182,24 @@ export const wardrobeDirective = (
     default:
       return "";
   }
+};
+
+/**
+ * The ordered attire for the Real Owner Face entries — the CLOTHES only (2026-10-08).
+ *
+ * The same outfit as `wardrobeDirective`, without its "tasteful traditional jewellery" (a client's own
+ * face does not get jewellery, a bindi or a tilak it does not wear in the photograph — the bindi the owner
+ * reported came with exactly that "traditional look"), and saying that the face stays the photograph's.
+ */
+export const ownerWardrobeDirective = (
+  attireType?: string | null,
+  customAttire?: string | null,
+  gender?: string | null,
+): string => {
+  const outfit = wardrobeDirective(attireType, customAttire, gender).replace(/,\s*with tasteful traditional jewellery\s*$/i, "");
+  if (!outfit) return "";
+  const own = gender === "male" ? "his" : "her";
+  return `${outfit} — the clothes only: ${own} face, forehead, hair and any jewellery stay exactly as in the owner's photograph, with nothing added`;
 };
 
 /**
@@ -458,7 +488,8 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
    * instruction. "a very happy the festival" is not a sentence, so the example falls back to a
    * named festival while the instructions around it keep the neutral wording.
    */
-  const exampleOccasion = (festivalName || "").trim() || "Diwali";
+  // In a Telugu ad the example already spells the festival as the script must (దసరా — utils/festivalNames).
+  const exampleOccasion = festivalNameIn((festivalName || "").trim(), lang) || "Diwali";
   /**
    * Where the commercial hook lives. In a festival ad clip 1 is the wish, so the hook moves down —
    * except in a one-clip ad, where there is nowhere to move it to and the single clip carries the
@@ -1289,7 +1320,13 @@ animate what the frame shows, so each frame must already contain what its clip n
 hand mid-gesture, never a stiff, posed stance, because the video continues the pose it starts from: for a product, the
 product in view a few steps away or within reach; for a walk, clear open floor where they walk${solo ? "" : ", both at the same distance from the camera"};
 clear space around the bodies; every object fully in view. Where the direction above describes walking somewhere,
-arriving or leading the way, the 🎬 note decides instead. Everything else in that direction still applies.` : ""}
+arriving or leading the way, the 🎬 note decides instead. Everything else in that direction still applies.` : pack.usesClientFace ? `
+
+Each clip's video starts from THIS still: ${cast} says the clip's line to the camera with natural, appropriate
+gestures — the client's own face, filmed as it is (2026-10-08). So every frame catches ${solo ? "them" : "both"} standing in
+place, facing the camera or turned slightly toward what the line is about, relaxed, one hand mid-gesture as if speaking —
+never mid-step and never a stiff, posed stance; the face large and clear; clear space around the arms; every object fully
+in view. The variety of the ad comes from YOUR frames: each clip is a different real part of the business.` : ""}
 
 ${locationBlock}
 

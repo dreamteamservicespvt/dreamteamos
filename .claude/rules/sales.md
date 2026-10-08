@@ -5,8 +5,8 @@ paths:
   - "src/components/sales/**"
   - "src/pages/shared/{Clients,FeedbackUpsell,Leaderboard}.tsx"
   - "src/pages/*/Training*.tsx"
-  - "src/services/{numberLock,scheduleRelease,duplicateLeads,teamLeads,clients,saleFeedback,upsell,reviews}.ts"
-  - "src/utils/{bulkDiscount,saleDiscount,salePayments,saleDecision,saleStatus,salesMessage,salesClients,salesScriptDocx,serviceCatalog,upsellLadder,clientValue,leadActivity,pricing,phone,promiseSla}.ts"
+  - "src/services/{numberLock,scheduleRelease,duplicateLeads,teamLeads,clients,saleFeedback,upsell,reviews,sales}.ts"
+  - "src/utils/{bulkDiscount,saleDiscount,salePayments,saleDecision,saleStatus,salesMessage,salesClients,salesScriptDocx,serviceCatalog,upsellLadder,clientValue,leadActivity,pricing,phone,promiseSla,saleIdentity,saleEdit}.ts"
   - "src/store/{salesLeadsStore,salesOrdersStore}.ts"
   - "src/hooks/{useMyLeads,useMyOrders}.ts"
 ---
@@ -37,6 +37,22 @@ discount (review/referral 10%, `utils/saleDiscount.ts`), the 10% member authorit
 payments (`payments[]`, `utils/salePayments.ts`), delivery promise (`utils/promiseSla.ts`), the
 client brief (`AdRequirement`, incl. `customCharacter` — required when the Custom Character
 category is sold), edit log, dispute proof. `verificationStatus: pending | verified | rejected`.
+**One permanent `saleId` per sale (2026-10-08, owner).** `SaleDetail.saleId` = `<leadId>_<ms recorded>`;
+its order is `orders/o_<saleId>` — the id `orders.orderDocId` always gave, so no migration
+(`utils/saleIdentity`: `saleIdOf` derives it for older sales, `withSaleIds` stamps it on the next write;
+`timestampMs` reads a JSON'd `{seconds, nanoseconds}` exactly). **Every sale write goes through
+`services/sales.ts`, in a Firestore transaction, finding the sale by id in the lead as it is now:**
+`recordSale` (the sale + its order together; a retry with identical content writes nothing; a different
+sale in the same millisecond takes the next free id), `updateSale` (`utils/saleEdit.mergeSaleEdit` lays
+only what the form changed onto the current sale — an approval, a payment or a penalty saved meanwhile
+survives; same order, its status/job untouched; the job's changed fields via `jobPatchForSaleEdit`;
+`sale_edited` popups when the tech side has started), `deleteSale` (sale + order + order chat + SMM month
+in one transaction, then the `order_new` / `smm_new` bells; refused with `SaleWriteError("sale_has_work")`
+once there is work), `deleteLeadWithSales` (My Leads' custom lead, the sales admin's Leads pages),
+`mutateSaleItems` (Sales Approvals' verify / reject / revoke / bulk / duplicate resolution, the payment
+panel). `SaleForm` has an in-flight guard, keeps the delivery promise's start on an edit, shows "The tech
+team is already working on this sale (Ravi)" and locks the service for a started sale; My Leads keys rows,
+the edit form, the log and the note composer by `saleId`.
 
 **9.11 Clients, feedback & upsell, reviews** ✅. `pages/shared/Clients.tsx`,
 `pages/shared/FeedbackUpsell.tsx`, `pages/sales-admin/ClientLookup.tsx`,
@@ -63,8 +79,19 @@ verifies (10% loyalty discount) → member uploads a feedback video.
   Orders queue); a rejected sale is cancelled as before. Sales held under the old rule get their order when a
   sales admin opens Sales Approvals (`orders.releaseHeldSales`). An earned discount
   (Google review and/or referral) is worth **10%** and does not stack to 20%.
-- **Editing a sale** is locked once work is assigned; the seller sends update notes instead.
-  Deleting the sale leaves assigned work in place with a `saleDeleted` banner.
+- **A sale's identity, edits and deletes (owner, 2026-10-08):** every sale has one immutable `saleId`;
+  creating makes one sale and one order; an EDIT updates that same sale and order and never makes a new
+  one. A sale the tech team has started (an order assigned / handed in / delivered, or any job pointing at
+  it) **can still be edited** — the assignment is kept, the job takes the changed fields, and the tech
+  admin(s), the team leaders and the member holding the job get a `sale_edited` popup with what changed
+  (members and leaders never see price lines) — but its **service cannot change** (category, kind of
+  video, number of videos, a Custom sale's base service): the tech admin takes the work back first. A sale
+  nobody has started is **deleted everywhere at once** (sale, order, client chat, its SMM month, its "new
+  order" bells); a started one is **never deleted** — by the salesperson or the sales admin — and the row
+  says "Can't delete — work started (Ravi)". Deleting a lead deletes its sales the same way and is refused
+  while one has work. Revoking an approval keeps the order on the tech side ("Pending approval"); only a
+  rejection takes it out. (Before: edits were locked after assignment with update notes instead, and a
+  delete left the job with a `saleDeleted` banner — jobs flagged that way earlier keep their banner.)
 - **Feedback gate:** upsell only after **both** work and service feedback; tech admin and leader
   can read but not enter feedback.
 - **Upsell ladder:** ad → social → website → software, measured from the highest rung owned.
@@ -72,6 +99,13 @@ verifies (10% loyalty discount) → member uploads a feedback video.
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- Sale identity (2026-10-08): `smmSetup` (Add SMM sale's set-up of an existing sale) still passes the
+  sale's position (`itemIndex`) from a fresh read; the risk window is a delete in the same second.
+  `cancelOrderForSale` (rejections) still deletes a waiting order without its chat (a re-approval reopens
+  both). An edit is saved (and told) only when `saleChangeList` names a change — an edit whose only change
+  is something it does not name (an SMM sale's price-mode toggle, an earned-discount proof re-uploaded) is
+  treated as "nothing changed", as before. Waiting orders whose sale was deleted before this fix leave the queue only when a tech admin /
+  team leader opens Orders or Work Assign (`healOrphanOrdersOnOpen`, once a session).
 - Special-category catalogue: `SaleForm` keeps its own copy of the picker instead of
   `SpecialCategoryFields` (both now carry the Custom Character description field). The Custom
   Character description and the Real Owner Face image are enforced (2026-09-22).

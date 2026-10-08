@@ -7,7 +7,7 @@
  * pass the spec, optionally pass the order it came from, and the order is linked, flipped to
  * "assigned" and the member notified as part of the same call.
  */
-import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, deleteDoc, setDoc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
@@ -24,11 +24,56 @@ import {
   createOrderChat, attachAssignmentToChat, detachAssignmentFromChat, deleteOrderChat, joinMonthRoom,
 } from "@/services/orderChat";
 import { orderChatIdOf } from "@/utils/orderChatId";
+import { saleIdOfOrderId } from "@/utils/saleIdentity";
 import { ORDER_TRACKS } from "@/types";
-import type { Order, OrderTrack } from "@/types";
+import type { Order, OrderTrack, WorkAssignment } from "@/types";
 
 /** Sequential, readable work id (W001 / P002 / C003 / O004) — defined with the Orders pipeline. */
 export { nextWorkUniqueId } from "@/services/orders";
+
+/** Why a job could not be made for an order — said in words the assigner can act on. */
+export class AssignmentRefusedError extends Error {
+  constructor(readonly code: "sale_gone" | "order_closed" | "already_assigned", message: string) {
+    super(message);
+    this.name = "AssignmentRefusedError";
+  }
+}
+
+/**
+ * Does this order take ONE job? An ordinary sale is one ad — one job. A bulk order, a social-media
+ * month and a split (tracks) are shared out, one job per person.
+ */
+function takesOneJob(order: Order, input: { tracks?: OrderTrack[]; smmCampaignId?: string | null }): boolean {
+  if (input.smmCampaignId || input.tracks?.length) return false;
+  if (order.progress) return false;
+  if (order.category === "social_media_management" || order.category === "bulk_ads") return false;
+  return !((order.quantity || 1) > 1);
+}
+
+/**
+ * Whether a job may be made for this order, read inside the transaction (2026-10-08).
+ *
+ * The order the Assign form holds was read when the form opened. In the meantime its sale can be
+ * deleted (the order with it) or someone else can assign it — and `addDoc` then wrote a job anyway: a
+ * job in My Work for a sale that no longer existed, or a second job for one ad. Returns the refusal,
+ * or null when the job may go ahead.
+ */
+function assignmentRefusal(order: Order | null, liveJob: WorkAssignment | null, oneJob: boolean): AssignmentRefusedError | null {
+  if (!order) {
+    return new AssignmentRefusedError("sale_gone", "This sale was deleted by the salesperson, so there is nothing to assign. It has left the queue.");
+  }
+  if (order.deleted || order.status === "deleted") {
+    return new AssignmentRefusedError("order_closed", "This order was removed from the queue. Restore it first if the work is still wanted.");
+  }
+  if (order.status === "cancelled") {
+    return new AssignmentRefusedError("order_closed", "This order was cancelled — its sale was rejected or withdrawn.");
+  }
+  if (oneJob && liveJob) {
+    const who = order.assignedToName ? ` to ${order.assignedToName}` : "";
+    return new AssignmentRefusedError("already_assigned", `This order is already assigned${who} (${liveJob.uniqueId || "a job"}). Unassign or reassign that job instead.`);
+  }
+  return null;
+}
 
 function generateAccessCode(): string {
   return String(Math.floor(1000 + Math.random() * 9000));
@@ -154,11 +199,14 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
    * it. A month with none (a no-sale month) must not pick up the client's NEXT month — their renewal
    * sale, waiting in the queue for the same number — and quietly mark that sale as being worked on.
    */
-  const linkedOrder = order ?? (phone && !smmCampaignId ? await findUnassignedOrderForPhone(phone, category) : null);
-  /** A shared month room, only for work with no order — an order's room always wins. */
-  const sharedRoom = linkedOrder ? null : (roomId || null);
+  const candidate = order ?? (phone && !smmCampaignId ? await findUnassignedOrderForPhone(phone, category) : null);
+  const ref = doc(collection(db, "work_assignments"));
 
-  const ref = await addDoc(collection(db, "work_assignments"), {
+  /** The job as written — linked to its order (and sale) when it has one. */
+  const jobFor = (linkedOrder: Order | null) => {
+    /** A shared month room, only for work with no order — an order's room always wins. */
+    const sharedRoom = linkedOrder ? null : (roomId || null);
+    return {
     assignedTo,
     assignedBy: assignerUid,
     assignedAt: serverTimestamp(),
@@ -212,6 +260,9 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
      */
     ...(isAdCategory(category) ? { realLocationProvided: realLocationProvided === true } : {}),
     ...(linkedOrder ? { orderId: linkedOrder.id } : {}),
+    // The sale behind the job — its one permanent id (utils/saleIdentity), read off the order.
+    ...(linkedOrder && (linkedOrder.saleId || saleIdOfOrderId(linkedOrder.id))
+      ? { saleId: linkedOrder.saleId || saleIdOfOrderId(linkedOrder.id) } : {}),
     /**
      * Where this job's conversation lives.
      *
@@ -224,7 +275,55 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
     ...(tracks?.length ? { tracks } : {}),
     ...(smmCampaignId ? { smmCampaignId } : {}),
-  });
+    };
+  };
+
+  /*
+    ── The job and its order, in one transaction (2026-10-08) ─────────────────────────────────────
+    The order is read again here, not trusted from the screen: the Assign form holds the copy it
+    opened with, and in the meantime the sale may have been deleted (its order with it) or somebody
+    else may have assigned it. Writing the job and then updating the order separately left a job in
+    My Work for a sale that no longer existed, or a second job for one ad. Now the job is written only
+    together with its order's "assigned", and refused when the order is gone, closed or (for a
+    one-ad order) already has a job.
+  */
+  let linkedOrder: Order | null = null;
+  if (candidate) {
+    const orderRef = doc(db, "orders", candidate.id);
+    linkedOrder = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(orderRef);
+      const fresh = snap.exists() ? ({ ...(snap.data() as Order), id: candidate.id }) : null;
+      let liveJob: WorkAssignment | null = null;
+      if (fresh?.workAssignmentId) {
+        const jobSnap = await tx.get(doc(db, "work_assignments", fresh.workAssignmentId));
+        if (jobSnap.exists()) liveJob = { ...(jobSnap.data() as WorkAssignment), id: jobSnap.id };
+      }
+      const refusal = assignmentRefusal(fresh, liveJob, fresh ? takesOneJob(fresh, { tracks, smmCampaignId }) : true);
+      if (refusal) {
+        // An order picked up by the client's number, not chosen: it is simply not free any more, so the
+        // job goes ahead on its own — exactly as when no waiting order was found.
+        if (!order) {
+          tx.set(ref, jobFor(null));
+          return null;
+        }
+        throw refusal;
+      }
+      tx.set(ref, jobFor(fresh));
+      tx.update(orderRef, {
+        status: "assigned",
+        workAssignmentId: ref.id,
+        assignedTo,
+        assignedToName: assignedToName || null,
+        techAdminId: assignerUid,
+        updatedAt: serverTimestamp(),
+      });
+      return fresh;
+    });
+  } else {
+    await setDoc(ref, jobFor(null));
+  }
+  /** A shared month room, only for work with no order — an order's room always wins. */
+  const sharedRoom = linkedOrder ? null : (roomId || null);
 
   /**
    * The client's chat room, opened with the work.
@@ -289,16 +388,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     await createOrderChat({ ...chatFields, assignmentId: ref.id });
   }
 
-  if (linkedOrder) {
-    await updateDoc(doc(db, "orders", linkedOrder.id), {
-      status: "assigned",
-      workAssignmentId: ref.id,
-      assignedTo,
-      assignedToName: assignedToName || null,
-      techAdminId: assignerUid,
-      updatedAt: serverTimestamp(),
-    });
-  }
+  // (The order was marked "assigned" in the transaction above, together with the job.)
 
   // A split month reads as the jobs handed over, not as "N clips" — the member needs to know
   // whether they are making the ads or running the campaigns, which the clip count cannot say.

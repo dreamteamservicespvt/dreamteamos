@@ -182,6 +182,17 @@ function twoDigits(n: number): string {
 export function amountInWords(amount: number): string {
   const rupees = Math.floor(Math.abs(amount));
   if (rupees === 0) return "Zero Rupees Only";
+  return `${numberInIndianWords(rupees)} Rupees Only`;
+}
+
+/**
+ * A whole number in words, Indian numbering — `17400` → "Seventeen Thousand Four Hundred".
+ * The words without the currency, so an invoice can add its paise ("… Rupees and Fifty Paise Only").
+ * "" for zero.
+ */
+export function numberInIndianWords(value: number): string {
+  const rupees = Math.floor(Math.abs(value));
+  if (rupees === 0) return "";
 
   const parts: string[] = [];
   const crore = Math.floor(rupees / 10_000_000);
@@ -196,5 +207,5 @@ export function amountInWords(amount: number): string {
   if (hundred) parts.push(`${ONES[hundred]} Hundred`);
   if (rest) parts.push(twoDigits(rest));
 
-  return `${parts.join(" ")} Rupees Only`;
+  return parts.join(" ");
 }

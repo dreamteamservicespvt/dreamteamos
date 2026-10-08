@@ -4,7 +4,9 @@ import { db } from "@/services/firebase";
 import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { sendNotification } from "@/services/notifications";
 import { logActivity } from "@/services/activityLog";
-import { upsertOrderForSale, cancelOrderForSale, releaseHeldSales } from "@/services/orders";
+import { upsertOrderForSale, cancelOrderForSale, releaseHeldSales, markOrderSaleUnverified } from "@/services/orders";
+import { deleteSale, mutateSaleItems, isSaleWriteError } from "@/services/sales";
+import { saleIdOf } from "@/utils/saleIdentity";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { discountEditLabel, discountSummary } from "@/utils/bulkDiscount";
@@ -136,22 +138,37 @@ export default function SalesApprovals() {
   });
 
   // ── Single item actions ──────────────────────────────────────────────────
+  /*
+    Every action below changes the sale BY ITS ID in the lead as it is now, inside a transaction
+    (services/sales.mutateSaleItems, 2026-10-08). They used to change `items[i]` of this page's copy of
+    the list and write the whole list back — which could undo an edit the salesperson saved a moment
+    earlier, or drop a sale they had just added (its order then sat in the tech queue with no sale).
+  */
+
+  /** The sale on this row, by its permanent id — and its current copy, for the messages. */
+  const saleOfRow = (leadId: string, itemIndex: number) => {
+    const lead = leads.find((l) => l.id === leadId);
+    const item = lead ? getAllItems(lead)[itemIndex] : undefined;
+    return lead && item ? { lead, item, saleId: saleIdOf(leadId, item, itemIndex) } : null;
+  };
 
   const handleVerifyItem = async (leadId: string, itemIndex: number) => {
-    const lead = leads.find((l) => l.id === leadId);
-    if (!lead) return;
+    const row = saleOfRow(leadId, itemIndex);
+    if (!row) return;
     try {
-      const items = [...getAllItems(lead)];
-      const oldItem = items[itemIndex];
-      items[itemIndex] = approveOnVerify(oldItem);
-      await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      const { lead, changed } = await mutateSaleItems(leadId, [row.saleId], approveOnVerify);
+      const done = changed[0];
+      if (!done) {
+        toast({ title: "Not found", description: "This sale no longer exists — it was deleted.", variant: "destructive" });
+        return;
+      }
       // Verified sale → create/refresh the Order so it enters the tech "Orders" queue.
-      await upsertOrderForSale({ lead, item: items[itemIndex], itemIndex, verifierUid: currentUser!.uid, saleVerified: true, soldByName: getMemberName(lead.assignedTo) });
+      await upsertOrderForSale({ lead, item: done.item, itemIndex: done.index, verifierUid: currentUser!.uid, saleVerified: true, soldByName: getMemberName(lead.assignedTo) });
       await sendNotification({
         userId: lead.assignedTo,
         type: "sale_approved",
         title: "Sale Verified",
-        message: `Your sale of ₹${items[itemIndex].amount?.toLocaleString()} for ${lead.displayName} has been verified!`,
+        message: `Your sale of ₹${done.item.amount?.toLocaleString()} for ${lead.displayName} has been verified!`,
       });
       await logActivity({
         actorId: currentUser!.uid,
@@ -164,11 +181,12 @@ export default function SalesApprovals() {
           leadName: lead.displayName,
           memberId: lead.assignedTo,
           memberName: getMemberName(lead.assignedTo),
-          amount: oldItem.amount,
-          category: oldItem.category,
+          saleId: row.saleId,
+          amount: done.before.amount,
+          category: done.before.category,
         },
       });
-      setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
+      setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: lead.saleItems } : l));
       toast({ title: "Verified", description: "Sale item verified." });
     } catch {
       toast({ title: "Error", description: "Failed to verify.", variant: "destructive" });
@@ -176,20 +194,24 @@ export default function SalesApprovals() {
   };
 
   const handleRejectItem = async (leadId: string, itemIndex: number) => {
-    const lead = leads.find((l) => l.id === leadId);
-    if (!lead) return;
+    const row = saleOfRow(leadId, itemIndex);
+    if (!row) return;
     try {
-      const items = [...getAllItems(lead)];
-      const oldItem = items[itemIndex];
-      items[itemIndex] = { ...oldItem, verificationStatus: "rejected", verifiedAt: null, rejectedAt: Timestamp.now() };
-      await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
-      // Sale left "verified" → pull its Order out of the tech queue.
-      await cancelOrderForSale({ leadId, item: oldItem, itemIndex });
+      const { lead, changed } = await mutateSaleItems(leadId, [row.saleId], (it) => ({
+        ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now(),
+      }));
+      const done = changed[0];
+      if (!done) {
+        toast({ title: "Not found", description: "This sale no longer exists — it was deleted.", variant: "destructive" });
+        return;
+      }
+      // A rejected sale leaves the tech queue (its order is cancelled — work already out is told).
+      await cancelOrderForSale({ leadId, item: done.before, itemIndex: done.index });
       await sendNotification({
         userId: lead.assignedTo,
         type: "sale_rejected",
         title: "Sale Rejected",
-        message: `Your ${items[itemIndex].category} sale of ₹${items[itemIndex].amount?.toLocaleString()} for ${lead.displayName} has been rejected.`,
+        message: `Your ${done.item.category} sale of ₹${done.item.amount?.toLocaleString()} for ${lead.displayName} has been rejected.`,
       });
       await logActivity({
         actorId: currentUser!.uid,
@@ -202,11 +224,12 @@ export default function SalesApprovals() {
           leadName: lead.displayName,
           memberId: lead.assignedTo,
           memberName: getMemberName(lead.assignedTo),
-          amount: oldItem.amount,
-          category: oldItem.category,
+          saleId: row.saleId,
+          amount: done.before.amount,
+          category: done.before.category,
         },
       });
-      setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
+      setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: lead.saleItems } : l));
       toast({ title: "Rejected", description: "Sale item rejected." });
     } catch {
       toast({ title: "Error", description: "Failed to reject.", variant: "destructive" });
@@ -214,22 +237,33 @@ export default function SalesApprovals() {
   };
 
   const handleRevokeItem = async (leadId: string, itemIndex: number) => {
-    const lead = leads.find((l) => l.id === leadId);
-    if (!lead) return;
+    const row = saleOfRow(leadId, itemIndex);
+    if (!row) return;
     try {
-      const items = [...getAllItems(lead)];
-      const oldItem = items[itemIndex];
       // Back to undecided: both decision stamps go, or the row would still date itself by a
       // decision that has been taken back.
-      items[itemIndex] = { ...oldItem, verificationStatus: "pending", verifiedAt: null, rejectedAt: null };
-      await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
-      // Back to pending → pull its Order out of the tech queue.
-      await cancelOrderForSale({ leadId, item: oldItem, itemIndex });
+      const { lead, changed } = await mutateSaleItems(leadId, [row.saleId], (it) => ({
+        ...it, verificationStatus: "pending" as const, verifiedAt: null, rejectedAt: null,
+      }));
+      const done = changed[0];
+      if (!done) {
+        toast({ title: "Not found", description: "This sale no longer exists — it was deleted.", variant: "destructive" });
+        return;
+      }
+      /*
+        Back to pending is a sale the tech side HAS (2026-10-05: every sale reaches it at once). Its
+        order stays — marked "Pending approval" again — instead of being pulled from the queue, which
+        left a pending sale with no order at all (2026-10-08). Only a rejection takes it out.
+      */
+      await markOrderSaleUnverified({
+        lead, item: done.item, itemIndex: done.index,
+        soldByName: getMemberName(lead.assignedTo), salesAdminId: currentUser?.uid || null,
+      });
       await sendNotification({
         userId: lead.assignedTo,
         type: "sale_revoked",
         title: "Sale Approval Revoked",
-        message: `Your ${items[itemIndex].category} sale for ${lead.displayName} has been moved back to pending.`,
+        message: `Your ${done.item.category} sale for ${lead.displayName} has been moved back to pending.`,
       });
       await logActivity({
         actorId: currentUser!.uid,
@@ -242,35 +276,37 @@ export default function SalesApprovals() {
           leadName: lead.displayName,
           memberId: lead.assignedTo,
           memberName: getMemberName(lead.assignedTo),
-          amount: oldItem.amount,
-          category: oldItem.category,
+          saleId: row.saleId,
+          amount: done.before.amount,
+          category: done.before.category,
         },
       });
-      setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
+      setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: lead.saleItems } : l));
       toast({ title: "Revoked", description: "Sale moved back to pending." });
     } catch {
       toast({ title: "Error", description: "Failed to revoke.", variant: "destructive" });
     }
   };
 
+  /**
+   * Delete a sale — the same rule as the salesperson's own Delete (owner, 2026-10-08): a sale nobody on
+   * the tech side has started goes everywhere at once (the sale, its order, its client chat, its month);
+   * a sale with work on it is refused with the reason. It used to cancel the order of work already out.
+   */
   const handleDeleteItem = async (leadId: string, itemIndex: number) => {
-    const lead = leads.find((l) => l.id === leadId);
-    if (!lead) return;
+    const row = saleOfRow(leadId, itemIndex);
+    if (!row) return;
     try {
-      const items = [...getAllItems(lead)];
-      const oldItem = items[itemIndex];
-      // Cancel its Order before the splice reshuffles indexes (order id is keyed on submittedAt).
-      await cancelOrderForSale({ leadId, item: oldItem, itemIndex });
-      items.splice(itemIndex, 1);
-      const updates: Record<string, any> = { saleItems: items, lastUpdated: serverTimestamp() };
+      const result = await deleteSale({ leadId, saleId: row.saleId });
+      if (!result.deleted) {
+        toast({ title: "Already deleted", description: "This sale was already removed." });
+        return;
+      }
       // No sales left → the number is no longer "sold", so lift the sale-freeze (type 2)
       // but KEEP the lead with the member (the number itself is not deleted).
-      const noSalesLeft = items.length === 0;
-      if (noSalesLeft) { updates.saleDone = false; updates.saleDetails = null; Object.assign(updates, clearedLeadFreezeFields()); }
-      await updateDoc(doc(db, "leads", leadId), updates);
-      if (noSalesLeft) {
+      if (result.noSalesLeft) {
         try {
-          await clearSaleFreeze({ phone: lead.phone, actor: currentUser ? { uid: currentUser.uid, name: currentUser.name } : undefined });
+          await clearSaleFreeze({ phone: row.lead.phone, actor: currentUser ? { uid: currentUser.uid, name: currentUser.name } : undefined });
         } catch { /* freeze clear is best-effort */ }
       }
       await logActivity({
@@ -281,37 +317,47 @@ export default function SalesApprovals() {
         action: "deleted_sale",
         details: {
           leadId,
-          leadName: lead.displayName,
-          memberId: lead.assignedTo,
-          memberName: getMemberName(lead.assignedTo),
-          amount: oldItem.amount,
-          category: oldItem.category,
+          leadName: row.lead.displayName,
+          memberId: row.lead.assignedTo,
+          memberName: getMemberName(row.lead.assignedTo),
+          saleId: row.saleId,
+          amount: row.item.amount,
+          category: row.item.category,
         },
       });
-      if (items.length === 0) {
+      if (result.noSalesLeft) {
         setLeads((prev) => prev.filter((l) => l.id !== leadId));
       } else {
-        setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
+        setLeads((prev) => prev.map((l) => (l.id === leadId
+          ? { ...l, saleItems: getAllItems(l).filter((it, i) => saleIdOf(leadId, it, i) !== row.saleId) }
+          : l)));
       }
-      toast({ title: "Deleted", description: "Sale item deleted." });
-    } catch {
-      toast({ title: "Error", description: "Failed to delete.", variant: "destructive" });
+      toast({ title: "Deleted", description: "Sale deleted — and from the tech queue." });
+    } catch (err) {
+      toast({
+        title: isSaleWriteError(err) ? "Can't delete this sale" : "Error",
+        description: isSaleWriteError(err) ? err.message : "Failed to delete.",
+        variant: "destructive",
+      });
     }
   };
 
   // ── Duplicate dispute: approve one winner, auto-reject the competitors ────
   const handleApproveDuplicateWinner = async (leadId: string, itemIndex: number) => {
-    const winner = leads.find((l) => l.id === leadId);
-    if (!winner) return;
+    const row = saleOfRow(leadId, itemIndex);
+    if (!row) return;
+    const winner = row.lead;
     const np = normalizePhone(winner.phone);
     try {
       // 1) Verify the chosen item.
-      const wItems = [...getAllItems(winner)];
-      const wOld = wItems[itemIndex];
-      wItems[itemIndex] = approveOnVerify(wOld);
-      await updateDoc(doc(db, "leads", leadId), { saleItems: wItems, lastUpdated: serverTimestamp() });
+      const { lead: freshWinner, changed } = await mutateSaleItems(leadId, [row.saleId], approveOnVerify);
+      const won = changed[0];
+      if (!won) {
+        toast({ title: "Not found", description: "This sale no longer exists — it was deleted.", variant: "destructive" });
+        return;
+      }
       // Winner verified → create its Order for the tech queue.
-      await upsertOrderForSale({ lead: winner, item: wItems[itemIndex], itemIndex, verifierUid: currentUser!.uid, saleVerified: true, soldByName: getMemberName(winner.assignedTo) });
+      await upsertOrderForSale({ lead: freshWinner, item: won.item, itemIndex: won.index, verifierUid: currentUser!.uid, saleVerified: true, soldByName: getMemberName(winner.assignedTo) });
 
       // 2) Reject every still-standing competing sale on the SAME number held by OTHER members.
       //    Never touch the winner's own leads, nor frozen/taken-over or admin-cleared leads —
@@ -319,16 +365,18 @@ export default function SalesApprovals() {
       const competitors = leads.filter(
         (l) => l.assignedTo !== winner.assignedTo && normalizePhone(l.phone) === np && !l.frozen && !l.duplicateCleared,
       );
+      const rejectedLeads = new Map<string, SaleDetail[]>();
       for (const c of competitors) {
         const cItems = getAllItems(c);
         if (!cItems.some((it) => it.verificationStatus !== "rejected")) continue; // already all rejected
-        const newItems = cItems.map((it) =>
-          it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now() },
-        );
-        await updateDoc(doc(db, "leads", c.id), { saleItems: newItems, lastUpdated: serverTimestamp() });
+        const ids = cItems.map((it, i) => saleIdOf(c.id, it, i));
+        const { lead: freshC, changed: cChanged } = await mutateSaleItems(c.id, ids, (it) => (
+          it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now() }
+        ));
+        rejectedLeads.set(c.id, freshC.saleItems || []);
         // Any previously-verified competing sale must drop out of the tech queue too.
-        for (let ci = 0; ci < cItems.length; ci++) {
-          await cancelOrderForSale({ leadId: c.id, item: cItems[ci], itemIndex: ci });
+        for (const ch of cChanged) {
+          await cancelOrderForSale({ leadId: c.id, item: ch.before, itemIndex: ch.index });
         }
         await sendNotification({
           userId: c.assignedTo,
@@ -343,7 +391,7 @@ export default function SalesApprovals() {
         userId: winner.assignedTo,
         type: "sale_approved",
         title: "Sale Verified",
-        message: `Your sale of ₹${wOld.amount?.toLocaleString()} for ${winner.displayName} was approved over the duplicate.`,
+        message: `Your sale of ₹${row.item.amount?.toLocaleString()} for ${winner.displayName} was approved over the duplicate.`,
       });
       await logActivity({
         actorId: currentUser!.uid,
@@ -356,25 +404,19 @@ export default function SalesApprovals() {
           leadName: winner.displayName,
           phone: np,
           winnerMember: getMemberName(winner.assignedTo),
-          amount: wOld.amount,
-          category: wOld.category,
+          saleId: row.saleId,
+          amount: row.item.amount,
+          category: row.item.category,
           rejectedMembers: competitors.map((c) => getMemberName(c.assignedTo)),
         },
       });
 
-      // 4) Optimistic local update so the dispute resolves immediately.
+      // 4) Optimistic local update so the dispute resolves immediately (the listener confirms it).
       setLeads((prev) =>
         prev.map((l) => {
-          if (l.id === leadId) return { ...l, saleItems: wItems };
-          if (l.assignedTo !== winner.assignedTo && normalizePhone(l.phone) === np && !l.frozen && !l.duplicateCleared) {
-            return {
-              ...l,
-              saleItems: getAllItems(l).map((it) =>
-                it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now() },
-              ),
-            };
-          }
-          return l;
+          if (l.id === leadId) return { ...l, saleItems: freshWinner.saleItems };
+          const rejected = rejectedLeads.get(l.id);
+          return rejected ? { ...l, saleItems: rejected } : l;
         }),
       );
       toast({ title: "Duplicate resolved", description: "Approved this sale and rejected the competing one(s)." });
@@ -428,38 +470,38 @@ export default function SalesApprovals() {
 
   // ── Bulk actions (only for pending tab) ─────────────────────────────────
 
-  const handleBulkVerify = async (displayItems: Array<{ lead: Lead; item: SaleDetail; itemIndex: number }>) => {
+  /** The selected rows, grouped by lead, each with its sale's permanent id. */
+  const selectedByLead = (displayItems: Array<{ lead: Lead; item: SaleDetail; itemIndex: number }>) => {
     const selected = displayItems.filter((li) => selectedKeys.has(makeKey(li.lead.id, li.itemIndex)));
+    const byLead = new Map<string, string[]>();
+    for (const li of selected) {
+      const ids = byLead.get(li.lead.id) || [];
+      ids.push(saleIdOf(li.lead.id, li.item, li.itemIndex));
+      byLead.set(li.lead.id, ids);
+    }
+    return { selected, byLead };
+  };
+
+  const handleBulkVerify = async (displayItems: Array<{ lead: Lead; item: SaleDetail; itemIndex: number }>) => {
+    const { selected, byLead } = selectedByLead(displayItems);
     if (selected.length === 0) return;
     setBulkProcessing(true);
     try {
-      // Group by lead to batch updates
-      const byLead: Record<string, typeof selected> = {};
-      selected.forEach((li) => {
-        if (!byLead[li.lead.id]) byLead[li.lead.id] = [];
-        byLead[li.lead.id].push(li);
-      });
-
-      for (const leadId of Object.keys(byLead)) {
-        const lead = leads.find((l) => l.id === leadId)!;
-        const items = [...getAllItems(lead)];
-        const affected = byLead[leadId];
-        affected.forEach(({ itemIndex }) => {
-          items[itemIndex] = approveOnVerify(items[itemIndex]);
-        });
-        await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      for (const [leadId, saleIds] of byLead) {
+        const { lead, changed } = await mutateSaleItems(leadId, saleIds, approveOnVerify);
+        if (changed.length === 0) continue;
         // Each verified sale → an Order in the tech queue.
-        for (const { itemIndex } of affected) {
-          await upsertOrderForSale({ lead, item: items[itemIndex], itemIndex, verifierUid: currentUser!.uid, saleVerified: true, soldByName: getMemberName(lead.assignedTo) });
+        for (const ch of changed) {
+          await upsertOrderForSale({ lead, item: ch.item, itemIndex: ch.index, verifierUid: currentUser!.uid, saleVerified: true, soldByName: getMemberName(lead.assignedTo) });
         }
         // Notify member once per lead
         await sendNotification({
           userId: lead.assignedTo,
           type: "sale_approved",
-          title: `${affected.length} Sale(s) Verified`,
-          message: `${affected.length} of your sale(s) for ${lead.displayName} have been verified.`,
+          title: `${changed.length} Sale(s) Verified`,
+          message: `${changed.length} of your sale(s) for ${lead.displayName} have been verified.`,
         });
-        setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
+        setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: lead.saleItems } : l));
       }
 
       await logActivity({
@@ -473,6 +515,7 @@ export default function SalesApprovals() {
           items: selected.map((li) => ({
             leadId: li.lead.id,
             leadName: li.lead.displayName,
+            saleId: saleIdOf(li.lead.id, li.item, li.itemIndex),
             amount: li.item.amount,
             category: li.item.category,
             memberName: getMemberName(li.lead.assignedTo),
@@ -490,35 +533,26 @@ export default function SalesApprovals() {
   };
 
   const handleBulkReject = async (displayItems: Array<{ lead: Lead; item: SaleDetail; itemIndex: number }>) => {
-    const selected = displayItems.filter((li) => selectedKeys.has(makeKey(li.lead.id, li.itemIndex)));
+    const { selected, byLead } = selectedByLead(displayItems);
     if (selected.length === 0) return;
     setBulkProcessing(true);
     try {
-      const byLead: Record<string, typeof selected> = {};
-      selected.forEach((li) => {
-        if (!byLead[li.lead.id]) byLead[li.lead.id] = [];
-        byLead[li.lead.id].push(li);
-      });
-
-      for (const leadId of Object.keys(byLead)) {
-        const lead = leads.find((l) => l.id === leadId)!;
-        const items = [...getAllItems(lead)];
-        const affected = byLead[leadId];
-        affected.forEach(({ itemIndex }) => {
-          items[itemIndex] = { ...items[itemIndex], verificationStatus: "rejected", verifiedAt: null, rejectedAt: Timestamp.now() };
-        });
-        await updateDoc(doc(db, "leads", leadId), { saleItems: items, lastUpdated: serverTimestamp() });
+      for (const [leadId, saleIds] of byLead) {
+        const { lead, changed } = await mutateSaleItems(leadId, saleIds, (it) => ({
+          ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now(),
+        }));
+        if (changed.length === 0) continue;
         // Each rejected sale → pull its Order from the tech queue.
-        for (const { itemIndex } of affected) {
-          await cancelOrderForSale({ leadId, item: items[itemIndex], itemIndex });
+        for (const ch of changed) {
+          await cancelOrderForSale({ leadId, item: ch.before, itemIndex: ch.index });
         }
         await sendNotification({
           userId: lead.assignedTo,
           type: "sale_rejected",
-          title: `${affected.length} Sale(s) Rejected`,
-          message: `${affected.length} of your sale(s) for ${lead.displayName} have been rejected.`,
+          title: `${changed.length} Sale(s) Rejected`,
+          message: `${changed.length} of your sale(s) for ${lead.displayName} have been rejected.`,
         });
-        setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: items } : l));
+        setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, saleItems: lead.saleItems } : l));
       }
 
       await logActivity({
@@ -532,6 +566,7 @@ export default function SalesApprovals() {
           items: selected.map((li) => ({
             leadId: li.lead.id,
             leadName: li.lead.displayName,
+            saleId: saleIdOf(li.lead.id, li.item, li.itemIndex),
             amount: li.item.amount,
             category: li.item.category,
             memberName: getMemberName(li.lead.assignedTo),

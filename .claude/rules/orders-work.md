@@ -62,11 +62,17 @@ Orders queue. Inputs: assignee, category, duration, clip count, price per unit, 
 `assignmentFormFromOrder`), optional tracks (SMM split: `ad_creation` / `social_upload` /
 `digital_marketing`). Side effects, in order:
 1. adopt an unassigned order for the same phone if none was given;
-2. `addDoc` the assignment (4-digit access code);
+2. **one transaction (2026-10-08):** re-read the order — refuse with `AssignmentRefusedError` when it is
+   gone ("This sale was deleted by the salesperson…", `sale_gone`), removed or cancelled (`order_closed`),
+   or, for a one-ad order (`takesOneJob`: no progress, not SMM / bulk / tracks), already has a live job
+   (`already_assigned`); then write the job (4-digit access code, `orderId`, `saleId`) and the order's
+   `assigned` / `workAssignmentId` TOGETHER. An order adopted by phone that is no longer free is simply not
+   linked. (Before: `addDoc` the job, then update the order — a job for a sale deleted a moment earlier, or a
+   second job for one ad.) Both Work Assign pages and `AssignTracksDialog` show the refusal as a toast; a gone
+   or closed order closes the form;
 3. attach to the order's chat (or create a chat on the assignment id);
-4. order → `assigned`;
-5. notify the assignee (dedupe key, includes the client note);
-6. `logTechActivity`.
+4. notify the assignee (dedupe key, includes the client note);
+5. `logTechActivity`.
 
 The page also shows a WhatsApp-ready requirements message (`RequirementsShareModal`). Tech admin
 assignment also notifies team leaders.
@@ -89,8 +95,18 @@ the occasion of a wishes ad and the brief — business info, address, client's n
 `useAssignmentBrief` reads the order only for a field the job never carried). On the member's side the
 job's spec is applied by one util (`utils/assignmentFormSpec`) when the job opens, when it changes, and
 ON TOP of a reopened kit, so a restored kit can never put an old value back into a locked field; a kit
-made for an older spec shows a "made for an earlier version of the job" banner with the differences · sale deleted after assignment → `saleDeleted` banner, work kept · sales
-member **update notes** once assigned (`addOrderUpdateNote`).
+made for an older spec shows a "made for an earlier version of the job" banner with the differences ·
+**a sale edited after assignment (2026-10-08)** → `services/sales.updateSale` writes the job's changed
+fields in the same transaction as the sale and order (`utils/saleEdit.jobPatchForSaleEdit`: the
+`assignmentFormFromOrder` result before vs after, so the tech side's own edits to other fields stay; a new
+package length re-derives clips and rate; SMM month jobs are left to the month) — the member's live
+`SpecUpdateDialog` shows it — and a `sale_edited` popup goes to every tech admin, team leader and the job
+holder · **a sale with work can no longer be deleted** (the `saleDeleted` banner remains for jobs flagged
+before) · sales member **update notes** (`addOrderUpdateNote`) for anything the form has no field for ·
+**orders whose sale is gone** (deleted before 2026-10-08 without reaching the tech side) are removed when
+Orders or either Work Assign page opens (`services/sales.healOrphanOrdersOnOpen`: unassigned, no job, the
+lead gone or provably without the sale — `utils/saleIdentity.leadHoldsSaleOf`; re-checked in a transaction;
+once a session; Orders toasts "Queue tidied").
 
 **Priority:** there is **no priority field**. Queue order comes from `utils/orderSort.ts` /
 `orderQueue.ts` (deadline and state) and `isPinnedOrder`.
@@ -121,9 +137,16 @@ Orders tabs (active / delivered history paged by `ORDER_HISTORY_PAGE = 300` / re
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
 - **Orders** are created at **sale time** — approval is not a gate, not even for a discount over 10%
-  (2026-10-05, owner); a rejected sale cancels its order.
+  (2026-10-05, owner); a rejected sale cancels its order; a revoked approval keeps it (marked unapproved).
   Re-verifying never duplicates (idempotent id). A deleted order is never recreated by its sale.
   Progress is seeded once and never re-seeded.
+- **One sale, one order, one job (owner, 2026-10-08):** an order is `o_<saleId>`, written in the same
+  transaction as its sale; an edit of the sale updates that order (and its job) and never makes another; a
+  sale nobody has started is deleted with its order, chat, month and bells; a job is never created for a sale
+  that no longer exists, and a one-ad order never gets a second job; a waiting order with no sale behind it
+  leaves the queue. Editing a started sale tells the tech admins, the team leaders and the member (popup).
+- **The "new order" bell** is one notification per tech admin / team leader (`order_new_<orderId>_<uid>`,
+  linking to the queue their role opens) — it was one shared document each recipient's write replaced.
 - **Delivery promise:** the countdown starts at the sale; exactly **one extension**, by team
   leader / tech admin / main admin, the assignee or the seller; recorded on the order and
   assignment, never on the sale.
@@ -149,6 +172,13 @@ Orders tabs (active / delivered history paged by `ORDER_HISTORY_PAGE = 300` / re
 - Task priority field; per-task comments or attachments (chat is used instead).
 
 ## 27. POTENTIAL RISKS (need verification)
+
+- The sale transactions (2026-10-08) write `leads`, `orders`, `order_chats`, `smm_campaigns`,
+  `work_assignments` and delete other people's `notifications` from the salesperson's browser — fine under the
+  catch-all rule; a rule restricting any of those to their owner would make sales fail to save (noted in
+  `docs/firestore-rules.md`). Checked by unit tests, service tests on the in-memory Firestore
+  (`saleSyncOct08`) and a browser harness on the real pages — not against live Firebase. The on-open orphan
+  sweep costs one read per lead of the waiting orders, once a session per browser.
 
 - The per-job Drive mark is a declaration: nothing checks that the file is really in the Drive, and the
   folder trail assumes the team's `Name › Month › Day N › <clips> Clips` layout. Checked by unit tests and

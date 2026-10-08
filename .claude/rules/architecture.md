@@ -256,7 +256,8 @@ and tech ActivityHistory pages); session history (`sessions`); payroll audit (`s
 Capacitor plugins (`services/capacitor-plugins.ts`), Android back button, `BirthdayGreeting`
 (`services/birthdays.ts`, `utils/birthdays.ts`), `ProfileCompletionPrompt`
 (`utils/profileCompletion.ts`), `UpdatePopup` (work_assigned / work_editing / attendance_update
-popups).
+popups, and since 2026-10-08 `sale_edited` — a started sale was edited — with its changes listed, shown to the
+tech admin too).
 
 ## 11. FRONTEND ARCHITECTURE
 
@@ -310,6 +311,9 @@ popups).
 - **Documents:** `AgreementView` renders letters with inline styles. `utils/documentPages.ts`
   paginates into A4 sheets used by both `agreementPdf` (html2canvas → jsPDF) and `agreementPrint`
   (native print). Print CSS at the end of `index.css` releases the fixed-height shell.
+  Invoices (2026-10-08) lay out their own sheets from a measured page plan (`utils/invoiceLayout`,
+  `components/invoice/InvoicePaper` + `InvoicePreview`) and print them through
+  `agreementPrint.printDocumentPages` — the second half of `printAgreementElement`, split out so both share it.
 
 ## 19. SEARCH / FILTERING / ANALYTICS
 
@@ -336,7 +340,7 @@ popups).
 | `Sidebar` / `Topbar` | `components/layout/` | Role nav with groups (flattened when collapsed), logout; bell, avatar |
 | `AppUpdateBanner`, `UpdatePopup`, `InstallAppButton` | `components/layout/` | Self-update, work popups, PWA install |
 | `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-24): root `.adgen`; one screen — a 72px header (mark │ product name, Ready/Generating chip, Project History, Mark Complete, the signed-in member, Close project) over a 4/8 grid. LEFT: `1. Assets & Files` and `2. Configuration` as two `ag-sec` sections of which only one is open (`leftPanel`, morphed through `.ag-morph`); shut, Assets shows a six-tile summary of what has been uploaded and Configuration shows the run's settings; Start/Stop sits below both. RIGHT, by stage: welcome → Generation Status (progress, step, countdown, `MissionStepper`) + AI Guide card → Status + a 72px AI Guide strip + the Deliverables card of seven numbered `ag-row`s, every one always drawn with its state. A 36px **job strip** under the header (`data-test="job-strip"`: business, category / occasion, special category, clips + EC, ratio, language, job id) at every width; a stale-kit banner when the job changed after the kit was made; the Input Final Script strip on row 4 (`OutputSection` `footer`) |
-| `SaleForm` | `components/sales/` | The one sale form (new, edit, upsell): packages, bulk, discounts, SMM fields, promise, requirement, payments; calls `upsertOrderForSale` |
+| `SaleForm` | `components/sales/` | The one sale form (new, edit, upsell): packages, bulk, discounts, SMM fields, promise, requirement, payments; saves through `services/sales` (`recordSale` / `updateSale`, in-flight guard; a started sale's service locked, 2026-10-08) |
 | `FinalScriptPanel` (default export `FinalScriptInput`) | `components/ai-platform/` | "Input Final Script" on row 4 (`OutputSection` `footer` slot, visible with the row shut): the highlighted strip, then three steps — copy the format / the ChatGPT-Gemini instruction, paste or load the current script with a live reading, update 5 · 6 · 7 with per-section progress and Retry |
 | `AssignmentBriefFields` | `components/work/` | Occasion (wishes) + business info + address + client's notes, in all three assignment edit dialogs |
 | `SpecialCategoryFields`, `ModelAttireFields`, `PosterSpecFields`, `OccasionPicker`, `DurationPicker` | `components/work/` | Shared spec editors used by Work Assign ×2, assignment editors and the AI platform. **`SaleForm` still has its own copy of the special-category picker** |
@@ -349,6 +353,7 @@ popups).
 | `DailyCheckinPrompt` (mandatory), `CheckoutModal`, `MyDayCalendar` | `components/attendance/` | Tech attendance |
 | `DriveUploadSheet` (+ `DrivePendingStrip`, `DriveUploadChip`), `useDriveUploadStep` | `components/work/` | The Drive step after a hand-in (§9.6): the job's folder, file name, the member's Drive link, "It's uploaded" / "Upload later" |
 | `AccessCodeGate`, `FieldHint`, `ImageLightbox`, `ViewToggle`, `BrandLogo` | `components/common/` | Shared primitives (FieldHint has a 24px tap target) |
+| `InvoiceEditor` (+ `ItemsEditor`, `editorKit`, `FillFromSale`), `InvoicePreview`, `InvoicePaper`, `StatusPill`, `InvoiceAccessGate`, `InvoiceAccessCard` (Settings, tech + main admin), `useInvoiceAssets` | `components/invoice/` | Invoice Builder (`invoices.md` §9.22): editor + live A4 sheets; `InvoicePreview.capturePages()` hands the same sheets to the PDF and print |
 | `CreditUsageDialog`, `useCreditGate`, `FlowAccountDialog`, `FlowAccountsList`, `AssignDialog`, `PaidAccountsPanel`, `SecretField`, `CreditCalculator`, `TargetCard`, `UsageList`, `AiModal` | `components/ai-accounts/` | AI Accounts (§9.21). `useCreditGate` puts the credit step in front of Mark Complete on My Work and Recent Ads; `AiModal` is z-[70] so the credit dialog opens over the full-screen studio |
 | `ui/*` | `components/ui/` | shadcn primitives. Do not hand-edit casually |
 
@@ -358,15 +363,19 @@ popups).
 `authStore.setUser` → `sessions` row → `defaultRouteForUser` → `AppLayout` (guard, FCM,
 listeners) → page.
 
-**Sale → tech:** Sales member `MyLeads` → `SaleForm` save → `leads.saleItems[]` update →
-`upsertOrderForSale` → (any discount, since 2026-10-05) `orders` create
-(`unassigned`, `saleVerified:false`) + `notifyTechSideOfNewOrder` + `ensureSaleOrderChat`
-(team-only room) + (SMM) `ensureCampaignForOrder`. Sales admin `SalesApprovals` → verify →
-`saleItems[i].verificationStatus = verified` → `upsertOrderForSale(saleVerified:true)` →
-notify seller → `logActivity`.
+**Sale → tech (one `saleId`, 2026-10-08):** Sales member `MyLeads` → `SaleForm` save →
+`services/sales.recordSale` — ONE transaction writes `leads.saleItems[]` (the sale with its `saleId`) and
+`orders/o_<saleId>` (`unassigned`, `saleVerified:false`) — then `notifyTechSideOfNewOrder` (one bell per
+person) + `afterOrderWrite` (`ensureSaleOrderChat` team-only room + (SMM) `ensureCampaignForOrder`). An edit →
+`updateSale` (same sale, order and job, in one transaction; `sale_edited` popups once the tech side has
+started). A delete → `deleteSale` (sale + order + chat + month together; refused once there is work). Sales
+admin `SalesApprovals` → verify → `mutateSaleItems` (by id, in a transaction) →
+`upsertOrderForSale(saleVerified:true)` → notify seller → `logActivity`; revoke → `markOrderSaleUnverified`
+(the order stays); reject → `cancelOrderForSale`.
 
 **Assign → deliver:** Tech admin or leader `Orders` / `WorkAssign` → `createWorkAssignment` →
-assignment + chat attach (`clientReady`) + order `assigned` + notify member → member `MyWork` →
+(one transaction: the order re-read — refused when its sale was deleted or it already has its job — then the
+assignment + order `assigned`) + chat attach (`clientReady`) + notify member → member `MyWork` →
 access code (once per device) → `AIPlatformApp` (status `in_progress`) → `generateAdAssets` →
 `ai_generations` → external generation → submit (`useCompleteWork`): `completed` + notify + order
 `completed` + chat locked + client upsert → leader `verifyAssignments` → `verified` + notify +

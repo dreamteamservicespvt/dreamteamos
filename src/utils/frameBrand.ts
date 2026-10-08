@@ -57,3 +57,35 @@ export function withOwnerImageDirective(prompt: string): string {
   }
   return `📎 ATTACH ${OWNER_IMAGE_ATTACHMENT} — the person in this frame must be exactly them.\n\n${prompt}`;
 }
+
+/** The heading of the face lock code adds to a Real Owner Face frame prompt. */
+export const OWNER_FACE_LOCK_HEADING = "FACE LOCK";
+
+/**
+ * A Real Owner Face frame prompt, carrying in its BODY the rule that the face is the photograph's
+ * (2026-10-08).
+ *
+ * ── Why it is stamped, and why in the body ────────────────────────────────────────────────────────
+ * The owner: on real-face ads the image model sometimes changed the face — it ADDED A BINDI to an owner
+ * who does not wear one (women and men alike: a tilak / kumkum mark on a man). The frame writer was told
+ * the face is the client's, but that instruction lived only in its system prompt (its output is "plain
+ * English, no negative list"), and the one line the finished prompt did carry — "📎 ATTACH the OWNER IMAGE
+ * … must be exactly them" — is the attach directive, which the Copy button strips before the prompt
+ * reaches the image tool. A Traditional outfit ("… with tasteful traditional jewellery") then invited the
+ * "traditional look" the model completes with a forehead mark. So the lock is written into the prompt the
+ * member actually pastes, stated as what to keep before what not to add: the forehead exactly as the
+ * photograph shows it — a mark the owner wears is kept, a bare forehead stays bare. Idempotent.
+ */
+export function withOwnerFaceLock(prompt: string, gender?: string | null): string {
+  if (!prompt || prompt.includes(`${OWNER_FACE_LOCK_HEADING}:`)) return prompt;
+  const male = gender === "male";
+  const who = male ? "the man" : "the woman";
+  const own = male ? "his" : "her";
+  const marks = male
+    ? "no tilak, bindi, kumkum, vibhuti or any mark on the forehead, no earrings or face jewellery, no new beard or moustache style"
+    : "no bindi, kumkum, sindoor, tilak or any mark on the forehead, no nose ring or new face jewellery, no added make-up";
+  return `${prompt.trimEnd()}\n\n${OWNER_FACE_LOCK_HEADING}: ${who} is the person in the attached owner image, exactly — the same face, `
+    + `features, skin tone, age, hairline, hair${male ? ", beard or moustache" : ""} and the same forehead as in that photograph: a bare `
+    + `forehead in the photograph stays bare, and a mark the photograph shows stays exactly as it is. Add nothing to ${own} face that the `
+    + `photograph does not show — ${marks} — and never beautify or change ${own} face. Only ${own} clothes follow the outfit above.`;
+}

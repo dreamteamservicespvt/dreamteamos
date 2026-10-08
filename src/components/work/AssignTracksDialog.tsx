@@ -129,8 +129,14 @@ export default function AssignTracksDialog({ order, members, assignments, assign
       });
       onDone?.();
       onClose();
-    } catch {
-      toast({ title: "Error", description: "Couldn't assign this order. Try again.", variant: "destructive" });
+    } catch (err) {
+      // A refusal says why (the sale was deleted, the order was closed) — services/workAssign.
+      const refused = (err as { name?: string })?.name === "AssignmentRefusedError";
+      toast({
+        title: refused ? "Not assigned" : "Error",
+        description: refused ? (err as Error).message : "Couldn't assign this order. Try again.",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }

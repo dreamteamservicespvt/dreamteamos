@@ -33,6 +33,7 @@ import {
   ORDER_QUEUE_TABS, assignmentsByOrderId, orderAssignee, orderQueueStatus, type OrderQueueStatus,
 } from "@/utils/orderQueue";
 import { unassignWork } from "@/services/workAssign";
+import { healOrphanOrdersOnOpen } from "@/services/sales";
 import { buildAdPipeline, orderBacked } from "@/utils/adPipeline";
 import { isPinnedOrder, progressSummary } from "@/utils/orderProgress";
 import { ordersWithPenalties, totalPenalties } from "@/utils/penalty";
@@ -218,6 +219,19 @@ export default function Orders() {
     sweptRef.current = true;
     notifyDueOrdersOnOpen(orders, assignments);
   }, [loading, orders, assignments]);
+
+  /*
+    Waiting orders whose sale no longer exists leave the queue (2026-10-08) — left behind by deletes
+    that never reached the tech side before (a lead deleted with its sales, an order removal that
+    failed). Only an order nobody has started, only when its lead provably no longer holds the sale,
+    re-checked in a transaction; once a session, one read per lead (services/sales).
+  */
+  useEffect(() => {
+    if (loading || orders.length === 0) return;
+    void healOrphanOrdersOnOpen(orders).then((n) => {
+      if (n > 0) toast({ title: "Queue tidied", description: `${n} order${n === 1 ? "" : "s"} whose sale was deleted ${n === 1 ? "was" : "were"} removed.` });
+    });
+  }, [loading, orders, toast]);
 
   /** Orders joined to the work fulfilling them — the source of the "in progress" column. */
   const byOrderId = useMemo(() => assignmentsByOrderId(assignments), [assignments]);

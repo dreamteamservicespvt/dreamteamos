@@ -14,6 +14,10 @@ import { MemoryRouter } from "react-router-dom";
 
 const updateLead = vi.fn(async (_id: string, _data: Record<string, unknown>) => undefined);
 const upsertOrderForSale = vi.fn(async (_p: Record<string, unknown>) => undefined);
+/* A new sale and its order are written together by services/sales since 2026-10-08. */
+const recordSale = vi.fn(async (p: { leadId: string; item: Record<string, unknown> }) => ({
+  saleId: `${p.leadId}_1`, orderId: `o_${p.leadId}_1`, itemIndex: 0, item: p.item, lead: {},
+}));
 const logActivity = vi.fn(async (_p: Record<string, unknown>) => undefined);
 const applySaleFreeze = vi.fn(async (_p: Record<string, unknown>) => undefined);
 const findSmmSalesForPhone = vi.fn();
@@ -40,6 +44,10 @@ vi.mock("@/services/numberLock", () => ({
   applySaleFreeze, buildLeadFreezeFields: () => ({}), fetchNumberLock: async () => null,
 }));
 vi.mock("@/services/orders", () => ({ upsertOrderForSale }));
+vi.mock("@/services/sales", () => ({
+  recordSale, updateSale: vi.fn(), deleteSale: vi.fn(), deleteLeadWithSales: vi.fn(), mutateSaleItems: vi.fn(),
+  isSaleWriteError: () => false,
+}));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/services/smm", () => ({
   fetchAssignableMembers: async () => [{ uid: "arjun", name: "Arjun" }, { uid: "divya", name: "Divya" }],
@@ -74,7 +82,7 @@ const { isoDay } = await import("@/utils/smmPlan");
 configure({ testIdAttribute: "data-test" });
 beforeEach(() => {
   AUTH = { user: { uid: "kiran", name: "Kiran", role: "tech_admin" } };
-  for (const f of [updateLead, upsertOrderForSale, logActivity, applySaleFreeze, findSmmSalesForPhone, setupSaleMonth, addNoSaleMonth]) f.mockClear();
+  for (const f of [updateLead, upsertOrderForSale, recordSale, logActivity, applySaleFreeze, findSmmSalesForPhone, setupSaleMonth, addNoSaleMonth]) f.mockClear();
 });
 afterEach(cleanup);
 
@@ -106,15 +114,17 @@ describe("the sale form, recording a sale for a salesperson", () => {
     fireEvent.click(screen.getByTestId("save-sale"));
 
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    const saved = (updateLead.mock.calls[0] as unknown[])[1] as { saleItems: Record<string, any>[] };
-    const item = saved.saleItems[0];
+    // The sale and its order go to services/sales together, as the salesperson's sale.
+    const call = recordSale.mock.calls[0][0] as { leadId: string; item: Record<string, any>; soldByName: string; salesAdminId: string };
+    const item = call.item;
     expect(item.enteredBy).toMatchObject({ uid: "kiran", name: "Kiran" });
     expect(item.smm.clipsPerVideo).toBe(6);
     expect(item.verificationStatus).toBe("pending");
-    expect(upsertOrderForSale.mock.calls[0][0]).toMatchObject({ soldByName: "Anil", salesAdminId: "sadmin" });
+    expect(call).toMatchObject({ leadId: "l1", soldByName: "Anil", salesAdminId: "sadmin" });
+    expect(upsertOrderForSale).not.toHaveBeenCalled();
     expect(applySaleFreeze.mock.calls[0][0]).toMatchObject({ user: { uid: "anil", name: "Anil" } });
     expect(logActivity.mock.calls[0][0]).toMatchObject({ actorId: "kiran", details: { onBehalfOf: "Anil" } });
-    expect(onDone.mock.calls[0][0]).toMatchObject({ leadId: "l1", itemIndex: 0 });
+    expect(onDone.mock.calls[0][0]).toMatchObject({ leadId: "l1", itemIndex: 0, saleId: "l1_1" });
   });
 });
 
@@ -136,7 +146,7 @@ describe("the sale form, opened by Renew", () => {
     await uploadScreenshot();
     fireEvent.click(screen.getByTestId("save-sale"));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    const item = ((updateLead.mock.calls[0] as unknown[])[1] as { saleItems: Record<string, any>[] }).saleItems[0];
+    const item = (recordSale.mock.calls[0][0] as { item: Record<string, any> }).item;
     expect(item.smm.renewalOf).toBe("o_prev");
     expect(item.enteredBy).toBeUndefined();
   });

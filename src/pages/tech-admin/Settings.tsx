@@ -13,6 +13,7 @@ import CompanyMarksCard from "@/components/hr/CompanyMarksCard";
 import CompanyDocumentsCard from "@/components/hr/CompanyDocumentsCard";
 import ProfilePhotoUpload from "@/components/ProfilePhotoUpload";
 import MyIdCardCard from "@/components/MyIdCardCard";
+import InvoiceAccessCard from "@/components/invoice/InvoiceAccessCard";
 import { saveMemberPassword } from "@/services/memberCredentials";
 
 export default function TechAdminSettings() {
@@ -117,6 +118,9 @@ export default function TechAdminSettings() {
       <CompanyDocumentsCard />
 
       <CompanyMarksCard />
+
+      {/* Whether Tech Team Leaders may make invoices — the owner put this switch with the Tech Admin. */}
+      <InvoiceAccessCard />
 
       <MyIdCardCard />
 

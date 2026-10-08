@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  doc, updateDoc, deleteDoc, serverTimestamp, Timestamp,
+  doc, updateDoc, serverTimestamp, Timestamp,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -10,7 +10,7 @@ import { useMyLeads } from "@/hooks/useMyLeads";
 import { useMyOrders } from "@/hooks/useMyOrders";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
-import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock, clearSaleFreeze, clearedLeadFreezeFields } from "@/services/numberLock";
+import { claimNumber, applySaleFreeze, releaseLockForLead, buildLeadFreezeFields, fetchNumberLock, clearSaleFreeze } from "@/services/numberLock";
 import { findMemberDuplicates, resolveNonSaleDuplicates } from "@/services/duplicateLeads";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { leadActivityDay, leadActivityMs } from "@/utils/leadActivity";
@@ -54,7 +54,10 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { ATTIRE_LABELS, DEFAULT_REQUIREMENT, attireForGender, attireLabel, cleanRequirement, withRequirementDefaults } from "@/utils/adRequirement";
 import { characterPackOptions, getCharacterPack } from "@/services/characterPacks";
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
-import { upsertOrderForSale, cancelOrderForSale, addOrderUpdateNote, orderDocId } from "@/services/orders";
+import { addOrderUpdateNote } from "@/services/orders";
+import { deleteSale, deleteLeadWithSales, mutateSaleItems, isSaleWriteError } from "@/services/sales";
+import { orderIdOfSale, saleIdOf } from "@/utils/saleIdentity";
+import { saleHasWork } from "@/utils/saleEdit";
 import { buildClientSaleMessage } from "@/utils/salesMessage";
 import SaleStatusChip from "@/components/sales/SaleStatusChip";
 import ExtendPromiseButton from "@/components/work/ExtendPromiseButton";
@@ -223,7 +226,8 @@ export default function MyLeads() {
   const pendingDeletesRef = useRef<Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval> }>>(new Map());
 
   // The member's own orders, so each sale row knows whether the tech team has started work on it
-  // (and must therefore be locked from edit/delete). `soldBy` is the selling member's uid.
+  // (then it can still be edited — the job follows — but never deleted, 2026-10-08). `soldBy` is the
+  // selling member's uid.
   // Shared session-wide listener (see hooks/useMyOrders.ts) — not a page-local subscription.
   const { orders } = useMyOrders();
 
@@ -517,7 +521,10 @@ export default function MyLeads() {
       pendingDeletesRef.current.delete(id);
       dismiss();
       try {
-        await deleteDoc(doc(db, "leads", id));
+        // The lead AND every sale on it, everywhere (services/sales, 2026-10-08) — deleting the lead
+        // document alone left each sale's order in the tech queue. Refused while the tech team is
+        // working on one of its sales.
+        await deleteLeadWithSales(id);
         // Release the number lock so it can be re-added immediately (only if still owned by this member).
         if (phone) {
           try {
@@ -532,8 +539,12 @@ export default function MyLeads() {
           action: "deleted_lead",
           details: { leadId: id, leadName: displayName },
         });
-      } catch {
-        toast({ title: "Error", description: "Failed to delete lead.", variant: "destructive" });
+      } catch (err) {
+        toast({
+          title: isSaleWriteError(err) ? "Can't delete this lead" : "Error",
+          description: isSaleWriteError(err) ? err.message : "Failed to delete lead.",
+          variant: "destructive",
+        });
       }
     }, 5000);
 
@@ -651,25 +662,34 @@ export default function MyLeads() {
         leads={leads}
         ordersById={ordersById}
         onCollect={async (row, amount, note) => {
-          const items = saleItemsOf(row.lead).slice();
-          const current = items[row.index];
+          const current = saleItemsOf(row.lead)[row.index];
           if (!current) return;
-          const updated: SaleDetail = {
-            ...current,
-            partialPayment: true,
-            payments: withPayment(
-              current,
-              newPayment({
-                amount,
-                note: note || "Balance collected",
-                collectedAt: Timestamp.now(),
-                by: user ? { uid: user.uid, name: user.name } : null,
-              }),
-              row.lead,
-            ),
-          };
-          items[row.index] = updated;
-          await updateLead(row.lead.id, { saleItems: items, saleDetails: items[items.length - 1] });
+          const payment = newPayment({
+            amount,
+            note: note || "Balance collected",
+            collectedAt: Timestamp.now(),
+            by: user ? { uid: user.uid, name: user.name } : null,
+          });
+          /*
+            Added to the sale by its id, in the lead as it is now (services/sales, 2026-10-08) — writing
+            this screen's copy of the whole list back could undo an approval or an edit saved meanwhile.
+          */
+          let updated: SaleDetail;
+          try {
+            const { changed } = await mutateSaleItems(row.lead.id, [saleIdOf(row.lead.id, current, row.index)], (item) => ({
+              ...item,
+              partialPayment: true,
+              payments: withPayment(item, payment, row.lead),
+            }));
+            if (!changed[0]) {
+              toast({ title: "Not recorded", description: "This sale no longer exists.", variant: "destructive" });
+              return;
+            }
+            updated = changed[0].item;
+          } catch {
+            toast({ title: "Error", description: "The payment was not recorded — try again.", variant: "destructive" });
+            return;
+          }
           toast({
             title: "Payment recorded",
             description: pendingOf(updated, row.lead) > 0
@@ -990,7 +1010,7 @@ function PendingPaymentsPanel({ leads, ordersById, onCollect }: {
   const rows = useMemo(() => {
     const list = pendingSales(leads).map((row) => ({
       row,
-      readiness: collectReadiness(ordersById.get(orderDocId(row.lead.id, row.item, row.index))),
+      readiness: collectReadiness(ordersById.get(orderIdOfSale(row.lead.id, row.item, row.index))),
     }));
     // Ready first, then the biggest balance — the two things that decide who to ring next.
     return list.sort((a, b) => {
@@ -1262,10 +1282,14 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
   const [saleDone, setSaleDone] = useState(lead.saleDone || false);
   const [showSalesList, setShowSalesList] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // Which sale row is being edited / has its edit-log or update-note composer open.
-  const [editingSaleIdx, setEditingSaleIdx] = useState<number | null>(null);
-  const [logOpenIdx, setLogOpenIdx] = useState<number | null>(null);
-  const [noteIdx, setNoteIdx] = useState<number | null>(null);
+  // Which sale row is being edited — by the sale's permanent id, so a sale deleted above it can never
+  // move a different sale under the open form (2026-10-08). The log and note composers follow suit.
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const [logOpenId, setLogOpenId] = useState<string | null>(null);
+  const [noteId, setNoteId] = useState<string | null>(null);
+  /** The sale whose delete is being confirmed. */
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   /** The sale row whose penalty dialog is open. Keyed by order, since that is where it is stored. */
   const [penaltyFor, setPenaltyFor] = useState<{ order: Order; idx: number } | null>(null);
   /** The order whose client chat is being read — the order IS the room. */
@@ -1274,67 +1298,64 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
 
   const allSaleItems = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
 
-  /** The order this sale row produced (stable per sale via the deterministic order id). */
-  const orderFor = (item: SaleDetail, idx: number) => ordersById.get(orderDocId(lead.id, item, idx));
-  /** Assigned = the tech team has started work → the sale is locked from edit/delete. */
-  const isLocked = (order?: Order) => !!order && order.status !== "unassigned" && order.status !== "cancelled";
+  /** The order this sale row produced — `o_<saleId>`, one order per sale (utils/saleIdentity). */
+  const orderFor = (item: SaleDetail, idx: number) => ordersById.get(orderIdOfSale(lead.id, item, idx));
 
   // Sync from props
   useEffect(() => { setNotes(lead.notes || ""); }, [lead.notes]);
   useEffect(() => { setSaleDone(lead.saleDone || false); }, [lead.saleDone]);
 
-  const handleDeleteSaleItem = async (itemIndex: number) => {
-    const deletedItem = allSaleItems[itemIndex];
-    // Once work is out with a member, deleting is still allowed — but it can't be silent, so the
-    // member confirms and the tech side is told the sale was deleted (see cancelOrderForSale).
-    const started = isLocked(orderFor(deletedItem, itemIndex));
-    if (started && !window.confirm(
-      "The tech team has already started this work.\n\n"
-      + "Deleting the sale will cancel the order and tell them it was deleted by you, so they stop.\n\n"
-      + "Delete it anyway?"
-    )) return;
-
-    const items = [...allSaleItems];
-    items.splice(itemIndex, 1);
-    const updates: Record<string, any> = { saleItems: items };
-    const noSalesLeft = items.length === 0;
-    if (noSalesLeft) {
-      updates.saleDone = false;
-      updates.saleDetails = null;
-      // No sales left → lift the sale-freeze (the number stays in this member's leads).
-      Object.assign(updates, clearedLeadFreezeFields());
-    }
-    await updateLead(lead.id, updates);
-    // Remove the matching order across the platform so it never lingers in the tech Orders queue.
-    // Passing the member's name flags already-assigned work as "sale deleted" rather than
-    // letting the job quietly disappear from under whoever is building it.
+  /**
+   * Delete a sale — only one the tech team has not started (owner, 2026-10-08).
+   *
+   * It goes everywhere at once: the sale, its order in the tech queue, its client chat and its month,
+   * in one transaction (services/sales.deleteSale). A sale with work on it is never deleted — the row
+   * shows why instead of a Delete button, and the service refuses it too, in case the work started
+   * after this screen last heard (it re-reads everything before removing anything).
+   */
+  const handleDeleteSaleItem = async (item: SaleDetail, itemIndex: number) => {
+    const saleId = saleIdOf(lead.id, item, itemIndex);
+    setConfirmDeleteId(null);
+    setDeletingId(saleId);
     try {
-      await cancelOrderForSale({ leadId: lead.id, item: deletedItem, itemIndex, deletedByName: currentUser?.name || null });
-    } catch { /* best-effort */ }
-    if (noSalesLeft && currentUser) {
-      try { await clearSaleFreeze({ phone: lead.phone, actor: { uid: currentUser.uid, name: currentUser.name } }); } catch { /* best-effort */ }
-    }
-    if (currentUser) {
-      await logActivity({
-        actorId: currentUser.uid,
-        actorName: currentUser.name,
-        actorRole: "sales_member",
-        adminId: currentUser.createdBy,
-        action: "deleted_sale_item",
-        details: {
-          leadId: lead.id,
-          leadName: lead.displayName,
-          amount: deletedItem?.amount,
-          category: deletedItem?.category,
-        },
+      const result = await deleteSale({ leadId: lead.id, saleId });
+      if (!result.deleted) {
+        toast({ title: "Already deleted", description: "This sale was already removed." });
+        return;
+      }
+      if (result.noSalesLeft && currentUser) {
+        // No sales left → the number is no longer sold: lift its freeze (it stays in this member's leads).
+        try { await clearSaleFreeze({ phone: lead.phone, actor: { uid: currentUser.uid, name: currentUser.name } }); } catch { /* best-effort */ }
+      }
+      if (currentUser) {
+        // The sale is gone; a lost activity line must not report the delete as failed.
+        try {
+          await logActivity({
+            actorId: currentUser.uid,
+            actorName: currentUser.name,
+            actorRole: "sales_member",
+            adminId: currentUser.createdBy,
+            action: "deleted_sale_item",
+            details: {
+              leadId: lead.id,
+              leadName: lead.displayName,
+              saleId,
+              amount: item?.amount,
+              category: item?.category,
+            },
+          });
+        } catch { /* best-effort */ }
+      }
+      toast({ title: "Deleted", description: "Sale removed — and from the tech queue, its client chat and every tech screen." });
+    } catch (err) {
+      toast({
+        title: isSaleWriteError(err) ? "Can't delete this sale" : "Error",
+        description: isSaleWriteError(err) ? err.message : "The sale was not deleted — try again.",
+        variant: "destructive",
       });
+    } finally {
+      setDeletingId(null);
     }
-    toast({
-      title: "Deleted",
-      description: started
-        ? "Sale removed. The tech team has been told it was deleted so they stop the work."
-        : "Sale removed — and cleared from the tech queue.",
-    });
   };
 
   const copyClientMessage = (item: SaleDetail) => {
@@ -1521,10 +1542,12 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
         {/* Show sales: always show if 0-1 items, collapsible if 2+ */}
         {(allSaleItems.length < 2 || showSalesList) && allSaleItems.map((item, idx) => {
           const order = orderFor(item, idx);
-          const locked = isLocked(order);
-          const editing = editingSaleIdx === idx;
+          const saleId = saleIdOf(lead.id, item, idx);
+          /** The tech team has started on it: it can be edited (the job follows), never deleted. */
+          const hasWork = saleHasWork(order);
+          const editing = editingSaleId === saleId;
           return (
-          <div key={idx} className={`text-xs rounded-lg p-2 space-y-1.5 ${item.verificationStatus === "verified" ? "bg-success/10 border border-success/20" : "bg-warning/10 border border-warning/20"}`}>
+          <div key={saleId} data-test="sale-row" data-sale-id={saleId} className={`text-xs rounded-lg p-2 space-y-1.5 ${item.verificationStatus === "verified" ? "bg-success/10 border border-success/20" : "bg-warning/10 border border-warning/20"}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 flex-wrap">
                 {/* A bulk line says which kind of video it is — "bulk ads" alone does not. */}
@@ -1574,7 +1597,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                   </span>
                 )}
                 {!!item.editLog?.length && (
-                  <button onClick={() => setLogOpenIdx(logOpenIdx === idx ? null : idx)}
+                  <button onClick={() => setLogOpenId(logOpenId === saleId ? null : saleId)}
                     className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-info/15 text-info hover:bg-info/25 transition-colors"
                     title="See what changed">
                     <History size={9} /> edited
@@ -1618,7 +1641,7 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
             )}
 
             {/* Edit-log — plain record of every change made after the sale was added */}
-            {logOpenIdx === idx && !!item.editLog?.length && (
+            {logOpenId === saleId && !!item.editLog?.length && (
               <div className="rounded bg-background/70 border border-border p-1.5 space-y-1">
                 {item.editLog.map((e, i) => (
                   <div key={i} className="text-[9px] text-muted-foreground">
@@ -1630,7 +1653,12 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
               </div>
             )}
 
-            {/* Action row — copy to client always; edit/delete only until work starts, then a note */}
+            {/*
+              Action row (2026-10-08, owner): copy to the client always; EDIT always — on a sale the tech
+              team has started too, where the change goes to the job and they are told; DELETE only while
+              nobody has started. A started sale shows why it cannot be deleted instead of a button, and
+              keeps "Send update note" for what the form has no field for.
+            */}
             <div className="flex flex-wrap items-center gap-1.5">
               <button onClick={() => copyClientMessage(item)}
                 className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-success/10 text-success text-[11px] font-medium hover:bg-success/20 transition-colors"
@@ -1642,22 +1670,44 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
                 title="Send the confirmation to the client on WhatsApp">
                 <MessageCircle size={11} /> Send
               </a>
-              {!locked ? (
+              <button onClick={() => { setEditingSaleId(editing ? null : saleId); setNoteId(null); setConfirmDeleteId(null); }}
+                data-test="sale-edit"
+                className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/20 transition-colors">
+                <Pencil size={11} /> {editing ? "Close" : "Edit"}
+              </button>
+              {hasWork ? (
                 <>
-                  <button onClick={() => { setEditingSaleIdx(editing ? null : idx); setNoteIdx(null); }}
-                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-primary/10 text-primary text-[11px] font-medium hover:bg-primary/20 transition-colors">
-                    <Pencil size={11} /> {editing ? "Close" : "Edit"}
+                  <button onClick={() => { setNoteId(noteId === saleId ? null : saleId); setEditingSaleId(null); }}
+                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-medium hover:bg-blue-500/20 transition-colors">
+                    <Send size={11} /> {noteId === saleId ? "Close" : "Send update note"}
                   </button>
-                  <button onClick={() => handleDeleteSaleItem(idx)}
-                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors text-[11px] font-medium"
-                    title="Delete sale">
-                    <Trash2 size={11} /> Delete
-                  </button>
+                  {/* Never deleted once the tech team has started — say so where the button would be. */}
+                  <span data-test="sale-delete-blocked"
+                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-dashed border-border text-[10px] font-medium text-muted-foreground"
+                    title="The tech team is working on this sale, so it can't be deleted. Edit it instead, or ask the tech admin to take the work back first.">
+                    <Lock size={10} /> Can't delete — work started{order?.assignedToName ? ` (${order.assignedToName})` : ""}
+                  </span>
                 </>
+              ) : confirmDeleteId === saleId ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-[10px] font-medium text-destructive">Delete everywhere?</span>
+                  <button onClick={() => handleDeleteSaleItem(item, idx)} disabled={deletingId === saleId}
+                    data-test="sale-delete-confirm"
+                    className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-destructive/15 text-destructive text-[11px] font-medium hover:bg-destructive/25 transition-colors disabled:opacity-50">
+                    {deletingId === saleId ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Delete
+                  </button>
+                  <button onClick={() => setConfirmDeleteId(null)}
+                    className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    title="Keep the sale">
+                    <X size={11} />
+                  </button>
+                </span>
               ) : (
-                <button onClick={() => { setNoteIdx(noteIdx === idx ? null : idx); setEditingSaleIdx(null); }}
-                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[11px] font-medium hover:bg-blue-500/20 transition-colors">
-                  <Send size={11} /> {noteIdx === idx ? "Close" : "Send update note"}
+                <button onClick={() => { setConfirmDeleteId(saleId); setEditingSaleId(null); }}
+                  data-test="sale-delete"
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors text-[11px] font-medium"
+                  title="Delete this sale — from the tech queue too">
+                  <Trash2 size={11} /> Delete
                 </button>
               )}
               {/*
@@ -1695,15 +1745,15 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
               )}
             </div>
 
-            {/* Update-note composer — the only way to change an order once work has started */}
-            {noteIdx === idx && order && (
-              <UpdateNoteComposer order={order} byName={currentUser?.name || ""} onDone={() => setNoteIdx(null)} />
+            {/* Update-note composer — a free-text note to the people doing the work */}
+            {noteId === saleId && order && (
+              <UpdateNoteComposer order={order} byName={currentUser?.name || ""} onDone={() => setNoteId(null)} />
             )}
 
-            {/* Inline edit form — reuses the full sale form, in "edit this item" mode */}
-            {editing && !locked && (
-              <SaleForm lead={lead} updateLead={updateLead} onDone={() => setEditingSaleIdx(null)}
-                editItem={{ index: idx, item }} />
+            {/* Inline edit form — the full sale form, editing THIS sale (by its id), started or not */}
+            {editing && (
+              <SaleForm lead={lead} updateLead={updateLead} onDone={() => setEditingSaleId(null)}
+                editItem={{ index: idx, item, order: order ?? null }} />
             )}
 
             {item.paymentScreenshotUrl && (
