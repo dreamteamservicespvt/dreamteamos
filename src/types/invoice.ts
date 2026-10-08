@@ -20,7 +20,7 @@
  */
 
 /** `draft` has no number yet. `issued` is generated and unpaid; `paid` / `cancelled` follow it. */
-export type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled";
+export  type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled";
 
 export type InvoiceDiscountKind = "percent" | "amount";
 
@@ -89,8 +89,14 @@ export interface InvoicePayment {
   ifsc: string;
   swift: string;
   upiId: string;
-  /** Print a UPI QR (generated locally, with the invoice total in it) beside the bank details. */
+  /** Print a UPI QR beside the bank details. */
   showQr: boolean;
+  /**
+   * The company's own QR image (a PhonePe / bank merchant QR), uploaded — owner, 2026-10-08. Empty means
+   * the QR is made here from `upiId`, with the invoice total already in it. Optional for invoices saved
+   * before it existed.
+   */
+  qrImageUrl?: string;
 }
 
 /** The figures the list needs without re-running the engine. Written from `invoiceMath` at save. */

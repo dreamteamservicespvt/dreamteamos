@@ -36,12 +36,14 @@ export const INVOICE_FALLBACK_DEFAULTS: Required<Pick<InvoiceDefaults, "terms" |
     swift: "BARBINBBKKD",
     upiId: "9849834102-3@ybl",
     showQr: true,
+    qrImageUrl: "",
   },
   terms: "Full payment must be completed before any work begins for Dream Team Services.",
   notes: "Thank you for choosing Dream Team Services. We are committed to delivering high-quality services. Please feel free to reach out for any clarifications during the project.",
   taxRate: 18,
-  // The company quotes all-in prices — ₹17,400 on its own invoice is the price with GST in it.
-  pricesIncludeTax: true,
+  // GST on top (owner, 2026-10-08): the rate typed is the rate printed and goes into the Subtotal; CGST + SGST
+  // (or IGST) are added after it — 100 → 100 + 9 + 9 = 118. "Rate includes GST" stays one tap away in Tax.
+  pricesIncludeTax: false,
   dueDays: 5,
 };
 
@@ -61,6 +63,7 @@ export function resolveInvoiceDefaults(stored?: InvoiceDefaults | null) {
       swift: text(p.swift, f.payment.swift),
       upiId: text(p.upiId, f.payment.upiId),
       showQr: typeof p.showQr === "boolean" ? p.showQr : f.payment.showQr,
+      qrImageUrl: text(p.qrImageUrl, f.payment.qrImageUrl || ""),
     } as InvoicePayment,
     terms: text(d.terms, f.terms),
     notes: text(d.notes, f.notes),
@@ -207,6 +210,7 @@ export function contentOf(invoice: Partial<InvoiceContent> | null | undefined): 
       bankName: str(p.bankName), branch: str(p.branch), accountName: str(p.accountName),
       accountNumber: str(p.accountNumber), ifsc: str(p.ifsc), swift: str(p.swift), upiId: str(p.upiId),
       showQr: p.showQr !== false,
+      qrImageUrl: str(p.qrImageUrl),
     },
     terms: str(i.terms),
     notes: str(i.notes),
@@ -322,7 +326,11 @@ export function validateInvoice(content: InvoiceContent, totals: InvoiceTotals =
   else if (totals.grandTotal <= 0) err("items", "The invoice total is ₹0.");
 
   if (content.payment.ifsc && !isValidIfsc(content.payment.ifsc)) warn("payment.ifsc", "An IFSC is 11 characters, like BARB0GHATIX.");
-  if (content.payment.upiId && !isValidUpiId(content.payment.upiId)) warn("payment.upiId", "A UPI ID looks like name@bank. The QR code is hidden until it's right.");
+  if (content.payment.upiId && !isValidUpiId(content.payment.upiId)) {
+    warn("payment.upiId", content.payment.qrImageUrl
+      ? "A UPI ID looks like name@bank."
+      : "A UPI ID looks like name@bank. The QR code is hidden until it's right.");
+  }
 
   return issues;
 }
