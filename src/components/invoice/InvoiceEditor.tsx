@@ -7,7 +7,7 @@
  * who opens a new invoice sees two things to fill in, not forty.
  */
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Building2, ImagePlus, Loader2, RotateCcw, Save, Undo2 } from "lucide-react";
+import { Building2, ImagePlus, Loader2, QrCode, RotateCcw, Save, Undo2, Upload } from "lucide-react";
 import type { InvoiceContent, InvoiceCustomer, InvoiceDefaults, InvoiceItem, InvoiceStatus } from "@/types/invoice";
 import type { InvoiceTotals } from "@/utils/invoiceMath";
 import { formatRate } from "@/utils/invoiceMath";
@@ -58,6 +58,10 @@ interface Props {
   logoSrc: string | null;
   logoUploading: boolean;
   onLogoFile: (file: File) => void;
+  /** What the QR on the invoice looks like now — the uploaded image or the one made from the UPI ID. */
+  qrSrc: string | null;
+  qrUploading: boolean;
+  onQrFile: (file: File) => void;
   canChangeStatus: boolean;
   statusBusy: boolean;
   onStatusChange: (s: Exclude<InvoiceStatus, "draft">) => void;
@@ -75,7 +79,7 @@ interface Props {
 export default function InvoiceEditor(props: Props) {
   const {
     content, update, totals, number, status, readOnly, compact, issueFor, open, onToggle,
-    company, logoSrc, logoUploading, onLogoFile, canChangeStatus, statusBusy, onStatusChange,
+    company, logoSrc, logoUploading, onLogoFile, qrSrc, qrUploading, onQrFile, canChangeStatus, statusBusy, onStatusChange,
     canSaveDefaults, onSaveDefaults, focusItemId, onFocusDone, onAddItem, fillFromSale,
   } = props;
   const c = content;
@@ -196,7 +200,7 @@ export default function InvoiceEditor(props: Props) {
             {logoSrc ? <img src={logoSrc} alt="Logo" className="max-h-10 max-w-[100px] object-contain" /> : <Building2 size={18} className="text-slate-400" />}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <LogoButton uploading={logoUploading} onFile={onLogoFile} />
+            <ImagePickButton uploading={logoUploading} onFile={onLogoFile} label="Change logo" busyLabel="Uploading…" icon={<ImagePlus size={13} />} testId="logo-upload" />
             {c.seller.logoUrl && (
               <button type="button" onClick={() => setSeller({ logoUrl: "" })}
                 className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent">
@@ -307,7 +311,7 @@ export default function InvoiceEditor(props: Props) {
       {/* 5 ─ Tax */}
       <Section disabled={readOnly} id="tax" step={5} title="Tax" open={open.tax} onToggle={() => onToggle("tax")}
         summary={gstOn
-          ? `GST ${mixed ? "mixed rates" : formatRate(c.tax.defaultRate)} · ${c.tax.pricesIncludeTax ? "prices include GST" : "added on top"} · ${totals.supply === "inter" ? "IGST" : "CGST + SGST"}`
+          ? `GST ${mixed ? "mixed rates" : formatRate(c.tax.defaultRate)} · ${c.tax.pricesIncludeTax ? "rate includes GST" : "added on top"} · ${totals.supply === "inter" ? "IGST" : "CGST + SGST"}`
           : "No GST"}>
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -315,7 +319,7 @@ export default function InvoiceEditor(props: Props) {
               options={[{ value: "gst", label: "GST invoice" }, { value: "none", label: "No GST" }]} />
             {gstOn && (
               <Segmented ariaLabel="Prices" value={c.tax.pricesIncludeTax ? "incl" : "excl"} onChange={(v) => setTax({ pricesIncludeTax: v === "incl" })}
-                options={[{ value: "excl", label: "GST on top" }, { value: "incl", label: "Prices include GST" }]} />
+                options={[{ value: "excl", label: "Add GST on top" }, { value: "incl", label: "Rate includes GST" }]} />
             )}
           </div>
           {gstOn && (
@@ -377,13 +381,45 @@ export default function InvoiceEditor(props: Props) {
           <Field label="UPI ID" htmlFor="inv-upi" field="payment.upiId" issue={issueFor("payment.upiId")} className={compact ? "" : "col-span-2"}>
             <TextInput id="inv-upi" value={c.payment.upiId} onValue={(v) => setPayment({ upiId: v.trim() })} placeholder="name@bank" data-test="upi-id" />
           </Field>
-          <label className={cn("flex items-center justify-between gap-4 cursor-pointer", compact ? "" : "col-span-2")}>
-            <span>
-              <span className="block text-sm text-foreground">UPI QR code on the invoice</span>
-              <span className="block text-xs text-muted-foreground">Made from the UPI ID, with the invoice total already filled in.</span>
-            </span>
-            <Switch checked={c.payment.showQr} onCheckedChange={(v) => setPayment({ showQr: v })} disabled={readOnly} aria-label="Show UPI QR code" data-test="qr-toggle" />
-          </label>
+          {/* The QR: the company's own uploaded image, or one made here from the UPI ID (owner, 2026-10-08). */}
+          <div className={cn("rounded-xl border border-border p-3 flex items-start gap-3", compact ? "" : "col-span-2")} data-test="qr-block">
+            <div className="w-[76px] h-[76px] rounded-lg border border-border bg-white flex items-center justify-center shrink-0 overflow-hidden">
+              {qrSrc && c.payment.showQr
+                ? <img src={qrSrc} alt="UPI QR code" className="w-[64px] h-[64px] object-contain" data-test="qr-thumb" />
+                : <QrCode size={26} className="text-slate-300" />}
+            </div>
+            <div className="min-w-0 flex-1 space-y-2.5">
+              <label className="flex items-start justify-between gap-3 cursor-pointer">
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-foreground">UPI QR code on the invoice</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    {c.payment.qrImageUrl
+                      ? "Your uploaded QR image is printed."
+                      : "Made from the UPI ID above, with the invoice total already filled in."}
+                  </span>
+                </span>
+                <Switch checked={c.payment.showQr} onCheckedChange={(v) => setPayment({ showQr: v })} disabled={readOnly} aria-label="Show UPI QR code" data-test="qr-toggle" />
+              </label>
+              {!readOnly && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <ImagePickButton
+                    uploading={qrUploading}
+                    onFile={onQrFile}
+                    label={c.payment.qrImageUrl ? "Replace QR image" : "Upload your QR image"}
+                    busyLabel="Uploading…"
+                    icon={<Upload size={13} />}
+                    testId="qr-upload"
+                  />
+                  {c.payment.qrImageUrl && (
+                    <button type="button" onClick={() => setPayment({ qrImageUrl: "" })} data-test="qr-remove"
+                      className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent">
+                      <Undo2 size={13} /> Use the UPI ID instead
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </Section>
 
@@ -404,15 +440,23 @@ export default function InvoiceEditor(props: Props) {
   );
 }
 
-function LogoButton({ uploading, onFile }: { uploading: boolean; onFile: (f: File) => void }) {
+/** A small button that opens the file picker for one image (the logo, the QR). */
+function ImagePickButton({ uploading, onFile, label, busyLabel, icon, testId }: {
+  uploading: boolean;
+  onFile: (f: File) => void;
+  label: string;
+  busyLabel: string;
+  icon: ReactNode;
+  testId?: string;
+}) {
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
+      <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" data-test={testId ? `${testId}-input` : undefined}
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
-      <button type="button" onClick={() => ref.current?.click()} disabled={uploading}
+      <button type="button" onClick={() => ref.current?.click()} disabled={uploading} data-test={testId}
         className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-accent disabled:opacity-60">
-        {uploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />} {uploading ? "Uploading…" : "Change logo"}
+        {uploading ? <Loader2 size={13} className="animate-spin" /> : icon} {uploading ? busyLabel : label}
       </button>
     </>
   );

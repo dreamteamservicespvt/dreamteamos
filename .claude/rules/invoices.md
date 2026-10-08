@@ -23,7 +23,10 @@ paths:
 
 **What it is.** A two-pane workspace: the editor on the left, the invoice as real A4 sheets on the right,
 updating as you type (on a narrow screen: Edit | Preview). Drafts save themselves; Generate gives the invoice
-its permanent number; Download PDF and Print come from the same sheets the preview shows.
+its permanent number and opens a "ready" window (Download PDF / Print / Done); Download PDF and Print exist ONLY
+for a generated invoice (owner, 2026-10-08: no draft PDFs) and come from the same sheets the preview shows. A
+labelled **Close** (top right, a link to `/invoices`) leaves the builder; a generated invoice's main button is
+Download PDF, with Print, Edit and the ⋯ menu (Edit invoice, Duplicate, Delete invoice) beside it.
 
 **Who (owner, 2026-10-08).** Sales member, Sales Admin, Tech Admin, Main Admin, Accounts Admin — always. Tech
 Team Leader — only while ONE company-wide switch is on (`invoice_settings/access.teamLeadersEnabled`, set by the
@@ -57,7 +60,7 @@ Sidebar listens to the switch for team leaders only).
 - `utils/invoicePdf.ts` — `downloadInvoicePdf` (html2canvas 3× → JPEG → jsPDF, loaded on first use) and
   `printInvoicePages` (clones → `agreementPrint.printDocumentPages`, the HR letters' print path, split out for this).
 - `services/invoices.ts` — `newInvoiceId`, `watchInvoices`, `watchInvoice`, `saveInvoiceContent`,
-  `generateInvoice`, `setInvoiceStatus`, `deleteDraftInvoice`, `duplicateInvoice`, `fetchMyRecentInvoices`.
+  `generateInvoice`, `setInvoiceStatus`, `deleteInvoice`, `duplicateInvoice`, `fetchMyRecentInvoices`.
 - `services/invoiceSettings.ts` — the switch and the defaults (own file so the sidebar does not pull the engine
   into the first bundle); `hooks/useInvoiceSettings.ts` (`useInvoiceAccess(enabled)`, `useInvoiceDefaults`).
 - `components/invoice/` — `InvoicePaper` (the A4 sheet + the measuring copy, inline styles only), `InvoicePreview`
@@ -70,14 +73,16 @@ Sidebar listens to the switch for team leaders only).
 **Data** (rules in `docs/firestore-rules.md`, kept out of the catch-all):
 - `invoices/{invoiceId}` — content (`issueDate`, `dueDate`, `seller` snapshot, `customer`, `items[]` each with a
   stable `id`, `tax` {mode gst|none, pricesIncludeTax, placeOfSupply, defaultRate}, `roundOff`, `payment`
-  snapshot {bank, branch, account, IFSC, SWIFT, UPI, showQr}, `terms`, `notes`) + `number` (null = draft),
+  snapshot {bank, branch, account, IFSC, SWIFT, UPI, showQr, `qrImageUrl` — the company's own uploaded QR,
+  "" = made from the UPI ID}, `terms`, `notes`) + `number` (null = draft),
   `sequence`, `financialYear`, `status` (`draft` → `issued` → `paid` / `cancelled`; "Overdue" is derived, never
   stored), `totals` {taxable, tax, grandTotal (paise), itemCount}, `ownerId/Name/Role`, `revision`, `history[]`
   ({at ms, action created|generated|edited|paid|unpaid|cancelled|duplicated, byUid, byName, note}),
   `duplicatedFrom`, `sourceOrderId`, timestamps (`createdAt`, `updatedAt`, `issuedAt`, `issuedBy*`, `paidAt`,
   `cancelledAt`).
 - `invoice_counters/{2026-27}` `{ seq, fy }` · `invoice_numbers/{DTS-26-27-0001}` `{ number, invoiceId, fy,
-  sequence, byUid }` (create-only register) · `invoice_settings/access` `{ teamLeadersEnabled }` ·
+  sequence, byUid }` (create-only register; when its invoice is deleted it gains `deleted: true`, `deletedAt`,
+  `deletedByUid/Name`, `customerName`, `grandTotal` and the number is never reused) · `invoice_settings/access` `{ teamLeadersEnabled }` ·
   `invoice_settings/defaults` `{ payment, terms, notes, taxRate, pricesIncludeTax, dueDays }`.
 
 ## 24. BUSINESS RULES (this module)
@@ -89,15 +94,23 @@ Sidebar listens to the switch for team leaders only).
   connection (15 s timeout) — a number is never given out offline.
 - **After issue (owner's choice):** editable and keeps its number. The builder opens an issued invoice
   read-only; Edit → Save changes (explicit, validated) bumps `revision` and logs `edited`. Status Unpaid / Paid /
-  Cancelled can change; a numbered invoice is never deleted (cancel it; the rules refuse a delete).
+  Cancelled can change. **Delete** (owner, 2026-10-08): the maker or an admin can delete a draft or a generated
+  invoice (`deleteInvoice`); a generated one's number stays used — its register entry is marked deleted in the
+  same transaction (the rules require it) — so the series skips it and never reuses it. The confirmation offers
+  Cancelled as the gentler choice when the client already has the invoice (`deleteConfirmCopy`).
 - **Tax:** CGST + SGST when the place of supply is the seller's state (from the seller GSTIN, else 37 Andhra
-  Pradesh), IGST otherwise; typing a valid client GSTIN sets the place of supply. Prices include GST by default
-  (the company quotes all-in; ₹17,400 → 14,745.76 + 1,327.12 + 1,327.12). Tax is computed per rate group in
+  Pradesh), IGST otherwise; typing a valid client GSTIN sets the place of supply. **GST is added on top by
+  default** (owner, 2026-10-08): the rate typed is the rate printed and the Subtotal; 100 → 100 + 9 + 9 = ₹118.
+  "Rate includes GST" is the other option (₹17,400 all-in → 14,745.76 + 1,327.12 + 1,327.12). Tax is computed per rate group in
   integer paise; inclusive prices keep the total exactly as typed and CGST = SGST to the paisa; line amounts
   always sum to the taxable value. "No GST" prints a plain INVOICE.
 - **Before Generate (errors):** invoice date; due date not before it; seller name; seller GSTIN valid (and present
   for a GST invoice); customer name; client GSTIN valid if given; ≥1 item, each named with quantity > 0; total >
-  ₹0. Warnings only: emails, IFSC, UPI (QR hidden), a ₹0 line, a discount to ₹0, missing ship-to address.
+  ₹0. Warnings only: emails, IFSC, UPI (QR hidden unless an image was uploaded), a ₹0 line, a discount to ₹0,
+  missing ship-to address.
+- **UPI QR:** the company's own QR image can be uploaded in Payment details (padded to a white square first,
+  `squareImageFile`, because html2canvas ignores `object-fit`); otherwise one is made locally from the UPI ID with
+  the total in it. Admins can save the uploaded QR as the default with the rest of the payment details.
 - **Defaults:** a new invoice takes the company from `company_settings/main` and payment/terms/notes/GST from
   `invoice_settings/defaults` over `INVOICE_FALLBACK_DEFAULTS`; the four admins can "Save as default" from the
   Tax, Payment, Terms and Notes sections. Both are snapshots in the invoice.
@@ -111,8 +124,11 @@ Sidebar listens to the switch for team leaders only).
 **Page plan (`planInvoicePages`):** item rows never split; every sheet with rows repeats the table header; the
 header is never last on a sheet; the totals carry the last row with them rather than sit alone; a heading keeps
 with its paragraph (terms and notes are split per line); a block taller than a sheet gets its own. Sheet 2+
-starts with a fixed-height continuation header; every sheet has a footer "<number> · Page X of N". Draft and
-Cancelled sheets carry a faint watermark; Paid prints a PAID pill. Geometry: A4 794 × 1123 px, 56 px sides.
+starts with a fixed-height continuation header; every sheet has a footer "<number> · Page X of N". No watermark
+(removed 2026-10-08 — the owner found it covering the content); Paid / Cancelled print a small pill. The logo is
+drawn at an exact size from its natural proportions within 170 × 44 (`fitLogo`) — html2canvas ignores
+`object-fit`, so `max-width` + `contain` printed a stretched logo. Geometry: A4 794 × 1123 px, 56 px sides.
+"Invoice details" starts folded for a draft and open for a generated invoice (its Status).
 
 ## 25. STATUS
 

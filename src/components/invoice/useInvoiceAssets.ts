@@ -28,6 +28,57 @@ export function useQrDataUrl(text: string): { src: string | null; ready: boolean
   return { src: ready ? state.src : null, ready };
 }
 
+/** The natural size of an image, once it has loaded — so the paper can draw a logo at its own shape. */
+export function useImageSize(src: string | null): { width: number; height: number } | null {
+  const [size, setSize] = useState<{ src: string; width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!src) { setSize(null); return; }
+    let alive = true;
+    const img = new Image();
+    img.onload = () => { if (alive) setSize({ src, width: img.naturalWidth, height: img.naturalHeight }); };
+    img.onerror = () => { if (alive) setSize(null); };
+    img.src = src;
+    return () => { alive = false; };
+  }, [src]);
+  return size && size.src === src ? { width: size.width, height: size.height } : null;
+}
+
+/**
+ * An uploaded QR image made square on a white page before it is stored.
+ *
+ * Merchant QRs come as all sorts of shapes — a phone screenshot, a PhonePe poster with a heading. The
+ * invoice draws the QR in a fixed square, and html2canvas ignores `object-fit`, so anything not square
+ * would print stretched. Centred on a white square once, at upload, it prints as it was photographed.
+ */
+export async function squareImageFile(file: File, maxSide = 900): Promise<File> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("not an image"));
+      el.src = url;
+    });
+    const side = Math.min(maxSide, Math.max(img.naturalWidth, img.naturalHeight));
+    const scale = side / Math.max(img.naturalWidth, img.naturalHeight);
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = side;
+    canvas.height = side;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, side, side);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, Math.round((side - w) / 2), Math.round((side - h) / 2), w, h);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    return blob ? new File([blob], "upi-qr.png", { type: "image/png" }) : file;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function useInlinedImage(url: string): { src: string | null; ready: boolean } {
   const [state, setState] = useState<{ url: string; src: string | null }>({ url: "", src: null });
   useEffect(() => {

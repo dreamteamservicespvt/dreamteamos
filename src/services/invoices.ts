@@ -280,17 +280,29 @@ export async function setInvoiceStatus(
 }
 
 /**
- * Delete a draft. Refused for a numbered invoice: its number is part of the series, and a gap with
- * no invoice behind it is exactly what a tax inspector asks about. Those are cancelled instead.
+ * Delete an invoice — a draft, or (owner, 2026-10-08) a generated one.
+ *
+ * A generated invoice's NUMBER is never freed: its register entry (`invoice_numbers/{key}`) stays and
+ * records the deletion — who, when, for whom and for how much — in the same transaction. The series
+ * therefore skips that number rather than handing it to another invoice (two invoices sharing a number
+ * is the one thing worse than a gap), and the gap can always be explained. Cancelling remains the
+ * gentler choice for an invoice the client already has; the builder says so before deleting.
  */
-export async function deleteDraftInvoice(id: string): Promise<void> {
+export async function deleteInvoice(id: string, actor: InvoiceActor): Promise<void> {
   await runTransaction(db, async (tx) => {
     const ref = doc(db, INVOICES, id);
     const snap = await tx.get(ref);
     if (!snap.exists()) return;
     const data = snap.data() as Partial<Invoice>;
-    if (data.number || (data.status && data.status !== "draft")) {
-      throw new Error("A generated invoice can't be deleted — cancel it instead.");
+    if (data.number) {
+      tx.set(doc(db, NUMBERS, invoiceNumberKey(data.number)), {
+        deleted: true,
+        deletedAt: serverTimestamp(),
+        deletedByUid: actor.uid,
+        deletedByName: actor.name || "",
+        customerName: data.customer?.name || "",
+        grandTotal: data.totals?.grandTotal ?? 0,
+      }, { merge: true });
     }
     tx.delete(ref);
   });

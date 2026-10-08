@@ -100,7 +100,7 @@ export default function ItemsEditor({
           <span />
           <span>Item</span>
           <span className="text-right">Qty</span>
-          <span className="text-right">Rate{gstOn ? (pricesIncludeTax ? " (incl. GST)" : " (excl. GST)") : ""}</span>
+          <span className="text-right">Rate{gstOn && pricesIncludeTax ? " (incl. GST)" : ""}</span>
           <span className="text-right">Amount</span>
           <span />
         </div>
@@ -322,7 +322,7 @@ function ItemRow({
             <Field label="Qty" htmlFor={`qty-${item.id}`}>
               <NumberInput id={`qty-${item.id}`} value={item.quantity} onValue={(v) => onPatch({ quantity: v })} decimals={3} max={9999999} disabled={disabled} invalid={qtyIssue?.level === "error"} />
             </Field>
-            <Field label={gstOn ? (pricesIncludeTax ? "Rate (incl. GST)" : "Rate (excl. GST)") : "Rate"} htmlFor={`rate-${item.id}`}>
+            <Field label={gstOn && pricesIncludeTax ? "Rate (incl. GST)" : "Rate"} htmlFor={`rate-${item.id}`}>
               <NumberInput id={`rate-${item.id}`} value={item.rate} onValue={(v) => onPatch({ rate: v })} max={99999999} placeholder="0.00" blankZero disabled={disabled} data-test="item-rate" />
             </Field>
             <Field label="Amount">{amount}</Field>

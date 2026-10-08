@@ -52,10 +52,14 @@ export function canEditInvoice(viewer: Viewer | null | undefined, invoice: Pick<
   return invoice.ownerId === viewer.uid || isInvoiceAdmin(viewer.role);
 }
 
-/** Only a draft can be deleted — a generated invoice holds a number in the series and is cancelled instead. */
+/**
+ * Delete: the person who made it, or an admin — a draft or a generated invoice (owner, 2026-10-08).
+ * A generated invoice's number is never reused: `services/invoices.deleteInvoice` keeps it in the
+ * register, marked deleted.
+ */
 export function canDeleteInvoice(
   viewer: Viewer | null | undefined,
   invoice: Pick<Invoice, "ownerId" | "status" | "number"> | null | undefined,
 ): boolean {
-  return !!invoice && invoice.status === "draft" && !invoice.number && canEditInvoice(viewer, invoice);
+  return !!invoice && canEditInvoice(viewer, invoice);
 }

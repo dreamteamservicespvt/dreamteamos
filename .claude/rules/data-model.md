@@ -43,8 +43,8 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `flow_account_secrets/{same id}`, `paid_account_secrets/{id}` | `AccountSecret` | `password` only — read on Show/Copy |
 | `flow_usage/{auto}` | `FlowUsageEntry` | one ad (or manual entry) on one account: `accountId`, `userId`, `teamAdminId`, `assignmentId`/`uniqueId`/`businessName`, `rows[]` (seconds × count), `credits`, `cycleStart`, `date`, `month` (`yyyy-MM`), `source` (`completion`/`manual`), `editedBy*` |
 | `paid_accounts/{auto}` | `PaidAccount` | `provider` (`chatgpt`/`grok`/`other`), `label`, `email`, `plan`, `renewsOn`, `assignedTo[]`, `assignedNames`, `teamAdminId`, `history[]` |
-| `invoices/{auto}` (2026-10-08) | `Invoice` (`types/invoice.ts`) | content: `issueDate`, `dueDate`, `seller` + `payment` snapshots, `customer`, **`items[]` embedded with a stable `id`** (one read, one atomic write), `tax` {`mode` gst/none, `pricesIncludeTax`, `placeOfSupply`, `defaultRate`}, `roundOff`, `terms`, `notes`; `number` (null = draft; `DTS/26-27/0001`, never changes once set), `sequence`, `financialYear`, `status` (`draft`/`issued`/`paid`/`cancelled`; Overdue derived), `totals` {taxable, tax, grandTotal in paise, itemCount — written from `invoiceMath`}, `ownerId/Name/Role` (members see their own), `revision`, `history[]` (ms `at`), `duplicatedFrom`, `sourceOrderId`, `issuedAt/ByUid/ByName`, `paidAt`, `cancelledAt` |
-| `invoice_counters/{2026-27}` · `invoice_numbers/{DTS-26-27-0001}` | — | the FY serial (`seq`, only goes up) and the create-only number register (`number`, `invoiceId`, `fy`, `sequence`, `byUid`), both written in `generateInvoice`'s one transaction |
+| `invoices/{auto}` (2026-10-08) | `Invoice` (`types/invoice.ts`) | content: `issueDate`, `dueDate`, `seller` + `payment` snapshots (`payment.qrImageUrl` = an uploaded QR, 2026-10-08), `customer`, **`items[]` embedded with a stable `id`** (one read, one atomic write), `tax` {`mode` gst/none, `pricesIncludeTax`, `placeOfSupply`, `defaultRate`}, `roundOff`, `terms`, `notes`; `number` (null = draft; `DTS/26-27/0001`, never changes once set), `sequence`, `financialYear`, `status` (`draft`/`issued`/`paid`/`cancelled`; Overdue derived), `totals` {taxable, tax, grandTotal in paise, itemCount — written from `invoiceMath`}, `ownerId/Name/Role` (members see their own), `revision`, `history[]` (ms `at`), `duplicatedFrom`, `sourceOrderId`, `issuedAt/ByUid/ByName`, `paidAt`, `cancelledAt` |
+| `invoice_counters/{2026-27}` · `invoice_numbers/{DTS-26-27-0001}` | — | the FY serial (`seq`, only goes up) and the create-only number register (`number`, `invoiceId`, `fy`, `sequence`, `byUid`), both written in `generateInvoice`'s one transaction; deleting a generated invoice marks its entry `deleted`, `deletedAt`, `deletedByUid/Name`, `customerName`, `grandTotal` (the number is never reused) |
 | `invoice_settings/access` · `invoice_settings/defaults` | `InvoiceAccessSettings` / `InvoiceDefaults` | the team-leader switch `teamLeadersEnabled` (tech/main admin); what a new invoice starts with: `payment`, `terms`, `notes`, `taxRate`, `pricesIncludeTax`, `dueDays` (the four admins) |
 
 ### HR / pay / other collections
@@ -100,7 +100,8 @@ orders 0..1─* invoices                    via invoice.sourceOrderId ("Fill fro
   `pending_approval`, `approved`, `rejected`.
 - **Invoice.status** (2026-10-08): `draft` (no number; autosaves; deletable) → `issued` (numbered by
   `generateInvoice`; still editable, keeps its number, `revision` +1) → `paid` / `cancelled` (and back to
-  `issued`); a numbered invoice is never deleted. "Overdue" = issued and past `dueDate`, computed on read.
+  `issued`). Any of them can be deleted by its maker or an admin (2026-10-08); a numbered one leaves its number
+  in the register marked deleted. "Overdue" = issued and past `dueDate`, computed on read.
 
 ## 27. POTENTIAL RISKS (need verification)
 

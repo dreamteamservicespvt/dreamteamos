@@ -225,9 +225,11 @@ service cloud.firestore {
     // Tech Team Leader only while `invoice_settings/access.teamLeadersEnabled` is true; a tech member
     // never. A member reads their own invoices (`where ownerId ==`); the four admins read them all.
     // Numbers (`DTS/26-27/0001`) are handed out in ONE transaction by services/invoices.generateInvoice:
-    // the year's counter only ever goes up, the number register can only be CREATED (never changed or
-    // deleted), and an invoice can only take a number that is in the register in the same commit —
-    // and can never change or lose it afterwards. Only a draft (no number) can be deleted.
+    // the year's counter only ever goes up, the number register can only be CREATED (never deleted),
+    // and an invoice can only take a number that is in the register in the same commit — and can never
+    // change or lose it afterwards. A generated invoice can be deleted (owner, 2026-10-08) only in the
+    // same commit that marks its register entry deleted (who, when, customer, total): the number stays
+    // used and is never given to another invoice.
     function invoiceAdmin() { return isStaff() && role() in ['main_admin', 'tech_admin', 'sales_admin', 'accounts_admin']; }
     function leaderInvoicesOn() {
       return get(/databases/$(database)/documents/invoice_settings/access).data.get('teamLeadersEnabled', false) == true;
@@ -253,7 +255,8 @@ service cloud.firestore {
                           && (request.resource.data.number == null || registered(request.resource.data.number)))
                         || (resource.data.number != null && request.resource.data.number == resource.data.number));
       allow delete: if canUseInvoices() && (resource.data.ownerId == request.auth.uid || invoiceAdmin())
-                    && resource.data.number == null;
+                    && (resource.data.number == null
+                        || getAfter(/databases/$(database)/documents/invoice_numbers/$(resource.data.number.replace('/', '-'))).data.get('deleted', false) == true);
     }
     match /invoice_counters/{fy} {
       allow read:   if canUseInvoices();
@@ -265,7 +268,14 @@ service cloud.firestore {
       allow read:   if canUseInvoices();
       allow create: if canUseInvoices() && request.resource.data.byUid == request.auth.uid
                     && existsAfter(/databases/$(database)/documents/invoices/$(request.resource.data.invoiceId));
-      allow update, delete: if false;
+      // The one change ever allowed: recording that its invoice was deleted, in the delete's own commit.
+      allow update: if canUseInvoices()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['deleted', 'deletedAt', 'deletedByUid', 'deletedByName', 'customerName', 'grandTotal'])
+                    && request.resource.data.deleted == true
+                    && request.resource.data.deletedByUid == request.auth.uid
+                    && !existsAfter(/databases/$(database)/documents/invoices/$(resource.data.invoiceId));
+      allow delete: if false;
     }
     // The switch belongs to the Tech Admin and the Main Admin; the defaults (bank account, terms) to the
     // four admins — a changed bank account on every new invoice is a fraud, not a typo.

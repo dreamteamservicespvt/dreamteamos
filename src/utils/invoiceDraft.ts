@@ -416,6 +416,34 @@ export function recentCustomers(invoices: Pick<Invoice, "customer" | "updatedAt"
   return out;
 }
 
+/**
+ * What the delete confirmation says — one wording for the builder and the list. A draft costs nothing;
+ * a generated invoice's number is kept as "deleted" and never reused, and Cancel is offered as the
+ * gentler choice when the client already has the invoice.
+ */
+export function deleteConfirmCopy(invoice: Pick<Invoice, "number"> & { customer?: Pick<InvoiceCustomer, "name"> }): {
+  title: string;
+  description: string;
+  confirmText: string;
+  done: string;
+} {
+  const who = (invoice.customer?.name || "").trim();
+  if (!invoice.number) {
+    return {
+      title: "Delete this draft?",
+      description: `${who ? `The draft for ${who}` : "This draft"} has no number yet, so the invoice series is not affected. This can't be undone.`,
+      confirmText: "Delete draft",
+      done: "Draft deleted",
+    };
+  }
+  return {
+    title: `Delete invoice ${invoice.number}?`,
+    description: `${who ? `The invoice for ${who}` : "This invoice"} is removed for good. Its number stays used and is never given to another invoice, so the series will skip it.\n\nIf the client already has this invoice, mark it Cancelled instead — it then stays on record.`,
+    confirmText: "Delete invoice",
+    done: `Invoice ${invoice.number} deleted`,
+  };
+}
+
 /** A one-line summary for a collapsed section, e.g. "Bank of Baroda · ••••0035 · UPI". */
 export function paymentSummary(p: InvoicePayment): string {
   const parts = [

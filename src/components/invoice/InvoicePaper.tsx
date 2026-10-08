@@ -72,6 +72,8 @@ export interface PaperModel {
   number: string | null;
   status: InvoiceStatus;
   logoSrc: string | null;
+  /** The logo's drawn size, worked out from its real proportions (see `fitLogo`). */
+  logoBox: { width: number; height: number } | null;
   qrSrc: string | null;
   showQr: boolean;
   columns: PaperColumn[];
@@ -79,6 +81,23 @@ export interface PaperModel {
   /** Indexes into `content.items` of the lines that print (blank lines never do). */
   printedRows: number[];
   after: PaperAfterBlock[];
+}
+
+/** The box a logo is drawn in: at most 170 × 44, never wider or taller, never stretched. */
+const LOGO_MAX_W = 170;
+const LOGO_MAX_H = 44;
+
+/**
+ * The logo's exact drawn size from its natural proportions.
+ *
+ * Exact width AND height rather than `max-width` + `object-fit: contain`: html2canvas ignores
+ * `object-fit`, so a logo wider than the box was stretched (or cut short) in the PDF while the screen
+ * looked right. With the box already the logo's own shape, there is nothing left for it to get wrong.
+ */
+export function fitLogo(natural: { width: number; height: number } | null | undefined): { width: number; height: number } | null {
+  if (!natural || !(natural.width > 0) || !(natural.height > 0)) return null;
+  const scale = Math.min(LOGO_MAX_W / natural.width, LOGO_MAX_H / natural.height);
+  return { width: Math.round(natural.width * scale), height: Math.round(natural.height * scale) };
 }
 
 const splitParagraphs = (text: string): string[] =>
@@ -91,10 +110,12 @@ export function buildPaperModel(input: {
   number: string | null;
   status: InvoiceStatus;
   logoSrc: string | null;
+  /** The logo image's natural size, when known. */
+  logoNatural?: { width: number; height: number } | null;
   qrSrc: string | null;
   showQr: boolean;
 }): PaperModel {
-  const { content, totals } = input;
+  const { content, totals, logoNatural, ...rest } = input;
   const columns: PaperColumn[] = [
     { key: "no", label: "#", width: "22px", align: "left" },
     { key: "item", label: "Item", width: "minmax(0, 1fr)", align: "left" },
@@ -109,7 +130,10 @@ export function buildPaperModel(input: {
   const printedRows = totals.lines.map((l, i) => (l.isBlank ? -1 : i)).filter((i) => i >= 0);
 
   const model: PaperModel = {
-    ...input,
+    ...rest,
+    content,
+    totals,
+    logoBox: fitLogo(logoNatural),
     columns,
     gridTemplate: columns.map((c) => c.width).join(" "),
     printedRows,
@@ -146,7 +170,7 @@ function Placeholder({ children }: { children: ReactNode }) {
 
 /** The invoice heading and both parties — sheet 1 only. */
 export function Intro({ model }: { model: PaperModel }) {
-  const { content, number, status, logoSrc, totals } = model;
+  const { content, number, status, logoSrc, logoBox, totals } = model;
   const s = content.seller;
   const c = content.customer;
   const gstOn = content.tax.mode === "gst";
@@ -158,10 +182,10 @@ export function Intro({ model }: { model: PaperModel }) {
     <div style={{ display: "flow-root" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 32 }}>
         <div style={{ minWidth: 0, flex: "1 1 auto" }}>
-          {logoSrc ? (
-            <img src={logoSrc} alt="" style={{ display: "block", height: 44, maxWidth: 170, objectFit: "contain", objectPosition: "left center" }} />
+          {logoSrc && logoBox ? (
+            <img src={logoSrc} alt="" style={{ display: "block", width: logoBox.width, height: logoBox.height }} />
           ) : null}
-          <div style={{ marginTop: logoSrc ? 14 : 0, fontSize: 15, fontWeight: 600, color: INK, lineHeight: 1.3, ...wrap }}>
+          <div style={{ marginTop: logoSrc && logoBox ? 14 : 0, fontSize: 15, fontWeight: 600, color: INK, lineHeight: 1.3, ...wrap }}>
             {s.name.trim() || <Placeholder>Your business name</Placeholder>}
           </div>
           {s.address.trim() && (
@@ -403,21 +427,6 @@ function Paragraph({ children }: { children: ReactNode }) {
 
 // ─── Sheets ─────────────────────────────────────────────────────────────────────────────────────
 
-function Watermark({ status }: { status: InvoiceStatus }) {
-  if (status !== "draft" && status !== "cancelled") return null;
-  return (
-    <div aria-hidden style={{
-      position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-      pointerEvents: "none", overflow: "hidden",
-    }}>
-      <div style={{
-        transform: "rotate(-28deg)", fontSize: status === "draft" ? 150 : 110, fontWeight: 800, letterSpacing: "0.08em",
-        color: status === "draft" ? "rgba(15, 23, 42, 0.045)" : "rgba(220, 38, 38, 0.07)", fontFamily: FONT,
-      }}>{status === "draft" ? "DRAFT" : "CANCELLED"}</div>
-    </div>
-  );
-}
-
 function ContinuationHeader({ model }: { model: PaperModel }) {
   const gstOn = model.content.tax.mode === "gst";
   return (
@@ -452,7 +461,6 @@ export function InvoicePage({ model, plan, index, count }: {
         WebkitFontSmoothing: "antialiased",
       }}
     >
-      <Watermark status={model.status} />
       <div style={{ position: "absolute", left: PAD_X, right: PAD_X, top: PAD_TOP, height: FIRST_PAGE_HEIGHT + SAFETY }}>
         {!plan.intro && <ContinuationHeader model={model} />}
         {plan.intro && <Intro model={model} />}

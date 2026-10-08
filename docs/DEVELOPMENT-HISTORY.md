@@ -9,7 +9,34 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-08 (latest): the Invoice Builder — a new module** (session "invoice builder"; new
+- **2026-10-08 (latest): Invoice Builder, round two — the owner's first real invoice** (`invoices.md` §9.22 /
+  §24 / §25, `data-model.md` invoices + register + status, `roles-routes.md` §8.2, `docs/firestore-rules.md`
+  invoices delete + register update).
+  - **The owner's report** (a draft PDF "rebuild", ₹100): (1) no way to upload their own QR code; (2)+(3) the rate
+    "was coming incl. GST" — it must be the subtotal, GST added after it; (4) the watermark was "cropping" over the
+    invoice — no draft PDF at all, only the final one; (5) no Close; then "delete option is not there for the created
+    invoice"; and "the world's best UI/UX".
+  - **Done:** GST **on top by default** (`INVOICE_FALLBACK_DEFAULTS.pricesIncludeTax = false`; 100 → 100 + 9 + 9 =
+    ₹118; "Rate includes GST" kept as the second option; the rate column just says "Rate"). **QR upload** in Payment
+    details (`payment.qrImageUrl`, padded to a white square by `squareImageFile` before Cloudinary because html2canvas
+    ignores `object-fit`; "Use the UPI ID instead"; saved with the payment defaults). **No watermark**; **no PDF or
+    Print for a draft** (only Generate; a note on the preview says why); after Generate a "ready" window with
+    Download PDF / Print / Done; a generated invoice's main button is Download PDF (+ Print, Edit, ⋯). A labelled
+    **Close** top right (a link, so the leave guard covers it) replaces the back arrow. **Delete a generated
+    invoice** (maker or admin, `deleteInvoice`): the number stays used — its `invoice_numbers` entry is marked
+    `deleted` with who / when / customer / total in the same transaction, which the rules now require — so the
+    series skips it and never reuses it; the confirmation suggests Cancelled when the client has the invoice
+    (`deleteConfirmCopy`). The **logo** is drawn at an exact size from its natural proportions (`fitLogo`) so the PDF
+    can never stretch or crop it. "Invoice details" folds for a draft, opens for a generated invoice.
+  - **Tested:** unit tests updated and added (GST on top 100 → 118, delete keeps the number and the next is 0002, the
+    uploaded-QR warning, `fitLogo`, the delete wording); full vitest 215 files / 3310 tests ✅; typecheck 1 known
+    error; build ✅. Real headless Chrome on the real pages (memoryFirestore), 9 checks all PASS: the ₹118 sheet and
+    PDF, no watermark on draft / paid / cancelled, draft has only Generate, the ready window downloads
+    "Invoice DTS-26-27-0001 - Samas Sarees.pdf", Close (saves a draft, prompts for unsaved issued edits), a 300×500
+    QR uploaded → printed square and unstretched (ink aspect 0.597 vs 0.6), logo 902×451 → 88×44, delete 0001 →
+    register marked, next = 0002, 390 px no horizontal scroll, team-leader switch, 0 console errors.
+  - **Owner's existing draft "rebuild"** keeps "Rate includes GST" (no migration) — flip it in Tax, or start a new one.
+- **2026-10-08: the Invoice Builder — a new module** (session "invoice builder"; new
   `.claude/rules/invoices.md` §9.22; `roles-routes.md` flags / §8.1 / §8.2 / §10, `data-model.md` collections /
   relationships / statuses, `architecture.md` §11 Documents / §22, `people.md` §9.16, `docs/firestore-rules.md`;
   CLAUDE.md Context map / §32 / §33).

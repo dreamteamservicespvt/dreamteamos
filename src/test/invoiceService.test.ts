@@ -13,6 +13,7 @@ const svc = await import("@/services/invoices");
 const settings = await import("@/services/invoiceSettings");
 const draft = await import("@/utils/invoiceDraft");
 const { resolveCompany, amountInWords } = await import("@/utils/company");
+const { computeInvoice } = await import("@/utils/invoiceMath");
 import type { InvoiceContent } from "@/types/invoice";
 
 const read = (path: string) => mem.__read(path) as Record<string, any> | undefined;
@@ -26,6 +27,8 @@ function content(over: Partial<InvoiceContent> = {}): InvoiceContent {
   const c = draft.buildNewInvoiceContent(resolveCompany({}), {}, new Date(2026, 9, 8));
   c.customer = { ...c.customer, name: "Samas Sarees", gstin: "37AAVFS8513R1ZZ" };
   c.items = [{ ...c.items[0], name: "Social Media Management", rate: 17400 }];
+  // The owner's Inv. 4232 was an all-in ₹17,400 — kept as the reference figures for these tests.
+  c.tax = { ...c.tax, pricesIncludeTax: true };
   return { ...c, ...over };
 }
 
@@ -38,9 +41,19 @@ describe("a new invoice", () => {
     expect(c.dueDate).toBe("2026-10-13");
     expect(c.seller.name).toBe("Dream Team Services");
     expect(c.seller.gstin).toBe("37FWQPR6939Q1ZY");
-    expect(c.tax).toMatchObject({ mode: "gst", pricesIncludeTax: true, placeOfSupply: "37", defaultRate: 18 });
+    expect(c.tax).toMatchObject({ mode: "gst", pricesIncludeTax: false, placeOfSupply: "37", defaultRate: 18 });
     expect(c.payment.ifsc).toBe("BARB0GHATIX");
+    expect(c.payment.qrImageUrl).toBe("");
     expect(c.items).toHaveLength(1);
+  });
+
+  it("adds GST on top by default: the rate typed is the rate printed and the subtotal (owner, 2026-10-08)", () => {
+    const c = draft.buildNewInvoiceContent(resolveCompany({}), {}, new Date(2026, 9, 8));
+    c.items = [{ ...c.items[0], name: "test", rate: 100 }];
+    const t = computeInvoice(c);
+    expect(t.lines[0].displayRate).toBe(10000);
+    expect(t.subtotal).toBe(10000);
+    expect([t.cgst, t.sgst, t.grandTotal]).toEqual([900, 900, 11800]);
   });
 
   it("takes an admin's defaults field by field", () => {
@@ -132,7 +145,7 @@ describe("after it is generated", () => {
     expect(doc.history.at(-1).action).toBe("edited");
   });
 
-  it("can be marked paid, unpaid again, or cancelled — never deleted", async () => {
+  it("can be marked paid, unpaid again, or cancelled", async () => {
     const id = svc.newInvoiceId();
     await svc.generateInvoice(id, content(), SALES);
     await svc.setInvoiceStatus({ id, number: "DTS/26-27/0001" }, "paid", SALES);
@@ -140,9 +153,20 @@ describe("after it is generated", () => {
     expect(read(`invoices/${id}`)?.paidAt).toBeTruthy();
     await svc.setInvoiceStatus({ id, number: "DTS/26-27/0001" }, "cancelled", SALES);
     expect(read(`invoices/${id}`)?.status).toBe("cancelled");
-    await expect(svc.deleteDraftInvoice(id)).rejects.toThrow(/cancel/);
-    expect(read(`invoices/${id}`)).toBeTruthy();
     expect(read(`invoices/${id}`)!.history.map((h: any) => h.action)).toEqual(["created", "generated", "paid", "cancelled"]);
+  });
+
+  it("can be deleted — its number stays used, recorded as deleted, and is never reused (owner, 2026-10-08)", async () => {
+    const id = svc.newInvoiceId();
+    await svc.generateInvoice(id, content(), SALES);
+    await svc.deleteInvoice(id, SALES);
+    expect(read(`invoices/${id}`)).toBeUndefined();
+    expect(read("invoice_numbers/DTS-26-27-0001")).toMatchObject({
+      number: "DTS/26-27/0001", invoiceId: id, deleted: true, deletedByUid: "s1", deletedByName: "Anil",
+      customerName: "Samas Sarees", grandTotal: 1740000,
+    });
+    const next = await svc.generateInvoice(svc.newInvoiceId(), content(), SALES);
+    expect(next.number).toBe("DTS/26-27/0002");
   });
 
   it("refuses a status change on a draft", async () => {
@@ -154,7 +178,8 @@ describe("drafts can be deleted and duplicated", () => {
   it("deletes a draft", async () => {
     const id = svc.newInvoiceId();
     await svc.saveInvoiceContent(id, content(), SALES, { isNew: true }).committed;
-    await svc.deleteDraftInvoice(id);
+    await svc.deleteInvoice(id, SALES);
+    expect(all("invoice_numbers")).toHaveLength(0);
     expect(read(`invoices/${id}`)).toBeUndefined();
   });
 
@@ -277,5 +302,35 @@ describe("how it reads", () => {
       { customer: { name: "B" }, updatedAt: 2 }, { customer: { name: "a" }, updatedAt: 1 }, { customer: { name: "b " }, updatedAt: 0 },
     ] as any;
     expect(draft.recentCustomers(list).map((c) => c.name)).toEqual(["B", "a"]);
+  });
+});
+
+describe("owner's round two (2026-10-08): QR upload, logo, delete wording", () => {
+  it("keeps an uploaded QR image and stops warning that the QR is hidden", () => {
+    const c = content();
+    c.payment = { ...c.payment, upiId: "not-an-id", qrImageUrl: "https://res.cloudinary.com/x/qr.png" };
+    expect(draft.contentOf(c).payment.qrImageUrl).toBe("https://res.cloudinary.com/x/qr.png");
+    const upi = draft.validateInvoice(c).find((i) => i.field === "payment.upiId");
+    expect(upi?.message).not.toMatch(/hidden/);
+    expect(draft.resolveInvoiceDefaults({ payment: { qrImageUrl: "q.png" } }).payment.qrImageUrl).toBe("q.png");
+  });
+
+  it("draws a logo at its own shape inside 170 × 44 — never stretched", async () => {
+    const { fitLogo } = await import("@/components/invoice/InvoicePaper");
+    expect(fitLogo({ width: 1200, height: 200 })).toEqual({ width: 170, height: 28 });
+    expect(fitLogo({ width: 512, height: 512 })).toEqual({ width: 44, height: 44 });
+    expect(fitLogo({ width: 300, height: 100 })).toEqual({ width: 132, height: 44 });
+    expect(fitLogo(null)).toBeNull();
+    expect(fitLogo({ width: 0, height: 10 })).toBeNull();
+  });
+
+  it("says what deleting costs — nothing for a draft, a skipped number for a generated invoice", () => {
+    const d = draft.deleteConfirmCopy({ number: null, customer: { name: "Rebuild" } });
+    expect(d).toMatchObject({ title: "Delete this draft?", confirmText: "Delete draft", done: "Draft deleted" });
+    const g = draft.deleteConfirmCopy({ number: "DTS/26-27/0003", customer: { name: "Rebuild" } });
+    expect(g.title).toBe("Delete invoice DTS/26-27/0003?");
+    expect(g.description).toMatch(/never given to another invoice/);
+    expect(g.description).toMatch(/Cancelled instead/);
+    expect(g.confirmText).toBe("Delete invoice");
   });
 });

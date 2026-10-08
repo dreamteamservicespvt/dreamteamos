@@ -13,10 +13,10 @@ import { Copy, FileText, MoreHorizontal, Plus, Search, Settings2, Trash2 } from 
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
-import { deleteDraftInvoice, duplicateInvoice, watchInvoices } from "@/services/invoices";
+import { deleteInvoice, duplicateInvoice, watchInvoices } from "@/services/invoices";
 import type { Invoice } from "@/types/invoice";
 import { formatPaise } from "@/utils/invoiceMath";
-import { displayStatusOf, formatInvoiceDate, isoDate, type InvoiceDisplayStatus } from "@/utils/invoiceDraft";
+import { deleteConfirmCopy, displayStatusOf, formatInvoiceDate, isoDate, type InvoiceDisplayStatus } from "@/utils/invoiceDraft";
 import { canDeleteInvoice, canManageInvoiceAccess, isInvoiceAdmin } from "@/utils/invoiceAccess";
 import { cn } from "@/lib/utils";
 import {
@@ -87,18 +87,14 @@ export default function Invoices() {
   };
 
   const onDelete = async (inv: Invoice) => {
-    const r = await confirm({
-      title: "Delete this draft?",
-      description: `${inv.customer?.name || "This draft"} has no number yet, so nothing is lost from the invoice series. This can't be undone.`,
-      confirmText: "Delete draft",
-      variant: "destructive",
-    });
+    const copy = deleteConfirmCopy(inv);
+    const r = await confirm({ title: copy.title, description: copy.description, confirmText: copy.confirmText, variant: "destructive" });
     if (!r.confirmed) return;
     try {
-      await deleteDraftInvoice(inv.id);
-      toast({ title: "Draft deleted" });
+      await deleteInvoice(inv.id, { uid: user.uid, name: user.name || "", role: user.role });
+      toast({ title: copy.done });
     } catch (err) {
-      toast({ title: "Couldn't delete the draft", description: (err as Error)?.message, variant: "destructive" });
+      toast({ title: "Couldn't delete the invoice", description: (err as Error)?.message, variant: "destructive" });
     }
   };
 
@@ -229,7 +225,7 @@ function RowMenu({ inv, canDelete, onDuplicate, onDelete }: {
         <DropdownMenuItem onSelect={() => onDuplicate(inv)}><Copy size={14} className="mr-2" /> Duplicate</DropdownMenuItem>
         {canDelete && (<>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => onDelete(inv)} className="text-destructive focus:text-destructive"><Trash2 size={14} className="mr-2" /> Delete draft</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onDelete(inv)} className="text-destructive focus:text-destructive"><Trash2 size={14} className="mr-2" /> {inv.number ? "Delete invoice" : "Delete draft"}</DropdownMenuItem>
         </>)}
       </DropdownMenuContent>
     </DropdownMenu>

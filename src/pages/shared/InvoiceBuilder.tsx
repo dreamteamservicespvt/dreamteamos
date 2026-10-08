@@ -25,7 +25,7 @@
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
-  AlertTriangle, ArrowLeft, Check, CloudOff, Copy, Download, FileCheck2, Loader2, MoreHorizontal, Pencil,
+  AlertTriangle, Check, CheckCircle2, CloudOff, Copy, Download, FileCheck2, Loader2, MoreHorizontal, Pencil,
   Printer, Trash2, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -39,14 +39,14 @@ import { holdUpdates } from "@/services/appUpdate";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import {
   fetchMyRecentInvoices, generateInvoice, newInvoiceId, saveInvoiceContent, setInvoiceStatus,
-  deleteDraftInvoice, watchInvoice, type InvoiceActor,
+  deleteInvoice, watchInvoice, type InvoiceActor,
 } from "@/services/invoices";
 import { saveInvoiceDefaults } from "@/services/invoiceSettings";
 import type { Order } from "@/types";
 import type { InvoiceContent, InvoiceCustomer, InvoiceDefaults, InvoiceStatus } from "@/types/invoice";
 import { computeInvoice, formatPaise } from "@/utils/invoiceMath";
 import {
-  blankItem, blockingIssues, buildNewInvoiceContent, contentFingerprint, contentOf, displayStatusOf, DISPLAY_STATUS_LABEL,
+  blankItem, blockingIssues, buildNewInvoiceContent, deleteConfirmCopy, contentFingerprint, contentOf, displayStatusOf, DISPLAY_STATUS_LABEL,
   duplicateContent, fillFromOrder, invoiceFileName, recentCustomers, upiPaymentLink, validateInvoice,
 } from "@/utils/invoiceDraft";
 import { financialYearLabel, financialYearShort, financialYearStart, INVOICE_NUMBER_PREFIX } from "@/utils/invoiceNumber";
@@ -54,7 +54,7 @@ import { canDeleteInvoice, canEditInvoice, canEditInvoiceDefaults } from "@/util
 import { optimizeLogoFile } from "@/utils/signatureImage";
 import { downloadInvoicePdf, printInvoicePages } from "@/utils/invoicePdf";
 import { cn } from "@/lib/utils";
-import { ToastAction } from "@/components/ui/toast";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -63,7 +63,7 @@ import InvoicePreview, { type InvoicePreviewHandle } from "@/components/invoice/
 import { buildPaperModel } from "@/components/invoice/InvoicePaper";
 import FillFromSale from "@/components/invoice/FillFromSale";
 import { Segmented, type FieldIssue } from "@/components/invoice/editorKit";
-import { useInlinedImage, useQrDataUrl } from "@/components/invoice/useInvoiceAssets";
+import { squareImageFile, useImageSize, useInlinedImage, useQrDataUrl } from "@/components/invoice/useInvoiceAssets";
 import { StatusPill } from "@/components/invoice/StatusPill";
 
 /** The route: `/invoices/new` becomes a fresh id; anything else is that invoice. */
@@ -107,8 +107,13 @@ interface WipCopy {
   at: number;
 }
 
+/**
+ * What a new invoice opens with: the two things that change every time — who it is for, what was sold.
+ * Dates, business, tax, payment, terms and notes start filled in and folded to a one-line summary.
+ * A generated invoice also opens "Invoice details", where its status (Paid / Cancelled) is set.
+ */
 const DEFAULT_OPEN: Record<SectionId, boolean> = {
-  details: true, business: false, customer: true, items: true, tax: false, payment: false, terms: false, notes: false,
+  details: false, business: false, customer: true, items: true, tax: false, payment: false, terms: false, notes: false,
 };
 
 const wipKey = (uid: string, id: string) => `dts.invoiceWip.${uid}.${id}`;
@@ -171,6 +176,9 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
   const [exporting, setExporting] = useState<"pdf" | "print" | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [qrUploading, setQrUploading] = useState(false);
+  /** The number just generated — opens the "ready" window with Download PDF and Print. */
+  const [justGenerated, setJustGenerated] = useState<string | null>(null);
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<InvoiceCustomer[]>([]);
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine !== false);
@@ -200,6 +208,8 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
 
   const actor: InvoiceActor | null = user ? { uid: user.uid, name: user.name || user.email || "", role: user.role } : null;
   const isIssued = !!meta.number;
+  const numberRef = useRef<string | null>(meta.number);
+  numberRef.current = meta.number;
   const mayEdit = !!user && (phase === "creating" || canEditInvoice(user, { ownerId: meta.ownerId || user.uid }));
   const readOnly = !mayEdit || (isIssued && !editingIssued);
 
@@ -226,6 +236,7 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
         }
         if (!wipChecked.current) {
           wipChecked.current = true;
+          if (inv.number) setOpen((o) => ({ ...o, details: true }));
           const wip = readWip(user.uid, invoiceId);
           if (wip && contentFingerprint(wip.content) !== contentFingerprint(incoming)) setRestore(wip);
           else if (wip) clearWip(user.uid, invoiceId);
@@ -306,21 +317,28 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
 
   const deferred = useDeferredValue(content);
   const deferredTotals = useMemo(() => (deferred ? computeInvoice(deferred) : null), [deferred]);
-  const upiLink = deferred && deferredTotals && deferred.payment.showQr
+  // The QR: the company's uploaded image when there is one, otherwise made here from the UPI ID.
+  const uploadedQrUrl = deferred?.payment.qrImageUrl || "";
+  const upiLink = deferred && deferredTotals && deferred.payment.showQr && !uploadedQrUrl
     ? upiPaymentLink({ upiId: deferred.payment.upiId, payeeName: deferred.seller.name, amount: deferredTotals.grandTotal, note: meta.number ? `Invoice ${meta.number}` : "Invoice" })
     : "";
   const qr = useQrDataUrl(upiLink);
+  const uploadedQr = useInlinedImage(deferred?.payment.showQr ? uploadedQrUrl : "");
+  const qrSrc = uploadedQrUrl ? uploadedQr.src : qr.src;
+  const qrWanted = !!deferred?.payment.showQr && (!!uploadedQrUrl || !!upiLink);
   const uploadedLogo = useInlinedImage(deferred?.seller.logoUrl || "");
   const logoSrc = deferred?.seller.logoUrl ? uploadedLogo.src : companyLogo;
+  const logoNatural = useImageSize(logoSrc);
   const model = useMemo(() => (deferred && deferredTotals ? buildPaperModel({
     content: deferred,
     totals: deferredTotals,
     number: meta.number,
     status: meta.status,
     logoSrc,
-    qrSrc: qr.src,
-    showQr: deferred.payment.showQr && !!upiLink,
-  }) : null), [deferred, deferredTotals, meta.number, meta.status, logoSrc, qr.src, upiLink]);
+    logoNatural,
+    qrSrc,
+    showQr: qrWanted,
+  }) : null), [deferred, deferredTotals, meta.number, meta.status, logoSrc, logoNatural, qrSrc, qrWanted]);
 
   // ── Saving ──────────────────────────────────────────────────────────────────────────────────
   const save = useCallback(async (opts: { issued?: boolean } = {}): Promise<boolean> => {
@@ -476,6 +494,22 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
     }
   }, [update, toast]);
 
+  /** The company's own QR image — made square on white first, so it prints exactly as photographed. */
+  const onQrFile = useCallback(async (file: File) => {
+    if (!/^image\//.test(file.type)) { toast({ title: "That isn't an image", description: "Choose a PNG or JPG of your QR code.", variant: "destructive" }); return; }
+    if (file.size > 8 * 1024 * 1024) { toast({ title: "Image is too large", description: "Use an image under 8 MB.", variant: "destructive" }); return; }
+    setQrUploading(true);
+    try {
+      const url = await uploadToCloudinary(await squareImageFile(file));
+      update((x) => ({ ...x, payment: { ...x.payment, qrImageUrl: url, showQr: true } }));
+      toast({ title: "QR code added", description: "It's printed on this invoice. Admins can save it as the default for new ones." });
+    } catch {
+      toast({ title: "Couldn't upload the QR code", description: "Check your connection and try again.", variant: "destructive" });
+    } finally {
+      setQrUploading(false);
+    }
+  }, [update, toast]);
+
   const onSaveDefaults = useCallback(async (patch: Partial<InvoiceDefaults>, what: string) => {
     if (!actor) return;
     try {
@@ -490,9 +524,9 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
   const deferredRef = useRef(deferred);
   deferredRef.current = deferred;
   const qrReadyRef = useRef(true);
-  qrReadyRef.current = !upiLink || qr.ready;
+  qrReadyRef.current = !qrWanted || (uploadedQrUrl ? uploadedQr.ready : qr.ready);
   const logoReadyRef = useRef(true);
-  logoReadyRef.current = !deferred?.seller.logoUrl || uploadedLogo.ready;
+  logoReadyRef.current = (!deferred?.seller.logoUrl || uploadedLogo.ready) && (!logoSrc || !!logoNatural);
   const waitForPreview = useCallback(async () => {
     const started = Date.now();
     // The preview runs a frame behind the typing (useDeferredValue) and the QR is drawn async;
@@ -507,6 +541,8 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
   const runExport = useCallback(async (kind: "pdf" | "print") => {
     // A ref, not the state: two clicks in one frame both see `exporting` still null.
     if (exportingRef.current || !previewRef.current || !contentRef.current) return;
+    // Only the final, numbered invoice is ever a file (owner, 2026-10-08) — never a draft.
+    if (!numberRef.current) return;
     if (isIssued && dirtyRef.current) {
       toast({ title: "Save your changes first", description: "Or cancel them — the PDF shows the saved invoice." });
       return;
@@ -565,13 +601,12 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
       persistedRef.current = true;
       markBase(latest);
       clearWip(actor.uid, invoiceId);
+      numberRef.current = result.number;
       setMeta((m) => ({ ...m, number: result.number, status: "issued" }));
       setSaveState("saved");
-      toast({
-        title: `Invoice ${result.number} is ready`,
-        description: "Download the PDF, or print it.",
-        action: <ToastAction altText="Download PDF" onClick={() => void runExportRef.current("pdf")}>Download PDF</ToastAction>,
-      });
+      setOpen((o) => ({ ...o, details: true }));
+      // The moment the person was working towards: one window, the number, and the final PDF.
+      setJustGenerated(result.number);
     } catch (err) {
       toast({ title: "Couldn't generate the invoice", description: friendlyError(err), variant: "destructive" });
     } finally {
@@ -657,27 +692,23 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
 
   const onDelete = async () => {
     if (!user) return;
-    const r = await confirm({
-      title: "Delete this draft?",
-      description: "It has no number yet, so nothing is lost from the invoice series. This can't be undone.",
-      confirmText: "Delete draft",
-      variant: "destructive",
-    });
+    const copy = deleteConfirmCopy({ number: meta.number, customer: contentRef.current?.customer });
+    const r = await confirm({ title: copy.title, description: copy.description, confirmText: copy.confirmText, variant: "destructive" });
     if (!r.confirmed) return;
     clearTimeout(autosaveTimer.current);
     // From here no save may run — not the autosave, not the save on the way out of the page.
     deletedRef.current = true;
     try {
-      if (persistedRef.current) await deleteDraftInvoice(invoiceId);
+      if (persistedRef.current) await deleteInvoice(invoiceId, actor || { uid: user.uid, name: user.name || "", role: user.role });
       clearWip(user.uid, invoiceId);
       baseFpRef.current = currentFp;
       dirtyRef.current = false;
       setBaseFp(currentFp); // nothing left to protect
-      toast({ title: "Draft deleted" });
+      toast({ title: copy.done });
       navigate("/invoices", { replace: true });
     } catch (err) {
       deletedRef.current = false;
-      toast({ title: "Couldn't delete the draft", description: friendlyError(err), variant: "destructive" });
+      toast({ title: "Couldn't delete the invoice", description: friendlyError(err), variant: "destructive" });
     }
   };
 
@@ -710,61 +741,83 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
   const title = meta.number || (content.customer.name.trim() ? `Draft · ${content.customer.name.trim()}` : "New invoice");
   const ownerNote = meta.ownerId && meta.ownerId !== user.uid && meta.ownerName ? `by ${meta.ownerName}` : "";
 
-  const primary = !mayEdit ? null : !isIssued ? (
+  // ── Actions ───────────────────────────────────────────────────────────────────────────────────
+  // A draft has ONE thing to do — Generate. The PDF and Print exist only for a generated invoice, so every
+  // file that leaves the building is the final, numbered one (owner, 2026-10-08: "download the final correct
+  // pdf button only"). A generated invoice's main button is Download PDF.
+  const generateButton = (
     <button type="button" onClick={onGenerate} disabled={generating} data-test="generate-invoice"
-      className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 shadow-sm">
+      className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 shadow-sm whitespace-nowrap">
       {generating ? <Loader2 size={15} className="animate-spin" /> : <FileCheck2 size={15} />}
       {generating ? "Generating…" : "Generate invoice"}
     </button>
-  ) : editingIssued ? (
+  );
+  const editingButtons = (
     <div className="flex items-center gap-1.5">
       <button type="button" onClick={cancelEdit} className="inline-flex items-center gap-1 h-9 px-3 rounded-lg border border-border text-sm font-medium hover:bg-accent">
         <X size={15} /> Cancel
       </button>
       <button type="button" onClick={saveEdit} disabled={saveState === "saving"} data-test="save-changes"
-        className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 shadow-sm">
+        className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 shadow-sm whitespace-nowrap">
         {saveState === "saving" ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save changes
       </button>
     </div>
-  ) : (
+  );
+  const printButton = (
+    <button type="button" onClick={() => runExport("print")} disabled={!!exporting} title="Print" aria-label="Print" data-test="print-invoice"
+      className="w-9 h-9 shrink-0 rounded-lg inline-flex items-center justify-center border border-border text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-60">
+      {exporting === "print" ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+    </button>
+  );
+  const pdfButton = (
+    <button type="button" onClick={() => runExport("pdf")} disabled={!!exporting} data-test="download-pdf"
+      className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 shadow-sm whitespace-nowrap">
+      {exporting === "pdf" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+      Download PDF
+    </button>
+  );
+  const editButton = (
     <button type="button" onClick={startEdit} data-test="edit-invoice"
-      className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-border text-sm font-medium hover:bg-accent">
+      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-sm font-medium hover:bg-accent">
       <Pencil size={14} /> Edit
     </button>
   );
-
-  const exportButtons = (
-    <>
-      <button type="button" onClick={() => runExport("print")} disabled={!!exporting} title="Print" aria-label="Print"
-        className="w-9 h-9 rounded-lg inline-flex items-center justify-center border border-border text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-60">
-        {exporting === "print" ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
-      </button>
-      <button type="button" onClick={() => runExport("pdf")} disabled={!!exporting} data-test="download-pdf"
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent disabled:opacity-60">
-        {exporting === "pdf" ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-        <span className={cn(width < 480 && "sr-only")}>PDF</span>
-      </button>
-    </>
-  );
+  const actions = !isIssued
+    ? (mayEdit ? generateButton : null)
+    : editingIssued
+      ? editingButtons
+      : <>{printButton}{mayEdit && width >= 640 && editButton}{pdfButton}</>;
 
   const moreMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button type="button" aria-label="More actions" data-test="invoice-more"
-          className="w-9 h-9 rounded-lg inline-flex items-center justify-center border border-border text-muted-foreground hover:text-foreground hover:bg-accent">
+          className="w-9 h-9 shrink-0 rounded-lg inline-flex items-center justify-center border border-border text-muted-foreground hover:text-foreground hover:bg-accent">
           <MoreHorizontal size={16} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
+        {isIssued && !editingIssued && mayEdit && (
+          <DropdownMenuItem onSelect={startEdit}><Pencil size={14} className="mr-2" /> Edit invoice</DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={onDuplicate}><Copy size={14} className="mr-2" /> Duplicate as new draft</DropdownMenuItem>
         {deletable && (<>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => void onDelete()} className="text-destructive focus:text-destructive">
-            <Trash2 size={14} className="mr-2" /> Delete draft
+            <Trash2 size={14} className="mr-2" /> {isIssued ? "Delete invoice" : "Delete draft"}
           </DropdownMenuItem>
         </>)}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+
+  /** Close — back to the list. A link, so the unsaved-changes guard sees it like any other way out. */
+  const closeButton = (
+    <Link to="/invoices" data-test="close-invoice" title="Close and go back to all invoices" aria-label="Close"
+      className="h-9 shrink-0 rounded-lg inline-flex items-center justify-center gap-1.5 px-2.5 border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent">
+      <X size={16} />
+      <span className={cn(width < 640 && "sr-only")}>Close</span>
+    </Link>
   );
 
   const saveLabel = (() => {
@@ -822,6 +875,9 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
         company={company}
         logoSrc={content.seller.logoUrl ? (uploadedLogo.src || content.seller.logoUrl) : companyLogo}
         logoUploading={logoUploading}
+        qrSrc={qrSrc}
+        qrUploading={qrUploading}
+        onQrFile={onQrFile}
         onLogoFile={onLogoFile}
         canChangeStatus={mayEdit}
         statusBusy={statusBusy}
@@ -844,11 +900,7 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
 
       {/* Top bar */}
       <header className="shrink-0 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="h-14 px-3 sm:px-4 flex items-center gap-2 sm:gap-3">
-          <Link to="/invoices" aria-label="Back to invoices" title="All invoices"
-            className="w-9 h-9 shrink-0 rounded-lg inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent">
-            <ArrowLeft size={17} />
-          </Link>
+        <div className="h-14 pl-4 pr-3 sm:pr-4 flex items-center gap-2 sm:gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 min-w-0">
               <h1 className="text-[15px] font-semibold text-foreground truncate" data-test="builder-title">{title}</h1>
@@ -874,9 +926,10 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {width >= 640 && exportButtons}
+            {width >= 640 && actions}
             {moreMenu}
-            {width >= 640 && primary}
+            <span className="w-px h-6 bg-border mx-0.5 hidden sm:block" aria-hidden />
+            {closeButton}
           </div>
         </div>
         {!wide && (
@@ -899,6 +952,12 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
           {editor}
         </div>
         <div className={cn("min-h-0 overflow-y-auto overscroll-contain bg-muted/50 dark:bg-muted/20", wide ? "" : view === "preview" ? "flex-1" : "hidden")}>
+          {!isIssued && (
+            <div className="sticky top-0 z-10 px-4 py-2 border-b border-border bg-background/85 backdrop-blur text-xs text-muted-foreground flex items-center gap-2" data-test="draft-preview-note">
+              <FileCheck2 size={14} className="shrink-0" />
+              <span>Preview. Generate the invoice to get its number and download the final PDF.</span>
+            </div>
+          )}
           {model && <InvoicePreview ref={previewRef} model={model} padding={wide ? 28 : 14} />}
         </div>
       </div>
@@ -910,10 +969,38 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
             <div className="text-[11px] text-muted-foreground leading-none">Total</div>
             <div className="text-base font-semibold text-foreground tabular-nums truncate">{formatPaise(totals.grandTotal, { symbol: true })}</div>
           </div>
-          {exportButtons}
-          {primary}
+          {actions}
         </div>
       )}
+
+      {/* The invoice is numbered: one window, the number, and the final PDF. */}
+      <Dialog open={!!justGenerated} onOpenChange={(v) => { if (!v) setJustGenerated(null); }}>
+        <DialogContent className="max-w-sm" data-test="generated-dialog">
+          <div className="flex flex-col items-center text-center pt-2">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/15 flex items-center justify-center">
+              <CheckCircle2 size={26} className="text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <DialogTitle className="mt-3 text-lg">Invoice {justGenerated} is ready</DialogTitle>
+            <DialogDescription className="mt-1">
+              {content.customer.name.trim() || "Customer"} · {formatPaise(totals.grandTotal, { symbol: true })}
+            </DialogDescription>
+          </div>
+          <div className="mt-2 grid gap-2">
+            <button type="button" data-test="generated-download"
+              onClick={() => { setJustGenerated(null); void runExportRef.current("pdf"); }}
+              className="h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 inline-flex items-center justify-center gap-2">
+              <Download size={16} /> Download PDF
+            </button>
+            <button type="button" data-test="generated-print"
+              onClick={() => { setJustGenerated(null); void runExportRef.current("print"); }}
+              className="h-10 rounded-lg border border-border text-sm font-medium hover:bg-accent inline-flex items-center justify-center gap-2">
+              <Printer size={16} /> Print
+            </button>
+            <button type="button" onClick={() => setJustGenerated(null)}
+              className="h-9 text-sm text-muted-foreground hover:text-foreground">Done</button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

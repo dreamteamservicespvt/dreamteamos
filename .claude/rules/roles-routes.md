@@ -148,6 +148,7 @@ legacy users without the field active.
 | Invoice Builder: make, generate, edit, PDF (2026-10-08; also enforced in the rules) | ✅ | ✅ | only while the switch is on | | ✅ | ✅ | ✅ |
 | See every invoice (others see their own) · set invoice defaults (bank, terms) | ✅ | ✅ | | | ✅ | | ✅ |
 | Team-leader Invoice Builder switch | ✅ | ✅ | | | | | |
+| Delete an invoice (draft or generated; the number stays used — 2026-10-08) | ✅ | ✅ | own, while the switch is on | | ✅ | ✅ own | ✅ |
 
 ## 9. APPLICATION MODULES (the entries for this module)
 

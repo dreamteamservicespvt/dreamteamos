@@ -116,11 +116,12 @@ describe("who may use the Invoice Builder (owner, 2026-10-08)", () => {
     expect(canEditInvoice({ uid: "l", role: "tech_team_leader" }, mine)).toBe(false);
   });
 
-  it("only a draft can be deleted — a numbered invoice is cancelled", () => {
+  it("the maker or an admin can delete a draft or a generated invoice; nobody else", () => {
     const me = { uid: "s1", role: "sales_member" as UserRole };
     expect(canDeleteInvoice(me, { ownerId: "s1", status: "draft", number: null })).toBe(true);
-    expect(canDeleteInvoice(me, { ownerId: "s1", status: "issued", number: "DTS/26-27/0001" })).toBe(false);
-    expect(canDeleteInvoice(me, { ownerId: "s1", status: "cancelled", number: "DTS/26-27/0001" })).toBe(false);
+    expect(canDeleteInvoice(me, { ownerId: "s1", status: "issued", number: "DTS/26-27/0001" })).toBe(true);
+    expect(canDeleteInvoice({ uid: "s2", role: "sales_member" }, { ownerId: "s1", status: "issued", number: "DTS/26-27/0001" })).toBe(false);
+    expect(canDeleteInvoice({ uid: "a", role: "accounts_admin" }, { ownerId: "s1", status: "paid", number: "DTS/26-27/0001" })).toBe(true);
   });
 
   it("puts Invoices in the menu once per allowed role, never for a tech member", () => {
