@@ -21,11 +21,13 @@ vi.mock("@/services/firebase", () => ({ db: {} }));
 const mem = await import("./memoryFirestore");
 const SmmAttendanceView = (await import("@/components/smm/SmmAttendanceView")).default;
 import {
-  applyTeamEdits, canSeeSmmAttendance, leaveAskedOn, seatLine, smmTeamFromMonths, todayCounts, todayStatusOf,
+  applyTeamEdits, canSeeSmmAttendance, handlesHeading, leaveAskedOn, smmTeamFromMonths, todayCounts, todayStatusOf,
 } from "@/utils/smmAttendance";
 import type { SmmCampaign } from "@/types/smm";
 
 configure({ testIdAttribute: "data-test" });
+
+const TODAY = "2026-10-08";
 
 const month = (over: Partial<SmmCampaign> & { id: string }): SmmCampaign => ({
   orderId: over.id, leadId: "l", saleItemKey: "k", origin: "sale", clientPhone: "+919876543210",
@@ -61,22 +63,42 @@ const OFF_BOARD = [
 
 describe("who is on the Social Media team", () => {
   it("is everybody on a month on the board — seats and posts, running, on hold or not started", () => {
-    const team = smmTeamFromMonths([...BOARD, ...OFF_BOARD]);
+    const team = smmTeamFromMonths([...BOARD, ...OFF_BOARD], TODAY);
     expect(team.map((p) => p.uid)).toEqual(["arjun", "bhanu", "chitra", "divya", "farah", "gopi", "ravi"]);
     expect(team.every((p) => p.source === "months")).toBe(true);
     const bhanu = team.find((p) => p.uid === "bhanu")!;
     expect(bhanu.seats).toEqual(["Creator", "Assistant"]);
-    expect(seatLine(bhanu)).toBe("Creator · Assistant — 2 clients");
     // The post's maker is on the team though she holds no seat.
     expect(team.find((p) => p.uid === "chitra")).toMatchObject({ seats: ["Creator"], clients: ["Bhavani Sweets"] });
   });
 
+  it("says, for each person, which clients they handle and what they do for each (owner: write it on the card)", () => {
+    const team = smmTeamFromMonths([...BOARD, ...OFF_BOARD], TODAY);
+    const of = (uid: string) => team.find((p) => p.uid === uid)!;
+    expect(of("bhanu").handles).toEqual([
+      { client: "Bhavani Sweets", seats: ["Creator"], state: "running", startDate: "2026-10-01" },
+      { client: "Lakshmi Jewellers", seats: ["Assistant"], state: "running", startDate: "2026-10-01" },
+    ]);
+    expect(handlesHeading(of("bhanu"))).toBe("Handles 2 clients");
+    // A month on hold and one not started yet say so.
+    expect(of("divya").handles).toEqual([{ client: "Old Client", seats: ["Creator"], state: "ended", startDate: "2026-09-01" }]);
+    expect(of("gopi").handles).toEqual([{ client: "Next Month", seats: ["Assistant"], state: "upcoming", startDate: "2026-10-20" }]);
+    // A post given to her is handling too.
+    expect(of("chitra").handles).toEqual([{ client: "Bhavani Sweets", seats: ["Creator"], state: "running", startDate: "2026-10-01" }]);
+    // Two months of one client (the next one already set up) are one line, the running one's state.
+    const twice = smmTeamFromMonths([
+      month({ id: "a", cycle: { month: "2026-10", startDate: "2026-10-20", endDate: "2026-11-20" }, team: { ...nobody, publisher: { uid: "x", name: "X" } } }),
+      month({ id: "b", team: { ...nobody, creator: { uid: "x", name: "X" } } }),
+    ], TODAY);
+    expect(twice[0].handles).toEqual([{ client: "Lakshmi Jewellers", seats: ["Creator", "Publisher"], state: "running", startDate: "2026-10-01" }]);
+  });
+
   it("follows the lead's corrections: taken off wins, added by hand joins", () => {
-    const fromMonths = smmTeamFromMonths(BOARD);
+    const fromMonths = smmTeamFromMonths(BOARD, TODAY);
     const team = applyTeamEdits(fromMonths, { added: ["esha", "arjun"], removed: ["gopi", "esha2"] }, (uid) => (uid === "esha" ? "Esha" : ""));
     expect(team.map((p) => p.uid)).toEqual(["arjun", "bhanu", "chitra", "divya", "esha", "farah", "ravi"]);
-    expect(team.find((p) => p.uid === "esha")).toMatchObject({ source: "added", seats: [] });
-    expect(seatLine(team.find((p) => p.uid === "esha")!)).toBe("Added to the team by the lead");
+    expect(team.find((p) => p.uid === "esha")).toMatchObject({ source: "added", seats: [], handles: [] });
+    expect(handlesHeading(team.find((p) => p.uid === "esha")!)).toBe("Added to the team by the lead — no Social Media client yet");
     // Somebody added by hand AND taken off is off.
     expect(applyTeamEdits(fromMonths, { added: ["esha"], removed: ["esha"] }).some((p) => p.uid === "esha")).toBe(false);
   });
@@ -153,7 +175,7 @@ describe("the board, on the in-memory Firestore", () => {
   afterEach(() => { cleanup(); vi.useRealTimers(); });
 
   const group = (g: string) => screen.queryByTestId(`smm-group-${g}`);
-  const namesIn = (g: string) => [...(group(g)?.querySelectorAll("[data-test='smm-today-person'] p.font-semibold") || [])].map((n) => n.textContent);
+  const namesIn = (g: string) => [...(group(g)?.querySelectorAll("[data-test='smm-today-name']") || [])].map((n) => n.textContent);
 
   it("groups today for the meeting: who to call first, who is not coming, who is in", async () => {
     render(<SmmAttendanceView campaigns={[...BOARD, ...OFF_BOARD]} user={lead} />);
@@ -164,6 +186,15 @@ describe("the board, on the in-memory Firestore", () => {
     expect(namesIn("call")).toEqual(["Chitra", "Esha"]);
     const chitra = within(group("call")!).getAllByTestId("smm-today-person")[0];
     expect(within(chitra).getByTestId("smm-today-status").textContent).toBe("Not checked in");
+    // Each card says what Social Media work the person handles — the client and what they do for it.
+    expect(within(chitra).getByTestId("smm-today-handles").textContent).toBe("Handles 1 clientBhavani Sweets — Creator");
+    const bhanuCard = within(group("away")!).getAllByTestId("smm-today-person")[0];
+    expect(within(bhanuCard).getAllByTestId("smm-today-handle").map((li) => li.textContent))
+      .toEqual(["Bhavani Sweets — Creator", "Lakshmi Jewellers — Assistant"]);
+    const divyaCard = within(group("away")!).getAllByTestId("smm-today-person")[1];
+    expect(within(divyaCard).getByTestId("smm-today-handle").textContent).toBe("Old Client — Creatormonth ended");
+    const eshaCard = within(group("call")!).getAllByTestId("smm-today-person")[1];
+    expect(within(eshaCard).getByTestId("smm-today-handles").textContent).toBe("Added to the team by the lead — no Social Media client yet");
     expect(within(chitra).getByTestId("smm-today-call").getAttribute("href")).toBe("tel:+919876500003");
     expect(within(chitra).getByTestId("smm-today-whatsapp").getAttribute("href")).toBe("https://wa.me/919876500003");
 

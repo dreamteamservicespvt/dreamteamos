@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import {
   CalendarCheck, CheckCircle2, Clock, HelpCircle, Loader2, MessageCircle, PartyPopper, Phone, Plane,
-  UserCog, Users, XCircle, type LucideIcon,
+  Megaphone, UserCog, Users, XCircle, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ import { watchSmmTeamEdits } from "@/services/smmTeam";
 import { useUsersByIds } from "@/hooks/useUsersByIds";
 import {
   NO_TEAM_EDITS, TODAY_GROUP_OF, TODAY_GROUP_ORDER, applyTeamEdits, callable, canEditSmmTeam, leaveAskedOn,
-  seatLine, smmTeamFromMonths, todayCounts, todayStatusOf,
+  handlesHeading, smmTeamFromMonths, todayCounts, todayStatusOf,
   type SmmTeamEdits, type SmmTeamPerson, type TodayGroup, type TodayKind, type TodayStatus,
 } from "@/utils/smmAttendance";
 import { getCallUrl, getWhatsAppUrl } from "@/utils/phone";
@@ -118,10 +118,9 @@ function PersonCard({ row }: { row: Row }) {
   const Icon = meta.icon;
   const phone = (row.user.phone || "").trim();
   const showContact = callable(row.status.kind);
-  const line = seatLine(row);
   return (
     <div data-test="smm-today-person" data-kind={row.status.kind}
-      className="min-w-0 rounded-xl border border-border bg-card p-3 shadow-sm">
+      className="flex min-w-0 flex-col rounded-xl border border-border bg-card p-3 shadow-sm">
       <div className="flex min-w-0 items-center gap-3">
         {row.user.avatar ? (
           <img src={row.user.avatar} alt="" className={cn("h-11 w-11 shrink-0 rounded-full object-cover ring-2", meta.ring)} />
@@ -131,17 +130,38 @@ function PersonCard({ row }: { row: Row }) {
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-semibold text-foreground">{row.name}</p>
-          {line && <p className="truncate text-xs text-muted-foreground" title={row.clients.join(", ")}>{line}</p>}
+          <p data-test="smm-today-name" className="truncate text-[15px] font-semibold text-foreground">{row.name}</p>
           {/* Wraps rather than cuts: "Tech Team Leader — doesn't check in" ran 5px past a 360px phone's card. */}
           <span data-test="smm-today-status" className={cn("mt-1 inline-flex max-w-full items-start gap-1 rounded-2xl border px-2 py-0.5 text-xs font-semibold leading-snug", meta.tone)}>
             <Icon className="mt-px h-3.5 w-3.5 shrink-0" /><span className="min-w-0">{statusWords(row.status, row.user.role)}</span>
           </span>
         </div>
       </div>
+      {/* What Social Media work they handle — each client by name and what they do for it (owner, 2026-10-08). */}
+      <div data-test="smm-today-handles" className="mt-2.5 border-t border-border/60 pt-2">
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{handlesHeading(row)}</p>
+        {row.handles.length > 0 && (
+          <ul className="space-y-1">
+            {row.handles.map((h) => (
+              <li key={h.client} data-test="smm-today-handle" className="flex min-w-0 items-start gap-1.5 text-[13px] leading-snug">
+                <Megaphone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="min-w-0 break-words">
+                  <span className="font-semibold text-foreground">{h.client}</span>
+                  <span className="text-muted-foreground"> — {h.seats.join(", ")}</span>
+                  {h.state !== "running" && (
+                    <span className="ml-1.5 inline-block rounded-full bg-muted px-1.5 text-[11px] font-semibold text-foreground">
+                      {h.state === "upcoming" && h.startDate ? `starts ${format(new Date(`${h.startDate}T00:00:00`), "d MMM")}` : "month ended"}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       {showContact && (
         phone ? (
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
             {/* Dark enough for white text (≥ 5.5:1): white on the brand orange measured 2.8:1, on emerald-600 3.8:1. */}
             <a href={getCallUrl(phone)} data-test="smm-today-call" aria-label={`Call ${row.name}`}
               className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-sky-700 text-sm font-semibold text-white transition-colors hover:bg-sky-800">
@@ -153,7 +173,7 @@ function PersonCard({ row }: { row: Row }) {
             </a>
           </div>
         ) : (
-          <p className="mt-2 text-xs text-muted-foreground">No phone number on their profile.</p>
+          <p className="mt-auto pt-2 text-xs text-muted-foreground">No phone number on their profile.</p>
         )
       )}
     </div>
@@ -197,7 +217,7 @@ export default function SmmAttendanceView({ campaigns, user }: {
     return () => unsubs.forEach((u) => u());
   }, [today]);
 
-  const fromMonths = useMemo(() => smmTeamFromMonths(campaigns), [campaigns]);
+  const fromMonths = useMemo(() => smmTeamFromMonths(campaigns, today), [campaigns, today]);
   // The user records of everybody who could be on the board — the months' people and the hand-added ones.
   const uids = useMemo(() => [...new Set([...fromMonths.map((p) => p.uid), ...edits.added])], [fromMonths, edits.added]);
   const { users, loading } = useUsersByIds(uids);

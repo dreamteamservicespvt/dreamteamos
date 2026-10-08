@@ -99,7 +99,10 @@ export default function SmmTeamEditor({ open, onOpenChange, fromMonths, edits, t
                 <li key={p.uid} className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground">{p.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{p.source === "added" ? "Added by hand" : "On Social Media months"}</p>
+                    {/* Wraps: cut with "…" on a 390px phone, the rest was only in a tooltip a phone cannot show. */}
+                    <p className="break-words text-xs leading-snug text-muted-foreground">
+                      {p.source === "added" ? "Added by hand" : p.clients.join(", ") || "On Social Media months"}
+                    </p>
                   </div>
                   <Button type="button" variant="ghost" size="sm" disabled={!!busy} onClick={() => run(p.uid, "remove")}
                     data-test="smm-team-remove" aria-label={`Take ${p.name} off the team`} className="h-9 shrink-0 gap-1.5 text-rose-600 hover:text-rose-700">

@@ -24,6 +24,7 @@
  * is a person the lead cannot see, and a wrong word here is a call she makes for nothing.
  */
 import type { SmmCampaign } from "@/types/smm";
+import { cyclePhase } from "@/utils/smmPackage";
 
 /** The view is the Social Media Team Lead's, and the admins who own tech attendance can open it too. */
 export function canSeeSmmAttendance(user: { role?: string; smmLeader?: boolean } | null | undefined): boolean {
@@ -38,6 +39,23 @@ export const canEditSmmTeam = canSeeSmmAttendance;
 export type SmmSeat = "Creator" | "Publisher" | "Marketer" | "Assistant";
 const SEAT_ORDER: SmmSeat[] = ["Creator", "Publisher", "Marketer", "Assistant"];
 
+/** Where a client's month stands today: being worked, not started yet, or past its last day (on hold). */
+export type HandleState = "running" | "upcoming" | "ended";
+
+/**
+ * One Social Media client a person handles, and what they do for it (owner, 2026-10-08, on the TODAY board: "in
+ * the cards, for each member, write what social media handling they are doing" — the card said only "Creator ·
+ * Publisher · Marketer — 2 clients", the names hidden in a tooltip).
+ */
+export interface SmmHandle {
+  client: string;
+  /** Their seats on that client's month, plus Creator / Publisher for a post given to them. */
+  seats: SmmSeat[];
+  state: HandleState;
+  /** The month's first day — "starts 20 Oct" for one not started yet. */
+  startDate: string;
+}
+
 /** One person on the Social Media team: their seats, the clients they work on, and why they are listed. */
 export interface SmmTeamPerson {
   uid: string;
@@ -45,9 +63,13 @@ export interface SmmTeamPerson {
   seats: SmmSeat[];
   /** Business names of the board's months they work on, A–Z. */
   clients: string[];
+  /** Each client and what they do for it — the months running now first, then upcoming, then ended; A–Z within. */
+  handles: SmmHandle[];
   /** On a month (a seat or a post) — or added to the list by hand by the lead. */
   source: "months" | "added";
 }
+
+const STATE_ORDER: Record<HandleState, number> = { running: 0, upcoming: 1, ended: 2 };
 
 /**
  * A month on the Social Media board: `active` — running, on hold (ended, no renewal decision yet), not started yet,
@@ -59,39 +81,61 @@ export function isBoardMonth(c: SmmCampaign): boolean {
 
 /**
  * Everybody working on a month on the board, once each, A–Z: the month's seats (creator, publisher, marketer,
- * assistants) and each post's own maker and publisher — with their seats and clients.
+ * assistants) and each post's own maker and publisher — with their seats, their clients, and what they do for each.
+ * A client with two months on the board (a next month already set up) is one line: its seats together, its state
+ * the most current one.
  */
-export function smmTeamFromMonths(campaigns: SmmCampaign[]): SmmTeamPerson[] {
-  const byUid = new Map<string, { name: string; seats: Set<SmmSeat>; clients: Set<string> }>();
-  const add = (uid: string | null | undefined, name: string | null | undefined, seat: SmmSeat, client: string) => {
+export function smmTeamFromMonths(campaigns: SmmCampaign[], today: string): SmmTeamPerson[] {
+  type Handle = { seats: Set<SmmSeat>; state: HandleState; startDate: string };
+  const byUid = new Map<string, { name: string; seats: Set<SmmSeat>; handles: Map<string, Handle> }>();
+  const add = (
+    uid: string | null | undefined, name: string | null | undefined, seat: SmmSeat,
+    client: string, state: HandleState, startDate: string,
+  ) => {
     if (!uid) return;
-    const entry = byUid.get(uid) ?? { name: name || "", seats: new Set<SmmSeat>(), clients: new Set<string>() };
+    const entry = byUid.get(uid) ?? { name: name || "", seats: new Set<SmmSeat>(), handles: new Map<string, Handle>() };
     if (!entry.name && name) entry.name = name;
     entry.seats.add(seat);
-    if (client) entry.clients.add(client);
+    if (client) {
+      const h = entry.handles.get(client);
+      if (!h) entry.handles.set(client, { seats: new Set([seat]), state, startDate });
+      else {
+        h.seats.add(seat);
+        if (STATE_ORDER[state] < STATE_ORDER[h.state]) Object.assign(h, { state, startDate });
+      }
+    }
     byUid.set(uid, entry);
   };
   for (const c of campaigns) {
     if (!isBoardMonth(c)) continue;
     const client = (c.businessName || c.clientName || "").trim();
-    add(c.team?.creator?.uid, c.team?.creator?.name, "Creator", client);
-    add(c.team?.publisher?.uid, c.team?.publisher?.name, "Publisher", client);
-    add(c.team?.marketer?.uid, c.team?.marketer?.name, "Marketer", client);
-    for (const a of c.team?.assistants || []) add(a.uid, a.name, "Assistant", client);
+    const phase = c.cycle ? cyclePhase(c.cycle, today) : "running";
+    const state: HandleState = phase === "upcoming" ? "upcoming" : phase === "ended" ? "ended" : "running";
+    const start = c.cycle?.startDate || "";
+    add(c.team?.creator?.uid, c.team?.creator?.name, "Creator", client, state, start);
+    add(c.team?.publisher?.uid, c.team?.publisher?.name, "Publisher", client, state, start);
+    add(c.team?.marketer?.uid, c.team?.marketer?.name, "Marketer", client, state, start);
+    for (const a of c.team?.assistants || []) add(a.uid, a.name, "Assistant", client, state, start);
     // A post may be given to somebody who holds no seat on the month — they work on it all the same.
     for (const item of c.items || []) {
-      add(item.makerUid, item.makerName, "Creator", client);
-      add(item.publisherUid, item.publisherName, "Publisher", client);
+      add(item.makerUid, item.makerName, "Creator", client, state, start);
+      add(item.publisherUid, item.publisherName, "Publisher", client, state, start);
     }
   }
   return [...byUid.entries()]
-    .map(([uid, e]) => ({
-      uid,
-      name: e.name || "Unnamed",
-      seats: SEAT_ORDER.filter((s) => e.seats.has(s)),
-      clients: [...e.clients].sort((a, b) => a.localeCompare(b)),
-      source: "months" as const,
-    }))
+    .map(([uid, e]) => {
+      const handles: SmmHandle[] = [...e.handles.entries()]
+        .map(([client, h]) => ({ client, seats: SEAT_ORDER.filter((s) => h.seats.has(s)), state: h.state, startDate: h.startDate }))
+        .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.client.localeCompare(b.client));
+      return {
+        uid,
+        name: e.name || "Unnamed",
+        seats: SEAT_ORDER.filter((s) => e.seats.has(s)),
+        clients: [...e.handles.keys()].sort((a, b) => a.localeCompare(b)),
+        handles,
+        source: "months" as const,
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -119,17 +163,17 @@ export function applyTeamEdits(
     if (!uid || removed.has(uid) || onList.has(uid)) continue;
     // Somebody added by hand who is also on a month keeps the month's entry (the loop above already has them).
     if (fromMonths.some((p) => p.uid === uid)) continue;
-    out.push({ uid, name: nameOf(uid) || "Unnamed", seats: [], clients: [], source: "added" });
+    out.push({ uid, name: nameOf(uid) || "Unnamed", seats: [], clients: [], handles: [], source: "added" });
     onList.add(uid);
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** "Creator · Publisher — 3 clients" — what a card says about a person under their name. */
-export function seatLine(person: Pick<SmmTeamPerson, "seats" | "clients" | "source">): string {
-  if (person.seats.length === 0) return person.source === "added" ? "Added to the team by the lead" : "";
-  const n = person.clients.length;
-  return `${person.seats.join(" · ")}${n ? ` — ${n} client${n === 1 ? "" : "s"}` : ""}`;
+/** The card's heading over the clients: "Handles 2 clients", or why there are none. */
+export function handlesHeading(person: Pick<SmmTeamPerson, "handles" | "source">): string {
+  const n = person.handles.length;
+  if (n > 0) return `Handles ${n} client${n === 1 ? "" : "s"}`;
+  return person.source === "added" ? "Added to the team by the lead — no Social Media client yet" : "No Social Media client yet";
 }
 
 // ─── Today ─────────────────────────────────────────────────────────────────────────────────────────

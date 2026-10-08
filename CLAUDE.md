@@ -230,7 +230,7 @@ errors:** done means every listed item is fully resolved with no build, console 
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
 - `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈843 KB; lazy pages for
   AI Accounts, Invoices).
-- `npx vitest run` ✅ 219 files, 3364 tests, all pass, no unhandled errors (2026-10-08, after the cast-consistency
+- `npx vitest run` ✅ 219 files, 3365 tests, all pass, no unhandled errors (2026-10-08, after the cast-consistency
   fix and the Social Media → Attendance TODAY board). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).

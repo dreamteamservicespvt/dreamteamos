@@ -292,7 +292,12 @@ to know who is absent before the meeting; some members are not showing." Asked, 
 — call them* (with **Call** `tel:` and **WhatsApp** `wa.me` from the profile's `phone`, `utils/phone`), *Not coming
 today — no need to call* (approved leave, a leave request nobody decided yet, marked absent), *Present* ("In at 9:42
 AM · left 6:05 PM", half day), *No check-in record* (team leaders — they never check in; Call / WhatsApp too), *Day
-off*. Each status is an icon + colour + words; "Everyone who checks in has checked in or is on leave — nobody to chase"
+off*. **Each card says what Social Media work the person handles** (owner, the same night: "in the cards, for each
+member, write what social media handling they are doing"): "Handles 2 clients", then one line per client — the
+client's name and what they do for it ("Lakshmi Jewellers — Creator, Publisher, Marketer"), tagged "month ended" (on
+hold) or "starts 20 Oct" when that month is not running; running clients first (`SmmTeamPerson.handles`, from the
+same months and posts, a client's two months on the board one line). Edit team lists each person's client names
+too. Each status is an icon + colour + words; "Everyone who checks in has checked in or is on leave — nobody to chase"
 when the call list is empty; an amber banner on a Sunday or an announced holiday. **A day** (`todayStatusOf`): an
 admin's mark (`attendance/{uid}_{day}` — an approved leave is written as one), else today's check-in
 (`techAttendance.watchCheckinsOnDay`, with its times), else Sunday / a holiday, else a pending leave request covering

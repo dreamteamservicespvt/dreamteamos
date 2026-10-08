@@ -9,7 +9,20 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-08 (latest, night): Social Media → Attendance becomes a TODAY board for the lead's daily meeting**
+- **2026-10-08 (latest, 23:10): the TODAY board's cards say what Social Media work each person handles** (`smm.md`
+  §9.9). The owner, on the live board: "in the cards, for each member, write what social media handling they are
+  doing" — a card said only "Creator · Publisher · Marketer — 2 clients" (the names in a tooltip). Now under the
+  status: "Handles 2 clients" and one line per client with what they do for it ("Lakshmi Jewellers — Creator,
+  Publisher, Marketer"), tagged "month ended" / "starts 20 Oct" for a month not running; running clients first.
+  `utils/smmAttendance.smmTeamFromMonths(campaigns, today)` builds `handles` (a client's two months on the board =
+  one line, the most current state), `handlesHeading`; `seatLine` removed. Cards are flex columns so a row's Call /
+  WhatsApp buttons line up. Edit team shows the client names. Tested: `smmAttendanceOct08` (14 — each person's
+  clients, roles and month state, two months of one client, the card's lines), full vitest (3365), build,
+  typecheck. Real browser (1440 / 390 / 360 px, dark and light, no console errors): every card's clients, roles and
+  "month ended" / "starts 20 Oct" tags right; a 70-character client name wraps, nothing overflows; a row's cards equal
+  height with the Call / WhatsApp buttons on one line; contrast ≥ 4.5:1. Fixed from it: Edit team cut long client
+  lists with "…" on a phone (the rest only in a tooltip) — they wrap now.
+- **2026-10-08 (night): Social Media → Attendance becomes a TODAY board for the lead's daily meeting**
   (`smm.md` §9.9 / §24 / §25, `people.md` §9.13, `roles-routes.md` §8, `data-model.md` `app_settings/smm_team`,
   `docs/firestore-rules.md` note — no rule change).
   - **The owner, with the pay-cycle grid live:** "don't show all months — only today; some members are not showing,
