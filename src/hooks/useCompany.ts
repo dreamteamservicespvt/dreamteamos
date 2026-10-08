@@ -5,7 +5,7 @@
  * letterhead, ID card and payslip in the app shows the same address the moment somebody changes it
  * in Settings — without a deploy, and without each of them having to know where it came from.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { watchCompanyAssets } from "@/services/companyAssets";
 import {
   officerOf, resolveCompany,
@@ -28,8 +28,12 @@ export function useCompany(): CompanyContext {
 
   useEffect(() => watchCompanyAssets((a) => { setAssets(a); setLoaded(true); }), []);
 
+  // The same object until the settings document changes. A fresh one per render made any effect keyed on
+  // `company` run on every render — Invoices → Settings re-rendered forever (2026-10-08).
+  const company = useMemo(() => resolveCompany(assets), [assets]);
+
   return {
-    company: resolveCompany(assets),
+    company,
     assets,
     officer: (key) => officerOf(assets, key),
     loaded,

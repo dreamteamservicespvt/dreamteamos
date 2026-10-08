@@ -122,6 +122,7 @@ const AdminChatMonitor = lazy(() => import("@/pages/shared/AdminChatMonitor"));
 // Invoice Builder (2026-10-08): the register, the workspace, and the team-leader switch's door.
 const Invoices = lazy(() => import("@/pages/shared/Invoices"));
 const InvoiceBuilder = lazy(() => import("@/pages/shared/InvoiceBuilder"));
+const InvoiceSettings = lazy(() => import("@/pages/shared/InvoiceSettings"));
 const InvoiceAccessGate = lazy(() => import("@/components/invoice/InvoiceAccessGate"));
 const ClientChat = lazy(() => import("@/pages/client/ClientChat"));
 const ClientChatResume = lazy(() => import("@/pages/client/ClientChat").then((m) => ({ default: m.ClientChatResume })));
@@ -230,6 +231,9 @@ const App = () => (
           <Route element={<AppLayout allowedRoles={INVOICE_ROUTE_ROLES} />}>
             <Route element={<InvoiceAccessGate />}>
               <Route path="/invoices" element={<Invoices />} />
+              {/* What every new invoice starts with (logo, business, bank, QR, tax, terms) — admins.
+                  A static segment, so it wins over /invoices/:invoiceId. */}
+              <Route path="/invoices/settings" element={<InvoiceSettings />} />
               <Route path="/invoices/:invoiceId" element={<InvoiceBuilder />} />
             </Route>
           </Route>

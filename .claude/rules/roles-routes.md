@@ -146,7 +146,7 @@ legacy users without the field active.
 | Add own Flow accounts, "using now", record / correct own credits | | ✅ | ✅ | ✅ | | | |
 | Chat monitor | | ✅ | | | ✅ | | |
 | Invoice Builder: make, generate, edit, PDF (2026-10-08; also enforced in the rules) | ✅ | ✅ | only while the switch is on | | ✅ | ✅ | ✅ |
-| See every invoice (others see their own) · set invoice defaults (bank, terms) | ✅ | ✅ | | | ✅ | | ✅ |
+| See every invoice (others see their own) · Invoices → Settings (logo, business, bank, QR, tax, terms) | ✅ | ✅ | | | ✅ | | ✅ |
 | Team-leader Invoice Builder switch | ✅ | ✅ | | | | | |
 | Delete an invoice (draft or generated; the number stays used — 2026-10-08) | ✅ | ✅ | own, while the switch is on | | ✅ | ✅ own | ✅ |
 
@@ -186,6 +186,7 @@ is lazy. Chunk loading shows `PageFallback` inside the shell (app pages) or `Rou
 | Route | Page | Purpose |
 |---|---|---|
 | `/invoices` | `shared/Invoices.tsx` | The register: search, status filters with counts, amount waiting to be paid, Open / Duplicate / Delete draft |
+| `/invoices/settings` | `shared/InvoiceSettings.tsx` | What every new invoice starts with — logo, business, bank, QR, tax, terms, notes (+ live sample preview); the four admins, others see a lock |
 | `/invoices/:invoiceId` | `shared/InvoiceBuilder.tsx` | The workspace (editor + live A4 preview); `/invoices/new` swaps itself for a fresh id |
 Both sit under `AppLayout allowedRoles={INVOICE_ROUTE_ROLES}` → `InvoiceAccessGate` (the team-leader switch). A
 tech member is sent to `/login` by the guard. Nav: one "Invoices" item per allowed role (`INVOICES_NAV`); see `invoices.md`.

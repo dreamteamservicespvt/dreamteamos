@@ -12,7 +12,7 @@ import type {
 } from "@/types/invoice";
 import type { Order } from "@/types";
 import type { ResolvedCompany } from "@/utils/company";
-import { numberInIndianWords } from "@/utils/company";
+import { numberInIndianWords, resolveCompany } from "@/utils/company";
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { GSTIN_PROBLEM_TEXT, HOME_STATE_CODE, gstinProblem, isValidIfsc, isValidUpiId, normalizeGstin, stateCodeOfGstin } from "@/utils/gst";
 import { computeInvoice, formatPaise, safeAmount, type InvoiceTotals, type Paise } from "@/utils/invoiceMath";
@@ -47,13 +47,28 @@ export const INVOICE_FALLBACK_DEFAULTS: Required<Pick<InvoiceDefaults, "terms" |
   dueDays: 5,
 };
 
-/** Admin defaults over the fallbacks, field by field — a half-saved defaults document blanks nothing. */
-export function resolveInvoiceDefaults(stored?: InvoiceDefaults | null) {
+/**
+ * Everything a new invoice starts with: the admins' Invoice settings over the company record and the
+ * fallbacks, field by field — a half-saved defaults document blanks nothing, and a field an admin cleared
+ * on purpose (saved as "") stays cleared.
+ */
+export function resolveInvoiceDefaults(stored?: InvoiceDefaults | null, company?: ResolvedCompany | null) {
   const d = stored || {};
   const f = INVOICE_FALLBACK_DEFAULTS;
   const text = (v: unknown, fallback: string) => (typeof v === "string" ? v : fallback);
   const p = d.payment || {};
+  const sv = d.seller || {};
+  const fromCompany = sellerFromCompany(company || resolveCompany({}));
   return {
+    seller: {
+      name: text(sv.name, fromCompany.name),
+      gstin: text(sv.gstin, fromCompany.gstin),
+      address: text(sv.address, fromCompany.address),
+      website: text(sv.website, fromCompany.website),
+      email: text(sv.email, fromCompany.email),
+      phone: text(sv.phone, fromCompany.phone),
+      logoUrl: text(sv.logoUrl, ""),
+    } as InvoiceSeller,
     payment: {
       bankName: text(p.bankName, f.payment.bankName),
       branch: text(p.branch, f.payment.branch),
@@ -141,9 +156,9 @@ export function buildNewInvoiceContent(
   stored: InvoiceDefaults | null | undefined,
   now: Date = new Date(),
 ): InvoiceContent {
-  const d = resolveInvoiceDefaults(stored);
+  const d = resolveInvoiceDefaults(stored, company);
   const issueDate = isoDate(now);
-  const seller = sellerFromCompany(company);
+  const seller = { ...d.seller };
   return {
     issueDate,
     dueDate: addDaysIso(issueDate, d.dueDays),

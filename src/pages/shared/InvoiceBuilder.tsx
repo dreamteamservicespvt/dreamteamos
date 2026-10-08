@@ -25,7 +25,7 @@
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
-  AlertTriangle, Check, CheckCircle2, CloudOff, Copy, Download, FileCheck2, Loader2, MoreHorizontal, Pencil,
+  AlertTriangle, Check, CheckCircle2, CloudOff, Copy, Settings2, Download, FileCheck2, Loader2, MoreHorizontal, Pencil,
   Printer, Trash2, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -41,13 +41,12 @@ import {
   fetchMyRecentInvoices, generateInvoice, newInvoiceId, saveInvoiceContent, setInvoiceStatus,
   deleteInvoice, watchInvoice, type InvoiceActor,
 } from "@/services/invoices";
-import { saveInvoiceDefaults } from "@/services/invoiceSettings";
 import type { Order } from "@/types";
-import type { InvoiceContent, InvoiceCustomer, InvoiceDefaults, InvoiceStatus } from "@/types/invoice";
+import type { InvoiceContent, InvoiceCustomer, InvoiceStatus } from "@/types/invoice";
 import { computeInvoice, formatPaise } from "@/utils/invoiceMath";
 import {
   blankItem, blockingIssues, buildNewInvoiceContent, deleteConfirmCopy, contentFingerprint, contentOf, displayStatusOf, DISPLAY_STATUS_LABEL,
-  duplicateContent, fillFromOrder, invoiceFileName, recentCustomers, upiPaymentLink, validateInvoice,
+  duplicateContent, fillFromOrder, invoiceFileName, recentCustomers, validateInvoice,
 } from "@/utils/invoiceDraft";
 import { financialYearLabel, financialYearShort, financialYearStart, INVOICE_NUMBER_PREFIX } from "@/utils/invoiceNumber";
 import { canDeleteInvoice, canEditInvoice, canEditInvoiceDefaults } from "@/utils/invoiceAccess";
@@ -60,10 +59,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import InvoiceEditor, { sectionOfField, type SectionId } from "@/components/invoice/InvoiceEditor";
 import InvoicePreview, { type InvoicePreviewHandle } from "@/components/invoice/InvoicePreview";
-import { buildPaperModel } from "@/components/invoice/InvoicePaper";
 import FillFromSale from "@/components/invoice/FillFromSale";
 import { Segmented, type FieldIssue } from "@/components/invoice/editorKit";
-import { squareImageFile, useImageSize, useInlinedImage, useQrDataUrl } from "@/components/invoice/useInvoiceAssets";
+import { squareImageFile } from "@/components/invoice/useInvoiceAssets";
+import { useInvoicePaper } from "@/components/invoice/useInvoicePaper";
 import { StatusPill } from "@/components/invoice/StatusPill";
 
 /** The route: `/invoices/new` becomes a fresh id; anything else is that invoice. */
@@ -316,29 +315,9 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
   }, [issues, attempted]);
 
   const deferred = useDeferredValue(content);
-  const deferredTotals = useMemo(() => (deferred ? computeInvoice(deferred) : null), [deferred]);
-  // The QR: the company's uploaded image when there is one, otherwise made here from the UPI ID.
-  const uploadedQrUrl = deferred?.payment.qrImageUrl || "";
-  const upiLink = deferred && deferredTotals && deferred.payment.showQr && !uploadedQrUrl
-    ? upiPaymentLink({ upiId: deferred.payment.upiId, payeeName: deferred.seller.name, amount: deferredTotals.grandTotal, note: meta.number ? `Invoice ${meta.number}` : "Invoice" })
-    : "";
-  const qr = useQrDataUrl(upiLink);
-  const uploadedQr = useInlinedImage(deferred?.payment.showQr ? uploadedQrUrl : "");
-  const qrSrc = uploadedQrUrl ? uploadedQr.src : qr.src;
-  const qrWanted = !!deferred?.payment.showQr && (!!uploadedQrUrl || !!upiLink);
-  const uploadedLogo = useInlinedImage(deferred?.seller.logoUrl || "");
-  const logoSrc = deferred?.seller.logoUrl ? uploadedLogo.src : companyLogo;
-  const logoNatural = useImageSize(logoSrc);
-  const model = useMemo(() => (deferred && deferredTotals ? buildPaperModel({
-    content: deferred,
-    totals: deferredTotals,
-    number: meta.number,
-    status: meta.status,
-    logoSrc,
-    logoNatural,
-    qrSrc,
-    showQr: qrWanted,
-  }) : null), [deferred, deferredTotals, meta.number, meta.status, logoSrc, logoNatural, qrSrc, qrWanted]);
+  // The sheets, their logo and their QR — the same hook drives the Settings preview.
+  const paper = useInvoicePaper({ content: deferred, number: meta.number, status: meta.status, companyLogo });
+  const model = paper.model;
 
   // ── Saving ──────────────────────────────────────────────────────────────────────────────────
   const save = useCallback(async (opts: { issued?: boolean } = {}): Promise<boolean> => {
@@ -502,7 +481,7 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
     try {
       const url = await uploadToCloudinary(await squareImageFile(file));
       update((x) => ({ ...x, payment: { ...x.payment, qrImageUrl: url, showQr: true } }));
-      toast({ title: "QR code added", description: "It's printed on this invoice. Admins can save it as the default for new ones." });
+      toast({ title: "QR code added", description: "It's printed on this invoice. To print it on every invoice, add it in Invoice settings." });
     } catch {
       toast({ title: "Couldn't upload the QR code", description: "Check your connection and try again.", variant: "destructive" });
     } finally {
@@ -510,29 +489,18 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
     }
   }, [update, toast]);
 
-  const onSaveDefaults = useCallback(async (patch: Partial<InvoiceDefaults>, what: string) => {
-    if (!actor) return;
-    try {
-      await saveInvoiceDefaults(patch, actor);
-      toast({ title: "Saved as default", description: `New invoices will start with these ${what}.` });
-    } catch (err) {
-      toast({ title: "Couldn't save the default", description: friendlyError(err), variant: "destructive" });
-    }
-  }, [actor?.uid, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Export ──────────────────────────────────────────────────────────────────────────────────
   const deferredRef = useRef(deferred);
   deferredRef.current = deferred;
-  const qrReadyRef = useRef(true);
-  qrReadyRef.current = !qrWanted || (uploadedQrUrl ? uploadedQr.ready : qr.ready);
-  const logoReadyRef = useRef(true);
-  logoReadyRef.current = (!deferred?.seller.logoUrl || uploadedLogo.ready) && (!logoSrc || !!logoNatural);
+  const paperReadyRef = useRef(true);
+  paperReadyRef.current = paper.ready;
   const waitForPreview = useCallback(async () => {
     const started = Date.now();
     // The preview runs a frame behind the typing (useDeferredValue) and the QR is drawn async;
     // wait until both match what is on screen, so the file is never last second's invoice.
     while (Date.now() - started < 3000) {
-      const synced = deferredRef.current === contentRef.current && qrReadyRef.current && logoReadyRef.current;
+      const synced = deferredRef.current === contentRef.current && paperReadyRef.current;
       if (synced) return;
       await new Promise((r) => setTimeout(r, 50));
     }
@@ -801,6 +769,9 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
           <DropdownMenuItem onSelect={startEdit}><Pencil size={14} className="mr-2" /> Edit invoice</DropdownMenuItem>
         )}
         <DropdownMenuItem onSelect={onDuplicate}><Copy size={14} className="mr-2" /> Duplicate as new draft</DropdownMenuItem>
+        {canEditInvoiceDefaults(user.role) && (
+          <DropdownMenuItem asChild><Link to="/invoices/settings"><Settings2 size={14} className="mr-2" /> Invoice settings</Link></DropdownMenuItem>
+        )}
         {deletable && (<>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => void onDelete()} className="text-destructive focus:text-destructive">
@@ -873,17 +844,16 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
         open={open}
         onToggle={(id) => setOpen((o) => ({ ...o, [id]: !o[id] }))}
         company={company}
-        logoSrc={content.seller.logoUrl ? (uploadedLogo.src || content.seller.logoUrl) : companyLogo}
+        logoSrc={paper.logoSrc || content.seller.logoUrl || companyLogo}
         logoUploading={logoUploading}
-        qrSrc={qrSrc}
+        qrSrc={paper.qrSrc}
         qrUploading={qrUploading}
         onQrFile={onQrFile}
         onLogoFile={onLogoFile}
         canChangeStatus={mayEdit}
         statusBusy={statusBusy}
         onStatusChange={changeStatus}
-        canSaveDefaults={canEditInvoiceDefaults(user.role)}
-        onSaveDefaults={onSaveDefaults}
+        canEditDefaults={canEditInvoiceDefaults(user.role)}
         focusItemId={focusItemId}
         onFocusDone={() => setFocusItemId(null)}
         onAddItem={addItem}

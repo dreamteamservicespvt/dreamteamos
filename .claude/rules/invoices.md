@@ -8,6 +8,7 @@ paths:
   - "src/hooks/useLeaveGuard.ts"
   - "src/components/invoice/**"
   - "src/pages/shared/Invoice*.tsx"
+  - "src/pages/shared/InvoiceSettings.tsx"
   - "src/test/invoice*.test.ts"
 ---
 
@@ -39,7 +40,8 @@ guard + rules). A member sees the invoices they made; the four admins see every 
 **Routes** (`App.tsx`, un-prefixed like `/smm`): `/invoices` (`pages/shared/Invoices.tsx` — the register:
 search, status filters that are counts, "₹X waiting to be paid", row menu Open / Duplicate / Delete draft) and
 `/invoices/:invoiceId` (`pages/shared/InvoiceBuilder.tsx`; `/invoices/new` replaces itself with a fresh id before
-anything is typed, so the URL never changes under someone typing). Both under
+anything is typed, so the URL never changes under someone typing) and `/invoices/settings`
+(`pages/shared/InvoiceSettings.tsx`, the four admins; a static segment, so it wins over `:invoiceId`). All under
 `AppLayout allowedRoles={INVOICE_ROUTE_ROLES}` → `components/invoice/InvoiceAccessGate` (the team-leader switch;
 shows "isn't turned on for you" instead of bouncing). Nav: one `INVOICES_NAV` item per allowed role in
 `roleHelpers.NAV` (main admin after Accounts; tech/sales admin after Clients; accounts admin after Revenue
@@ -63,6 +65,8 @@ Sidebar listens to the switch for team leaders only).
   `generateInvoice`, `setInvoiceStatus`, `deleteInvoice`, `duplicateInvoice`, `fetchMyRecentInvoices`.
 - `services/invoiceSettings.ts` — the switch and the defaults (own file so the sidebar does not pull the engine
   into the first bundle); `hooks/useInvoiceSettings.ts` (`useInvoiceAccess(enabled)`, `useInvoiceDefaults`).
+- `pages/shared/InvoiceSettings.tsx` — Invoices → Settings (above); `components/invoice/useInvoicePaper.ts` —
+  content → paper model with its logo and QR ready (builder + settings preview).
 - `components/invoice/` — `InvoicePaper` (the A4 sheet + the measuring copy, inline styles only), `InvoicePreview`
   (measure → plan → scaled sheets; `capturePages()` for export), `InvoiceEditor` (8 sections), `ItemsEditor`,
   `editorKit` (Field, TextInput, NumberInput, Segmented, Section), `FillFromSale`, `StatusPill`,
@@ -83,7 +87,8 @@ Sidebar listens to the switch for team leaders only).
 - `invoice_counters/{2026-27}` `{ seq, fy }` · `invoice_numbers/{DTS-26-27-0001}` `{ number, invoiceId, fy,
   sequence, byUid }` (create-only register; when its invoice is deleted it gains `deleted: true`, `deletedAt`,
   `deletedByUid/Name`, `customerName`, `grandTotal` and the number is never reused) · `invoice_settings/access` `{ teamLeadersEnabled }` ·
-  `invoice_settings/defaults` `{ payment, terms, notes, taxRate, pricesIncludeTax, dueDays }`.
+  `invoice_settings/defaults` `{ seller {name, gstin, address, website, email, phone, logoUrl}, payment (incl.
+  qrImageUrl), terms, notes, taxRate, pricesIncludeTax, dueDays }`.
 
 ## 24. BUSINESS RULES (this module)
 
@@ -111,9 +116,17 @@ Sidebar listens to the switch for team leaders only).
 - **UPI QR:** the company's own QR image can be uploaded in Payment details (padded to a white square first,
   `squareImageFile`, because html2canvas ignores `object-fit`); otherwise one is made locally from the UPI ID with
   the total in it. Admins can save the uploaded QR as the default with the rest of the payment details.
-- **Defaults:** a new invoice takes the company from `company_settings/main` and payment/terms/notes/GST from
-  `invoice_settings/defaults` over `INVOICE_FALLBACK_DEFAULTS`; the four admins can "Save as default" from the
-  Tax, Payment, Terms and Notes sections. Both are snapshots in the invoice.
+- **Invoice settings** (owner, 2026-10-08 — `/invoices/settings`, "Settings" on the list for the four admins, ⋯ →
+  "Invoice settings" in the builder): ONE page for what every new invoice starts with — the business block and
+  **logo**, bank details and **QR image**, GST rate + on top / included, due days, terms, notes — saved to
+  `invoice_settings/defaults` (explicit Save, leave guard, Discard), with a live preview of a sample invoice
+  (`useInvoicePaper`, the same hook the builder uses) and, for the tech / main admin, the team-leader switch.
+  Opens prefilled by `resolveInvoiceDefaults(defaults, company)`: saved settings over `company_settings/main`
+  over `INVOICE_FALLBACK_DEFAULTS`, field by field (a field saved as "" stays cleared; `seller.logoUrl` "" =
+  the company logo). The invoice business block lives here, apart from Company Documents, so editing it never
+  changes the HR letters. A new invoice copies all of it as its own snapshot; changing one invoice in the builder
+  changes only that invoice (the builder says so under the sections; the old per-section "Save as default"
+  buttons were removed — one place for defaults). Invoices already made keep their own details.
 - **Not losing work:** drafts autosave 0.9 s after typing; leaving with an unsaved draft saves it on the way out;
   an issued invoice's unsaved edits prompt on in-app links/reload and are also kept on the device
   (`localStorage dts.invoiceWip.<uid>.<id>`) and offered back ("Restore") on reopening; `holdUpdates()` while

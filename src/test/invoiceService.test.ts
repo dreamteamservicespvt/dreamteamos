@@ -334,3 +334,42 @@ describe("owner's round two (2026-10-08): QR upload, logo, delete wording", () =
     expect(g.confirmText).toBe("Delete invoice");
   });
 });
+
+describe("Invoices → Settings (owner, 2026-10-08): every new invoice starts from them", () => {
+  const company = resolveCompany({ name: "Dream Team Services", gstin: "37FWQPR6939Q1ZY", address: ["Kakinada"], website: "dts.com", email: "a@dts.com", phone: "999" });
+
+  it("prefills from Company Documents and the fallbacks when nothing is saved yet", () => {
+    const r = draft.resolveInvoiceDefaults({}, company);
+    expect(r.seller).toEqual({ name: "Dream Team Services", gstin: "37FWQPR6939Q1ZY", address: "Kakinada", website: "dts.com", email: "a@dts.com", phone: "999", logoUrl: "" });
+    expect(r.payment.bankName).toBe("Bank of Baroda");
+    expect(r.pricesIncludeTax).toBe(false);
+  });
+
+  it("the saved settings win field by field; a field cleared on purpose stays cleared", () => {
+    const r = draft.resolveInvoiceDefaults({ seller: { name: "DTS Pvt Ltd", website: "", logoUrl: "https://x/logo.png" } }, company);
+    expect(r.seller.name).toBe("DTS Pvt Ltd");
+    expect(r.seller.website).toBe("");
+    expect(r.seller.gstin).toBe("37FWQPR6939Q1ZY");
+    expect(r.seller.logoUrl).toBe("https://x/logo.png");
+  });
+
+  it("a new invoice carries the settings' business, logo, QR and terms as its own snapshot", () => {
+    const c = draft.buildNewInvoiceContent(company, {
+      seller: { name: "DTS Pvt Ltd", logoUrl: "https://x/logo.png" },
+      payment: { qrImageUrl: "https://x/qr.png", bankName: "SBI" },
+      terms: "Net 7", dueDays: 7, taxRate: 12, pricesIncludeTax: true,
+    }, new Date(2026, 9, 8));
+    expect(c.seller).toMatchObject({ name: "DTS Pvt Ltd", logoUrl: "https://x/logo.png", gstin: "37FWQPR6939Q1ZY" });
+    expect(c.payment).toMatchObject({ qrImageUrl: "https://x/qr.png", bankName: "SBI", ifsc: "BARB0GHATIX" });
+    expect(c.terms).toBe("Net 7");
+    expect(c.dueDate).toBe("2026-10-15");
+    expect(c.tax).toMatchObject({ pricesIncludeTax: true, defaultRate: 12 });
+    expect(c.items[0].taxRate).toBe(12);
+  });
+
+  it("saving the settings writes one defaults document, merged", async () => {
+    await settings.saveInvoiceDefaults({ seller: { name: "DTS Pvt Ltd" } as any, dueDays: 7 }, ADMIN);
+    await settings.saveInvoiceDefaults({ payment: { qrImageUrl: "q.png" } as any }, ADMIN);
+    expect(read("invoice_settings/defaults")).toMatchObject({ seller: { name: "DTS Pvt Ltd" }, dueDays: 7, payment: { qrImageUrl: "q.png" } });
+  });
+});

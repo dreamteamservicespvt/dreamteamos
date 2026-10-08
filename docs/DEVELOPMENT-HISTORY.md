@@ -9,7 +9,36 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-08 (latest): Invoice Builder, round two — the owner's first real invoice** (`invoices.md` §9.22 /
+- **2026-10-08 (latest): Invoices → Settings — one place for what every invoice starts with** (`invoices.md`
+  §9.22 / §24, `data-model.md` invoice_settings/defaults, `roles-routes.md` §8.2 / §10).
+  - **The owner's request:** "a settings option in the invoice section: upload the logo, QR code and details,
+    prefilled with all the existing information; every invoice shows them by default; if I want to change one, I
+    change it while creating the invoice."
+  - **Done:** `/invoices/settings` (`pages/shared/InvoiceSettings.tsx`; "Settings" beside New invoice and ⋯ →
+    "Invoice settings" in the builder, for the four admins; others see a lock): the business block with its own
+    **logo**, bank details with the **QR image**, GST rate + on top / included, due days, terms, notes, and — for the
+    tech / main admin — the team-leader switch; explicit Save with Discard and the leave guard; a live preview of a
+    sample invoice on the real sheets. Prefilled by `resolveInvoiceDefaults(defaults, company)` (saved settings over
+    Company Documents over the company's Inv. 4232 fallbacks, field by field; "" stays cleared). New field
+    `InvoiceDefaults.seller` (kept apart from `company_settings` so the HR letters never change); a new invoice
+    copies everything as its snapshot; one invoice's changes stay on that invoice. The builder's per-section
+    "Save as default" buttons were removed (one place for defaults); a note under the sections says where the
+    starting values come from. Shared `components/invoice/useInvoicePaper` (content → sheets with logo + QR) now
+    drives both the builder and the settings preview.
+  - **Bug found and fixed in the browser run:** the settings page re-rendered forever when it had no unsaved
+    changes (~990 ms of script per second; "Maximum update depth exceeded" in the locked view) — `useCompany()`
+    built a new `company` object every render, and the prefill effect depended on it. Root fix: `useCompany`
+    memoises `company` on the stored document (every caller benefits — e.g. `IssueDocumentDialog`'s `useMemo` now
+    actually memoises); the prefill effect is also keyed on the resolved values' fingerprint. After: 2–5 ms/s.
+  - **Tested:** 4 new unit tests (prefill from Company Documents, field-by-field override with cleared fields, a new
+    invoice carrying the settings' logo / QR / terms / due days / tax, merged saves); full vitest 215 files / 3314
+    tests ✅; typecheck 1 known error; build ✅. Real headless Chrome (memoryFirestore): access (admin link, sales
+    member locked, URL not taken as an invoice id), prefill, live sample, logo 600×200 → 132×44, QR padded square,
+    leave guard, Save → `invoice_settings/defaults`, a salesperson's new invoice shows the saved business / logo / QR /
+    terms / due date, a per-invoice change stays local, GSTIN check, Company details, Use the company logo, Discard,
+    team-leader card only for tech/main admin, 390 px no horizontal scroll, dark theme, builder ₹118 + PDF with the
+    settings' logo and QR unstretched, idle CPU 2–5 ms/s on every page, 0 console errors.
+- **2026-10-08: Invoice Builder, round two — the owner's first real invoice** (`invoices.md` §9.22 /
   §24 / §25, `data-model.md` invoices + register + status, `roles-routes.md` §8.2, `docs/firestore-rules.md`
   invoices delete + register update).
   - **The owner's report** (a draft PDF "rebuild", ₹100): (1) no way to upload their own QR code; (2)+(3) the rate

@@ -7,8 +7,9 @@
  * who opens a new invoice sees two things to fill in, not forty.
  */
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Building2, ImagePlus, Loader2, QrCode, RotateCcw, Save, Undo2, Upload } from "lucide-react";
-import type { InvoiceContent, InvoiceCustomer, InvoiceDefaults, InvoiceItem, InvoiceStatus } from "@/types/invoice";
+import { Link } from "react-router-dom";
+import { Building2, ImagePlus, Loader2, QrCode, RotateCcw, Undo2, Upload } from "lucide-react";
+import type { InvoiceContent, InvoiceCustomer, InvoiceItem, InvoiceStatus } from "@/types/invoice";
 import type { InvoiceTotals } from "@/utils/invoiceMath";
 import { formatRate } from "@/utils/invoiceMath";
 import type { ResolvedCompany } from "@/utils/company";
@@ -65,8 +66,8 @@ interface Props {
   canChangeStatus: boolean;
   statusBusy: boolean;
   onStatusChange: (s: Exclude<InvoiceStatus, "draft">) => void;
-  canSaveDefaults: boolean;
-  onSaveDefaults: (patch: Partial<InvoiceDefaults>, what: string) => Promise<void>;
+  /** The person can change Invoices → Settings (the defaults every new invoice starts with). */
+  canEditDefaults: boolean;
   focusItemId: string | null;
   onFocusDone: () => void;
   onAddItem: () => void;
@@ -80,7 +81,7 @@ export default function InvoiceEditor(props: Props) {
   const {
     content, update, totals, number, status, readOnly, compact, issueFor, open, onToggle,
     company, logoSrc, logoUploading, onLogoFile, qrSrc, qrUploading, onQrFile, canChangeStatus, statusBusy, onStatusChange,
-    canSaveDefaults, onSaveDefaults, focusItemId, onFocusDone, onAddItem, fillFromSale,
+    canEditDefaults, focusItemId, onFocusDone, onAddItem, fillFromSale,
   } = props;
   const c = content;
   const gstOn = c.tax.mode === "gst";
@@ -95,22 +96,6 @@ export default function InvoiceEditor(props: Props) {
   const mixed = rates.size > 1;
   const sellerState = stateCodeOfGstin(c.seller.gstin);
 
-  const [savingDefault, setSavingDefault] = useState<string | null>(null);
-  const saveDefault = async (key: string, patch: Partial<InvoiceDefaults>, what: string) => {
-    setSavingDefault(key);
-    try { await onSaveDefaults(patch, what); } finally { setSavingDefault(null); }
-  };
-  const defaultButton = (key: string, patch: () => Partial<InvoiceDefaults>, what: string) => canSaveDefaults && !readOnly ? (
-    <button
-      type="button"
-      onClick={() => saveDefault(key, patch(), what)}
-      disabled={savingDefault !== null}
-      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
-      title={`Start every new invoice with these ${what}`}
-    >
-      {savingDefault === key ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save as default
-    </button>
-  ) : null;
 
   return (
     <div className="min-w-0" data-test="invoice-editor">
@@ -357,18 +342,12 @@ export default function InvoiceEditor(props: Props) {
             </span>
             <Switch checked={c.roundOff} onCheckedChange={(v) => update((x) => ({ ...x, roundOff: v }))} disabled={readOnly} aria-label="Round off" />
           </label>
-          {canSaveDefaults && !readOnly && (
-            <div className="flex justify-end">
-              {defaultButton("tax", () => ({ taxRate: c.tax.defaultRate, pricesIncludeTax: c.tax.pricesIncludeTax }), "tax settings")}
-            </div>
-          )}
         </div>
       </Section>
 
       {/* 6 ─ Payment */}
       <Section disabled={readOnly} id="payment" step={6} title="Payment details" open={open.payment} onToggle={() => onToggle("payment")}
-        summary={paymentSummary(c.payment)}
-        actions={open.payment ? defaultButton("payment", () => ({ payment: { ...c.payment } }), "payment details") : undefined}>
+        summary={paymentSummary(c.payment)}>
         <div className={cn("grid gap-3", compact ? "grid-cols-1" : "grid-cols-2")}>
           <Field label="Bank name" htmlFor="inv-bank"><TextInput id="inv-bank" value={c.payment.bankName} onValue={(v) => setPayment({ bankName: v })} maxLength={80} /></Field>
           <Field label="Branch" htmlFor="inv-branch"><TextInput id="inv-branch" value={c.payment.branch} onValue={(v) => setPayment({ branch: v })} maxLength={120} /></Field>
@@ -426,16 +405,24 @@ export default function InvoiceEditor(props: Props) {
       {/* 7 ─ Terms */}
       <Section disabled={readOnly} id="terms" step={7} title="Terms & conditions" open={open.terms} onToggle={() => onToggle("terms")}
         summary={c.terms.split("\n")[0] || "No terms"}
-        actions={open.terms ? defaultButton("terms", () => ({ terms: c.terms }), "terms") : undefined}>
+>
         <TextArea value={c.terms} onValue={(v) => update((x) => ({ ...x, terms: v }))} minRows={3} maxLength={2000} aria-label="Terms and conditions" placeholder="One term per line" />
       </Section>
 
       {/* 8 ─ Notes */}
       <Section disabled={readOnly} id="notes" step={8} title="Notes" open={open.notes} onToggle={() => onToggle("notes")}
         summary={c.notes.split("\n")[0] || "No notes"}
-        actions={open.notes ? defaultButton("notes", () => ({ notes: c.notes }), "notes") : undefined}>
+>
         <TextArea value={c.notes} onValue={(v) => update((x) => ({ ...x, notes: v }))} minRows={3} maxLength={2000} aria-label="Notes" placeholder="A thank-you, a reference, anything the client should read" />
       </Section>
+
+      {/* Where the starting values come from — and, for an admin, where to change them for every invoice. */}
+      <p className="mt-4 text-xs text-muted-foreground leading-relaxed" data-test="defaults-note">
+        Changes here apply to this invoice only. Your business, logo, bank details, QR code, terms and notes start from
+        {" "}{canEditDefaults
+          ? <Link to="/invoices/settings" className="font-medium text-foreground underline-offset-2 hover:underline">Invoice settings</Link>
+          : "Invoice settings (set by your admin)"} on every new invoice.
+      </p>
     </div>
   );
 }

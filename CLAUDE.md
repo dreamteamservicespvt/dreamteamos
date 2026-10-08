@@ -234,12 +234,12 @@ errors:** done means every listed item is fully resolved with no build, console 
 - `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈833 KB; AI
   Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages; Invoices lazy `InvoiceBuilder` ≈84 KB,
   `Invoices` ≈10 KB).
-- `npx vitest run` ✅ 215 files, 3310 tests, all pass, no unhandled errors (2026-10-08, after the saleId /
+- `npx vitest run` ✅ 215 files, 3314 tests, all pass, no unhandled errors (2026-10-08, after the saleId /
   owner-face / దసరా batch and the Invoice Builder).
   Under heavy parallel load a few UI tests can time out; they pass when re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): the Invoice Builder and its round two (GST on top, QR upload, no draft PDF, delete); Sales → Tech on one `saleId`, Real Owner
+- Most recent work (newest first; detail in §31): the Invoice Builder, its round two (GST on top, QR upload, no draft PDF, delete) and Invoices → Settings; Sales → Tech on one `saleId`, Real Owner
   Face and దసరా (2026-10-08); SMM On hold, renewals kept true + renewal money + the post-status popup, over-10% sales reaching
   tech, the SMM earlier months, the wardrobe stylist and Kids' outfits, the Veo 3 rebuild and dynamic pass, the SMM
   client calendar (2026-10-05); one card per SMM client and Insights (2026-10-04); SMM as sales, setup, renewal and

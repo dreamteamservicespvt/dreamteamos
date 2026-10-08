@@ -178,8 +178,15 @@ export interface InvoiceAccessSettings {
   updatedByName?: string;
 }
 
-/** `invoice_settings/defaults` — what a new invoice starts with, set by an admin. */
+/** `invoice_settings/defaults` — what a new invoice starts with, set by an admin in Invoices → Settings. */
 export interface InvoiceDefaults {
+  /**
+   * The business block and logo for invoices (owner, 2026-10-08: "upload the logo, QR code and details in the
+   * invoice settings"). Each field absent = taken from Settings → Company Documents (`company_settings/main`);
+   * present, even empty, = the invoice's own value. Kept apart from the company record so a change here never
+   * alters the HR letters. `logoUrl` "" = the company logo.
+   */
+  seller?: Partial<InvoiceSeller>;
   payment?: Partial<InvoicePayment>;
   terms?: string;
   notes?: string;

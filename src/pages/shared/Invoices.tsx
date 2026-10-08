@@ -17,7 +17,7 @@ import { deleteInvoice, duplicateInvoice, watchInvoices } from "@/services/invoi
 import type { Invoice } from "@/types/invoice";
 import { formatPaise } from "@/utils/invoiceMath";
 import { deleteConfirmCopy, displayStatusOf, formatInvoiceDate, isoDate, type InvoiceDisplayStatus } from "@/utils/invoiceDraft";
-import { canDeleteInvoice, canManageInvoiceAccess, isInvoiceAdmin } from "@/utils/invoiceAccess";
+import { canDeleteInvoice, canEditInvoiceDefaults, isInvoiceAdmin } from "@/utils/invoiceAccess";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -78,7 +78,6 @@ export default function Invoices() {
 
   if (!user) return null;
   const admin = isInvoiceAdmin(user.role);
-  const settingsPath = user.role === "tech_admin" ? "/tech-admin/settings" : user.role === "main_admin" ? "/main-admin/settings" : "";
 
   const onDuplicate = (inv: Invoice) => {
     const { id, committed } = duplicateInvoice(inv, { uid: user.uid, name: user.name || "", role: user.role });
@@ -106,17 +105,21 @@ export default function Invoices() {
           <h1 className="font-display text-lg md:text-2xl font-bold text-foreground">Invoices</h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">
             {admin ? "Every invoice the company has made." : "The invoices you've made."}
-            {canManageInvoiceAccess(user.role) && settingsPath && (
-              <> <Link to={settingsPath} className="inline-flex items-center gap-1 text-foreground/80 hover:text-foreground underline-offset-2 hover:underline ml-1">
-                <Settings2 size={12} /> Team leader access
-              </Link></>
-            )}
           </p>
         </div>
-        <Link to="/invoices/new" data-test="new-invoice"
-          className="inline-flex items-center gap-1.5 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 shadow-sm">
-          <Plus size={16} /> New invoice
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* The logo, business details, bank details, QR, tax and terms every new invoice starts with. */}
+          {canEditInvoiceDefaults(user.role) && (
+            <Link to="/invoices/settings" data-test="invoice-settings-link" title="Logo, business, bank details, QR code, tax and terms for every new invoice"
+              className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent">
+              <Settings2 size={16} /> Settings
+            </Link>
+          )}
+          <Link to="/invoices/new" data-test="new-invoice"
+            className="inline-flex items-center gap-1.5 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 shadow-sm">
+            <Plus size={16} /> New invoice
+          </Link>
+        </div>
       </div>
 
       {list && list.length > 0 && (
