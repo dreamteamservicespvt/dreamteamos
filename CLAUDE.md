@@ -216,43 +216,39 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-08)
 
-- Committed and pushed to `main` @ `d7a9956` (2026-10-05 19:46): everything through 2026-10-05 — the SMM client
-  calendar, "Accounts it covers", the Veo 3 rebuild with its dynamic pass, the wardrobe stylist and the Kids'
-  outfits, an old client's earlier SMM months, renewals kept true, renewal money, the post-status popup, over-10%
-  sales reaching the tech side, and SMM **On hold** (§31).
-- 2026-10-08, complete in the working tree, **not yet committed** (check `git status` — parallel sessions work in
-  this tree): **Sales → Tech on one permanent `saleId`** (`services/sales`: a sale and its order in one
-  transaction; an edit updates the same sale, order and job and pops up for the tech admin, team leader and
-  member; an unassigned sale is deleted everywhere, an assigned one never; no job for a deleted sale, no second job;
-  orphan orders swept — `sales.md`, `orders-work.md`), **Real Owner Face** (a face lock in every frame, only the
-  owner's Veo template by gender — `ai-ads.md`) and **దసరా** in Telugu scripts (§31); and the **Invoice Builder**
-  (`/invoices`: editor + live A4 preview, GST engine, `DTS/26-27/0001` numbers, PDF / print, team-leader switch,
-  new rules for `invoices` / `invoice_counters` / `invoice_numbers` / `invoice_settings` — `invoices.md` §9.22).
-- `main` = the merge of this machine's `346c7f0` into origin/main `1a090f9` (PR #1: the six AdGen
-  fixes and AI Accounts; PR #2: the SMM delete / team lead / extra-work change), resolved to
-  origin/main's implementation (§31, 2026-10-02) and pushed.
-- `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈833 KB; AI
-  Accounts adds lazy `AiAccounts` ≈14 KB and `MyAiAccounts` ≈9 KB pages; Invoices lazy `InvoiceBuilder` ≈84 KB,
-  `Invoices` ≈10 KB).
-- `npx vitest run` ✅ 215 files, 3314 tests, all pass, no unhandled errors (2026-10-08, after the saleId /
-  owner-face / దసరా batch and the Invoice Builder).
-  Under heavy parallel load a few UI tests can time out; they pass when re-run alone.
+- 2026-10-08 (later), pushed to branch **`claude/cast-consistency-smm-attendance`** for review (not merged into
+  `main`; its pull request is opened from GitHub — no `gh` on this machine): **the ad's cast from the configuration
+  to the last video prompt** (a Male & Female Duo — or any pair — can no longer ship a one-voice script or
+  one-speaker Veo prompts: the dialogue reader keeps every turn its own, the quality gate never prefers a draft that
+  lost a speaker and a run that cannot keep the cast stops, every step after the run uses the kit's own `spec`;
+  `ai-ads.md`), the same class fixed in **Cinematic Ads** (the AI's format read by id or label, its cast details
+  recorded, projects saved whole), and **Social Media → Attendance** (the Social Media Team Lead's view-only
+  pay-cycle grid of the people on the running months; `smm.md`, `people.md`).
+- Committed and pushed to `main` @ `abeab79` (2026-10-08 17:10, the owner's commits): everything before it — through
+  2026-10-05 (§31), **Sales → Tech on one permanent `saleId`** (`sales.md`, `orders-work.md`), **Real Owner Face**
+  and **దసరా** (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
+- `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈843 KB; lazy pages for
+  AI Accounts, Invoices).
+- `npx vitest run` ✅ 219 files, 3357 tests, all pass, no unhandled errors (2026-10-08, after the cast-consistency
+  fix and Social Media → Attendance). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): the Invoice Builder, its round two (GST on top, QR upload, no draft PDF, delete) and Invoices → Settings; Sales → Tech on one `saleId`, Real Owner
-  Face and దసరా (2026-10-08); SMM On hold, renewals kept true + renewal money + the post-status popup, over-10% sales reaching
-  tech, the SMM earlier months, the wardrobe stylist and Kids' outfits, the Veo 3 rebuild and dynamic pass, the SMM
-  client calendar (2026-10-05); one card per SMM client and Insights (2026-10-04); SMM as sales, setup, renewal and
-  the board (2026-10-03); the six AdGen fixes and AI Accounts (2026-10-01); earlier AdGen, Cinematic Ads, SMM work.
-- Open follow-ups the owner must act on: replace the invalid and "reported as leaked" Gemini keys
-  (§26.3); publish `docs/firestore-rules.md` in the console (it now also protects the Flow / ChatGPT /
-  Grok passwords and the invoices, their numbers and the team-leader switch); check the invoice defaults
-  (Invoices → any invoice → Payment details / Terms → "Save as default") and make one real invoice + PDF; move secrets out of source; authenticate `/api/send-notification`; generate a few
-  clips in Flow (Frames to Video) from the dynamic-pass prompts — a single presenter, a human duo, Motu &
-  Patlu (watch Patlu's height), a client photo — and compare each with the old prompt on the same frame: no
-  Veo video has been made from them yet; make the frames of a duo ad with a logo and check that the styled
-  outfits stay identical in every clip; make a Real Owner Face frame (a man and a woman, Traditional attire) in
-  ChatGPT / Gemini from the new prompts and check no bindi or tilak appears, then one Flow clip from the template.
+- Most recent work (newest first; detail in §31): the ad's cast kept from the configuration to the video prompts
+  (AI Ads + Cinematic Ads) and Social Media → Attendance (2026-10-08, later); the Invoice Builder and Invoices →
+  Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
+  money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
+  AI Accounts and Cinematic Ads work.
+- Open follow-ups the owner must act on: open, review and merge the pull request for
+  `claude/cast-consistency-smm-attendance`; make one Male & Female Duo ad in Flow from the new prompts; decide the
+  two open Cinematic Ads questions (a format changed mid-project resets nothing; a clip's animation prompt has no
+  line-by-line speaker — `ai-ads.md` §17.4); replace the invalid and "reported as leaked" Gemini keys (§26.3);
+  publish `docs/firestore-rules.md` in the console (it also protects the Flow / ChatGPT / Grok passwords and the
+  invoices, their numbers and the team-leader switch); check the invoice defaults and make one real invoice + PDF;
+  move secrets out of source; authenticate `/api/send-notification`; generate a few clips in Flow (Frames to Video)
+  from the dynamic-pass prompts — a single presenter, a human duo, Motu & Patlu (watch Patlu's height), a client
+  photo — no Veo video has been made from them yet; check a duo ad's styled outfits stay identical in every clip;
+  make a Real Owner Face frame (a man and a woman, Traditional attire) and check no bindi or tilak appears, then one
+  Flow clip from the template.
 
 ---
 
@@ -304,7 +300,10 @@ the credit step (`useCreditGate`: the Flow credits the ad used) → `useComplete
 verified contact facts (`utils/businessFacts`) → core message → voice-over with repair, quality review
 and the scored quality gate (best of three drafts), or a custom script word for word → numbers
 as words / `mariyu` in Latin → scene plan → motion plan → frames / VIDEO BOTTOM LABEL / poster → Veo prompts
-from the same plan) → `ai_generations`. Motion (2026-10-05, dynamic pass): every clip is a real commercial
+from the same plan) → `ai_generations`. The cast is the configuration's (2026-10-08): a cast's script gives every
+speaker their own line in every clip or the run stops (`dialogueFormat.castIntegrityIssues`), the Veo prompts voice
+that structured dialogue, and every step after the run uses the kit's `spec` (`utils/adSpec`), never the live form.
+Motion (2026-10-05, dynamic pass): every clip is a real commercial
 shot — an action that travels or turns plus ONE camera move that follows it (push-in, side track, lateral
 dolly, arc; **never backward** — no walk-back, no pull-out), inside what its frame shows, in a short
 five-part Veo prompt that never describes the frame; most clips walk; every pair (Motu & Patlu included)

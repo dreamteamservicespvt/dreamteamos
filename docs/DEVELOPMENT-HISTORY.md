@@ -9,7 +9,93 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-08 (latest): Invoices → Settings — one place for what every invoice starts with** (`invoices.md`
+- **2026-10-08 (latest): Social Media → Attendance — the Social Media Team Lead's view of their team's days**
+  (`smm.md` §9.9 / §24 / §25, `people.md` §9.13, `roles-routes.md` §8 table + the `smmLeader` flag).
+  - **The owner's request:** "Add attendance view for the social media team leader." Asked (AskUserQuestion), the owner
+    chose: the people in the seats of the Social Media months RUNNING NOW; VIEW ONLY; the PAY-CYCLE GRID Team
+    Attendance shows; INSIDE Social Media beside Cards / Insights / Calendar / Money.
+  - **Done:** view `attendance` in `pages/shared/SocialMedia.tsx` (`dts_smm_view`; the lead (`smmLeader`) and the
+    tech / main admin — `utils/smmAttendance.canSeeSmmAttendance`; anybody else gets the cards);
+    `components/smm/SmmAttendanceView.tsx`: `smmTeamPeople` (every creator / publisher / marketer / assistant on a
+    month active, not history, start ≤ today ≤ end; once each, A–Z, seats + clients); only active tech members who
+    check in are gridded, others named under it ("Ravi (Tech Team Leader — does not check in)"); the 10th → 9th grid
+    with ‹ ›, legend and holidays, search by person or client; read-only. **The grid moved into
+    `components/attendance/AttendanceGrid.tsx`** (desktop table + phone month cards; `onCellClick` makes it editable)
+    and Team Attendance draws it too — the same markup, its editor and Full-Time ⇄ switch unchanged. Reads: the seat
+    holders' `users` docs once by id (`hooks/useUsersByIds`, chunks of 30) + the existing range readers while open.
+    On a phone the admins' five view tabs sit 3 + 2.
+  - **Tested:** `smmAttendanceOct08` (who is listed, who may see it, the real view on `memoryFirestore`: P / L /
+    holiday / A from check-ins, a manual mark and a holiday, no button in the grid, the team leader named; ‹ to the
+    cycle before reads its own check-ins, › stops at today's cycle — also in a timezone behind UTC),
+    `teamAttendanceGridOct08` (Team Attendance on the shared grid: the switch, a cell opens the editor); build,
+    vitest, typecheck (1 known error), lint unchanged. Real browser (throwaway harness, the real pages on
+    `memoryFirestore`, no console errors): the lead at 1440 px — Cards / Insights / Calendar / Attendance, the two seat
+    holders with their seats, P from check-ins and a manual L, no button anywhere, the team leader named, a client
+    not on a running month absent, the filters hidden on Attendance only; the tech admin — five tabs, 3 + 2 at 360 and
+    390 px with no label cut and no sideways scroll, the phone month cards; a tech team leader without the flag forced
+    to `attendance` (stored view or `?view=`) gets Cards; Team Attendance — the switch under each name, a cell opens
+    the editor, Half Day saved and notified, Auto deleted it, Part-Time saved and back; the Cinematic format picker
+    with the AI's choice and its cast details highlighted.
+- **2026-10-08 (later): the ad's cast from the configuration to the last video prompt — a duo can no longer turn
+  into a one-voice ad** (`ai-ads.md` §17.2 step 3 / 6, Save / storage, Editing / refine, §17.4, §24, §25, §27;
+  `data-model.md` `ai_generations.spec`).
+  - **The owner's report:** a Male & Female Duo ad came back, intermittently, with correct two-person frames but a
+    single-person voice-over and single-speaker Veo prompts; audit the whole configuration → frame → voice-over →
+    Veo flow for every cast and fix the root, not the case.
+  - **Root causes, each reproduced on the real pipeline (fake Gemini) before fixing:** (1) `parseDialogueClips`
+    folded a turn whose label it did not know (`0-8|Man:`, a Telugu label) — or the second line on the same physical
+    line — into the previous speaker's line, and `generateCharacterDialogue` shipped what was left with a console
+    warning; (2) the quality gate ranked drafts by the judge's score only (`mechanicalIssues` was the clip count for a
+    cast), so a polished draft that lost the man WON by scoring higher; (3) every step after the run (voice-over refine,
+    Input Final Script, the missing Veo clips, section refines) read the cast from the live FORM — a form without the
+    special category handed the duo's script to one presenter, "[Girl]: … [Boy]: …" spoken in one voice — and every
+    auto-save wrote the form's settings over the kit's; (4) the Veo step re-read the display text instead of the run's
+    structured dialogue; (5) the repair prompt told human pairs to SAY "Girl"/"Boy" (the validator forbids it), called
+    every entry a cartoon and asked solo casts for two lines; the refine's dialogue check differed from the writer's;
+    (6) a member's custom script was read leniently (an unknown label merged; a header-only one-character script came
+    back EMPTY) while Input Final Script was strict. **Live (real Gemini):** 8 duo scripts from gemini-2.5-flash were
+    all well-formed; 1 of 6 from gemini-3.1-flash-lite-preview — the model the free tier rotates to under rate limits,
+    which explains "intermittent" — broke the cast (`24-24|boy:` put clip 3's answer in clip 4).
+  - **Fixed at the root:** `dialogueFormat.readDialogueScript` (a labelled line is always its own turn; embedded turns
+    cut out; `Speaker.aliases` — `packSpeakers` adds `labelSpellings`, `nativeNames` and woman/man for the mixed
+    entries; unknown labels placed by position and reported; a malformed range stays in the clip being written;
+    headers with text read), `castIntegrityIssues` (what may never ship), `castScriptProblems` (a person's script),
+    `dialogueLabelsIn`; `scriptQa.isBetterDraft` ranks `broken` first; `withScriptQa` never judges a cast-broken draft,
+    writes new drafts for it with `castFeedback`, and **the run stops** if the cast is still broken (no frame made);
+    custom scripts checked before any Gemini call; `dialogueNameRules` (one name rule; a solo character "at most once");
+    the repair prompt cast-aware; the unused `CHARACTER_VOICEOVER_REFINE_SYSTEM_PROMPT` removed; Veo prompts from the
+    run's structured dialogue (`veoClipsFor`); `readKitScript` refuses a stored script that is not the kit's cast;
+    **`utils/adSpec`** — `GeneratedOutputs.spec` / `ai_generations.spec`, `formForKit` for every post-run step in
+    `AIPlatformApp` (`kitForm()`), `savedSettingsOf` for what a save writes, `adSpecFromSaved` for older kits.
+    **Cinematic Ads (same class, audited by an agent, each verified):** `resolveAdFormatId` (the AI's format by id or
+    label — an unreadable one fell back to narration), `withCastDefaults` (its cast details recorded and shown in the
+    picker, which follows `effectiveAdFormatPreset`), the brief records the choice on the latest selection, and
+    `saveProject` writes the project whole (a merge resurrected a cleared pairing). Open for the owner: a format
+    changed mid-project resets nothing; clip prompts carry no line-by-line speaker.
+  - **Found by the browser check and fixed:** a run that failed (now routine — the guardrail) or was stopped had its
+    partial sections AUTO-SAVED OVER THE PREVIOUS KIT (the job reopened empty): a run now lets go of the old document at
+    Start, saves nothing unless it finishes, says "did not finish" (it said "successfully generated"), and Save is off
+    for it; the re-check then found the seconds after Stop (until the call in flight returned, the card read
+    "successfully generated" with Save on) — Stop now says so at once — and Save is off while a run is going (a Save
+    mid-run made its half-made sections the job's kit), and its sentence wraps on a phone (cut mid-word at 390 px); the
+    error message grows with its text (it was a 28px chip over Start); the header chip is hidden on phones
+    again and an open row's body is full width (`.ag-chip` / `.ag-row` won over Tailwind — `!` utilities, as `!p-0`);
+    the single-voice reader reads `clip-1[0-8sec]:` headers (they were spoken).
+  - **Tested:** `castConsistencyOct08` (29: the reader on every shape incl. the live reply, cast integrity, the gate,
+    the stop before any frame, every catalogue entry × commercial / festival through the full pipeline, the kit spec
+    and the refusals, custom and final scripts), `cinematicCastOct08` (5), `aiPlatformKitIntegrity` (+2: a run that
+    does not finish never saves over the last kit; Stop says so at once and no Save mid-run — each fails without its
+    fix), updated `characterPromptSmoke` /
+    `refinePreservesPack` to the refine prompt that really runs; full vitest, build, typecheck (1 known error), lint
+    profile unchanged. Real browser (throwaway harness, the real `AIPlatformApp` on `memoryFirestore` + a faked
+    Gemini): the mislabelled duo → two speakers per clip and per Veo prompt; the form switched to a normal ad →
+    Input Final Script and its Veo rewrite still the duo, saved doc keeps `spec`; the guardrail's message with no frame
+    call; a normal female ad; Motu & Patlu LEFT / RIGHT; 390 px without overflow. Re-checked after the fixes (all
+    pass): the saved kit unchanged after the guardrail and after Stop (before and after the first sections), the
+    status card, the error box and the phone header at 390 / 1440 px, row 4 full width after a final script,
+    `clip-1[0-8sec]:` headers not spoken, the duo still two-speaker. Live Gemini: a full Telugu duo run
+    (101 s, 17 calls, the gate polished it) → Girl + Boy in all 4 clips, every Veo prompt two-speaker.
+- **2026-10-08: Invoices → Settings — one place for what every invoice starts with** (`invoices.md`
   §9.22 / §24, `data-model.md` invoice_settings/defaults, `roles-routes.md` §8.2 / §10).
   - **The owner's request:** "a settings option in the invoice section: upload the logo, QR code and details,
     prefilled with all the existing information; every invoice shows them by default; if I want to change one, I
