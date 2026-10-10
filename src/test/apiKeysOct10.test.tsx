@@ -144,6 +144,16 @@ describe("Gemini API keys — the service", () => {
     expect(sendNotification).toHaveBeenCalledTimes(1);
   });
 
+  it("adds an account with its key in one transaction — and an email already in the list writes no key", async () => {
+    await svc.addFlowAccount({ email: "k@gmail.com", password: "pw", phone: "9876543210", createdOn: "2026-10-01", apiKey: { key: ` ${GOOD_1} `, check: working } }, ravi, S);
+    expect(account("k@gmail.com").apiKey).toMatchObject({ status: "working", fingerprint: apiKeyFingerprint(GOOD_1) });
+    expect(keyDoc("k@gmail.com")).toMatchObject({ key: GOOD_1, accountEmail: "k@gmail.com", teamAdminId: "admin" });
+
+    await expect(svc.addFlowAccount({ email: "k@gmail.com", password: "pw", phone: "9876543210", createdOn: "2026-10-01", apiKey: { key: GOOD_2, check: working } }, anil, S))
+      .rejects.toThrow("already in the list");
+    expect(keyDoc("k@gmail.com")?.key).toBe(GOOD_1);
+  });
+
   it("deletes the key with its Flow account", async () => {
     await addFor(ravi, "a@gmail.com");
     await svc.saveFlowApiKey(account("a@gmail.com"), GOOD_1, working, ravi);
@@ -246,16 +256,72 @@ describe("A member adds the key made in each account they opened", () => {
     stop();
   });
 
-  it("goes straight on to the key after adding a new Flow account", async () => {
+  /** Opens "Add a Flow account" and fills everything but the key. */
+  async function startAdding(email: string) {
+    fireEvent.click(await screen.findByTestId("flow-add"));
+    const form = await screen.findByTestId("flow-account-dialog");
+    fireEvent.change(within(form).getByTestId("flow-email"), { target: { value: email } });
+    fireEvent.change(within(form).getByTestId("flow-password"), { target: { value: "secret" } });
+    fireEvent.change(within(form).getByTestId("flow-phone"), { target: { value: "9876543210" } });
+    return form;
+  }
+
+  it("asks for the key in the Add a Flow account form, and saves the account and its key together", async () => {
+    await addFor(ravi, "old@gmail.com");
+    await svc.saveFlowApiKey(account("old@gmail.com"), GOOD_1, working, ravi);
     const stop = signIn(ravi as unknown as AppUser);
     render(<MyAiAccounts />);
-    fireEvent.click(await screen.findByTestId("flow-add"));
-    fireEvent.change(screen.getByTestId("flow-email"), { target: { value: "new.flow@gmail.com" } });
-    fireEvent.change(screen.getByTestId("flow-password"), { target: { value: "secret" } });
-    fireEvent.change(screen.getByTestId("flow-phone"), { target: { value: "9876543210" } });
-    fireEvent.click(screen.getByTestId("flow-account-save"));
-    const dialog = await screen.findByTestId("api-key-dialog");
-    expect(dialog.textContent).toContain("new.flow@gmail.com");
+    const form = await startAdding("New.Flow@Gmail.com");
+    const section = within(form).getByTestId("flow-key-section");
+    // AI Studio opens in the account being typed.
+    expect(within(section).getByTestId("api-key-open-studio").getAttribute("href")).toBe("https://aistudio.google.com/api-keys?authuser=new.flow%40gmail.com");
+
+    // No key, not ticked "later": nothing is saved, and it says why.
+    fireEvent.click(within(form).getByTestId("flow-account-save"));
+    await waitFor(() => expect(within(section).getByTestId("api-key-status").textContent).toMatch(/Paste this account's API key — or tick “Add the key later”/));
+    expect(account("new.flow@gmail.com")).toBeUndefined();
+
+    // The key already on another account, then a leaked one — both refused, still nothing saved.
+    fireEvent.change(within(section).getByTestId("api-key-input"), { target: { value: GOOD_1 } });
+    await waitFor(() => expect(within(section).getByTestId("api-key-status").textContent).toMatch(/already saved on old@gmail.com/));
+    fireEvent.change(within(section).getByTestId("api-key-input"), { target: { value: LEAKED } });
+    await waitFor(() => expect(within(section).getByTestId("api-key-status").textContent).toMatch(/reported as leaked/));
+    fireEvent.click(within(form).getByTestId("flow-account-save"));
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(account("new.flow@gmail.com")).toBeUndefined();
+
+    fireEvent.change(within(section).getByTestId("api-key-input"), { target: { value: GOOD_2 } });
+    await waitFor(() => expect(within(section).getByTestId("api-key-status").textContent).toMatch(/Google accepted/));
+    fireEvent.click(within(form).getByTestId("flow-account-save"));
+    await waitFor(() => expect(screen.queryByTestId("flow-account-dialog")).toBeNull());
+
+    expect(account("new.flow@gmail.com")).toMatchObject({ ownerId: "ravi", apiKey: { status: "working", fingerprint: apiKeyFingerprint(GOOD_2) } });
+    expect(account("new.flow@gmail.com").history?.map((e) => e.action)).toEqual(["added", "api_key_added"]);
+    expect(keyDoc("new.flow@gmail.com")).toMatchObject({ key: GOOD_2, ownerId: "ravi", status: "working", inUse: false });
+    expect(mem.__read("flow_account_secrets/new.flow@gmail.com")).toMatchObject({ password: "secret" });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Flow account added", description: expect.stringMatching(/with its API key/) }));
+    // The key was given in the form, so no second key dialog follows.
+    expect(screen.queryByTestId("api-key-dialog")).toBeNull();
+    stop();
+  });
+
+  it("adds the account without a key only when 'Add the key later' is ticked — then the card asks for it", async () => {
+    const stop = signIn(ravi as unknown as AppUser);
+    render(<MyAiAccounts />);
+    const form = await startAdding("later@gmail.com");
+    fireEvent.click(within(form).getByTestId("flow-key-later"));
+    expect(within(form).queryByTestId("api-key-input")).toBeNull();
+    expect(within(form).getByTestId("flow-key-later-note")).toBeInTheDocument();
+    fireEvent.click(within(form).getByTestId("flow-account-save"));
+    await waitFor(() => expect(screen.queryByTestId("flow-account-dialog")).toBeNull());
+
+    expect(account("later@gmail.com")).toBeTruthy();
+    expect(account("later@gmail.com").apiKey).toBeUndefined();
+    expect(keyDoc("later@gmail.com")).toBeUndefined();
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ description: expect.stringMatching(/Add its API key on the card/) }));
+    expect(screen.queryByTestId("api-key-dialog")).toBeNull();
+    expect(await screen.findByTestId("flow-api-key-add")).toBeInTheDocument();
+    expect(screen.getByTestId("api-key-next").textContent).toContain("later@gmail.com");
     stop();
   });
 });

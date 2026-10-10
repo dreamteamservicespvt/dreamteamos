@@ -28,8 +28,8 @@ import { useConfirm } from "@/hooks/useConfirm";
  * pick the next. Accounts an admin or leader assigned to them appear here too, saying so.
  *
  * Each account they opened also carries its Gemini API key (2026-10-10): the card says whether it has
- * one, the progress card walks them through the accounts still without one ("Save & next"), and a newly
- * added account goes straight on to its key.
+ * one, the progress card walks them through the accounts still without one ("Save & next"), and the
+ * "Add Flow account" form asks for the new account's key too.
  */
 export default function MyAiAccounts() {
   const user = useAuthStore((s) => s.user);
@@ -42,8 +42,6 @@ export default function MyAiAccounts() {
   const [month, setMonth] = useState(today.slice(0, 7));
   const { entries } = useFlowUsage(user, month);
   const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "edit"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "apiKey"; accountId: string } | null>(null);
-  /** A just-added account whose key step opens once the list has it. */
-  const [keyNext, setKeyNext] = useState<string | null>(null);
   /** Accounts given a key in this sitting — skipped by "Save & next" even before the list catches up. */
   const keyedNow = useRef(new Set<string>());
 
@@ -61,13 +59,12 @@ export default function MyAiAccounts() {
   const keyAccount = dialog?.kind === "apiKey" ? accounts.find((a) => a.id === dialog.accountId) || null : null;
 
   useEffect(() => {
-    if (keyNext && accounts.some((a) => a.id === keyNext)) { setDialog({ kind: "apiKey", accountId: keyNext }); setKeyNext(null); }
     // Once the list shows a saved key, the list is the truth again (a key removed later must reappear).
     for (const id of [...keyedNow.current]) {
       const a = accounts.find((x) => x.id === id);
       if (!a || (a.apiKey && a.apiKey.status !== "failed")) keyedNow.current.delete(id);
     }
-  }, [keyNext, accounts]);
+  }, [accounts]);
 
   if (!user) return null;
 
@@ -157,7 +154,7 @@ export default function MyAiAccounts() {
       )}
 
       <FlowAccountDialog open={dialog?.kind === "add" || dialog?.kind === "edit"} onClose={() => setDialog(null)} actor={user} settings={settings}
-        account={dialog?.kind === "edit" ? dialog.account : null} onAdded={setKeyNext} />
+        account={dialog?.kind === "edit" ? dialog.account : null} accounts={accounts} />
       <ApiKeyDialog
         open={!!keyAccount}
         onClose={() => setDialog(null)}

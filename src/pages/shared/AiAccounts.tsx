@@ -54,15 +54,6 @@ export default function AiAccounts() {
   const keyAdmin = canSeeAllApiKeys(user);
   // The keys themselves are read only while their tab is open (one read per key).
   const { keys, loading: keysLoading } = useGeminiApiKeys(teamAdminIdOf(user), keyAdmin && tab === "keys");
-  /** A just-added account whose key step opens once the list has it. */
-  const [keyNext, setKeyNext] = useState<string | null>(null);
-  useEffect(() => {
-    const added = keyNext ? accounts.find((a) => a.id === keyNext) : null;
-    if (!added) return;
-    // Their own backup goes straight on to its key; one added for a member is the member's to key.
-    if (added.ownerId === user?.uid) setDialog({ kind: "apiKey", accountId: added.id });
-    setKeyNext(null);
-  }, [keyNext, accounts, user?.uid]);
 
   const persons: Person[] = useMemo(() => people.map((p) => ({ uid: p.uid, name: p.name, role: p.role })), [people]);
   const members = useMemo(() => people.filter((p) => p.role === "tech_member"), [people]);
@@ -226,7 +217,7 @@ export default function AiAccounts() {
       )}
 
       <FlowAccountDialog open={dialog?.kind === "add" || dialog?.kind === "edit"} onClose={() => setDialog(null)} actor={user} settings={settings}
-        account={dialog?.kind === "edit" ? dialog.account : null} owners={persons} onAdded={setKeyNext} />
+        account={dialog?.kind === "edit" ? dialog.account : null} owners={persons} accounts={accounts} />
       <ApiKeyDialog open={!!keyAccount} onClose={() => setDialog(null)} account={keyAccount} accounts={accounts} actor={user}
         onSaved={() => setDialog(null)} />
       <AssignDialog

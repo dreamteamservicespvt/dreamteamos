@@ -221,7 +221,7 @@ errors:** done means every listed item is fully resolved with no build, console 
   then **inactive people shown only in My Team / Team Management** (`cbe33fc`, live; `roleHelpers.isActiveUser`,
   `roles-routes.md`); then, **in the working tree (not committed)**, **comp-off** — W "Worked on holiday" earns a credit,
   C "Comp Off" pays an absence, Apply in Payroll (`people.md` §9.13).
-- 2026-10-10, **in the working tree (not committed)**: **Gemini API keys on the Flow accounts** + the tech admin's
+- 2026-10-10, **in the working tree (not committed)**: **Gemini API keys on the Flow accounts** (asked in the Add form too) + the tech admin's
   **API keys** tab (copy / `.env` / in use); AdGen still reads Vercel's `API_KEY_1…30` (`ai-accounts.md`).
 - 2026-10-10, **in the working tree (not committed)**: **AdGen's Gemini calls no longer fail on a retired, busy or
   used-up model** — the model list made current (2.0 Flash, shut down 2026-06-01, was still asked; 3.8 / 3.6 Flash and

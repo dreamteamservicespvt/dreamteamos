@@ -7,6 +7,7 @@ paths:
   - "src/hooks/useAiAccounts.ts"
   - "src/utils/flowCredits.ts"
   - "src/utils/geminiKeys.ts"
+  - "src/hooks/useApiKeyEntry.ts"
   - "src/types/aiAccounts.ts"
 ---
 
@@ -48,8 +49,11 @@ generation. **Member:** each card has a "Gemini API key" row (status + Show/Copy
 without a working key (`apiKeyCoverage`: none first, oldest first, then refused); `ApiKeyDialog` opens AI
 Studio in that account (`?authuser=<email>`), lists the steps with the name / project to copy (folded
 once they have a key), checks the pasted key with Google as it is pasted, refuses a key cut short, an
-invalid / leaked one, or one already on another visible account (fingerprint), and offers **Save & next**;
-a newly added Flow account goes straight on to its key (managers: only their own backup). **Tech admin
+invalid / leaked one, or one already on another visible account (fingerprint), and offers **Save & next**.
+**The "Add a Flow account" form asks for the key too** (owner, 2026-10-10, later): the same steps and Google
+check (`ApiKeySteps` + `hooks/useApiKeyEntry`, shared with `ApiKeyDialog`; AI Studio opens in the email being
+typed), saved in the SAME transaction as the account (`addFlowAccount`'s `apiKey`); saving without a key needs
+**"Add the key later"** ticked, and the card / "Add next key" ask for it after. **Tech admin
 only** (`canSeeAllApiKeys`; owner, 2026-10-10): the **API keys** tab (`ApiKeysPanel`) — keys by person
 (account, masked key, Working / Not working / Not checked, In use), "Still to add a key" per person,
 search / person / status filters, select any set (or everything shown) → **Copy keys** (one per line),
@@ -75,7 +79,8 @@ keys: keys 1, 12, 18 invalid, 13, 16, 23–28 leaked (11 dead).
   member's target is 30 accounts by 29 October, 2 a day; members see only the accounts they added, own
   or hold; the tech admin and team leaders manage every account; an account's creation date is fixed
   once credits are recorded on it.
-- **Gemini API keys (2026-10-10):** one key per Flow account, saved only after Google is asked (a refused
+- **Gemini API keys (2026-10-10):** a new Flow account is asked for its key in its own form — pasted, or "Add
+  the key later" ticked; never silently skipped. One key per Flow account, saved only after Google is asked (a refused
   key is never saved; an unreachable Google saves it as "Not checked"); the same key cannot go on two
   accounts the person can see; a new or replacement key starts **not in use**; only the tech admin sees
   every key (team leaders see status only; members their own accounts'); copies and the .env leave out

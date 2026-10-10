@@ -9,6 +9,21 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-10 (later): the "Add a Flow account" form asks for the Gemini API key** (`ai-accounts.md`,
+  `docs/firestore-rules.md`). The owner: when adding a new account, also ask the API key. The form now has a
+  Gemini API key section — AI Studio opened in the email being typed, the steps (folded for someone who has given
+  a key), paste, checked with Google as it is pasted, a key already on another account refused — and the account,
+  its password and its key are written in ONE transaction (`addFlowAccount` takes `apiKey`; `apiKeyRecords` shared
+  with `saveFlowApiKey`). Saving without a key needs "Add the key later" ticked; the card and "Add next key" ask
+  after. The key popup that opened after adding an account is gone. The entry logic moved out of `ApiKeyDialog`
+  into `hooks/useApiKeyEntry` + `ApiKeyField` (`ApiKeySteps`), used by both. Rule fix found on the way: a key
+  created in the same transaction as its account must be checked with `getAfter` (as `flow_account_secrets` is)
+  — `get` would have refused members once the rules are published. Tested: `apiKeysOct10` (14: the add form
+  refusing no key / a used key / a leaked key and then saving all three documents together; "later" saving the
+  account alone; the transaction refusing a duplicate email without touching the existing key); full vitest
+  227 / 3486; typecheck (1 known). Real browser (16/16, no console errors, 390 px no sideways scroll), including a
+  real call to Google from the form.
+
 - **2026-10-10 (later): AdGen prompts no longer fail on a retired, busy or used-up Gemini model** (`ai-ads.md` §17.3 /
   §24 / §27, `backend-security.md` §24 / §26.3). The owner: "sometimes prompts are not generating", showing Google's
   raw `{"error":{"code":404,"message":"This model models/gemini-2.0-flash-lite is no longer available …"}}`. Found:
