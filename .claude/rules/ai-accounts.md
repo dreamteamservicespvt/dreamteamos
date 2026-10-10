@@ -47,7 +47,8 @@ in AI Studio (project `aiads`, key name "Gemini API Key"); the team collects the
 generation. **Member:** each card has a "Gemini API key" row (status + Show/Copy, or **Add API key**);
 `ApiKeyProgress` ("N / M of your accounts have a key", **Add next key**) walks the accounts they opened
 without a working key (`apiKeyCoverage`: none first, oldest first, then refused); `ApiKeyDialog` opens AI
-Studio in that account (`?authuser=<email>`), lists the steps with the name / project to copy (folded
+Studio in that account (`?authuser=<email>`) — or **Copy link** copies that same link, for an account signed in
+on another Chrome profile or device — lists the steps with the name / project to copy (folded
 once they have a key), checks the pasted key with Google as it is pasted, refuses a key cut short, an
 invalid / leaked one, or one already on another visible account (fingerprint), and offers **Save & next**.
 **The "Add a Flow account" form asks for the key too** (owner, 2026-10-10, later): the same steps and Google

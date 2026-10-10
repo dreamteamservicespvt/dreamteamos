@@ -189,6 +189,10 @@ describe("A member adds the key made in each account they opened", () => {
     expect(dialog.textContent).toContain("a@gmail.com");
     // AI Studio opens in this account; every step is there the first time, with the name and project to copy.
     expect(within(dialog).getByTestId("api-key-open-studio").getAttribute("href")).toBe("https://aistudio.google.com/api-keys?authuser=a%40gmail.com");
+    // The same link copies, for the account signed in on another Chrome profile.
+    fireEvent.click(within(dialog).getByTestId("api-key-copy-studio"));
+    await waitFor(() => expect(clipboard).toBe("https://aistudio.google.com/api-keys?authuser=a%40gmail.com"));
+    expect(within(dialog).getByTestId("api-key-copy-studio").textContent).toContain("Copied");
     expect(within(dialog).getByTestId("api-key-steps").textContent).toMatch(/Create API key.*Gemini API Key.*Create project.*aiads.*Create key/s);
 
     const input = within(dialog).getByTestId("api-key-input");

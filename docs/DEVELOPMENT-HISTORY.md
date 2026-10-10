@@ -9,6 +9,15 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-10 (later): a Copy link button beside "Open AI Studio"** in the Gemini API key steps (`ai-accounts.md`).
+  The owner asked to copy the AI Studio link. `ApiKeySteps` (`components/ai-accounts/ApiKeyField.tsx`), shared by the
+  key dialog and the Add a Flow account form, gets a `CopyLinkButton`. It copies the same `aiStudioUrlFor(email)` the
+  Open button uses, keeping `?authuser=`, through `lib/clipboard.copyText` (which has the Android fallback). It shows
+  "Copied" or "Could not copy" for 1.5 s. The use: an account that is signed in on another Chrome profile or device,
+  where opening AI Studio from here would land in the wrong account. Tested: `apiKeysOct10.test.tsx` (the copy puts the
+  account's link on the clipboard); a real headless Chrome at 1440 and 390 px (the button sits beside Open AI Studio
+  on desktop and wraps under it on a phone, no overflow, Copied → Copy link after 1.5 s, no console errors); build,
+  full vitest, typecheck (1 known error).
 - **2026-10-10 (later): Motu & Patlu walk only where a clip's words need it** (`ai-ads.md` §17.2 step 6 / §24 / §25 /
   §27, `data-model.md` sceneContext). The owner: "in all the clips they are walking, because of it the AI sometimes
   changes their heights and their attire — make them walk only where it is necessary, based on the frame and the

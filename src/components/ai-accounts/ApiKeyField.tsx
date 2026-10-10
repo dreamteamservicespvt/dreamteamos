@@ -3,6 +3,7 @@ import { AlertTriangle, Check, ClipboardPaste, Copy, ExternalLink, Loader2, Shie
 import { buttonClass, fieldClass } from "./AiModal";
 import type { ApiKeyEntry } from "@/hooks/useApiKeyEntry";
 import { API_KEY_NAME, API_KEY_PROJECT, aiStudioUrlFor } from "@/utils/geminiKeys";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
 /**
@@ -22,6 +23,25 @@ function CopyChip({ text, mono = true }: { text: string; mono?: boolean }) {
       className={cn("inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 align-middle text-[11px] font-semibold text-foreground hover:bg-accent", mono && "font-mono")}>
       <span className="truncate">{text}</span>
       {copied ? <Check className="h-3 w-3 shrink-0 text-success" /> : <Copy className="h-3 w-3 shrink-0 text-muted-foreground" />}
+    </button>
+  );
+}
+
+/**
+ * Copies the AI Studio link (with this account's `?authuser=`) — for when the account is signed in on another
+ * Chrome profile or device, where "Open AI Studio" from here would land in the wrong account (owner, 2026-10-10).
+ */
+function CopyLinkButton({ url }: { url: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const copy = async () => {
+    setState((await copyText(url)) ? "copied" : "failed");
+    setTimeout(() => setState("idle"), 1500);
+  };
+  return (
+    <button type="button" onClick={copy} className={buttonClass.small} aria-label="Copy the AI Studio link" data-test="api-key-copy-studio">
+      {state === "copied" ? <><Check className="h-3.5 w-3.5 text-success" /> Copied</>
+        : state === "failed" ? <>Could not copy</>
+          : <><Copy className="h-3.5 w-3.5" /> Copy link</>}
     </button>
   );
 }
@@ -47,14 +67,16 @@ export function ApiKeySteps({ entry, email, stepsOpen, onShowSteps }: {
   onShowSteps: () => void;
 }) {
   const { value, setValue, result, checking, shownError, paste } = entry;
+  const studioUrl = aiStudioUrlFor(email || undefined);
   return (
     <ol className="space-y-3 text-xs text-muted-foreground" data-test="api-key-steps">
       <Step n={1}>
         <div className="flex flex-wrap items-center gap-2">
           <span>Open AI Studio <b className="text-foreground">in this account</b></span>
-          <a href={aiStudioUrlFor(email || undefined)} target="_blank" rel="noopener noreferrer" className={`${buttonClass.small} border-primary/40 text-primary`} data-test="api-key-open-studio">
+          <a href={studioUrl} target="_blank" rel="noopener noreferrer" className={`${buttonClass.small} border-primary/40 text-primary`} data-test="api-key-open-studio">
             Open AI Studio <ExternalLink className="h-3.5 w-3.5" />
           </a>
+          <CopyLinkButton url={studioUrl} />
         </div>
         <p className="mt-1">
           The picture at the top right must be {email ? <CopyChip text={email} /> : <b className="text-foreground">this account's email</b>} — if it is another account, tap it and switch (or sign in).
