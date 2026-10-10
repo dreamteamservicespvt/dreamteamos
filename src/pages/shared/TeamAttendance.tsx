@@ -25,6 +25,9 @@ import {
   Holiday,
 } from "@/services/techAttendance";
 import { currentPayMonth, payPeriodForMonth } from "@/utils/payrollEngine";
+import { periodMonthFor } from "@/services/leave";
+import { useToday } from "@/hooks/useToday";
+import { usePayrollConfig } from "@/hooks/usePayrollConfig";
 import { EMPLOYMENT_LABELS, employmentOf, setEmploymentType } from "@/services/employment";
 import { sendNotification } from "@/services/notifications";
 import { getWhatsAppUrl, normalizePhone } from "@/utils/phone";
@@ -49,8 +52,13 @@ export default function TeamAttendance() {
    * leave quota and the deductions are all settled over. A grid showing 1–31 against a payslip
    * settling 10 → 9 meant the days the team counted were not the days they were paid for.
    */
-  const [month, setMonth] = useState<string>(currentPayMonth());
+  // The live payroll policy: the cycle's start day and the leave allowance the totals count against
+  // — the same document the salary reads, so the grid and the payslip cover the same days.
+  const payrollConfig = usePayrollConfig();
+  const [month, setMonth] = useState<string>(() => currentPayMonth(payrollConfig.payDayOfMonth));
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
+  /** A listener could not read — the grid would show check-in-only days as if they were the record. */
+  const [readFailed, setReadFailed] = useState(false);
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
   const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<{ member: AppUser; date: string; current: AttendanceStatus | null } | null>(null);
@@ -65,7 +73,8 @@ export default function TeamAttendance() {
   const [savingHoliday, setSavingHoliday] = useState(false);
   const [search, setSearch] = useState("");
 
-  const todayStr = todayDate();
+  // Turns over at midnight, so a grid left open overnight marks yesterday the moment it ends.
+  const todayStr = useToday();
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), (snap) => {
@@ -75,15 +84,17 @@ export default function TeamAttendance() {
   }, []);
 
   /** The cycle this label covers: 10th of `month` → 9th of the month after. */
-  const period = useMemo(() => payPeriodForMonth(month), [month]);
+  const period = useMemo(() => payPeriodForMonth(month, payrollConfig.payDayOfMonth), [month, payrollConfig.payDayOfMonth]);
 
   useEffect(() => {
     // Range-scoped: the cycle straddles two calendar months, and the month-scoped listeners
     // dropped everything from the 1st onwards.
+    setReadFailed(false);
+    const failed = (error: unknown) => { console.error("[attendance] read failed:", error); setReadFailed(true); };
     const unsubs = [
-      watchOverridesInRange(period.start, period.end, setOverrides),
+      watchOverridesInRange(period.start, period.end, setOverrides, failed),
       watchHolidayRecordsInRange(period.start, period.end, setHolidays),
-      watchCheckedInDaysInRange(period.start, period.end, setCheckedIn),
+      watchCheckedInDaysInRange(period.start, period.end, setCheckedIn, failed),
     ];
     return () => unsubs.forEach((u) => u());
   }, [period.start, period.end]);
@@ -205,7 +216,9 @@ export default function TeamAttendance() {
     setSavingHoliday(true);
     try {
       await announceHoliday(holidayDate, holidayLabel || "Holiday", { uid: user.uid });
-      setMonth(holidayDate.slice(0, 7));
+      // Jump to the CYCLE holding the holiday. `holidayDate.slice(0, 7)` is its calendar month, and
+      // `month` is a pay month: a holiday on the 5th opened a grid (10th → 9th) that did not contain it.
+      setMonth(periodMonthFor(holidayDate, payrollConfig.payDayOfMonth));
       setHolidayLabel("");
       toast({ title: "Holiday announced", description: `${holidayLabel || "Holiday"} on ${format(new Date(holidayDate), "dd MMM yyyy")}.` });
     } catch {
@@ -251,11 +264,17 @@ export default function TeamAttendance() {
                 {format(new Date(`${period.start}T00:00:00`), "dd MMM")} – {format(new Date(`${period.end}T00:00:00`), "dd MMM")}
               </span>
             </span>
-            <button onClick={() => setMonth((m) => shiftMonth(m, 1))} disabled={month >= currentPayMonth()}
+            <button onClick={() => setMonth((m) => shiftMonth(m, 1))} disabled={month >= currentPayMonth(payrollConfig.payDayOfMonth)}
               className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
           </div>
         </div>
       </div>
+
+      {readFailed && (
+        <div role="alert" data-test="attendance-read-error" className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-foreground">
+          Attendance could not be fully loaded — the marks below may be incomplete. Check the connection and reload before changing anything.
+        </div>
+      )}
 
       {/* Leave awaiting a decision — approving writes `leave` onto the grid below and moves
           the member's salary, so it lives right next to the attendance it changes. */}
@@ -315,6 +334,7 @@ export default function TeamAttendance() {
           statusFor={statusFor}
           isOverride={(m, d) => overrides.has(attendanceKey(m.uid, d))}
           onCellClick={(member, date, current) => setEditing({ member, date, current })}
+          payrollConfig={payrollConfig}
           renderBadge={(m, layout) => {
             const emp = employmentOf(m.employmentType);
             return (

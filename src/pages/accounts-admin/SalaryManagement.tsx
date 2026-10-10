@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { collection, onSnapshot, updateDoc, doc, addDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
+import { collection, onSnapshot, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
@@ -12,7 +12,12 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
-import { currentPayMonth, payPeriodLabel } from "@/utils/payrollEngine";
+import { deductionsFor, payPeriodLabel, salaryMonthDue } from "@/utils/payrollEngine";
+import {
+  isLinePaid, priceMemberForPeriod, watchPayrollLines, type PeriodPay,
+} from "@/services/payrollRun";
+import { addSalaryReceipt, deleteSalaryReceipt } from "@/services/salaryReceipts";
+import type { PayrollLine } from "@/types/payroll";
 
 export default function SalaryManagement() {
   const currentUser = useAuthStore((s) => s.user);
@@ -29,14 +34,28 @@ export default function SalaryManagement() {
   // Receipt modal state
   const [receiptMember, setReceiptMember] = useState<AppUser | null>(null);
   const [receiptAmount, setReceiptAmount] = useState<number>(0);
-  // The salary period being receipted — the 10th→9th cycle we are in, not the calendar month.
-  // A receipt raised on the 1st used to be filed against a period that had not started.
-  const [receiptMonth, setReceiptMonth] = useState(() => currentPayMonth());
+  // The salary period being receipted — the one being paid out now (`salaryMonthDue`): a cycle is
+  // paid after it ends, so on payday the cycle in progress (the old default) had nothing to pay yet.
+  const [receiptMonth, setReceiptMonth] = useState(() => salaryMonthDue());
   const [receiptNote, setReceiptNote] = useState("");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sendingReceipt, setSendingReceipt] = useState(false);
+
+  /**
+   * What the period actually owes this member, from attendance (and, for sales, verified money
+   * collected) — the same engine and rules as Payroll. The receipt pre-filled the full monthly
+   * salary before, whatever the attendance, and could not see that Payroll had already paid.
+   */
+  const [quote, setQuote] = useState<PeriodPay | null>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [quoteFailed, setQuoteFailed] = useState(false);
+
+  /** Payments recorded in Payroll for the period being paid now — so the table can say "Paid in Payroll". */
+  const [payrollPaid, setPayrollPaid] = useState<Map<string, PayrollLine>>(new Map());
+  const thisPeriod = salaryMonthDue();
+  useEffect(() => watchPayrollLines(thisPeriod, setPayrollPaid), [thisPeriod]);
 
   // Track sent receipts
   const [sentReceipts, setSentReceipts] = useState<Record<string, { id: string; month: string; amount: number; fileUrl?: string; fileName?: string; sentAt: any; note?: string }[]>>({});
@@ -87,8 +106,29 @@ export default function SalaryManagement() {
     setReceiptNote("");
     setReceiptFile(null);
     setUploadProgress(0);
-    setReceiptMonth(currentPayMonth());
+    setReceiptMonth(salaryMonthDue());
   };
+
+  // Price the chosen period whenever the member or the period changes; the amount starts there and
+  // stays editable (a bonus, an advance).
+  useEffect(() => {
+    if (!receiptMember || !/^\d{4}-\d{2}$/.test(receiptMonth)) { setQuote(null); return; }
+    let cancelled = false;
+    setQuoting(true);
+    setQuoteFailed(false);
+    priceMemberForPeriod(receiptMember, receiptMonth)
+      .then((q) => {
+        if (cancelled) return;
+        setQuote(q);
+        setReceiptAmount(Math.round(q.amount));
+      })
+      .catch((err) => {
+        console.error("[salary] could not price the period:", err);
+        if (!cancelled) { setQuote(null); setQuoteFailed(true); }
+      })
+      .finally(() => { if (!cancelled) setQuoting(false); });
+    return () => { cancelled = true; };
+  }, [receiptMember, receiptMonth]);
 
   const handleSendReceipt = async () => {
     if (!receiptMember || receiptAmount <= 0) {
@@ -99,22 +139,33 @@ export default function SalaryManagement() {
       toast({ title: "Error", description: "Please upload a receipt file (PDF or screenshot).", variant: "destructive" });
       return;
     }
+    // Payroll already paid this period: recording a receipt as well is a second payment.
+    if (quote?.paidLine) {
+      const { confirmed } = await confirm({
+        title: "Already paid in Payroll",
+        description: `Payroll has already recorded ${formatCurrency(quote.paidLine.netSalary)} paid to ${receiptMember.name} for ${payPeriodLabel(receiptMonth)}. Record this receipt of ${formatCurrency(receiptAmount)} as well?`,
+        confirmText: "Record it anyway",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
     setSendingReceipt(true);
     try {
       // Upload file to Cloudinary
       const fileUrl = await uploadToCloudinary(receiptFile, (pct) => setUploadProgress(pct));
-      
-      // Names the days the salary covers, so a receipt for 10 Jul → 9 Aug never reads as "August".
+
+      // Names the days the salary covers, so a receipt for 10 Jul → 9 Aug never reads as "August";
+      // `period` is the same period as a key, which is what Payroll matches the receipt on.
       const monthLabel = payPeriodLabel(receiptMonth);
-      await addDoc(collection(db, "salary_receipts"), {
+      await addSalaryReceipt({
         userId: receiptMember.uid,
         amount: receiptAmount,
+        period: receiptMonth,
         month: monthLabel,
         note: receiptNote.trim(),
         fileUrl,
         fileName: receiptFile.name,
         sentBy: currentUser?.uid || "",
-        sentAt: serverTimestamp(),
       });
 
       // Send notification to the member
@@ -140,7 +191,7 @@ export default function SalaryManagement() {
     if (!confirmed) return;
     setDeletingReceiptId(receiptId);
     try {
-      await deleteDoc(doc(db, "salary_receipts", receiptId));
+      await deleteSalaryReceipt(receiptId);
       toast({ title: "Undone", description: "Salary receipt has been deleted." });
     } catch {
       toast({ title: "Error", description: "Failed to delete receipt.", variant: "destructive" });
@@ -254,6 +305,8 @@ export default function SalaryManagement() {
                     <span className="text-[10px] text-muted-foreground">({sentReceipts[m.uid].length})</span>
                     <History size={10} className="text-muted-foreground" />
                   </button>
+                ) : isLinePaid(payrollPaid.get(m.uid)) ? (
+                  <p className="mt-2 text-[10px] font-medium text-success">Paid in Payroll · {payPeriodLabel(thisPeriod)}</p>
                 ) : null}
                 <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/50">
                   <button onClick={() => { setEditingUid(m.uid); setEditSalary(m.salary || 0); }}
@@ -338,6 +391,12 @@ export default function SalaryManagement() {
                           </span>
                           <span className="text-[9px] text-muted-foreground mt-0.5 flex items-center gap-1">{sentReceipts[m.uid].length} sent <History size={9} /></span>
                         </button>
+                      ) : isLinePaid(payrollPaid.get(m.uid)) ? (
+                        // Paid from Payroll this period — not "Not sent", which invited a second payment.
+                        <span data-test="paid-in-payroll" title={`Payroll recorded ${formatCurrency(payrollPaid.get(m.uid)!.netSalary)} for ${payPeriodLabel(thisPeriod)}`}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">
+                          Paid in Payroll
+                        </span>
                       ) : (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Not sent</span>
                       )}
@@ -414,6 +473,35 @@ export default function SalaryManagement() {
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Amount (₹)</label>
                 <input type="number" min={0} value={receiptAmount || ""} onChange={(e) => setReceiptAmount(Number(e.target.value) || 0)}
                   className="w-full h-10 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
+                {/* Where the amount came from — the same figure Payroll shows for this period. */}
+                {quoting ? (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Loader2 size={11} className="animate-spin" /> Working out this period from attendance…
+                  </p>
+                ) : quote ? (
+                  <div data-test="receipt-quote" className="mt-1.5 space-y-1 rounded-lg border border-border bg-background px-3 py-2 text-[11px] text-muted-foreground">
+                    {quote.computation ? (
+                      <p>
+                        From attendance: {formatCurrency(quote.salaryPayable)} salary
+                        {deductionsFor(quote.computation).rows.length > 0 &&
+                          ` (${deductionsFor(quote.computation).rows.map((r) => `${r.days} ${r.label.toLowerCase()}`).join(", ")} deducted)`}
+                        {quote.incentive > 0 && ` + ${formatCurrency(quote.incentive)} incentive`}
+                        {" = "}<strong className="text-foreground">{formatCurrency(quote.amount)}</strong>
+                      </p>
+                    ) : (
+                      <p>Monthly salary — this role is not paid from attendance.</p>
+                    )}
+                    {quote.paidLine && (
+                      <p data-test="receipt-already-paid" className="font-medium text-warning">
+                        Payroll already recorded {formatCurrency(quote.paidLine.netSalary)} paid for this period.
+                      </p>
+                    )}
+                  </div>
+                ) : quoteFailed ? (
+                  <p className="mt-1.5 text-[11px] text-destructive">
+                    Could not work this period out from attendance — check the amount by hand.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Note <span className="text-muted-foreground/50">(optional)</span></label>

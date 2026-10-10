@@ -13,8 +13,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * finalisation uses.
  */
 
+type Row = { memberId: string; date: string; checkInAt?: unknown; checkOutAt?: unknown };
 const listeners: Record<string, (snap: { docs: { data: () => unknown }[] }) => void> = {};
-const snapshots: Record<string, { memberId: string; date: string }[]> = {};
+const errors: Record<string, (err: unknown) => void> = {};
+const snapshots: Record<string, Row[]> = {};
 
 vi.mock("@/services/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({
@@ -25,24 +27,29 @@ vi.mock("firebase/firestore", () => ({
     docs: (snapshots[name] || []).map((d) => ({ id: `${d.memberId}_${d.date}`, data: () => d })),
   })),
   setDoc: vi.fn(), updateDoc: vi.fn(), deleteDoc: vi.fn(), addDoc: vi.fn(),
-  onSnapshot: vi.fn((name: string, cb: (snap: { docs: { data: () => unknown }[] }) => void) => {
+  // Registers the listener without answering — each test decides when a collection answers.
+  onSnapshot: vi.fn((name: string, cb: (snap: { docs: { data: () => unknown }[] }) => void, err?: (e: unknown) => void) => {
     listeners[name] = cb;
-    cb({ docs: [] });
+    if (err) errors[name] = err;
     return () => { delete listeners[name]; };
   }),
   serverTimestamp: vi.fn(), orderBy: vi.fn(), limit: vi.fn(), writeBatch: vi.fn(),
   Timestamp: { fromDate: vi.fn() },
 }));
 
-import { watchCheckedInDaysInRange, attendanceKey, resolveStatus } from "@/services/techAttendance";
+import { watchCheckedInDaysInRange, attendanceKey, isCheckInRecord, resolveStatus } from "@/services/techAttendance";
 import { fetchMonthAttendance } from "@/services/payrollRun";
 
 /** Push a snapshot into whichever collection's listener is registered. */
-const emit = (name: string, rows: { memberId: string; date: string }[]) =>
+const emit = (name: string, rows: Row[]) =>
   listeners[name]?.({ docs: rows.map((r) => ({ data: () => r })) });
+
+/** A sales check-in as `recordCheckIn` writes it — the check-in time is on it. */
+const sales = (memberId: string, date: string): Row => ({ memberId, date, checkInAt: { seconds: 1 } });
 
 beforeEach(() => {
   for (const k of Object.keys(listeners)) delete listeners[k];
+  for (const k of Object.keys(errors)) delete errors[k];
   for (const k of Object.keys(snapshots)) delete snapshots[k];
 });
 
@@ -52,7 +59,8 @@ describe("who counts as checked in", () => {
     watchCheckedInDaysInRange("2026-08-10", "2026-09-09", (s) => { latest = s; });
 
     // The bug, exactly: nothing in daily_checkins, a check-in in salesCheckins.
-    emit("salesCheckins", [{ memberId: "sales1", date: "2026-08-12" }]);
+    emit("daily_checkins", []);
+    emit("salesCheckins", [sales("sales1", "2026-08-12")]);
 
     expect(latest.has(attendanceKey("sales1", "2026-08-12"))).toBe(true);
   });
@@ -62,7 +70,7 @@ describe("who counts as checked in", () => {
     watchCheckedInDaysInRange("2026-08-10", "2026-09-09", (s) => { latest = s; });
 
     emit("daily_checkins", [{ memberId: "tech1", date: "2026-08-12" }]);
-    emit("salesCheckins", [{ memberId: "sales1", date: "2026-08-12" }]);
+    emit("salesCheckins", [sales("sales1", "2026-08-12")]);
 
     expect(latest.has(attendanceKey("tech1", "2026-08-12"))).toBe(true);
     expect(latest.has(attendanceKey("sales1", "2026-08-12"))).toBe(true);
@@ -76,7 +84,7 @@ describe("who counts as checked in", () => {
     let latest = new Set<string>();
     watchCheckedInDaysInRange("2026-08-10", "2026-09-09", (s) => { latest = s; });
 
-    emit("salesCheckins", [{ memberId: "sales1", date: "2026-08-12" }]);
+    emit("salesCheckins", [sales("sales1", "2026-08-12")]);
     emit("daily_checkins", [{ memberId: "tech1", date: "2026-08-13" }]);
     emit("daily_checkins", [{ memberId: "tech1", date: "2026-08-13" }, { memberId: "tech2", date: "2026-08-13" }]);
 
@@ -89,21 +97,81 @@ describe("who counts as checked in", () => {
     let latest = new Set<string>();
     watchCheckedInDaysInRange("2026-08-10", "2026-09-09", (s) => { latest = s; });
 
-    emit("salesCheckins", [{ memberId: "sales1", date: "2026-08-12" }]);
+    emit("daily_checkins", []);
+    emit("salesCheckins", [sales("sales1", "2026-08-12")]);
     emit("salesCheckins", []);
 
     expect(latest.size).toBe(0);
   });
+
+  /**
+   * 2026-10-09: reporting after the FIRST collection answered was half a truth — on the sales
+   * payroll every member was Absent all period until `salesCheckins` caught up, and a screen that
+   * marked itself loaded on the first report priced the month from that.
+   */
+  it("reports nothing until BOTH collections have answered", () => {
+    const calls: Set<string>[] = [];
+    watchCheckedInDaysInRange("2026-08-10", "2026-09-09", (s) => { calls.push(s); });
+
+    emit("daily_checkins", [{ memberId: "tech1", date: "2026-08-12" }]);
+    expect(calls).toHaveLength(0);
+
+    emit("salesCheckins", [sales("sales1", "2026-08-12")]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].size).toBe(2);
+  });
+
+  /**
+   * A check-out made after midnight used to write the NEXT day's sales record with no check-in on
+   * it — and that day was counted Present and paid.
+   */
+  it("does not count a sales record that carries no check-in", () => {
+    let latest = new Set<string>();
+    watchCheckedInDaysInRange("2026-08-10", "2026-09-09", (s) => { latest = s; });
+
+    emit("daily_checkins", []);
+    emit("salesCheckins", [
+      sales("sales1", "2026-08-12"),
+      { memberId: "sales1", date: "2026-08-13", checkOutAt: { seconds: 2 } },
+    ]);
+
+    expect(latest.has(attendanceKey("sales1", "2026-08-12"))).toBe(true);
+    expect(latest.has(attendanceKey("sales1", "2026-08-13"))).toBe(false);
+  });
+
+  it("counts a check-in whose server time is still pending (the field is there, null)", () => {
+    expect(isCheckInRecord("salesCheckins", { memberId: "s", date: "2026-08-12", checkInAt: null })).toBe(true);
+    expect(isCheckInRecord("salesCheckins", { memberId: "s", date: "2026-08-12" })).toBe(false);
+    expect(isCheckInRecord("daily_checkins", { memberId: "t", date: "2026-08-12" })).toBe(true);
+    expect(isCheckInRecord("daily_checkins", { date: "2026-08-12" })).toBe(false);
+  });
+
+  /** A failed read is an error a salary screen can show — not "nobody checked in". */
+  it("reports a failed read to onError instead of an empty set", () => {
+    const calls: Set<string>[] = [];
+    const failures: unknown[] = [];
+    watchCheckedInDaysInRange("2026-08-10", "2026-09-09", (s) => { calls.push(s); }, (e) => failures.push(e));
+
+    emit("daily_checkins", [{ memberId: "tech1", date: "2026-08-12" }]);
+    errors["salesCheckins"]?.(new Error("permission-denied"));
+
+    expect(failures).toHaveLength(1);
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("the payroll run that actually pays people", () => {
-  it("reads the sales check-ins too", async () => {
-    snapshots["salesCheckins"] = [{ memberId: "sales1", date: "2026-08-12" }];
+  it("reads the sales check-ins too — and only the ones with a check-in", async () => {
+    snapshots["salesCheckins"] = [
+      sales("sales1", "2026-08-12"),
+      { memberId: "sales1", date: "2026-08-13", checkOutAt: { seconds: 2 } },
+    ];
     snapshots["daily_checkins"] = [{ memberId: "tech1", date: "2026-08-12" }];
 
     const { checkedIn } = await fetchMonthAttendance("2026-08");
 
     expect(checkedIn.has(attendanceKey("sales1", "2026-08-12"))).toBe(true);
+    expect(checkedIn.has(attendanceKey("sales1", "2026-08-13"))).toBe(false);
     expect(checkedIn.has(attendanceKey("tech1", "2026-08-12"))).toBe(true);
   });
 });

@@ -193,6 +193,22 @@ export function primaryAccount(bank: EmployeeBank | null): PayoutAccount | null 
   return bank.accounts.find(a => a.isPrimary) ?? bank.accounts[0];
 }
 
+/**
+ * Has an admin verified the account salary is paid into (the primary one)?
+ *
+ * Read off the account, never `bank.verified`: that is the legacy single-account field, and
+ * `normalizeBank` never sets it — so the Payroll page and My Salary, which read it, showed every
+ * employee as unverified forever and kept offering "Verify details" after it had been done.
+ */
+export function isBankVerified(bank: EmployeeBank | null): boolean {
+  return !!primaryAccount(bank)?.verified;
+}
+
+/** The payout method salary goes to — the primary account's (never the legacy top-level field). */
+export function payoutMethodOf(bank: EmployeeBank | null): PayoutMethod | undefined {
+  return primaryAccount(bank)?.method;
+}
+
 /** Live payout details for one employee. `null` means none set up yet. */
 export function watchEmployeeBank(uid: string, cb: (bank: EmployeeBank | null) => void): () => void {
   return onSnapshot(

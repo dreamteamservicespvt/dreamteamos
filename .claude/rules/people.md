@@ -4,18 +4,20 @@ paths:
   - "src/components/{MyIdCardCard,SalaryTimeline,ImageCropper}.tsx"
   - "src/pages/shared/{HrCenter,SendAgreement,Payroll,TeamAttendance,MySalary,MemberProfileDetail,Profit}.tsx"
   - "src/pages/accounts-admin/**"
+  - "src/components/analytics/MemberAnalyticsDashboard.tsx"
+  - "src/components/sales/{AttendanceCard,SalesDayCalendar}.tsx"
   - "src/pages/onboarding/**"
   - "src/pages/public/**"
   - "src/pages/main-admin/{Accounts,RevenueOverview}.tsx"
   - "src/pages/sales-admin/{Payroll,Settlements}.tsx"
   - "src/pages/sales-member/{MySalary,Settlements,MyProfile}.tsx"
   - "src/pages/tech-member/{MySalaryDashboard,MyProfile}.tsx"
-  - "src/services/{hr,hrDocuments,agreements,companyAssets,publicBadge,onboarding,onboardingGuest,payroll,payrollRun,leave,settlements,techAttendance,salesCheckin,employment}.ts"
-  - "src/hooks/{useMonthPayroll,useSalaryMonth,useSalesEarnings,useSalesMemberPay,useTechProductivity,useEmployeeProfile,useCompany,useCompanyLogo,usePrintDocument}.ts"
+  - "src/services/{hr,hrDocuments,agreements,companyAssets,publicBadge,onboarding,onboardingGuest,payroll,payrollRun,leave,settlements,techAttendance,salesCheckin,employment,salaryReceipts}.ts"
+  - "src/hooks/{useMonthPayroll,useSalaryMonth,useSalesEarnings,useSalesMemberPay,useTechProductivity,useEmployeeProfile,useCompany,useCompanyLogo,usePrintDocument,useToday,usePayrollConfig,useSalaryPayments}.ts"
   - "src/types/{hr,payroll,onboarding}.ts"
   - "api/onboarding.ts"
   - "docs/firestore-rules-onboarding.md"
-  - "src/utils/{agreementPdf,agreementPrint,agreementTokens,attendance,documentPages,documentRef,documentSubject,employeeId,employmentDefaults,company,hrPolicy,hrTemplates,idCard,idCardExport,leaveAllowance,onboardingLetters,payrollEngine,payslipPdf,performanceCycle,profitAnalytics,roleLadder,salesIncentive,salesRevenue,salesTargets,signatureImage,techProductivity,imageCrop,missingLetters}.ts"
+  - "src/utils/{agreementPdf,agreementPrint,agreementTokens,attendance,documentPages,documentRef,documentSubject,employeeId,employmentDefaults,company,hrPolicy,hrTemplates,idCard,idCardExport,leaveAllowance,onboardingLetters,payrollEngine,payslipPdf,performanceCycle,profitAnalytics,roleLadder,salesIncentive,salesPay,salesRevenue,salesTargets,signatureImage,techProductivity,imageCrop,missingLetters}.ts"
 ---
 
 # People: attendance & leave, payroll & commission, HR & documents, finance — DTS-OS module context
@@ -40,6 +42,20 @@ absent, who is in and since when — read live from today's `daily_checkins` (`t
 with the times), `attendance` marks, `holidays` and pending `leave_requests`; it marks nothing. Leave: `services/leave.ts`,
 `components/payroll/LeavePanel.tsx`, `utils/leaveAllowance.ts`. Collections `daily_checkins`,
 `attendance` (`{memberId}_{date}`), `holidays` (`{date}`), `salesCheckins`, `leave_requests`.
+**One source of truth (2026-10-09).** A day's status is `techAttendance.resolveStatus` (mark → Sunday/holiday →
+check-in → past = Absent) from three reads: `attendance` marks, `holidays`, and check-ins from BOTH `daily_checkins`
+and `salesCheckins` (`watchCheckedInDaysInRange` reports only after both answered; a sales record counts only with a
+`checkInAt` — `isCheckInRecord`; the sales check-out writes onto the checked-in day, `recordCheckOut(…, date)`). The
+days are counted by ONE tally, `payrollEngine.tallyAttendance` — used by the salary (`computeSalary`), the grid
+(`AttendanceGrid` → `summarize(days, config)`), `MyDayCalendar`, `SalesDayCalendar`, the sales `AttendanceCard`
+(engine figures via `useSalaryMonth`) and the analytics "Days Present" (`MemberAnalyticsDashboard`, resolved per day,
+duplicates once). Sundays are never counted (a mark on one shows "Sunday, not counted in salary"). The grid and
+calendars read the live policy (`hooks/usePayrollConfig`) and turn over at midnight (`hooks/useToday`, lifted from the
+SMM board). Range listeners take `onError`; Team Attendance shows a read-error banner. Leave approval counts the
+leave already on the ATTENDANCE record (grid marks included, Sundays not), with the live policy's allowance and cycle,
+and returns the split the panel's toast reports; undo clears only days still holding the approval's mark
+(`approvalMarks`); notifications link `roleHelpers.getSalaryRoute(role)` (sales members got `/tech/salary`).
+Announce Holiday jumps to the cycle holding the date (`periodMonthFor`).
 
 **9.14 Payroll, salary, commission** ✅. Tech payroll `pages/shared/Payroll.tsx`,
 `services/payroll.ts` (salary packages, config, bank/payout accounts), `services/payrollRun.ts`
@@ -55,6 +71,24 @@ settlements `services/settlements.ts`, `pages/sales-admin/Settlements.tsx`,
 `commission_settlements`, `settlement_requests`, `audit_logs`. Cycles: the tech performance month is
 **10th → 9th** (`utils/performanceCycle.ts`); the payroll cycle comes from
 `PayrollConfig.payDayOfMonth`.
+**Pay Salary (2026-10-09).** The payable figure is `payrollEngine.netPayable(c)` (salary − `deductionsFor` +
+adjustments) everywhere: Payroll, Sales Payroll, My Salary ×2, the payslip, Salary Management. **Paid = the payment
+record:** `payrollRun.isLinePaid` (completed / transferred); `useMonthPayroll` / `useSalesMemberPay` / `useSalaryMonth`
+show a paid member's `payroll_lines` amount and frozen `computation` (My Salary's attendance tiles stay live) (nothing creates `payroll_runs`, so freezing on a
+run never happened), keep `liveComputation` / `liveNetSalary`, and `changedSincePaid` puts "Now ₹X" + "changed after it
+was paid … undo and pay again" on the row and a note on the member's page. Hooks load only when every source answered
+and surface `error` (pages show it, never figures). Members who left (`isActive === false`) keep a row (`left`, "Left"
+tag) for a period with attendance or a payment in it (`uidsWithAttendance`). The bank banner / Verify / payout method
+use `payroll.isBankComplete` / `isBankVerified` / `payoutMethodOf` (legacy top-level fields were never set; tech
+Verify was a no-op). **Sales incentive = `utils/salesPay`** (`salesInPeriod`: verified money collected in the cycle by
+local day; `salesIncentive`: rate × base, withheld below 75% of the cycle's target) for both Sales Payroll and
+`useSalesEarnings`; a sales payment stores `incentive` on its line and the payslip itemises it (`extraEarnings`).
+**Accounts linked:** `services/salaryReceipts` (receipts now carry `period`); Salary Management works on the period
+being paid now (`payrollEngine.salaryMonthDue` = last calendar month's cycle — a cycle is paid after it ends), pre-fills from
+`payrollRun.priceMemberForPeriod` (attendance roles: `isAttendancePaid`; others = monthly salary), warns and confirms
+when Payroll already paid, shows "Paid in Payroll" for this cycle; Payroll rows list the period's receipts
+(`watchPeriodReceipts`) and the Mark-paid confirm names them; `hooks/useSalaryPayments` merges both records for the
+member's Payment history and Salary History.
 
 **9.15 HR & documents** ✅. `pages/shared/HrCenter.tsx` (tabs: All documents / Missing paperwork /
 Agreements), `pages/shared/SendAgreement.tsx`, `components/hr/*`, `components/agreement/*`
@@ -86,6 +120,14 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
 - **Tech attendance:** manual override wins → Sunday or announced holiday = holiday → checked in
   = full → past with no check-in = absent. The monthly leave quota constant is 2. Leave past the
   allowance counts as absence.
+- **Attendance → salary (owner, 2026-10-09):** one count of days for the grid, the calendars and the salary. A mark
+  on a **Sunday never changes pay** and is not counted (nor does it use a paid-leave day). A **rejected check-in
+  (Member History) stays Present** — to deduct, mark the day on the grid. A **paid salary is the payment record**:
+  later attendance or sales corrections are flagged against it ("Now ₹X"), never written over it; settle by undoing
+  the payment and paying again. A member who **left** mid-cycle stays payable for that cycle; a **joiner**'s days
+  before joining stay Absent (pay is pro-rata either way). Sales Payroll pays the same incentive the member's
+  My Salary shows. Accounts' receipts start from the attendance figure and warn when Payroll already paid the period;
+  the member's history lists both.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
   dismissed on a working day, and does not appear on a Sunday or an announced holiday.
 - **HR:** 14 document types in lifecycle order; both officers sign all types (falls back to the
@@ -98,6 +140,14 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
 **PARTIALLY IMPLEMENTED 🟡:**
 - Accounts admin module: basic CRUD and read-only summaries; `other_income` read but never
   written by the app.
+- Pay Salary (2026-10-09): a salary paid and then corrected is settled by hand (undo + pay again) — there is no
+  "pay the difference" record. A receipt and a Payroll payment for the same period are two records (both warn
+  before the second is made; old receipts without `period` are matched on their printed label); the member's
+  "Total received" adds both. Undoing a leave approval does not re-settle the member's other approved requests (a
+  later request's absence days stay absent). Per-employee weekly offs from HR (`workingDays`, e.g. "Monday to
+  Friday") are printed on letters but the engine only knows Sunday. The cycle start and leave allowance come from
+  `payroll_config/default`, which no screen edits (defaults apply). Checked by unit tests, the real hooks/pages on
+  the in-memory Firestore and a real-browser harness — not against live Firebase.
 
 **NOT IMPLEMENTED ❌** (referenced or planned, absent in code):
 - CTC breakup annexure on offer letters (needs salary-structure percentages).

@@ -9,7 +9,49 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
-- **2026-10-08 (latest, 23:10): the TODAY board's cards say what Social Media work each person handles** (`smm.md`
+- **2026-10-10: Attendance → Pay Salary on one source of truth** (`people.md` §9.13 / §9.14 / §24 / §25,
+  `data-model.md`). Owner: Pay Salary must come straight from live attendance; "fix all the other issues like them in
+  the OS". Asked (AskUserQuestion): Sunday marks never change pay; a rejected check-in stays Present; link Accounts'
+  Salary Management to Payroll; joiners unchanged.
+  - **Root causes found (each confirmed in code):** (1) a paid row never froze — `useMonthPayroll` froze on a
+    `payroll_runs` stage nothing writes, so a paid salary kept re-pricing (row, "Paid" total, re-downloaded payslip)
+    after any correction; (2) loading was declared on the first check-in snapshot, and `watchCheckedInDaysInRange`
+    reported after the first of its two collections — leave/holidays briefly Absent, every sales member Absent; every
+    listener turned a read error into "no data"; (3) the grid / calendars counted their own way (Sunday marks counted,
+    allowance hard-coded 2) while the salary skipped Sundays — and the salary's quota pass let a Sunday marked Leave
+    use a paid-leave slot; (4) Sales Payroll priced the incentive differently from the member's My Salary (full price
+    on the UTC submission day, no 75% gate); (5) leavers vanished from Payroll (`isActive` filter); (6) a sales check-out
+    after midnight created the next day's record and that day counted Present; (7) Salary Management pre-filled the
+    full salary and could not see Payroll payments, and the member's history showed receipts only; (8) "can't be paid"
+    banner counted everyone and tech "Verify details" was a no-op (legacy bank fields never set); (9) leave approval
+    counted requests not the record, used default policy, toasted its estimate; undo wiped hand-corrected days; salary
+    and leave notifications linked `/tech/salary` for sales members; (10) payslip / sales salary card hard-coded the
+    half-day 0.5 and the sales slip's ledger omitted the incentive (gross − deductions ≠ net); (11) Announce Holiday
+    jumped to the wrong cycle; pages kept yesterday's "today" overnight; analytics "Days Present" counted raw records.
+  - **Done:** `payrollEngine.tallyAttendance` + `netPayable`; `techAttendance.summarize(days, config)`,
+    `isCheckInRecord`, `onError` on range listeners, both-collections rule; `payrollRun.isLinePaid`, `watchPayrollLine`,
+    `priceMemberForPeriod`, `memberRole` / `incentive` on lines; `payroll.isBankVerified` / `payoutMethodOf`;
+    `roleHelpers.getSalaryRoute`; new `utils/salesPay`, `services/salaryReceipts`, `hooks/useToday` (lifted from
+    SmmAttendanceView), `usePayrollConfig`, `useSalaryPayments`; rewritten `useMonthPayroll`, `useSalesMemberPay`,
+    `useSalaryMonth`, `useSalesEarnings`; pages Payroll, Sales Payroll, Team Attendance, both My Salary pages, Salary
+    Management, MySalary (history), SalaryTimeline, AttendanceGrid, MyDayCalendar, SalesDayCalendar, AttendanceCard,
+    MemberAnalyticsDashboard, sales Dashboard check-in card; `services/leave` + LeaveApprovalsPanel; `payslipPdf`.
+  - **Tested:** `payrollSyncOct09` (14, pure) and `payrollLiveOct09` (14, real hooks/services/component on the
+    in-memory Firestore — `memoryFirestore.__failReads` added for read errors); `attendance` and `salesAttendance`
+    updated to the new contracts (+6); `smmAttendanceOct08` had a pre-existing race (1 run in 8 on unchanged `main`) —
+    its assertion now waits. Full vitest 221 files / 3399 pass; build; typecheck (1 known error); eslint on the
+    touched files: only pre-existing `any`s. **Real browser** (throwaway harness in the scratchpad on the in-memory
+    Firestore, real pages, 1440 / 390 px, dark once; 17 + 5 checks PASS, no console errors, no horizontal scroll):
+    Payroll (Asha ₹24,500 = 26,000 − absent − half; Ben Paid ₹26,000 then "Now ₹25,000" after an Absent marked in
+    Team Attendance; Ravi "Left" ₹3,000; "Old" absent; banner "1 employee can't be paid yet"; Verify writes);
+    the grid "24P 1H 1A 0L" with the Sunday mark "not counted in salary"; leave approval toast "counts as absence";
+    Sales Payroll = Sita's My Salary ₹26,500 (check-out-only day Absent, 5% of 30,000), Gopi withheld; Asha's My
+    Salary = Payroll; Salary Management pre-fill "From attendance: ₹24,500 …", "Payroll already recorded" + confirm
+    on top, receipt listed on Payroll, Ben's history both records. Fixed from it: Salary Management defaulted to
+    and checked the RUNNING cycle (a cycle is paid after it ends — `payrollEngine.salaryMonthDue`); a paid
+    month's attendance tiles showed the paid counts beside a corrected calendar (tiles are live now) and the
+    pay-day card said "being processed" for a paid period. Not driven: live Firebase / Cloudinary, the PDF download.
+- **2026-10-08 (23:10): the TODAY board's cards say what Social Media work each person handles** (`smm.md`
   §9.9). The owner, on the live board: "in the cards, for each member, write what social media handling they are
   doing" — a card said only "Creator · Publisher · Marketer — 2 clients" (the names in a tooltip). Now under the
   status: "Handles 2 clients" and one line per client with what they do for it ("Lakshmi Jewellers — Creator,

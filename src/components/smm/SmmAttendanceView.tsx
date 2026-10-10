@@ -28,12 +28,13 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  attendanceKey, isSunday, todayDate, watchCheckinsOnDay, watchHolidayRecordsInRange, watchOverridesInRange,
+  attendanceKey, isSunday, watchCheckinsOnDay, watchHolidayRecordsInRange, watchOverridesInRange,
   type AttendanceStatus, type DayCheckin, type Holiday,
 } from "@/services/techAttendance";
 import { watchPendingLeaveRequests } from "@/services/leave";
 import { watchSmmTeamEdits } from "@/services/smmTeam";
 import { useUsersByIds } from "@/hooks/useUsersByIds";
+import { useToday } from "@/hooks/useToday";
 import {
   NO_TEAM_EDITS, TODAY_GROUP_OF, TODAY_GROUP_ORDER, applyTeamEdits, callable, canEditSmmTeam, leaveAskedOn,
   handlesHeading, smmTeamFromMonths, todayCounts, todayStatusOf,
@@ -44,26 +45,6 @@ import { getRoleLabel } from "@/utils/roleHelpers";
 import SmmTeamEditor from "@/components/smm/SmmTeamEditor";
 import type { SmmCampaign } from "@/types/smm";
 import type { AppUser } from "@/types";
-
-/** Today's date, turning over at midnight (and checked again whenever the tab comes back) — the board is left open. */
-function useToday(): string {
-  const [day, setDay] = useState(todayDate);
-  useEffect(() => {
-    const check = () => setDay((d) => (d === todayDate() ? d : todayDate()));
-    const now = new Date();
-    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
-    const timer = setTimeout(check, nextMidnight.getTime() - now.getTime());
-    const onVisible = () => { if (document.visibilityState === "visible") check(); };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", onVisible);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", onVisible);
-    };
-  }, [day]);
-  return day;
-}
 
 /** Colour, icon and words for each kind of day — the same three on the numbers, the headings and the cards. */
 const KIND: Record<TodayKind, { icon: LucideIcon; tone: string; ring: string }> = {

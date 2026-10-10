@@ -50,7 +50,12 @@ const clone = <T,>(v: T): T => {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Test helpers. */
-export function __reset() { docs.clear(); listeners.clear(); autoId = 0; }
+export function __reset() { docs.clear(); listeners.clear(); failing.clear(); autoId = 0; }
+/**
+ * Make every listener opened from now on for this collection (or document) path fail, the way a
+ * denied or broken read does — its error callback is called and it never delivers.
+ */
+export function __failReads(path: string) { failing.add(path); }
 export function __seed(path: string, data: Data) { docs.set(path, resolveAll(clone(data))); notify(); }
 export function __read(path: string): Data | undefined { return docs.has(path) ? clone(docs.get(path)!) : undefined; }
 export function __all(collectionPath: string): (Data & { id: string })[] {
@@ -169,6 +174,7 @@ export const getDocsFromServer = getDocs;
 
 type Listener = { target: DocRef | Query; next: (snap: unknown) => void; last?: string };
 const listeners = new Set<Listener>();
+const failing = new Set<string>();
 
 function deliver(l: Listener) {
   const snap = l.target.type === "document" ? docSnap(l.target, docs.get(l.target.path)) : querySnap(l.target);
@@ -183,6 +189,10 @@ function deliver(l: Listener) {
 function notify() { for (const l of [...listeners]) if (listeners.has(l)) deliver(l); }
 
 export function onSnapshot(target: DocRef | Query | CollectionRef, next: (snap: never) => void, _error?: (err: Error) => void): () => void {
+  if (failing.has(target.path)) {
+    queueMicrotask(() => _error?.(new Error("permission-denied (memoryFirestore.__failReads)")));
+    return () => undefined;
+  }
   const l: Listener = { target: target.type === "collection" ? query(target) : target, next: next as (snap: unknown) => void };
   listeners.add(l);
   // The first answer arrives asynchronously, as it does from the SDK.

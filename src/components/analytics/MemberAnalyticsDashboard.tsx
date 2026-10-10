@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { cycleForDate } from "@/utils/performanceCycle";
+import {
+  resolveStatus, summarize, watchHolidaysInRange, type AttendanceStatus,
+} from "@/services/techAttendance";
+import { useToday } from "@/hooks/useToday";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import type { DateRange } from "react-day-picker";
 import {
@@ -72,7 +76,10 @@ interface MemberAnalyticsDashboardProps {
 export default function MemberAnalyticsDashboard({ member, showRevenue = true }: MemberAnalyticsDashboardProps) {
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [checkins, setCheckins] = useState<DailyCheckin[]>([]);
+  const [marks, setMarks] = useState<Map<string, AttendanceStatus>>(new Map());
+  const [holidays, setHolidays] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const todayStr = useToday();
 
   const [preset, setPreset] = useState<PresetKey>("this_month");
   const [singleDay, setSingleDay] = useState<Date | undefined>(undefined);
@@ -95,8 +102,36 @@ export default function MemberAnalyticsDashboard({ member, showRevenue = true }:
       query(collection(db, "daily_checkins"), where("memberId", "==", member.uid)),
       (snap) => setCheckins(snap.docs.map((d) => ({ id: d.id, ...d.data() } as DailyCheckin)))
     ));
+    // The admins' marks on this member's days — a manual Present / Absent / Leave decides the day.
+    unsubs.push(onSnapshot(
+      query(collection(db, "attendance"), where("memberId", "==", member.uid)),
+      (snap) => {
+        const map = new Map<string, AttendanceStatus>();
+        snap.docs.forEach((d) => {
+          const a = d.data() as { date?: string; status?: AttendanceStatus };
+          if (a.date && a.status) map.set(a.date, a.status);
+        });
+        setMarks(map);
+      },
+      () => setMarks(new Map()),
+    ));
     return () => unsubs.forEach((u) => u());
   }, [member.uid]);
+
+  /**
+   * The days that could be Present: a check-in or an admin's mark. Holidays are read from the
+   * earliest of them — the collection is a few dates a year.
+   */
+  const firstDay = useMemo(() => {
+    let min = "";
+    for (const c of checkins) if (c.date && (!min || c.date < min)) min = c.date;
+    for (const d of marks.keys()) if (!min || d < min) min = d;
+    return min;
+  }, [checkins, marks]);
+  useEffect(() => {
+    if (!firstDay) return;
+    return watchHolidaysInRange(firstDay, todayStr, setHolidays);
+  }, [firstDay, todayStr]);
 
   // ── Active scope: exactly one of preset / single day / range / multi-dates ──
   const scope = useMemo(() => {
@@ -151,15 +186,47 @@ export default function MemberAnalyticsDashboard({ member, showRevenue = true }:
     [checkins, scope] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  /**
+   * Days Present — the attendance record's count, not the number of check-in documents.
+   *
+   * It counted every `daily_checkins` doc in scope: a second check-in on one day counted twice, an
+   * admin's Absent / Leave on a checked-in day still counted, a day an admin marked Present without a
+   * check-in did not, and a Sunday check-in counted although Sundays are never paid. Now each day in
+   * scope is resolved exactly as the attendance grid and the salary resolve it (`resolveStatus`) and
+   * counted by the same tally (`summarize`): the Present days the payslip shows.
+   */
+  const daysPresent = useMemo(() => {
+    const checkedDates = new Set(checkins.map((c) => c.date).filter(Boolean));
+    const candidates = new Set([...checkedDates, ...marks.keys()]);
+    const days = [...candidates].filter((d) => inScope(d)).map((date) => ({
+      date,
+      status: resolveStatus({
+        override: marks.get(date),
+        checkedIn: checkedDates.has(date),
+        dateStr: date,
+        hasFestivalHoliday: holidays.has(date),
+        todayStr,
+      }),
+    }));
+    return summarize(days).full;
+  }, [checkins, marks, holidays, todayStr, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const stats = useMemo(() => {
     const revenue = scopedWork.reduce((s, a) => s + (a.totalPrice || 0), 0);
     const videos = scopedWork.length;
-    const daysPresent = scopedCheckins.length;
-    const hours = scopedCheckins.reduce((sum, c) => {
+    // Hours once per day: two check-in records for one day were counted twice.
+    const byDay = new Map<string, { inMs: number; outMs: number }>();
+    for (const c of scopedCheckins) {
       const inMs = c.checkedInAt?.toDate?.()?.getTime?.() || 0;
       const outMs = c.checkedOutAt?.toDate?.()?.getTime?.() || 0;
-      return sum + (outMs > inMs ? (outMs - inMs) / 3600000 : 0);
-    }, 0);
+      const prev = byDay.get(c.date);
+      byDay.set(c.date, prev
+        ? { inMs: prev.inMs && inMs ? Math.min(prev.inMs, inMs) : prev.inMs || inMs, outMs: Math.max(prev.outMs, outMs) }
+        : { inMs, outMs });
+    }
+    const hours = [...byDay.values()].reduce(
+      (sum, d) => sum + (d.outMs > d.inMs && d.inMs ? (d.outMs - d.inMs) / 3600000 : 0), 0,
+    );
     const workDays = new Set(scopedWork.map(doneDate)).size;
     const divisor = daysPresent || workDays || 1;
     return {
@@ -170,7 +237,7 @@ export default function MemberAnalyticsDashboard({ member, showRevenue = true }:
       avgVideos: videos / divisor,
       avgRevenue: revenue / divisor,
     };
-  }, [scopedWork, scopedCheckins]);
+  }, [scopedWork, scopedCheckins, daysPresent]);
 
   // Live (unscoped) workload snapshot
   const liveActive = useMemo(() => ({

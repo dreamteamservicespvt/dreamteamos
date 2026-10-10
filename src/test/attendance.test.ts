@@ -29,13 +29,25 @@ describe("techAttendance.resolveStatus", () => {
 
 describe("techAttendance.summarize", () => {
   it("counts statuses, present-days credit and leaves-left", () => {
-    const s = summarize(["full", "full", "half", "absent", "leave", "holiday", null]);
+    // Mon 13 Jul – Sat 18 Jul 2026 and Mon 20 Jul: seven working days, no Sunday among them.
+    const dates = ["2026-07-13", "2026-07-14", "2026-07-15", "2026-07-16", "2026-07-17", "2026-07-18", "2026-07-20"];
+    const statuses = ["full", "full", "half", "absent", "leave", "holiday", null] as const;
+    const s = summarize(dates.map((date, i) => ({ date, status: statuses[i] })));
     expect(s.full).toBe(2);
     expect(s.half).toBe(1);
     expect(s.absent).toBe(1);
     expect(s.leave).toBe(1);
     expect(s.presentDays).toBe(2.5);
     expect(s.leavesLeft).toBe(MONTHLY_LEAVE_QUOTA - 1);
+  });
+
+  /** Owner, 2026-10-09: a Sunday's mark never changes pay, so the grid does not count it either. */
+  it("does not count a mark on a Sunday — the salary never pays one", () => {
+    const s = summarize([
+      { date: "2026-07-19", status: "full" },   // Sunday, marked Present by hand
+      { date: "2026-07-20", status: "full" },
+    ]);
+    expect(s.full).toBe(1);
   });
 });
 

@@ -63,9 +63,10 @@ export default function LeaveApprovalsPanel({ visibleMemberIds }: LeaveApprovals
     if (!user) return;
     setBusyId(request.id);
     try {
-      await approveLeaveRequest(request, { uid: user.uid, name: user.name });
-      setLastDecision({ ...request, status: "approved" });
-      const split = splitFor(request);
+      // The split the approval actually wrote — not this panel's floor estimate, which said "all
+      // paid" for a request that had just become absences because of leave taken earlier.
+      const split = await approveLeaveRequest(request, { uid: user.uid, name: user.name });
+      setLastDecision({ ...request, status: "approved", leaveDates: split.leaveDates, absentDates: split.absentDates });
       toast({
         title: "Leave approved",
         description: `${request.memberName} · ${describeLeaveSplit(split)}`,

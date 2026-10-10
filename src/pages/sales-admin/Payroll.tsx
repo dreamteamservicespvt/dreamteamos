@@ -10,8 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 import { formatCurrency } from "@/utils/formatters";
 import { uploadToCloudinary } from "@/services/cloudinary";
-import { isBankComplete, payoutSummary, verifyEmployeeBank, watchAllEmployeeBanks } from "@/services/payroll";
-import { markSalaryPaid, undoSalaryPayment, watchPayrollLines } from "@/services/payrollRun";
+import { isBankComplete, isBankVerified, payoutMethodOf, payoutSummary, verifyEmployeeBank } from "@/services/payroll";
+import { isLinePaid, markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
 import { downloadPayslip } from "@/utils/payslipPdf";
 import { useSalesMemberPay, type SalesPayRow } from "@/hooks/useSalesMemberPay";
 import { currentPayMonth, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
@@ -30,8 +30,10 @@ export default function SalesPayroll() {
   const { confirm, ConfirmDialog } = useConfirm();
 
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>("users");
+  // Members no longer active are passed too: the hook keeps one only for a period they worked in
+  // or were paid for, so somebody who left mid-cycle can still be paid for their last days.
   const members = useMemo(
-    () => allUsers.filter(u => u.role === "sales_member" && u.isActive),
+    () => allUsers.filter(u => u.role === "sales_member"),
     [allUsers],
   );
 
@@ -49,22 +51,32 @@ export default function SalesPayroll() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingRow = useRef<SalesPayRow | null>(null);
 
-  const { loading, rows, period, payDay, totals } = useSalesMemberPay(members, month);
+  const { loading, error, rows, period, payDay, totals } = useSalesMemberPay(members, month);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter(r => {
-      if (unpaidOnly && r.line?.paymentStatus === "completed") return false;
+      if (unpaidOnly && isLinePaid(r.line)) return false;
       if (!q) return true;
       return r.member.name?.toLowerCase().includes(q) || r.member.email?.toLowerCase().includes(q);
     });
   }, [rows, search, unpaidOnly]);
 
+  /** What a payment of this row records — the incentive frozen with it, so the slip can itemise it. */
+  const payInput = (row: SalesPayRow) => ({
+    month, member: row.member, netSalary: row.totalEarnings, computation: row.computation,
+    incentive: { salesBase: row.salesBase, rate: row.rate, amount: row.commission, withheld: row.incentiveWithheld },
+  });
+
   const handleMarkPaid = async (row: SalesPayRow) => {
     if (!user) return;
+    // Accounts may already have recorded this period from Salary Management — say so first.
+    const receiptNote = row.receipts.length
+      ? ` Accounts has already recorded ${row.receipts.map(r => formatCurrency(r.amount)).join(" + ")} for this period in Salary Management.`
+      : "";
     const { confirmed, inputValue } = await confirm({
       title: `Pay ${row.member.name}?`,
-      description: `${formatCurrency(row.totalEarnings)} for ${monthLabel} — ${formatCurrency(row.salaryPayable)} salary + ${formatCurrency(row.commission)} commission. You can undo this afterwards.`,
+      description: `${formatCurrency(row.totalEarnings)} for ${monthLabel} — ${formatCurrency(row.salaryPayable)} salary + ${formatCurrency(row.commission)} incentive.${receiptNote} You can undo this afterwards.`,
       confirmText: "Mark as paid",
       withInput: true,
       inputPlaceholder: "Transaction ID (optional)",
@@ -74,9 +86,9 @@ export default function SalesPayroll() {
     setBusyUid(row.member.uid);
     try {
       await markSalaryPaid(
-        { month, member: row.member, netSalary: row.totalEarnings, computation: row.computation },
+        payInput(row),
         { uid: user.uid, name: user.name },
-        { transactionId: inputValue?.trim() || undefined },
+        { transactionId: inputValue?.trim() || undefined, paidVia: payoutMethodOf(row.bank) },
       );
       toast({ title: "Marked paid", description: `${row.member.name} · ${formatCurrency(row.totalEarnings)}` });
     } catch (error) {
@@ -99,7 +111,7 @@ export default function SalesPayroll() {
 
     setBusyUid(row.member.uid);
     try {
-      await undoSalaryPayment(row.line, { uid: user.uid, name: user.name });
+      await undoSalaryPayment({ ...row.line, memberRole: row.line.memberRole ?? row.member.role }, { uid: user.uid, name: user.name });
       toast({ title: "Payment undone" });
     } catch {
       toast({ title: "Could not undo payment", variant: "destructive" });
@@ -118,9 +130,9 @@ export default function SalesPayroll() {
     try {
       const url = await uploadToCloudinary(file);
       await markSalaryPaid(
-        { month, member: row.member, netSalary: row.totalEarnings, computation: row.computation },
+        payInput(row),
         { uid: user.uid, name: user.name },
-        { receiptUrl: url, receiptName: file.name },
+        { receiptUrl: url, receiptName: file.name, paidVia: payoutMethodOf(row.bank) },
       );
       toast({ title: "Receipt uploaded", description: `${row.member.name}'s payment recorded.` });
     } catch {
@@ -139,9 +151,15 @@ export default function SalesPayroll() {
       role: "Sales Executive",
       computation: row.computation,
       netPayable: row.totalEarnings,
+      // The incentive is part of the net, so it is a line of the ledger too — or the slip's gross
+      // minus its deductions would not come to its own net pay.
+      extraEarnings: row.commission > 0 ? [[`Sales Incentive (${row.rate}%)`, row.commission]] : [],
       paymentMethod: payoutSummary(row.bank),
-      paymentStatus: row.line?.paymentStatus === "completed" ? "Paid" : "Pending",
+      paymentStatus: isLinePaid(row.line) ? "Paid" : "Pending",
       transactionId: row.line?.transactionId,
+      paymentDate: row.line?.paidAt && typeof row.line.paidAt === "object" && "seconds" in row.line.paidAt
+        ? new Date((row.line.paidAt as { seconds: number }).seconds * 1000)
+        : null,
     });
   };
 
@@ -154,7 +172,7 @@ export default function SalesPayroll() {
         r.member.name, r.computation.monthlySalary, Math.round(r.salaryDeduction),
         Math.round(r.salaryPayable), Math.round(r.salesBase), r.rate,
         Math.round(r.commission), Math.round(r.totalEarnings),
-        r.line?.paymentStatus === "completed" ? "Paid" : "Pending",
+        isLinePaid(r.line) ? "Paid" : "Pending",
       ].map(esc).join(",")),
     ].join("\n");
 
@@ -210,7 +228,7 @@ export default function SalesPayroll() {
         <Stat icon={IndianRupee} label="Total Payout" value={formatCurrency(totals.total)} tone="primary" />
         <Stat icon={Banknote} label="Salary" value={formatCurrency(totals.salary)} />
         <Stat icon={TrendingUp} label="Incentives" value={formatCurrency(totals.commission)} tone="success" />
-        <Stat icon={Users} label="Members" value={members.length} hint={`${totals.paidCount} paid`} />
+        <Stat icon={Users} label="Members" value={rows.length} hint={`${totals.paidCount} paid`} />
         <Stat icon={CalendarClock} label="Next Pay Day"
           value={payDay.daysRemaining === 0 ? "Today" : `${payDay.daysRemaining}d`}
           hint={format(payDay.date, "dd MMM")} />
@@ -249,7 +267,13 @@ export default function SalesPayroll() {
         </button>
       </div>
 
-      {loading ? (
+      {/* Never priced from a read that failed — that would be everybody Absent, as fact. */}
+      {error ? (
+        <div role="alert" data-test="sales-payroll-error" className="flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3.5">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <p className="text-sm text-foreground">{error}</p>
+        </div>
+      ) : loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-muted" />)}
         </div>
@@ -275,7 +299,8 @@ export default function SalesPayroll() {
 
           <div className="divide-y divide-border">
             {filtered.map(row => {
-              const isPaid = row.line?.paymentStatus === "completed";
+              const isPaid = isLinePaid(row.line);
+              const liveDiff = Math.round(row.liveTotalEarnings) - Math.round(row.totalEarnings);
               const isOpen = expanded === row.member.uid;
               const bankOk = isBankComplete(row.bank);
               const busy = busyUid === row.member.uid || uploadingFor === row.member.uid;
@@ -289,7 +314,13 @@ export default function SalesPayroll() {
                         {row.member.name?.charAt(0)?.toUpperCase() || "?"}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{row.member.name}</p>
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {row.member.name}
+                          {row.left && (
+                            <span title="No longer active — listed for the days they worked in this period"
+                              className="ml-1.5 rounded-full bg-muted px-1.5 py-px text-[10px] font-semibold text-muted-foreground">Left</span>
+                          )}
+                        </p>
                         <p className="truncate text-[11px] text-muted-foreground">
                           {bankOk ? payoutSummary(row.bank) : <span className="text-warning">Payout details missing</span>}
                         </p>
@@ -319,12 +350,25 @@ export default function SalesPayroll() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 lg:col-span-1">
+                    <div className="flex flex-wrap items-center gap-2 lg:col-span-1">
                       <span className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                         isPaid ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
                       }`}>
                         {isPaid ? "Paid" : "Pending"}
                       </span>
+                      {/* Attendance or sales moved after payday: the row keeps what was paid and says so. */}
+                      {row.changedSincePaid && (
+                        <span data-test="sales-payroll-changed" title={`Changed after this was paid — now ${formatCurrency(row.liveTotalEarnings)}`}
+                          className="inline-flex items-center rounded-full bg-warning/15 px-1.5 py-1 text-warning">
+                          <AlertTriangle className="h-3 w-3" />
+                        </span>
+                      )}
+                      {!isPaid && row.receipts.length > 0 && (
+                        <span title="Accounts recorded a payment for this period in Salary Management"
+                          className="inline-flex items-center rounded-full bg-info/15 px-1.5 py-1 text-info">
+                          <FileText className="h-3 w-3" />
+                        </span>
+                      )}
                       <ChevronDown className={`ml-auto hidden h-4 w-4 text-muted-foreground transition-transform lg:block ${isOpen ? "rotate-180" : ""}`} />
                     </div>
                   </button>
@@ -340,14 +384,40 @@ export default function SalesPayroll() {
                           <Row label={`Attendance deductions (${row.computation.absentDays}A · ${row.computation.halfDays}H · ${row.computation.unpaidLeaveDays}LWP)`}
                             value={`−${formatCurrency(row.salaryDeduction)}`} negative />
                         )}
-                        <Row label={`Incentives · ${row.rate}% of ${formatCurrency(row.salesBase)}`} value={`+${formatCurrency(row.commission)}`} positive />
+                        <Row label={`Incentives · ${row.rate}% of ${formatCurrency(row.salesBase)}${row.incentiveWithheld ? " · withheld, under 75% of target" : ""}`}
+                          value={`+${formatCurrency(row.commission)}`} positive />
                         <div className="mt-2.5 flex items-center justify-between border-t border-border pt-2.5">
-                          <span className="font-semibold text-foreground">Total payable</span>
+                          <span className="font-semibold text-foreground">{isPaid ? "Paid" : "Total payable"}</span>
                           <span className="font-display text-lg font-bold tabular-nums text-success">
                             {formatCurrency(row.totalEarnings)}
                           </span>
                         </div>
+                        {row.changedSincePaid && (
+                          <p data-test="sales-payroll-changed-detail" className="mt-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+                            Attendance or verified sales for this period changed after it was paid. It now comes to{" "}
+                            <strong>{formatCurrency(row.liveTotalEarnings)}</strong> — {formatCurrency(Math.abs(liveDiff))}{" "}
+                            {liveDiff > 0 ? "more" : "less"} than was paid. To settle it, undo this payment and pay again.
+                          </p>
+                        )}
                       </div>
+
+                      {/* What Accounts recorded for this period — so a salary is never paid twice. */}
+                      {row.receipts.length > 0 && (
+                        <div className="rounded-xl border border-info/30 bg-info/5 p-3.5 text-xs">
+                          <p className="mb-1 font-semibold text-foreground">Recorded by Accounts (Salary Management)</p>
+                          {row.receipts.map(r => (
+                            <p key={r.id} className="flex flex-wrap items-center gap-x-2 text-muted-foreground">
+                              <span className="font-mono tabular-nums text-foreground">{formatCurrency(r.amount)}</span>
+                              {r.sentAt?.seconds ? <span>{format(new Date(r.sentAt.seconds * 1000), "dd MMM yyyy")}</span> : null}
+                              {r.fileUrl && (
+                                <a href={r.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                  {r.fileName || "Receipt"}
+                                </a>
+                              )}
+                            </p>
+                          ))}
+                        </div>
+                      )}
 
                       {row.line?.receiptUrl && (
                         <a href={row.line.receiptUrl} target="_blank" rel="noopener noreferrer"
@@ -363,7 +433,7 @@ export default function SalesPayroll() {
                           <Download className="h-3.5 w-3.5" /> Salary slip
                         </button>
 
-                        {!row.bank?.accounts?.some(a => a.verified) && bankOk && (
+                        {!isBankVerified(row.bank) && bankOk && (
                           <button onClick={async () => {
                             if (!user) return;
                             setBusyUid(row.member.uid);

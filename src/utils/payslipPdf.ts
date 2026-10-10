@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import { format, parse } from "date-fns";
 import { COMPANY, amountInWords } from "./company";
+import { deductionsFor } from "./payrollEngine";
 import type { SalaryComputation } from "@/types/payroll";
 
 /**
@@ -29,6 +30,14 @@ export interface PayslipInput {
   computation: SalaryComputation;
   /** What the employee is actually paid — may differ from the computation after adjustments. */
   netPayable: number;
+  /**
+   * Earnings beyond the salary itself — a sales member's incentive (2026-10-09).
+   *
+   * The sales slip printed NET PAY as salary + incentive while the ledger listed only the basic
+   * salary, so gross minus deductions did not equal the net on the same page. The incentive is a
+   * line of its own now.
+   */
+  extraEarnings?: [string, number][];
   paymentDate?: Date | null;
   transactionId?: string;
   paymentMethod?: string;
@@ -161,16 +170,19 @@ export async function generatePayslipPdf(input: PayslipInput): Promise<jsPDF> {
   y += 14;
   y = sectionRule(pdf, "EARNINGS & DEDUCTIONS", y);
 
-  const rate = c.dailySalary;
-  const deductions: [string, number][] = [];
-  if (c.absentDays > 0) deductions.push([`Loss of Pay (${c.absentDays} ${c.absentDays === 1 ? "day" : "days"})`, c.absentDays * rate]);
-  if (c.halfDays > 0) deductions.push([`Half Day Adjustment (${c.halfDays})`, c.halfDays * rate * 0.5]);
-  if (c.unpaidLeaveDays > 0) deductions.push([`Leave Without Pay (${c.unpaidLeaveDays} ${c.unpaidLeaveDays === 1 ? "day" : "days"})`, c.unpaidLeaveDays * rate]);
-  if (c.lines.some(l => l.key === "holiday" && l.factor === 0) && c.holidayDays > 0) {
-    deductions.push([`Unpaid Holidays (${c.holidayDays})`, c.holidayDays * rate]);
-  }
+  // The engine's own deduction rows (`deductionsFor`) — the amounts the Payroll page and My Salary
+  // subtract. This used to recompute them with a half day fixed at 0.5, whatever the policy said.
+  const deductions: [string, number][] = deductionsFor(c).rows.map(r => {
+    const days = `${r.days} ${r.days === 1 ? "day" : "days"}`;
+    switch (r.key) {
+      case "absent": return [`Loss of Pay (${days})`, r.amount];
+      case "half": return [`Half Day Adjustment (${r.days})`, r.amount];
+      case "unpaid_leave": return [`Leave Without Pay (${days})`, r.amount];
+      default: return [`Unpaid Holidays (${r.days})`, r.amount];
+    }
+  });
 
-  const earnings: [string, number][] = [["Basic Salary", c.monthlySalary]];
+  const earnings: [string, number][] = [["Basic Salary", c.monthlySalary], ...(input.extraEarnings || [])];
   for (const adj of c.adjustments) {
     if (adj.amount >= 0) earnings.push([adj.label, adj.amount]);
     else deductions.push([adj.label, Math.abs(adj.amount)]);

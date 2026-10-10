@@ -2,12 +2,8 @@ import { useMemo } from "react";
 import { commissionRate } from "@/services/settlements";
 import { useSalaryMonth, type SalaryMonthState } from "./useSalaryMonth";
 import { useMyLeads } from "./useMyLeads";
-import { collectedInRange } from "@/utils/salePayments";
-import { deductionsFor } from "@/utils/payrollEngine";
-import {
-  incentiveEarned, monthlyTargetFor, targetAchievement, INCENTIVE_TARGET_THRESHOLD,
-} from "@/utils/salesTargets";
-import type { Lead, SaleDetail } from "@/types";
+import { deductionsFor, netPayable } from "@/utils/payrollEngine";
+import { salesIncentive, salesInPeriod } from "@/utils/salesPay";
 
 /**
  * A sales member's total earnings for a pay period: salary (attendance-driven, exactly like
@@ -49,12 +45,12 @@ export interface SalesEarnings {
   pendingSaleCount: number;
   pendingSaleValue: number;
 
-  /** salaryPayable + commission. */
+  /** salaryPayable + commission — once the period is paid, the amount that was paid. */
   totalEarnings: number;
-}
-
-function saleItemsOf(lead: Lead): SaleDetail[] {
-  return lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
+  /** The live figure (attendance + verified collected sales today), paid or not. */
+  liveTotalEarnings: number;
+  /** Paid, and the live figure no longer matches what was paid. */
+  changedSincePaid: boolean;
 }
 
 
@@ -84,60 +80,37 @@ export function useSalesEarnings({
 
   const rate = commissionRate(earningsOption);
 
-  const sales = useMemo(() => {
-    /**
-     * Incentives follow the same 10th→9th pay period as salary, so one payday settles one span —
-     * and they are counted on MONEY COLLECTED in that span, not on the price agreed.
-     *
-     * That second half was the discrepancy. This counted `item.amount` in full on the day the sale
-     * was submitted, while the leaderboard, the dashboard's revenue line and its target bars all
-     * count what the client actually paid, on the day they paid it. So the same card could say "11%
-     * achieved" against the monthly target and "10% there" against the incentive gate — two
-     * different answers to one question, on one screen — and a member's incentive on their own
-     * salary page disagreed with the leaderboard's figure for them.
-     *
-     * Collected is the right basis of the two: an advance on a ₹50,000 package should not pay a
-     * full incentive on the day it is booked, and the balance should pay when it arrives.
-     */
-    const { start, end } = salary.period;
+  /**
+   * Incentives follow the same 10th→9th pay period as salary, so one payday settles one span —
+   * and they are counted on MONEY COLLECTED in that span, not on the price agreed (an advance on a
+   * ₹50,000 package does not pay a full incentive the day it is booked; the balance pays when it
+   * arrives). The rule — the sales counted and the 75% target gate — is `utils/salesPay`, the same
+   * one Sales Payroll prices this member with, so the two screens cannot disagree again.
+   */
+  const sales = useMemo(
+    () => salesInPeriod(leads, salary.period.start, salary.period.end),
+    [leads, salary.period.start, salary.period.end],
+  );
+  const incentive = salesIncentive({
+    salesBase: sales.salesBase, rate, dailyTarget, periodStart: salary.period.start,
+  });
 
-    let salesBase = 0, saleCount = 0, pendingSaleValue = 0, pendingSaleCount = 0;
-
-    for (const lead of leads) {
-      for (const item of saleItemsOf(lead)) {
-        const collected = collectedInRange(item, lead, start, end);
-        if (collected <= 0) continue;
-
-        if (item.verificationStatus === "verified") {
-          salesBase += collected;
-          saleCount += 1;
-        } else if (item.verificationStatus === "pending") {
-          pendingSaleValue += collected;
-          pendingSaleCount += 1;
-        }
-      }
-    }
-
-    return { salesBase, saleCount, pendingSaleValue, pendingSaleCount };
-  }, [leads, salary.period]);
-
-  const { total: salaryDeduction } = deductionsFor(salary.computation);
-  const salaryPayable = Math.max(0, salary.computation.monthlySalary - salaryDeduction);
-  const commissionBeforeTarget = Math.round((sales.salesBase * rate) / 100);
+  // The salary half is the engine's own figure — `netPayable` is what Payroll pays too. Once the
+  // period is paid, `salary.computation` is the paid record's, so this is what was paid for it.
+  const salaryPayable = netPayable(salary.computation);
+  const salaryDeduction = deductionsFor(salary.computation).total;
+  const liveTotalEarnings = netPayable(salary.liveComputation) + incentive.commission;
 
   /**
-   * The target gate, measured over the same 10th → 9th cycle the commission is.
-   *
-   * All-or-nothing rather than tapered: below 75% of the cycle's target no incentive is payable on
-   * the sales that WERE made, which is what the member's letter says in those words.
-   * `incentiveEarned` returns true when no target is set, so a member nobody has given a target
-   * loses nothing to a blank field.
+   * A paid period shows the payment: its amount, and the incentive inside it — stored on the line
+   * since 2026-10-09; for an older line, whatever the payment held beyond the salary half.
    */
-  const periodTarget = dailyTarget && dailyTarget > 0
-    ? monthlyTargetFor(dailyTarget, new Date(`${salary.period.start}T00:00:00`))
-    : 0;
-  const earned = incentiveEarned(sales.salesBase, periodTarget);
-  const commission = earned ? commissionBeforeTarget : 0;
+  const paid = salary.paidLine;
+  const paidIncentive = paid
+    ? (paid.incentive?.amount ?? Math.max(0, Math.round(paid.netSalary - salaryPayable)))
+    : null;
+  const commission = paidIncentive ?? incentive.commission;
+  const totalEarnings = paid ? paid.netSalary : salaryPayable + incentive.commission;
 
   return {
     loading: salary.loading || !leadsLoaded,
@@ -147,11 +120,11 @@ export function useSalesEarnings({
     salesBase: sales.salesBase,
     saleCount: sales.saleCount,
     rate,
-    commissionBeforeTarget,
+    commissionBeforeTarget: incentive.commissionBeforeTarget,
     commission,
-    periodTarget,
-    achievement: targetAchievement(sales.salesBase, periodTarget),
-    incentiveWithheld: !earned && commissionBeforeTarget > 0,
+    periodTarget: incentive.periodTarget,
+    achievement: incentive.achievement,
+    incentiveWithheld: incentive.withheld,
     /**
      * The sales still needed to unlock the incentive, in rupees.
      *
@@ -159,11 +132,11 @@ export function useSalesEarnings({
      * member cannot act on "you are at 61%" without doing the arithmetic themselves, in their head,
      * against a target they may not remember.
      */
-    incentiveShortfall: earned
-      ? 0
-      : Math.max(0, Math.ceil(periodTarget * INCENTIVE_TARGET_THRESHOLD - sales.salesBase)),
+    incentiveShortfall: incentive.shortfall,
     pendingSaleCount: sales.pendingSaleCount,
     pendingSaleValue: sales.pendingSaleValue,
-    totalEarnings: salaryPayable + commission,
+    totalEarnings,
+    liveTotalEarnings,
+    changedSincePaid: !!paid && Math.round(liveTotalEarnings) !== Math.round(paid.netSalary),
   };
 }

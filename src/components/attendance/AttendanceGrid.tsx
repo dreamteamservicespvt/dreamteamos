@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { ATTENDANCE_META, isSunday, summarize, type AttendanceStatus } from "@/services/techAttendance";
+import type { PayrollConfig } from "@/types/payroll";
 
 export interface AttendanceGridMember {
   uid: string;
@@ -30,14 +31,26 @@ interface Props<M extends AttendanceGridMember> {
   onCellClick?: (member: M, date: string, current: AttendanceStatus | null) => void;
   /** What sits under a member's name — the Full-Time / Part-Time switch, or their Social Media seats. */
   renderBadge?: (member: M, layout: "card" | "table") => ReactNode;
+  /** The live payroll policy — the leave allowance the totals count against. Defaults to the documented one. */
+  payrollConfig?: Partial<PayrollConfig>;
 }
 
+/**
+ * A cell's tooltip. A Sunday says it is not counted: the weekly off is paid either way, so a mark on
+ * one changes neither the totals beside it nor the salary (owner, 2026-10-09).
+ */
 const cellTitle = (date: string, status: AttendanceStatus | null, manual: boolean) =>
-  `${format(new Date(date), "EEE dd MMM")}${status ? " · " + ATTENDANCE_META[status].label : ""}${manual ? " (manual)" : ""}`;
+  `${format(new Date(date), "EEE dd MMM")}${status ? " · " + ATTENDANCE_META[status].label : ""}${manual ? " (manual)" : ""}${
+    manual && isSunday(date) ? " · Sunday, not counted in salary" : ""}`;
 
-/** The P / H / A / L counts and the leaves left — the same words on the card and in the table. */
-function Totals({ statuses, size }: { statuses: (AttendanceStatus | null)[]; size: "card" | "table" }) {
-  const sum = summarize(statuses);
+/**
+ * The P / H / A / L counts and the leaves left — the same words on the card and in the table, and
+ * the salary engine's own tally (`summarize`), so these are exactly the days the payslip counts.
+ */
+function Totals({ days, statuses, size, config }: {
+  days: string[]; statuses: (AttendanceStatus | null)[]; size: "card" | "table"; config?: Partial<PayrollConfig>;
+}) {
+  const sum = summarize(days.map((date, i) => ({ date, status: statuses[i] ?? null })), config);
   return (
     <>
       <div className={size === "card" ? "text-[11px] whitespace-nowrap" : "text-[10px] text-muted-foreground whitespace-nowrap"}>
@@ -52,7 +65,7 @@ function Totals({ statuses, size }: { statuses: (AttendanceStatus | null)[]; siz
 }
 
 export default function AttendanceGrid<M extends AttendanceGridMember>({
-  members, days, todayStr, isHoliday, statusFor, isOverride, onCellClick, renderBadge,
+  members, days, todayStr, isHoliday, statusFor, isOverride, onCellClick, renderBadge, payrollConfig,
 }: Props<M>) {
   const readOnly = !onCellClick;
   return (
@@ -71,7 +84,7 @@ export default function AttendanceGrid<M extends AttendanceGridMember>({
                   {renderBadge?.(m, "card")}
                 </div>
                 <div className="text-right shrink-0">
-                  <Totals statuses={statuses} size="card" />
+                  <Totals days={days} statuses={statuses} size="card" config={payrollConfig} />
                 </div>
               </div>
               <div className="grid grid-cols-7 gap-1">
@@ -148,7 +161,7 @@ export default function AttendanceGrid<M extends AttendanceGridMember>({
                       {renderBadge?.(m, "table")}
                     </td>
                     <td className="px-1 py-2 text-center align-top">
-                      <Totals statuses={statuses} size="table" />
+                      <Totals days={days} statuses={statuses} size="table" config={payrollConfig} />
                     </td>
                     {days.map((d, i) => {
                       const st = statuses[i];

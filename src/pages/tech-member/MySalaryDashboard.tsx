@@ -7,13 +7,13 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSalaryMonth } from "@/hooks/useSalaryMonth";
-import { isBankComplete, payoutSummary, watchEmployeeBank } from "@/services/payroll";
+import { isBankComplete, isBankVerified, payoutSummary, watchEmployeeBank } from "@/services/payroll";
 import { formatCurrency } from "@/utils/formatters";
 import { ATTENDANCE_META, type AttendanceStatus } from "@/services/techAttendance";
 import BankDetailsModal from "@/components/payroll/BankDetailsModal";
 import LeavePanel from "@/components/payroll/LeavePanel";
 import { downloadPayslip } from "@/utils/payslipPdf";
-import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import { currentPayMonth, deductionsFor, netPayable as netPayableOf, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import type { EmployeeBank } from "@/types/payroll";
 
 /**
@@ -49,7 +49,10 @@ export default function MySalaryDashboard() {
   const [bankPromptDeferred, setBankPromptDeferred] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const { loading, days, statusByDate, computation: c, payDay, isPastMonth, period, config } = useSalaryMonth({
+  const {
+    loading, error, days, statusByDate, computation: c, liveComputation, paidLine, changedSincePaid,
+    payDay, isPastMonth, period, config,
+  } = useSalaryMonth({
     memberId: user?.uid,
     monthlySalary: user?.salary || 0,
     month,
@@ -86,8 +89,14 @@ export default function MySalaryDashboard() {
    * helper rather than repeating the arithmetic here, so the employee, the admin table and the
    * payslip can never disagree about what a day off is worth.
    */
-  const { rows: deductions, total: totalDeduction } = useMemo(() => deductionsFor(c), [c]);
-  const netPayable = Math.max(0, c.monthlySalary - totalDeduction);
+  const { rows: deductions } = useMemo(() => deductionsFor(c), [c]);
+  const lc = liveComputation;
+  // Once paid, the amount that was paid (the same record the admin's Payroll shows); before that,
+  // the engine's salary-less-deductions — the figure Payroll will pay.
+  const netPayable = paidLine ? paidLine.netSalary : netPayableOf(c);
+  const paidOn = paidLine?.paidAt && typeof paidLine.paidAt === "object" && "seconds" in paidLine.paidAt
+    ? new Date((paidLine.paidAt as { seconds: number }).seconds * 1000)
+    : null;
 
   /**
    * What was subtracted, said in days rather than rupees ("1 day absent", not "₹385").
@@ -118,6 +127,9 @@ export default function MySalaryDashboard() {
       computation: c,
       netPayable,
       paymentMethod: bank ? payoutSummary(bank) : undefined,
+      paymentStatus: paidLine ? "Paid" : "Pending",
+      transactionId: paidLine?.transactionId,
+      paymentDate: paidOn,
     });
   };
 
@@ -181,7 +193,13 @@ export default function MySalaryDashboard() {
         </button>
       )}
 
-      {loading ? (
+      {error ? (
+        // Never a salary priced from a read that failed — it would show every day Absent.
+        <div role="alert" data-test="salary-error" className="flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3.5">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <p className="text-sm text-foreground">{error}</p>
+        </div>
+      ) : loading ? (
         <SalarySkeleton />
       ) : (
         <>
@@ -219,7 +237,12 @@ export default function MySalaryDashboard() {
               <div className="mt-4 flex items-end justify-between gap-3 border-t border-border pt-4">
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    {isPastMonth ? "Final salary" : "Salary payable"}
+                    {paidLine ? "Paid" : isPastMonth ? "Final salary" : "Salary payable"}
+                    {paidLine && (
+                      <span data-test="salary-paid" className="ml-2 inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
+                        <CheckCircle2 className="h-3 w-3" /> {paidOn ? `Paid on ${format(paidOn, "dd MMM")}` : "Paid"}
+                      </span>
+                    )}
                   </p>
                   {deductionDays && (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
@@ -231,6 +254,13 @@ export default function MySalaryDashboard() {
                   {formatCurrency(netPayable)}
                 </span>
               </div>
+              {/* The record does not move after payday; a later correction is said, not hidden. */}
+              {changedSincePaid && (
+                <p data-test="salary-changed" className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+                  Your attendance for this period was corrected after it was paid. It now comes to{" "}
+                  <strong>{formatCurrency(netPayableOf(liveComputation))}</strong> — your admin will settle the difference.
+                </p>
+              )}
             </div>
 
             {/* Pay day */}
@@ -249,7 +279,10 @@ export default function MySalaryDashboard() {
                   {payDay.daysRemaining === 0 ? "Today" : `${payDay.daysRemaining} days`}
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {payDay.daysRemaining === 0
+                  {/* The period this payday covers is the one on screen and it is already paid: say so. */}
+                  {paidLine && payDay.payingForMonth === month
+                    ? (paidOn ? `Paid on ${format(paidOn, "dd MMM")}` : "Paid")
+                    : payDay.daysRemaining === 0
                     ? "Salary is being processed"
                     : `until payday · covering ${format(parse(payDay.payingForMonth, "yyyy-MM", new Date()), "MMMM")}`}
                 </p>
@@ -257,16 +290,19 @@ export default function MySalaryDashboard() {
             </div>
           </section>
 
-          {/* ── Stat grid ─────────────────────────────────────────────────── */}
+          {/* ── Stat grid ─────────────────────────────────────────────────────
+              Attendance facts, so always LIVE — the same days as the calendar below. Once paid, the
+              money above is the payment record; these tiles beside a corrected calendar used to
+              show the paid month's old counts (26 Full Days next to a red Absent day). */}
           <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <Stat icon={CalendarDays} label="Working Days" value={c.workingDays} />
-            <Stat icon={CheckCircle2} label="Full Days" value={c.fullDays} tone="success" />
-            <Stat icon={Clock} label="Half Days" value={c.halfDays} tone={c.halfDays ? "warning" : undefined} />
-            <Stat icon={AlertCircle} label="Absent" value={c.absentDays} tone={c.absentDays ? "destructive" : undefined} />
-            <Stat icon={Coffee} label="Paid Leave Left" value={`${c.paidLeavesRemaining}/${c.paidLeaveQuota}`}
-              tone="info" hint={c.unpaidLeaveDays ? `${c.unpaidLeaveDays} unpaid` : undefined} />
-            <Stat icon={PiggyBank} label="Attendance" value={`${Math.round(c.attendancePercent)}%`}
-              tone={c.attendancePercent >= 90 ? "success" : c.attendancePercent >= 75 ? "warning" : "destructive"} />
+            <Stat icon={CalendarDays} label="Working Days" value={lc.workingDays} />
+            <Stat icon={CheckCircle2} label="Full Days" value={lc.fullDays} tone="success" />
+            <Stat icon={Clock} label="Half Days" value={lc.halfDays} tone={lc.halfDays ? "warning" : undefined} />
+            <Stat icon={AlertCircle} label="Absent" value={lc.absentDays} tone={lc.absentDays ? "destructive" : undefined} />
+            <Stat icon={Coffee} label="Paid Leave Left" value={`${lc.paidLeavesRemaining}/${lc.paidLeaveQuota}`}
+              tone="info" hint={lc.unpaidLeaveDays ? `${lc.unpaidLeaveDays} unpaid` : undefined} />
+            <Stat icon={PiggyBank} label="Attendance" value={`${Math.round(lc.attendancePercent)}%`}
+              tone={lc.attendancePercent >= 90 ? "success" : lc.attendancePercent >= 75 ? "warning" : "destructive"} />
           </section>
 
           <div className="grid gap-5">
@@ -370,7 +406,7 @@ export default function MySalaryDashboard() {
                     <h2 className="font-display text-sm font-semibold text-foreground md:text-base">
                       {bankComplete ? "Your payout details" : "Add your payout details"}
                     </h2>
-                    {bank?.verified ? (
+                    {isBankVerified(bank) ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
                         <ShieldCheck className="h-2.5 w-2.5" /> Verified
                       </span>
@@ -408,7 +444,7 @@ export default function MySalaryDashboard() {
                     bankComplete ? "" : "ring-2 ring-warning/50"
                   }`}
                 >
-                  {bank?.verified ? "View bank details" : bankComplete ? "Update bank details" : "Add bank details"}
+                  {isBankVerified(bank) ? "View bank details" : bankComplete ? "Update bank details" : "Add bank details"}
                 </button>
               </div>
             </div>

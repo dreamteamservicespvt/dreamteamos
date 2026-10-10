@@ -183,7 +183,9 @@ describe("the board, on the in-memory Firestore", () => {
     expect(screen.getByTestId("smm-attendance-date").textContent).toBe("Thursday, 8 October 2026");
 
     // Not checked in — the post's maker and the hand-added person — each with Call and WhatsApp.
-    expect(namesIn("call")).toEqual(["Chitra", "Esha"]);
+    // Waited for: the hand-added person's user record is its own one-off read, which can land after
+    // Arjun's check-in (this failed about 1 run in 8 when asserted at once).
+    await waitFor(() => expect(namesIn("call")).toEqual(["Chitra", "Esha"]));
     const chitra = within(group("call")!).getAllByTestId("smm-today-person")[0];
     expect(within(chitra).getByTestId("smm-today-status").textContent).toBe("Not checked in");
     // Each card says what Social Media work the person handles — the client and what they do for it.

@@ -23,10 +23,12 @@ import { cn } from "@/lib/utils";
 import { CalendarDays, ChevronLeft, ChevronRight, LogIn, LogOut, PartyPopper, IndianRupee } from "lucide-react";
 import type { SalesCheckin } from "@/services/salesCheckin";
 import {
-  ATTENDANCE_META, AttendanceStatus, attendanceKey, daysBetween, resolveStatus, summarize,
+  ATTENDANCE_META, AttendanceStatus, attendanceKey, daysBetween, isCheckInRecord, resolveStatus, summarize,
   todayDate, watchHolidayRecordsInRange, watchOverridesInRange, Holiday,
 } from "@/services/techAttendance";
 import { currentPayMonth, payPeriodForMonth } from "@/utils/payrollEngine";
+import { useToday } from "@/hooks/useToday";
+import { usePayrollConfig } from "@/hooks/usePayrollConfig";
 import { formatCurrency } from "@/utils/formatters";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -43,14 +45,15 @@ const fmtTs = (ts: unknown): string => {
 
 export default function SalesDayCalendar({ memberId }: { memberId: string }) {
   /** A PAY month: "Jul 2026" here means 10 Jul → 09 Aug, which is what salary is counted over. */
-  const [month, setMonth] = useState<string>(currentPayMonth());
+  const payrollConfig = usePayrollConfig();
+  const [month, setMonth] = useState<string>(() => currentPayMonth(payrollConfig.payDayOfMonth));
   const [checkins, setCheckins] = useState<SalesCheckin[]>([]);
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
   const [selected, setSelected] = useState<string>(todayDate());
 
-  const todayStr = todayDate();
-  const period = useMemo(() => payPeriodForMonth(month), [month]);
+  const todayStr = useToday();
+  const period = useMemo(() => payPeriodForMonth(month, payrollConfig.payDayOfMonth), [month, payrollConfig.payDayOfMonth]);
 
   useEffect(() => {
     if (!memberId) return;
@@ -71,7 +74,12 @@ export default function SalesDayCalendar({ memberId }: { memberId: string }) {
     return () => unsubs.forEach((u) => u());
   }, [period.start, period.end]);
 
-  const checkinByDate = useMemo(() => new Map(checkins.map((c) => [c.date, c])), [checkins]);
+  // Only records that carry a check-in: a check-out made after midnight writes the NEXT day's record
+  // with no check-in on it, and that day is not Present (techAttendance.isCheckInRecord — the salary's rule).
+  const checkinByDate = useMemo(
+    () => new Map(checkins.filter((c) => isCheckInRecord("salesCheckins", c)).map((c) => [c.date, c])),
+    [checkins],
+  );
   const days = useMemo(() => daysBetween(period.start, period.end), [period.start, period.end]);
 
   const statusFor = (dateStr: string): AttendanceStatus | null =>
@@ -83,7 +91,11 @@ export default function SalesDayCalendar({ memberId }: { memberId: string }) {
       todayStr,
     });
 
-  const summary = useMemo(() => summarize(days.map((d) => statusFor(d))), [days, overrides, holidays, checkinByDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The salary engine's own tally, so Present / Absent here are the days the payslip counts.
+  const summary = useMemo(
+    () => summarize(days.map((d) => ({ date: d, status: statusFor(d) })), payrollConfig),
+    [days, overrides, holidays, checkinByDate, todayStr, payrollConfig], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const selCheckin = checkinByDate.get(selected);
   const selStatus = selected >= period.start && selected <= period.end ? statusFor(selected) : null;
@@ -105,7 +117,7 @@ export default function SalesDayCalendar({ memberId }: { memberId: string }) {
           <span className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center">
             {format(new Date(`${month}-01`), "MMM yyyy")}
           </span>
-          <button onClick={() => setMonth((mo) => shiftMonth(mo, 1))} disabled={month >= currentPayMonth()}
+          <button onClick={() => setMonth((mo) => shiftMonth(mo, 1))} disabled={month >= currentPayMonth(payrollConfig.payDayOfMonth)}
             className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30" aria-label="Next cycle">
             <ChevronRight className="w-4 h-4" />
           </button>

@@ -57,7 +57,11 @@ type, bodyText, `signatories[]`, status `issued`/`signed`/`declined`, view/downl
 code, generated password after completion) · `member_credentials/{uid}` (**readable passwords**)
 · `daily_checkins` · `attendance/{memberId}_{date}` · `holidays/{date}` · `salesCheckins` ·
 `leave_requests` · `salary_packages` · `payroll_config/default` · `employee_bank/{uid}` ·
-`payroll_runs/{month}` · `payroll_lines/{month}_{memberId}` · `salary_receipts` ·
+`payroll_runs/{month}` (typed and read, but **nothing in the app writes it**) · `payroll_lines/{month}_{memberId}`
+(the payment record — `paymentStatus`, `netSalary` = amount paid, frozen `computation`; 2026-10-09: `memberRole`, and
+`incentive {salesBase, rate, amount, withheld}` on a sales payment; `monthlySalary` = the computation's) ·
+`salary_receipts` (Accounts' receipts: `userId`, `amount`, `month` = the printed period, 2026-10-09: `period`
+`yyyy-MM` — older ones lack it) ·
 `commission_settlements` · `settlement_requests` · `audit_logs` · `review_tasks` · `expenses` ·
 `other_income` · `training_modules` · `chatRooms` (+messages) · `calls` (+candidates) · `meetings`
 (+participants, signals) · `settings/salesConfig` (`activeFestival`) · `app_settings/ad_languages`,

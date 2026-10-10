@@ -114,6 +114,20 @@ export function currentPayMonth(
   return payPeriodForDate(today, cycleStartDay).month;
 }
 
+/**
+ * The pay period whose salary is being paid out now — the one a payment or a receipt made today is for.
+ *
+ * Not `currentPayMonth`: a cycle is paid AFTER it ends (July's 10 Jul → 9 Aug is paid on 10 Aug), so on
+ * payday the period in progress is the one that has just begun, with nothing to pay. All through calendar
+ * month M+1 — on the pay day, before it (the cycle is about to close) and after it (a late payment) — the
+ * salary being paid is period M. Salary Management defaulted its receipt to the running cycle and checked
+ * "already paid in Payroll" against it, so on payday it offered the new cycle's figure and never saw the
+ * payment just made (2026-10-10).
+ */
+export function salaryMonthDue(today: Date = new Date()): string {
+  return shiftPayMonth(`${today.getFullYear()}-${pad(today.getMonth() + 1)}`, -1);
+}
+
 /** Step a pay-period label by whole months, e.g. the ‹ › buttons on a salary screen. */
 export function shiftPayMonth(month: string, delta: number): string {
   const [y, m] = month.split("-").map(Number);
@@ -214,6 +228,83 @@ export function dayCreditFactor(status: AttendanceStatus, config: PayrollConfig)
   }
 }
 
+// ─── Attendance tally ───────────────────────────────────────────────────────
+
+/**
+ * What a run of resolved days adds up to — THE count of Present / Half / Absent / Leave / Holiday.
+ *
+ * ── Why the grid and the salary both call this ─────────────────────────────────────────────────
+ * The attendance grid and the calendars used to count for themselves (`techAttendance.summarize`:
+ * every marked cell, Sundays included, against a hard-coded allowance of two) while the salary
+ * skipped Sundays and read the allowance from policy. A Sunday an admin had marked Present was
+ * "1P" on the grid and nothing on the payslip, so the two Present counts disagreed and nobody could
+ * say which one was right. There is one count now, and every screen reads it.
+ *
+ * ── Sundays ────────────────────────────────────────────────────────────────────────────────────
+ * The weekly off is already paid (it is out of the denominator), so a mark on a Sunday never
+ * changes pay and is never counted (owner, 2026-10-09). That includes Leave: the quota pass used to
+ * run before the Sunday skip, so a Sunday marked Leave took one of the two paid-leave slots and
+ * pushed a real weekday's leave into a deduction.
+ */
+export interface AttendanceTally {
+  full: number;
+  half: number;
+  absent: number;
+  /** Every working day marked Leave, paid or not — what the grid's "L" counts. */
+  leave: number;
+  paidLeave: number;
+  unpaidLeave: number;
+  holiday: number;
+  /** Working days with no status yet: today before the check-in, or a day still to come. */
+  pending: number;
+  /** Presence credit: full = 1, half = the configured half-day factor. */
+  presentDays: number;
+  /** Paid leave still available in the period. */
+  leavesLeft: number;
+  /** Which leave days were paid — the earliest `paidLeaveQuota` of them, in date order. */
+  paidLeaveDates: Set<string>;
+}
+
+export function tallyAttendance(days: ResolvedDay[], config?: Partial<PayrollConfig>): AttendanceTally {
+  const cfg: PayrollConfig = { ...DEFAULT_PAYROLL_CONFIG, ...config };
+
+  // One status per date (the last one given wins), with the weekly off left out.
+  const byDate = new Map<string, AttendanceStatus | null>();
+  for (const d of days) {
+    if (cfg.excludeSundays && isSundayDate(d.date)) continue;
+    byDate.set(d.date, d.status ?? null);
+  }
+
+  /**
+   * Leave is granted in date order: the first `paidLeaveQuota` leave days are paid, everything
+   * after is leave without pay. Sorting matters — leave on the 3rd and the 25th must have the 3rd
+   * paid, not whichever row happened to load first.
+   */
+  const leaveDates = [...byDate].filter(([, s]) => s === "leave").map(([date]) => date).sort();
+  const paidLeaveDates = new Set(leaveDates.slice(0, Math.max(0, cfg.paidLeaveQuota)));
+
+  const t: AttendanceTally = {
+    full: 0, half: 0, absent: 0, leave: 0, paidLeave: 0, unpaidLeave: 0, holiday: 0, pending: 0,
+    presentDays: 0, leavesLeft: 0, paidLeaveDates,
+  };
+  for (const [date, status] of byDate) {
+    switch (status) {
+      case "full": t.full += 1; break;
+      case "half": t.half += 1; break;
+      case "absent": t.absent += 1; break;
+      case "holiday": t.holiday += 1; break;
+      case "leave":
+        t.leave += 1;
+        if (paidLeaveDates.has(date)) t.paidLeave += 1; else t.unpaidLeave += 1;
+        break;
+      default: t.pending += 1;
+    }
+  }
+  t.presentDays = t.full + t.half * cfg.halfDayFactor;
+  t.leavesLeft = Math.max(0, cfg.paidLeaveQuota - t.paidLeave);
+  return t;
+}
+
 export interface ComputeSalaryInput {
   month: string;
   /** Gross monthly salary from the employee's package. */
@@ -254,63 +345,28 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
 
   const byDate = new Map(input.days.map(d => [d.date, d.status]));
 
-  /**
-   * Leave is granted in chronological order: the first `paidLeaveQuota` leave days of the month
-   * are paid, everything after becomes leave-without-pay. Sorting matters — an employee who
-   * takes leave on the 3rd and the 25th must have the 3rd paid, not whichever row loaded first.
-   */
-  const leaveDates = dates
-    .filter(date => byDate.get(date) === "leave")
-    .sort();
-  const paidLeaveDates = new Set(leaveDates.slice(0, config.paidLeaveQuota));
+  // The period's days, each with its status (a day not given is pending), counted by the one tally
+  // the attendance grid uses too — Sundays out, leave paid in date order.
+  const tally = tallyAttendance(
+    dates.map(date => ({ date, status: byDate.get(date) ?? null })),
+    config,
+  );
+  const fullDays = tally.full, halfDays = tally.half;
+  const paidLeaveDays = tally.paidLeave, unpaidLeaveDays = tally.unpaidLeave;
+  const absentDays = tally.absent, holidayDays = tally.holiday, pendingDays = tally.pending;
+  const earnedDays = fullDays + halfDays * config.halfDayFactor + paidLeaveDays
+    + (config.holidaysPaid ? holidayDays : 0);
 
-  let fullDays = 0, halfDays = 0, paidLeaveDays = 0, unpaidLeaveDays = 0;
-  let absentDays = 0, holidayDays = 0, pendingDays = 0;
-  let earnedDays = 0;
+  // Working days that have happened, and of those the ones still unresolved (today before the
+  // check-in) — the attendance % is measured over the resolved ones.
   let elapsedWorkingDays = 0;
-
+  let unresolvedElapsed = 0;
   for (const date of dates) {
-    // Sundays are not working days at all: they are already out of the denominator, so they
-    // must not add credit either.
+    // Sundays are not working days at all: they are already out of the denominator.
     if (config.excludeSundays && isSundayDate(date)) continue;
-
-    const status = byDate.get(date) ?? null;
-    const isElapsed = date <= todayStr;
-
-    if (status === null) {
-      // Unresolved: today still in progress, or a future day. Neither earned nor lost yet.
-      pendingDays += 1;
-      if (isElapsed) elapsedWorkingDays += 1;
-      continue;
-    }
-
-    if (isElapsed) elapsedWorkingDays += 1;
-
-    switch (status) {
-      case "full":
-        fullDays += 1;
-        earnedDays += 1;
-        break;
-      case "half":
-        halfDays += 1;
-        earnedDays += config.halfDayFactor;
-        break;
-      case "absent":
-        absentDays += 1;
-        break;
-      case "holiday":
-        holidayDays += 1;
-        if (config.holidaysPaid) earnedDays += 1;
-        break;
-      case "leave":
-        if (paidLeaveDates.has(date)) {
-          paidLeaveDays += 1;
-          earnedDays += 1;
-        } else {
-          unpaidLeaveDays += 1;
-        }
-        break;
-    }
+    if (date > todayStr) continue;
+    elapsedWorkingDays += 1;
+    if ((byDate.get(date) ?? null) === null) unresolvedElapsed += 1;
   }
 
   const dailySalary = workingDays > 0 ? monthlySalary / workingDays : 0;
@@ -329,7 +385,7 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
 
   // Attendance % is measured against days that have actually happened, so it reads 100% on the
   // 2nd of the month rather than a demoralising 7%.
-  const resolvedElapsed = elapsedWorkingDays - pendingDaysElapsed(byDate, dates, todayStr, config);
+  const resolvedElapsed = elapsedWorkingDays - unresolvedElapsed;
   const attendancePercent = resolvedElapsed > 0
     ? round2((earnedDays / resolvedElapsed) * 100)
     : 0;
@@ -372,22 +428,6 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
     lines,
     adjustments,
   };
-}
-
-/** Elapsed working days that are still unresolved — excluded from the attendance % denominator. */
-function pendingDaysElapsed(
-  byDate: Map<string, AttendanceStatus | null>,
-  dates: string[],
-  todayStr: string,
-  config: PayrollConfig,
-): number {
-  let count = 0;
-  for (const date of dates) {
-    if (config.excludeSundays && isSundayDate(date)) continue;
-    if (date > todayStr) continue;
-    if ((byDate.get(date) ?? null) === null) count += 1;
-  }
-  return count;
 }
 
 /** The human-readable breakdown: one row per bucket, plus a row per adjustment. */
@@ -501,6 +541,18 @@ export function deductionsFor(c: SalaryComputation): { rows: DeductionRow[]; tot
 
   const kept = rows.filter(r => r.days > 0);
   return { rows: kept, total: kept.reduce((sum, r) => sum + r.amount, 0) };
+}
+
+/**
+ * The salary payable for a period: the monthly salary, less what attendance cost, plus any
+ * adjustment — the one figure the Payroll table, the member's My Salary, the payslip and the
+ * accounts receipt all show.
+ *
+ * Each of them used to subtract for itself, which is how two screens describing the same month
+ * could drift by a rounding or by a rule one of them forgot.
+ */
+export function netPayable(c: SalaryComputation): number {
+  return Math.max(0, c.monthlySalary - deductionsFor(c).total + (c.adjustmentTotal || 0));
 }
 
 /**

@@ -1,14 +1,16 @@
 import {
-  addDoc, collection, doc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where,
+  addDoc, collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { recordAudit } from "./auditLog";
 import { sendNotification } from "./notifications";
-import { clearAttendanceOverride, isSunday, setAttendanceOverride } from "./techAttendance";
+import { fetchPayrollConfig } from "./payroll";
+import { attendanceKey, clearAttendanceOverride, isSunday, setAttendanceOverride } from "./techAttendance";
 import { payPeriodForDate, payPeriodForMonth, periodDates } from "@/utils/payrollEngine";
-import { splitLeaveDays, describeLeaveSplit } from "@/utils/leaveAllowance";
+import { splitLeaveDays, describeLeaveSplit, type LeaveSplit } from "@/utils/leaveAllowance";
+import { getSalaryRoute } from "@/utils/roleHelpers";
 import { DEFAULT_PAYROLL_CONFIG, type LeaveRequest, type LeaveStatus } from "@/types/payroll";
-import type { AppUser } from "@/types";
+import type { AppUser, UserRole } from "@/types";
 
 /**
  * Leave requests.
@@ -218,6 +220,48 @@ async function approvedLeaveDatesFor(memberId: string, excludeRequestId?: string
 }
 
 /**
+ * Every working day this member holds as LEAVE on the attendance record itself — the source the
+ * salary is priced from.
+ *
+ * ── Why the record and not the requests (2026-10-09) ─────────────────────────────────────────
+ * Counting approved requests missed leave an admin marked straight onto the grid (it belongs to no
+ * request), so an approval could hand out a third "paid" leave day: the grid said L, the salary
+ * (which applies the allowance itself) deducted it, and nobody could see why. It also kept counting
+ * a day the admin had since changed to Present. The record has neither problem. A Sunday never
+ * counts — the weekly off is not leave. `excludeDates` keeps a request from being measured against
+ * its own days when it is approved again.
+ *
+ * Falls back to the requests when the record cannot be read.
+ */
+async function leaveDatesOnRecord(memberId: string, excludeDates: Set<string>, excludeRequestId?: string): Promise<string[]> {
+  try {
+    const snap = await getDocs(query(collection(db, "attendance"), where("memberId", "==", memberId)));
+    return snap.docs
+      .map(d => d.data() as { date?: string; status?: string })
+      .filter(a => a.status === "leave" && !!a.date && !excludeDates.has(a.date) && !isSunday(a.date))
+      .map(a => a.date as string);
+  } catch (err) {
+    console.error("[leave] could not read the member's attendance; counting approved requests instead:", err);
+    return approvedLeaveDatesFor(memberId, excludeRequestId);
+  }
+}
+
+/**
+ * Where this member's salary-and-leave page is, for the notification's link.
+ *
+ * Every leave notification linked `/tech/salary`, a tech-member route — a sales member's "Leave
+ * Approved" opened a page their role cannot see. One read of the member's user record.
+ */
+async function salaryLinkFor(memberId: string): Promise<string> {
+  try {
+    const snap = await getDoc(doc(db, "users", memberId));
+    return getSalaryRoute((snap.data() as { role?: UserRole } | undefined)?.role);
+  } catch {
+    return getSalaryRoute(null);
+  }
+}
+
+/**
  * Approve a request, marking each day as either leave or an absence.
  *
  * ── Why the classification happens here ───────────────────────────────────────────────────────
@@ -226,17 +270,29 @@ async function approvedLeaveDatesFor(memberId: string, excludeRequestId?: string
  * indistinguishable from an approved day off, which is exactly the distinction the rule exists to
  * make. So the split is decided at approval and written into the overrides themselves.
  *
- * The allowance is measured against the member's whole approved history in that period, so the
- * third day off in a cycle is unpaid whether it arrives on its own or inside a batch.
+ * The allowance is measured against the leave already on the member's attendance record in that
+ * period (see `leaveDatesOnRecord`), so the third day off in a cycle is unpaid whether it arrives
+ * on its own, inside a batch, or after an admin marked leave on the grid — and against the live
+ * policy's allowance and cycle, the ones the salary uses.
+ *
+ * Returns the split, so the approver is told what the approval actually did (the panel used to
+ * report its own pre-approval estimate, "all paid", for a request that had just become absences).
  */
 export async function approveLeaveRequest(
   request: LeaveRequest,
   actor: { uid: string; name?: string },
-): Promise<void> {
+): Promise<LeaveSplit> {
   const days = leaveWorkingDates(request.fromDate, request.toDate);
+  const [policy, used, link] = await Promise.all([
+    fetchPayrollConfig(),
+    leaveDatesOnRecord(request.memberId, new Set(days), request.id),
+    salaryLinkFor(request.memberId),
+  ]);
   const split = splitLeaveDays({
     requestedDates: days,
-    alreadyApprovedLeaveDates: await approvedLeaveDatesFor(request.memberId, request.id),
+    alreadyApprovedLeaveDates: used,
+    quota: policy.paidLeaveQuota,
+    cycleStartDay: policy.payDayOfMonth,
   });
 
   await Promise.all(split.days.map(day =>
@@ -279,8 +335,10 @@ export async function approveLeaveRequest(
     message: split.absentDates.length
       ? `Your leave for ${request.fromDate}${request.toDate !== request.fromDate ? ` to ${request.toDate}` : ""} is approved. ${describeLeaveSplit(split)}`
       : `Your leave for ${request.fromDate}${request.toDate !== request.fromDate ? ` to ${request.toDate}` : ""} has been approved.`,
-    link: "/tech/salary",
+    link,
   }).catch(() => undefined);
+
+  return split;
 }
 
 export async function rejectLeaveRequest(
@@ -313,23 +371,44 @@ export async function rejectLeaveRequest(
     message: note.trim()
       ? `Your leave request for ${request.fromDate} was not approved: ${note.trim()}`
       : `Your leave request for ${request.fromDate} was not approved.`,
-    link: "/tech/salary",
+    link: await salaryLinkFor(request.memberId),
   }).catch(() => undefined);
+}
+
+/**
+ * What the approval of `request` wrote on each of its days — `leave` within the allowance,
+ * `absent` beyond it. A request approved before the split was recorded wrote `leave` on every day.
+ */
+export function approvalMarks(request: Pick<LeaveRequest, "fromDate" | "toDate" | "leaveDates" | "absentDates">): Map<string, "leave" | "absent"> {
+  const absent = new Set(request.absentDates || []);
+  return new Map(leaveWorkingDates(request.fromDate, request.toDate).map(date => [date, absent.has(date) ? "absent" : "leave"]));
 }
 
 /**
  * Undo a decision, putting the request back to pending.
  *
- * Un-approving clears exactly the attendance overrides the approval wrote, so a mistaken
- * approval cannot leave phantom leave days silently reducing someone's salary.
+ * Un-approving clears the attendance overrides the approval wrote, so a mistaken approval cannot
+ * leave phantom leave days silently reducing someone's salary — but ONLY a day still holding the
+ * mark the approval put there. It used to clear every day of the request, so a day an admin had
+ * since corrected by hand (Leave → Present, say) was wiped back to whatever the check-ins said.
+ * If a day cannot be read, it is cleared, as before.
  */
 export async function undoLeaveDecision(
   request: LeaveRequest,
   actor: { uid: string; name?: string },
 ): Promise<void> {
   if (request.status === "approved") {
-    const days = leaveWorkingDates(request.fromDate, request.toDate);
-    await Promise.all(days.map(date => clearAttendanceOverride(request.memberId, date)));
+    const marks = approvalMarks(request);
+    await Promise.all([...marks].map(async ([date, wrote]) => {
+      try {
+        const snap = await getDoc(doc(db, "attendance", attendanceKey(request.memberId, date)));
+        if (!snap.exists()) return;
+        if ((snap.data() as { status?: string }).status !== wrote) return; // changed by hand since — keep it
+      } catch {
+        // Unreadable: clear it, the old behaviour — a phantom leave day costs someone pay.
+      }
+      await clearAttendanceOverride(request.memberId, date);
+    }));
   }
 
   await updateDoc(doc(db, "leave_requests", request.id), {

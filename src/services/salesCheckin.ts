@@ -44,18 +44,25 @@ export async function recordCheckIn(user: { uid: string; name: string }): Promis
   );
 }
 
+/**
+ * Check out — onto the day that was CHECKED IN (`date`), not whatever day the clock now says.
+ *
+ * It used to write "today". A check-out made after midnight therefore created the NEXT day's
+ * record, with no check-in on it, and that day was counted Present — and paid — although the member
+ * never came in (the salary now also refuses such a record: `techAttendance.isCheckInRecord`).
+ */
 export async function recordCheckOut(
   user: { uid: string; name: string },
   report: { reportText: string; totalSalesAmount: number; salesCount: number },
+  date: string = format(new Date(), "yyyy-MM-dd"),
 ): Promise<void> {
-  const date = format(new Date(), "yyyy-MM-dd");
   await setDoc(
     doc(db, "salesCheckins", checkinId(user.uid, date)),
     {
       memberId: user.uid,
       memberName: user.name,
       date,
-      month: format(new Date(), "yyyy-MM"),
+      month: date.slice(0, 7),
       checkOutAt: serverTimestamp(),
       ...report,
       updatedAt: serverTimestamp(),
@@ -64,12 +71,12 @@ export async function recordCheckOut(
   );
 }
 
-/** Live subscription to today's check-in doc for a member. */
+/** Live subscription to a member's check-in doc for a day (today unless given). */
 export function watchTodayCheckin(
   memberId: string,
   cb: (checkin: SalesCheckin | null) => void,
+  date: string = format(new Date(), "yyyy-MM-dd"),
 ): () => void {
-  const date = format(new Date(), "yyyy-MM-dd");
   return onSnapshot(doc(db, "salesCheckins", checkinId(memberId, date)), (snap) => {
     cb(snap.exists() ? ({ id: snap.id, ...snap.data() } as SalesCheckin) : null);
   });

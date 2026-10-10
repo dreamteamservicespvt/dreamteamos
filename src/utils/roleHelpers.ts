@@ -269,6 +269,22 @@ export function getProfileRoute(role?: UserRole | null): string {
   }
 }
 
+/**
+ * The page where someone sees their own salary and leave — the link a "Salary Paid" or "Leave
+ * Approved" notification opens.
+ *
+ * Those notifications all pointed at `/tech/salary`, a tech-member route, so a sales member tapping
+ * "your salary has been paid" landed on a page their role cannot open. Anyone without a salary
+ * screen of their own gets "/" (their default page), never somebody else's route.
+ */
+export function getSalaryRoute(role?: UserRole | null): string {
+  switch (role) {
+    case "sales_member": return "/sales/salary";
+    case "tech_member": return "/tech/salary";
+    default: return "/";
+  }
+}
+
 export function getNavItems(
   role: UserRole,
   user?: Pick<AppUser, "externalCreator"> | null,

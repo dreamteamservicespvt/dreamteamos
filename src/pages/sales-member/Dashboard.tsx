@@ -12,6 +12,7 @@ import SalesEarningsCard from "@/components/sales/SalesEarningsCard";
 import SmmRenewalsCard from "@/components/smm/SmmRenewalsCard";
 import { useSalesEarnings } from "@/hooks/useSalesEarnings";
 import { useMyLeads } from "@/hooks/useMyLeads";
+import { useToday } from "@/hooks/useToday";
 import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
 import { dailyTargetOf, monthlyTargetOf } from "@/utils/salesTargets";
 import { collectedInRange } from "@/utils/salePayments";
@@ -357,7 +358,10 @@ function CheckinCard({ user, leads }: { user: { uid: string; name: string }; lea
   const [checkin, setCheckin] = useState<SalesCheckin | null>(null);
   const [busy, setBusy] = useState<"in" | "out" | null>(null);
 
-  useEffect(() => watchTodayCheckin(user.uid, setCheckin), [user.uid]);
+  // Follows the date: a dashboard left open overnight showed yesterday's "Day complete" in the
+  // morning, with no Check In button — and a day with no check-in is Absent.
+  const today = useToday();
+  useEffect(() => watchTodayCheckin(user.uid, setCheckin, today), [user.uid, today]);
 
   const checkedIn = !!checkin?.checkInAt;
   const checkedOut = !!checkin?.checkOutAt;
@@ -379,7 +383,8 @@ function CheckinCard({ user, leads }: { user: { uid: string; name: string }; lea
     setBusy("out");
     try {
       const report = buildCheckOutReport(user.name, leads);
-      await recordCheckOut(user, report);
+      // Onto the day that was checked in, so a check-out after midnight cannot create the next day's record.
+      await recordCheckOut(user, report, checkin?.date);
       window.open(reportWhatsAppUrl(report.reportText), "_blank");
       toast({ title: "Checked out", description: "Progress report ready — send the WhatsApp message that just opened." });
     } catch (e: any) {

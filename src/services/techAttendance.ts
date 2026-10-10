@@ -2,6 +2,8 @@ import { collection, deleteDoc, doc, getDocs, onSnapshot, query, serverTimestamp
 import type { Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { format, getDay } from "date-fns";
+import { tallyAttendance } from "@/utils/payrollEngine";
+import type { PayrollConfig, ResolvedDay } from "@/types/payroll";
 
 /**
  * Tech attendance.
@@ -25,7 +27,10 @@ export const ATTENDANCE_META: Record<AttendanceStatus, { label: string; short: s
   holiday: { label: "Holiday", short: "—", tone: "bg-slate-400/15 text-slate-500 border-slate-400/30" },
 };
 
-/** Paid leaves allowed per member per month. */
+/**
+ * Paid leaves allowed per member per pay period — the policy default. The live figure is
+ * `PayrollConfig.paidLeaveQuota`, which `summarize` reads when it is given the config.
+ */
 export const MONTHLY_LEAVE_QUOTA = 2;
 
 export interface AttendanceOverride {
@@ -159,16 +164,45 @@ export interface AttendanceSummary {
   leavesLeft: number;
 }
 
-export function summarize(statuses: (AttendanceStatus | null)[]): AttendanceSummary {
-  const s: AttendanceSummary = { full: 0, half: 0, absent: 0, leave: 0, holiday: 0, presentDays: 0, leavesLeft: MONTHLY_LEAVE_QUOTA };
-  for (const st of statuses) {
-    if (!st) continue;
-    s[st] += 1;
-  }
-  s.presentDays = s.full + s.half * 0.5;
-  s.leavesLeft = Math.max(0, MONTHLY_LEAVE_QUOTA - s.leave);
-  return s;
+/**
+ * The P / H / A / L counts for a run of days, as the grid and the calendars show them.
+ *
+ * Takes the DAYS, not bare statuses, because it is the salary engine's own tally
+ * (`payrollEngine.tallyAttendance`): a Sunday's mark is not counted, leave is paid in date order up
+ * to the policy's allowance, and a half day earns the policy's factor. Counting statuses here on
+ * their own is how the grid once said 1P for a Sunday the payslip never paid.
+ */
+export function summarize(days: ResolvedDay[], config?: Partial<PayrollConfig>): AttendanceSummary {
+  const t = tallyAttendance(days, config);
+  return {
+    full: t.full,
+    half: t.half,
+    absent: t.absent,
+    leave: t.leave,
+    holiday: t.holiday,
+    presentDays: t.presentDays,
+    leavesLeft: t.leavesLeft,
+  };
 }
+
+/**
+ * Does a check-in record make its member Present on its date?
+ *
+ * A tech record (`daily_checkins`) exists only because somebody checked in. A sales record
+ * (`salesCheckins/{uid}_{date}`) is different: it is one document per member per day that the
+ * check-OUT writes as well, so a check-out made after midnight used to create the NEXT day's
+ * document with no check-in on it — and that day was counted Present and paid. A sales record
+ * counts only when it carries a check-in (the field is present the moment the check-in is
+ * written, even while its server time is still pending).
+ */
+export function isCheckInRecord(source: "daily_checkins" | "salesCheckins", data: unknown): data is { memberId: string; date: string } {
+  const c = (data ?? {}) as { memberId?: string; date?: string };
+  if (!c.memberId || !c.date) return false;
+  return source === "daily_checkins" || Object.prototype.hasOwnProperty.call(c, "checkInAt");
+}
+
+/** Called when a listener cannot read its collection — so a screen can say so instead of showing nothing as fact. */
+export type ListenerError = (error: unknown) => void;
 
 /** One-time fetch: which member/day pairs have a daily_checkins record in a month. */
 export async function fetchCheckedInDays(month: string): Promise<Set<string>> {
@@ -234,12 +268,19 @@ export const attendanceKey = attendanceId;
 // ─── Date-range listeners ───────────────────────────────────────────────────
 // The salary cycle runs 10th → 9th, so it straddles two calendar months. These range-scoped
 // listeners replace the month-scoped ones wherever a pay period is involved.
+//
+// ── Errors ────────────────────────────────────────────────────────────────────────────────────
+// Each takes an optional `onError`. Without one, a failed read reports an empty result, as these
+// always did — fine for a calendar. A salary screen passes one: an empty override list is not
+// "nobody was on leave", it is "we could not read the leave", and pricing a month from it marks
+// every leave and holiday day Absent with nothing on screen to say the figure is wrong.
 
 /** Live overrides between two dates (inclusive). Returns unsubscribe. */
 export function watchOverridesInRange(
   startDate: string,
   endDate: string,
   cb: (byKey: Map<string, AttendanceStatus>) => void,
+  onError?: ListenerError,
 ): () => void {
   const q = query(collection(db, "attendance"), where("date", ">=", startDate), where("date", "<=", endDate));
   return onSnapshot(
@@ -248,11 +289,11 @@ export function watchOverridesInRange(
       const map = new Map<string, AttendanceStatus>();
       snap.docs.forEach((d) => {
         const a = d.data() as AttendanceOverride;
-        map.set(attendanceId(a.memberId, a.date), a.status);
+        if (a.memberId && a.date && a.status) map.set(attendanceId(a.memberId, a.date), a.status);
       });
       cb(map);
     },
-    () => cb(new Map()),
+    (error) => (onError ? onError(error) : cb(new Map())),
   );
 }
 
@@ -261,12 +302,13 @@ export function watchHolidaysInRange(
   startDate: string,
   endDate: string,
   cb: (dates: Set<string>) => void,
+  onError?: ListenerError,
 ): () => void {
   const q = query(collection(db, "holidays"), where("date", ">=", startDate), where("date", "<=", endDate));
   return onSnapshot(
     q,
     (snap) => cb(new Set(snap.docs.map((d) => d.id))),
-    () => cb(new Set()),
+    (error) => (onError ? onError(error) : cb(new Set())),
   );
 }
 
@@ -339,6 +381,7 @@ export function watchCheckedInDaysInRange(
   startDate: string,
   endDate: string,
   cb: (set: Set<string>) => void,
+  onError?: ListenerError,
 ): () => void {
   /**
    * BOTH check-in collections, unioned.
@@ -356,20 +399,42 @@ export function watchCheckedInDaysInRange(
   const range = [where("date", ">=", startDate), where("date", "<=", endDate)];
   const fromTech = new Set<string>();
   const fromSales = new Set<string>();
-  const emit = () => cb(new Set([...fromTech, ...fromSales]));
 
-  const collect = (into: Set<string>) => (snap: { docs: { data: () => unknown }[] }) => {
+  /**
+   * Nothing is reported until BOTH collections have answered once.
+   *
+   * Emitting after the first one made the union half a truth: whichever collection answered first
+   * was the whole story for a moment, so on the sales payroll every member read Absent for every
+   * day until `salesCheckins` caught up — and a screen that marks itself "loaded" on the first
+   * report priced the month from that.
+   */
+  const answered = { daily_checkins: false, salesCheckins: false };
+  const emit = () => {
+    if (answered.daily_checkins && answered.salesCheckins) cb(new Set([...fromTech, ...fromSales]));
+  };
+
+  const collect = (source: "daily_checkins" | "salesCheckins", into: Set<string>) =>
+    (snap: { docs: { data: () => unknown }[] }) => {
+      into.clear();
+      snap.docs.forEach((d) => {
+        const c = d.data();
+        if (isCheckInRecord(source, c)) into.add(attendanceId(c.memberId, c.date));
+      });
+      answered[source] = true;
+      emit();
+    };
+
+  const failed = (source: "daily_checkins" | "salesCheckins", into: Set<string>) => (error: unknown) => {
+    if (onError) { onError(error); return; }
+    // No handler: the old behaviour — this half counts as empty and the other still reports.
     into.clear();
-    snap.docs.forEach((d) => {
-      const c = d.data() as { memberId?: string; date?: string };
-      if (c.memberId && c.date) into.add(attendanceId(c.memberId, c.date));
-    });
+    answered[source] = true;
     emit();
   };
 
   const unsubs = [
-    onSnapshot(query(collection(db, "daily_checkins"), ...range), collect(fromTech), emit),
-    onSnapshot(query(collection(db, "salesCheckins"), ...range), collect(fromSales), emit),
+    onSnapshot(query(collection(db, "daily_checkins"), ...range), collect("daily_checkins", fromTech), failed("daily_checkins", fromTech)),
+    onSnapshot(query(collection(db, "salesCheckins"), ...range), collect("salesCheckins", fromSales), failed("salesCheckins", fromSales)),
   ];
   return () => unsubs.forEach((u) => u());
 }

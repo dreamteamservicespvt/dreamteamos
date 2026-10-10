@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { CalendarCheck, Loader2 } from "lucide-react";
 import { fetchCycleCheckins, type SalesCheckin } from "@/services/salesCheckin";
-import { currentPayMonth, payPeriodForDate, payPeriodLabel, periodDates } from "@/utils/payrollEngine";
+import { isCheckInRecord } from "@/services/techAttendance";
+import { payPeriodLabel } from "@/utils/payrollEngine";
+import { useSalaryMonth } from "@/hooks/useSalaryMonth";
 
 function fmtTs(ts: any): string {
   const s = ts?.seconds;
@@ -16,40 +18,47 @@ function fmtTs(ts: any): string {
  * Measured over the 10th → 9th cycle, not the calendar month, because attendance is what the
  * salary engine deducts from and the two must cover the same days. On the calendar it showed
  * "0 / 1 days" on the 1st of a month while the member had been at work for three weeks.
+ *
+ * ── The figures are the salary's own (2026-10-09) ────────────────────────────────────────────
+ * The badge counted check-in records over every calendar day so far: an admin's Present / Absent /
+ * Leave mark, a Sunday and a holiday changed nothing, so "15 / 22 days · 68%" here sat beside a
+ * different number on My Salary for the same days. It now shows the engine's count — the days
+ * Present and the attendance % the salary is worked out from (`useSalaryMonth`).
  */
 export default function AttendanceCard({ memberId }: { memberId: string }) {
   const [checkins, setCheckins] = useState<SalesCheckin[]>([]);
-  const [loading, setLoading] = useState(true);
-  const cycle = useMemo(() => payPeriodForDate(new Date()), []);
+  const [loadingList, setLoadingList] = useState(true);
+  const salary = useSalaryMonth({ memberId, monthlySalary: 0 });
+  const cycle = salary.period;
+  const c = salary.liveComputation;
+  const loading = loadingList || salary.loading;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    setLoadingList(true);
     fetchCycleCheckins(memberId, cycle.start, cycle.end)
-      .then((list) => { if (!cancelled) setCheckins(list); })
+      // Only records with a check-in — a late check-out's next-day record is not a day at work.
+      .then((list) => { if (!cancelled) setCheckins(list.filter((r) => isCheckInRecord("salesCheckins", r))); })
       .catch(() => { if (!cancelled) setCheckins([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => { if (!cancelled) setLoadingList(false); });
     return () => { cancelled = true; };
   }, [memberId, cycle.start, cycle.end]);
 
-  const presentDays = checkins.filter((c) => c.checkInAt).length;
-  // Days of the cycle that have actually happened — the cycle runs past today, and dividing by
-  // its full length would report everyone as behind on attendance for the whole month.
-  const todayStr = format(new Date(), "yyyy-MM-dd");
-  const daysElapsed = periodDates(cycle).filter((d) => d <= todayStr).length;
-  const pct = daysElapsed > 0 ? Math.round((presentDays / daysElapsed) * 100) : 0;
+  // Present days and the attendance % over the working days so far — the numbers My Salary shows.
+  const presentDays = c.fullDays;
+  const pct = Math.round(c.attendancePercent);
 
   return (
     <div className="bg-card border border-border rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-display font-semibold text-foreground flex items-center gap-2">
-          <CalendarCheck size={16} className="text-success" /> Attendance — {payPeriodLabel(currentPayMonth())}
+          <CalendarCheck size={16} className="text-success" /> Attendance — {payPeriodLabel(salary.month, salary.config.payDayOfMonth)}
         </h2>
         {!loading && (
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
             pct >= 80 ? "bg-success/15 text-success" : pct >= 50 ? "bg-warning/15 text-warning" : "bg-destructive/15 text-destructive"
           }`}>
-            {presentDays} / {daysElapsed} days · {pct}%
+            {presentDays} present{c.halfDays ? ` · ${c.halfDays} half` : ""}{c.absentDays ? ` · ${c.absentDays} absent` : ""} · {pct}%
           </span>
         )}
       </div>

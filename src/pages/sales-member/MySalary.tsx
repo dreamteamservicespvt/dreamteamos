@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { format, parse } from "date-fns";
-import { currentPayMonth, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import {
   AlertCircle, Banknote, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight,
   Clock, Download, IndianRupee, ShieldCheck, TrendingUp, Wallet,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSalesEarnings } from "@/hooks/useSalesEarnings";
-import { isBankComplete, payoutSummary, watchEmployeeBank } from "@/services/payroll";
+import { isBankComplete, isBankVerified, payoutSummary, watchEmployeeBank } from "@/services/payroll";
 import { formatCurrency } from "@/utils/formatters";
 import { downloadPayslip } from "@/utils/payslipPdf";
 import BankDetailsModal from "@/components/payroll/BankDetailsModal";
@@ -47,6 +47,14 @@ export default function SalesMySalary() {
 
   const { salary, salaryPayable, salaryDeduction, commission, totalEarnings } = earnings;
   const c = salary.computation;
+  // The engine's deduction rows — the same amounts Sales Payroll subtracts (this used to recompute
+  // them here with a half day fixed at 0.5 and no unpaid-holiday row, so the lines could fail to add
+  // up to the total beneath them).
+  const deductionRows = deductionsFor(c).rows;
+  const paidLine = salary.paidLine;
+  const paidOn = paidLine?.paidAt && typeof paidLine.paidAt === "object" && "seconds" in paidLine.paidAt
+    ? new Date((paidLine.paidAt as { seconds: number }).seconds * 1000)
+    : null;
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -72,7 +80,12 @@ export default function SalesMySalary() {
       role: "Sales Executive",
       computation: c,
       netPayable: totalEarnings,
+      // The incentive is part of the net, so the ledger itemises it — gross − deductions = net pay.
+      extraEarnings: commission > 0 ? [[`Sales Incentive (${earnings.rate}%)`, commission]] : [],
       paymentMethod: bank ? payoutSummary(bank) : undefined,
+      paymentStatus: paidLine ? "Paid" : "Pending",
+      transactionId: paidLine?.transactionId,
+      paymentDate: paidOn,
     });
   };
 
@@ -120,12 +133,31 @@ export default function SalesMySalary() {
         </button>
       )}
 
-      {earnings.loading ? (
+      {salary.error ? (
+        // Never a salary priced from a read that failed — it would show every day Absent.
+        <div role="alert" data-test="salary-error" className="flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3.5">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <p className="text-sm text-foreground">{salary.error}</p>
+        </div>
+      ) : earnings.loading ? (
         <div className="grid gap-4 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-44 animate-pulse rounded-2xl bg-muted" />)}
         </div>
       ) : (
         <>
+          {/* A paid period is the payment: what was paid, when — and, if attendance or sales were
+              corrected afterwards, that it has changed (never silently re-priced). */}
+          {paidLine && (
+            <div data-test="salary-paid" className="flex flex-wrap items-center gap-2 rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-foreground">
+              <CheckCircle2 className="h-4 w-4 text-success" />
+              Paid {formatCurrency(paidLine.netSalary)}{paidOn ? ` on ${format(paidOn, "dd MMM yyyy")}` : ""}.
+              {earnings.changedSincePaid && (
+                <span data-test="salary-changed" className="text-xs text-warning">
+                  Attendance or verified sales changed after it was paid — it now comes to {formatCurrency(earnings.liveTotalEarnings)}. Your admin will settle the difference.
+                </span>
+              )}
+            </div>
+          )}
           {/* Total pay */}
           {/* The total is always attributed to a named span — "this period" on its own is what
               let a member read July's pay as August's and conclude it had gone missing. */}
@@ -155,11 +187,7 @@ export default function SalesMySalary() {
                     <CheckCircle2 className="h-4 w-4" /> No deductions — full salary
                   </p>
                 ) : (
-                  <>
-                    {c.absentDays > 0 && <DeductLine label="Absent" days={c.absentDays} amount={c.absentDays * c.dailySalary} />}
-                    {c.halfDays > 0 && <DeductLine label="Half days" days={c.halfDays} amount={c.halfDays * c.dailySalary * 0.5} />}
-                    {c.unpaidLeaveDays > 0 && <DeductLine label="Unpaid leave" days={c.unpaidLeaveDays} amount={c.unpaidLeaveDays * c.dailySalary} />}
-                  </>
+                  deductionRows.map(d => <DeductLine key={d.key} label={d.label} days={d.days} amount={d.amount} />)
                 )}
               </div>
 
@@ -216,9 +244,10 @@ export default function SalesMySalary() {
           </section>
 
           <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat icon={CheckCircle2} label="Full Days" value={c.fullDays} />
-            <Stat icon={Clock} label="Half Days" value={c.halfDays} />
-            <Stat icon={AlertCircle} label="Absent" value={c.absentDays} />
+            {/* Attendance facts — always live, like the calendar on My Profile, even for a paid period. */}
+            <Stat icon={CheckCircle2} label="Full Days" value={salary.liveComputation.fullDays} />
+            <Stat icon={Clock} label="Half Days" value={salary.liveComputation.halfDays} />
+            <Stat icon={AlertCircle} label="Absent" value={salary.liveComputation.absentDays} />
             <Stat icon={CalendarClock} label="Next Pay Day"
               value={salary.payDay.daysRemaining === 0 ? "Today" : `${salary.payDay.daysRemaining}d`}
               hint={format(salary.payDay.date, "dd MMM")} />
@@ -237,7 +266,7 @@ export default function SalesMySalary() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="font-display text-sm font-semibold text-foreground">Payout details</h2>
-                    {bank?.accounts?.some(a => a.verified) && (
+                    {isBankVerified(bank) && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
                         <ShieldCheck className="h-2.5 w-2.5" /> Verified
                       </span>

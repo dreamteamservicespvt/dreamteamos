@@ -1,5 +1,6 @@
 import type { FieldValue, Timestamp } from "firebase/firestore";
 import type { AttendanceStatus } from "@/services/techAttendance";
+import type { UserRole } from "@/types";
 
 /**
  * A Firestore timestamp field: a `Timestamp` when read back, the `serverTimestamp()` sentinel
@@ -251,10 +252,19 @@ export interface PayrollLine {
   month: string;
   memberId: string;
   memberName: string;
+  /** The member's role when paid (2026-10-09) — which salary page their notifications open. */
+  memberRole?: UserRole;
   packageId?: string;
   monthlySalary: number;
+  /**
+   * What was actually transferred. **Once paid, this and `computation` are the record**: the
+   * Payroll page, the payslip and the member's own salary page show them, not a fresh calculation
+   * — a later attendance correction is flagged against them, never silently written over them.
+   */
   netSalary: number;
   computation: SalaryComputation;
+  /** A sales member's incentive inside `netSalary` (2026-10-09). Absent on tech lines and older sales lines. */
+  incentive?: PayrollLineIncentive;
   paymentStatus: PaymentStatus;
   /** Payout snapshot taken at transfer time. */
   paidVia?: PayoutMethod;
@@ -266,6 +276,18 @@ export interface PayrollLine {
   receiptName?: string;
   failureReason?: string;
   updatedAt?: FirestoreTime;
+}
+
+/** The incentive half of a sales payment, as it stood when paid. */
+export interface PayrollLineIncentive {
+  /** Verified money collected in the period that the rate applied to. */
+  salesBase: number;
+  /** Percent. */
+  rate: number;
+  /** What was paid as incentive (0 when the 75% target gate withheld it). */
+  amount: number;
+  /** True when the target gate withheld an incentive the sales would otherwise have earned. */
+  withheld?: boolean;
 }
 
 // ─── Engine output ──────────────────────────────────────────────────────────

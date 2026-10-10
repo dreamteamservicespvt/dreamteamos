@@ -13,6 +13,8 @@ import {
   resolveStatus, summarize, todayDate, watchHolidayRecordsInRange, watchOverridesInRange, Holiday,
 } from "@/services/techAttendance";
 import { currentPayMonth, payPeriodForMonth } from "@/utils/payrollEngine";
+import { useToday } from "@/hooks/useToday";
+import { usePayrollConfig } from "@/hooks/usePayrollConfig";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -36,14 +38,15 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
    * the 5th of August that is still July, and a calendar-derived default would have shown an empty
    * August grid while the member was working through July's cycle.
    */
-  const [month, setMonth] = useState<string>(currentPayMonth());
+  const payrollConfig = usePayrollConfig();
+  const [month, setMonth] = useState<string>(() => currentPayMonth(payrollConfig.payDayOfMonth));
   const [checkins, setCheckins] = useState<DailyCheckin[]>([]);
   const [assignments, setAssignments] = useState<WorkAssignment[]>([]);
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
   const [selected, setSelected] = useState<string>(todayDate());
 
-  const todayStr = todayDate();
+  const todayStr = useToday();
 
   useEffect(() => {
     if (!memberId) return;
@@ -57,7 +60,7 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
   }, [memberId]);
 
   /** The cycle this label covers: 10th of `month` → 9th of the month after. */
-  const period = useMemo(() => payPeriodForMonth(month), [month]);
+  const period = useMemo(() => payPeriodForMonth(month, payrollConfig.payDayOfMonth), [month, payrollConfig.payDayOfMonth]);
 
   useEffect(() => {
     // Range-scoped, because the cycle straddles two calendar months and the month-scoped
@@ -82,7 +85,12 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
       todayStr,
     });
 
-  const summary = useMemo(() => summarize(days.map((d) => statusFor(d))), [days, overrides, holidays, checkinByDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The salary engine's own tally — a Sunday's mark is not counted, leave against the live allowance —
+  // so "Present" here is the number of days the payslip pays as present.
+  const summary = useMemo(
+    () => summarize(days.map((d) => ({ date: d, status: statusFor(d) })), payrollConfig),
+    [days, overrides, holidays, checkinByDate, todayStr, payrollConfig], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // ── Selected-day story ──
   const selCheckin = checkinByDate.get(selected);
@@ -105,7 +113,7 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
         <div className="flex items-center gap-1 rounded-lg border border-border bg-background px-1">
           <button onClick={() => setMonth((mo) => shiftMonth(mo, -1))} className="p-1.5 hover:bg-accent rounded-md"><ChevronLeft className="w-4 h-4" /></button>
           <span className="text-sm font-semibold text-foreground px-1 min-w-[92px] text-center">{format(new Date(`${month}-01`), "MMM yyyy")}</span>
-          <button onClick={() => setMonth((mo) => shiftMonth(mo, 1))} disabled={month >= currentPayMonth()}
+          <button onClick={() => setMonth((mo) => shiftMonth(mo, 1))} disabled={month >= currentPayMonth(payrollConfig.payDayOfMonth)}
             className="p-1.5 hover:bg-accent rounded-md disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
         </div>
       </div>
