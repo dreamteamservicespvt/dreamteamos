@@ -84,9 +84,12 @@ export function parseScenePlan(raw: string, clipCount: number): SceneContext | n
       const camera = keyOf(row?.camera, CAMERA_MOVES);
       const angle = keyOf(row?.angle, SHOT_ANGLES);
       const focus = row?.focus === "speaker" || row?.focus === "both" ? row.focus : undefined;
+      // Whether the clip's words take the cast somewhere — asked only for a cast that walks only when needed.
+      const walk = typeof row?.walk === "boolean" ? row.walk : undefined;
       byClip.set(n, {
         clip: n, background, elements,
         ...(staging ? { staging } : {}), ...(camera ? { camera } : {}), ...(angle ? { angle } : {}), ...(focus ? { focus } : {}),
+        ...(walk !== undefined ? { walk } : {}),
       });
     }
   });
@@ -105,7 +108,7 @@ export function parseScenePlan(raw: string, clipCount: number): SceneContext | n
 
 /** The scene plan's how-to-film choices, one per clip, for prompts/motion planClipMotion. */
 export function motionChoicesOf(context: SceneContext | null | undefined): MotionChoice[] {
-  return (context?.clips || []).map((c) => ({ staging: c.staging, camera: c.camera, angle: c.angle, focus: c.focus }));
+  return (context?.clips || []).map((c) => ({ staging: c.staging, camera: c.camera, angle: c.angle, focus: c.focus, walk: c.walk }));
 }
 
 /** One clip's planned background, as a single line for a prompt. */

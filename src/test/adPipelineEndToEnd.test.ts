@@ -10,8 +10,8 @@ import { VEO_FRAME_LOCK } from "@/services/prompts/motion";
  *   • a client's store photo is attached to the frame writer and stamped as a background plate, and its
  *     video never shows more than the photo (a push-in, or a still camera while she walks);
  *   • a human duo's frames carry one cast sheet and its video names each speaker by how they look;
- *   • Motu and Patlu walk together and carry the same scale anchor in the frame and the video, filmed from
- *     the side at one distance;
+ *   • Motu and Patlu carry the same scale anchor in the frame and the video, filmed from the side at one
+ *     distance — and since 2026-10-10 walk only in a clip whose words take them somewhere;
  *   • every video prompt directs motion only, and every clip moves the way its frame was composed for.
  */
 
@@ -269,7 +269,7 @@ describe("the Kids are dressed for the ad", () => {
 });
 
 describe("Motu and Patlu keep their heights (problem 3)", () => {
-  it("carries the same scale anchor in every frame and every video — walking together, filmed from the side", async () => {
+  it("carries the same scale anchor in every frame and every video — standing side by side, filmed from the side", async () => {
     script = {
       dialogue: [
         "0-8|motu: Patlu, why is this shop always so very full?",
@@ -286,11 +286,69 @@ describe("Motu and Patlu keep their heights (problem 3)", () => {
       expect(prompt).toContain("Heights never change: Motu and Patlu at their real heights");
       expect(prompt).toContain("— Motu on the left and Patlu on the right —");
       // Filmed only from the side, at one distance — never a move toward either of them.
-      expect(prompt).toMatch(/(?:Smooth side-tracking|Slow lateral dolly) two-shot at eye level, the camera (?:travelling|gliding) sideways (?:with|past) them at one distance/);
-      // What they DO: they walk together, side by side — and nobody comes nearer the lens.
+      expect(prompt).toMatch(/(?:Smooth side-tracking|Slow lateral dolly) two-shot at eye level, the camera (?:travelling|gliding) (?:a short way )?sideways (?:(?:with|past) them )?at one distance/);
+      // What they DO: side by side — and nobody comes nearer the lens.
       const action = prompt.split("\n\n")[1];
-      expect(action).toContain("side by side");
+      expect(prompt).toContain("side by side where they stand");
       expect(action).not.toMatch(/steps? forward|half step|rocks forward|leans? (?:in|forward)|\bwalks? (?:\w+ ){0,3}toward the camera/);
+    }
+  });
+
+  /**
+   * 2026-10-10, the owner: walking in every clip changed their heights and their clothes. No line here takes them
+   * anywhere, so neither clip walks — the frames are composed standing beside what the line is about, and the videos
+   * say they perform where they stand, name their outfits and forbid morphing.
+   */
+  it("walks neither clip when no line takes them anywhere — frame and video agree", async () => {
+    script = {
+      dialogue: [
+        "0-8|motu: Patlu, why is this shop always so very full?",
+        "0-8|patlu: Motu, Sharma Electronics keeps every brand right here.",
+        "8-16|motu: Do they deliver all these machines home too?",
+        "8-16|patlu: Yes, free home delivery comes with every purchase.",
+      ].join("\n"),
+    };
+    const out = await run(form({ characterPack: "duo_motu_patlu" }));
+    const frameCall = calls.find((c) => /CHARACTER|two-hander/i.test(c.sys) && /###CLIP###/.test(c.sys))!;
+    expect(frameCall.sys).toContain("so they perform each clip WHERE THEY STAND");
+    expect(frameCall.sys).not.toContain("every clip MOVES");
+    for (const prompt of out.mainFramePrompts) {
+      expect(prompt).toMatch(/COMPOSITION FOR MOTION: (?:Present the display|Show it where they stand|Explain where they stand|Invite where they stand|Turn and present) \(/);
+      expect(prompt).not.toMatch(/mid-step/);
+    }
+    for (const prompt of out.veoPrompts) {
+      expect(prompt).toContain("they perform side by side where they stand, and nothing new is added to it.");
+      expect(prompt).toContain("with the same designs, outfits, colours, builds and heights");
+      expect(prompt).toContain("no morphing");
+      expect(prompt).toContain("the camera gliding a short way sideways at one distance, both seen from the same angle throughout");
+      expect(prompt.split("\n\n")[1]).not.toMatch(/\bwalk/i);
+    }
+  });
+
+  it("walks only the clip whose words take them somewhere — in the client's own photo, from a still camera", async () => {
+    script = {
+      dialogue: [
+        "0-8|motu: Patlu, why is this shop always so very full?",
+        "0-8|patlu: Motu, Sharma Electronics keeps every brand right here.",
+        "8-16|motu: Patlu, let's go inside and see the washing machines!",
+        "8-16|patlu: Yes, and free home delivery comes with every one.",
+      ].join("\n"),
+    };
+    const files = noFiles();
+    files.storeImage = [new File([new Uint8Array([1, 2, 3])], "shop.jpg", { type: "image/jpeg" })];
+    const out = await run(form({ characterPack: "duo_motu_patlu", locationMode: "real_provided" }), files);
+    expect(out.mainFramePrompts).toHaveLength(2);
+    // Clip 1 stands; clip 2's words take them inside, so it — and only it — walks, and its frame is composed mid-step.
+    expect(out.mainFramePrompts[0]).toContain("standing on the real floor right beside what the line is about");
+    expect(out.mainFramePrompts[1]).toContain("both placed into it side by side, caught mid-step on the real floor");
+    expect(out.veoPrompts[0]).toContain("Steady two-shot at eye level from a still camera, their own performance carrying the shot: ");
+    expect(out.veoPrompts[0]).toContain("they perform side by side where they stand");
+    expect(out.veoPrompts[1]).toContain("Steady two-shot at eye level from a still camera as they walk a few steps across the frame: ");
+    expect(out.veoPrompts[1]).toContain("they move within it, and nothing new is added to it.");
+    for (const prompt of out.veoPrompts) {
+      expect(prompt).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it`);
+      expect(prompt).toContain("no morphing");
+      expect(prompt).not.toMatch(/tracking|lateral dolly|arc shot|push-in/i);
     }
   });
 });

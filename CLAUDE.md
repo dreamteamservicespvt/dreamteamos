@@ -216,6 +216,9 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-10)
 
+- 2026-10-10, **in the working tree (not committed)**: **Motu & Patlu walk only where a clip's words need it** — every
+  other clip is acted out standing, so Veo keeps their heights and clothes (`ai-ads.md` §17.2 step 6, §24).
+
 - 2026-10-10, **on `main` and live** (`7c36262`, pushed by the owner): **Attendance → Pay Salary on one source of truth** — one tally, paid =
   the payment record, Sales Payroll on the member's rule, Accounts linked to Payroll (`people.md` §9.13–9.14, `data-model.md`);
   then **inactive people shown only in My Team / Team Management** (`cbe33fc`, live; `roleHelpers.isActiveUser`,
@@ -245,12 +248,13 @@ errors:** done means every listed item is fully resolved with no build, console 
   with the parallel sessions' work in the tree). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
+- Most recent work (newest first; detail in §31): Motu & Patlu walk only where needed; AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
   (AI Ads + Cinematic Ads) and Social Media → Attendance (2026-10-08, later); the Invoice Builder and Invoices →
   Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
   money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
   AI Accounts and Cinematic Ads work.
-- Open follow-ups the owner must act on: check one real Payroll month against Team Attendance (any paid row now flagged "Now ₹X" was paid a different amount than attendance gives); make one Male & Female Duo ad in Flow from the new prompts; decide the
+- Open follow-ups the owner must act on: make one Motu & Patlu ad in Flow from the new prompts (standing clips: do
+  heights and clothes hold?); check one real Payroll month against Team Attendance (any paid row now flagged "Now ₹X" was paid a different amount than attendance gives); make one Male & Female Duo ad in Flow from the new prompts; decide the
   two open Cinematic Ads questions (a format changed mid-project resets nothing; a clip's animation prompt has no
   line-by-line speaker — `ai-ads.md` §17.4); replace the 11 dead Gemini keys in Vercel (2026-10-10: `API_KEY_1`, 12,
   18 invalid; 13, 16, 23–28 leaked — §26.3) with working ones from AI Accounts → API keys → Download .env;

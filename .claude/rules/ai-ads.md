@@ -263,7 +263,7 @@ cached; small images and anything the browser cannot redraw go as they are).
    pose, no change of location or background, no unnatural movement, no extra people, no goodbye wave` (+ "no
    narrator or new voices" for drawn characters, "no two voices at once" for a pair, "no foreign accent" for
    English; a clip performed in place says "no frozen pose"). About 170–190 words for one presenter and
-   310–370 for a pair (two voices + the height anchor). It never re-describes the frame, never names a place
+   310–370 for a pair (two voices + the height anchor; Motu & Patlu with a director action ~350–380, live 2026-10-10). It never re-describes the frame, never names a place
    or object it must not show, and never lists forbidden camera moves. `identityLock` is a short phrase ("her
    exact face, hair, outfit and height"; `modelVeoSubject`, `packVeoSubject`).
    **Actions** (`STAGINGS`, each with a single, a pair and a deity template, a frame `start` / `pairStart`
@@ -296,6 +296,30 @@ cached; small images and anything the browser cannot redraw go as they are).
    (`PAIR_MOVES`: side track, lateral dolly) so neither one grows. A deity never walks (push-in, arc, lateral
    dolly). A client's photo (a plate) is never shown beyond its edges: a presenter gets a push-in, or a still
    camera while walking; a pair only walks across it on a still camera.
+   **Motu & Patlu walk only where a clip's words need it (2026-10-10 — the owner: "in all the clips they are walking,
+   because of it the AI sometimes changes their heights and their attire"; scope chosen by the owner: Motu & Patlu
+   only, no cap).** The entry carries `CharacterPack.walksOnlyWhenNeeded` (catalogue TS + JSON); `motionOptionsFor`
+   passes it as `planClipMotion(…, { walksWhenNeeded })` to the frame side and the video side alike. Each clip's BEAT is
+   chosen as for any pair, but it walks only when its words take them somewhere: the scene plan's per-clip `walk`
+   judgment where there is a scene plan (it read the line and planned the background — `SCENE_PLAN_SYSTEM_PROMPT`
+   `walksWhenNeeded` asks for it, offers the stagings by their in-place names and stands them "beside what that clip's
+   line is about"), else `lineNeedsWalk` (always in the client-photo path): English "let's go / walk / look around",
+   "follow me", "come with me", "come this way"; Telugu వెళ్దాం / పోదాం / పదండి / పద (a word of its own) / చలో / నాతో రా /
+   చుట్టూ చూద్దాం and "వెళ్లి … -దాం" (వెళ్లి చూద్దాం — never "వెళ్లి చూడండి", said to the viewer); Hindi चलो / चलिए; Tamil
+   போலாம்; Kannada ಹೋಗೋಣ; Malayalam പോകാം. An invitation to the VIEWER (ఈరోజే రండి, "come inside our showroom") never walks,
+   nor does the festival greeting; there is no "most clips walk" rule. A beat planned in place that needs a walk walks
+   along the floor (`walk_across`). Every other clip is the same beat performed where they stand
+   (`Staging.pairInPlace`: Present the display · Show it where they stand · Explain where they stand · Invite where they
+   stand; `ROLE_ACTION.pairInPlace` for the greeting and the one-clip ad), filmed with `IN_PLACE_PAIR_CAMERAS`: a short
+   lateral glide "both seen from the same angle throughout" (a glide PAST them turns a drawn body, and it is redrawn), or
+   in their photo a still camera, "their own performance carrying the shot". Their frames are composed STANDING side by
+   side, mid-gesture, beside what the line is about (`pairInPlace.pairStart`; the plate stamp "standing on the real
+   floor right beside what the line is about"); the pack frame prompt says they perform WHERE THEY STAND and walk only
+   in a clip whose 🎬 note walks; the director is told "THEY WALK ONLY WHERE THE PLANNED ACTION WALKS" and why
+   (`actionUsable` already refuses a walk in a no-steps clip). Their video prompt's keep sentence says "they perform side
+   by side where they stand" (a walking clip: "they move within that place"), the identity lock names their OUTFITS
+   ("the same designs, outfits, colours, builds and heights") and the negative adds "no morphing" — Motu & Patlu only.
+   Every other pair (the other eight cartoon duos, human duos, Kids) walks exactly as before.
    **Choice** (`planClipMotion`, deterministic): clip 1 opens on the move (`walk_toward`; a pair `walk_across`;
    a deity `turn_present`); the last clip `walk_invite`; a festival's clip 1 the greeting; in between the scene
    plan's choice where this cast may take it, else the line (`stagingForLine`: product → approach & show; place
@@ -340,7 +364,7 @@ cached; small images and anything the browser cannot redraw go as they are).
    it only if `actionUsable`: ≤60 words (a pair 80); no leaving, door / entrance / outside, a tour of the WHOLE
    place or seven+ steps, climbing, a frozen person, running, walking or stepping backward, a cut or slow
    motion, a named camera move or pull-back, a wave, a light change; a walking clip must walk (a pair: "both /
-   together / side by side") and an in-place clip must not; a pair never leans in, rises, jumps, stretches or
+   together / side by side") and an in-place clip must not; a pair never leans in, rises (a HAND, arm, palm or brow rising is a gesture — since 2026-10-10), jumps, stretches or
    walks toward the camera (`PAIR_TOWARD`). The word lists match a PERSON, not things in the frame (a
    mannequin, a temple statue, a saree's full length, "runs her hand along the silk" are allowed). Quoted
    words are removed, and "the model" becomes she / he. Otherwise the plan's own action (`stagingPath`). The
@@ -556,6 +580,12 @@ attribution (`Clip.voScript` is one string).
   for the cast the kit was made for, whatever the form says now. A member's own script must say who speaks each
   line, and both people must speak somewhere in it.
 
+- **AI ads — Motu & Patlu walk only where it is needed (owner, 2026-10-10):** in a Motu & Patlu video the two walk
+  only in a clip whose own words take them somewhere ("let's go inside and see", "follow me"); in every other clip —
+  a question, a product, a price, a promise, the greeting, the invitation to the viewer — they act the line out
+  where they stand, side by side, beside what it is about, so the video keeps their heights and their clothes.
+  There is no limit on how many clips may walk when the words need it. Only Motu & Patlu; every other cast moves as
+  in the video-motion rule below.
 - **AI ads — a real person's face (owner, 2026-10-08):** a Real Owner Face ad shows the client exactly as their
   photograph does — face, skin, hair, beard and forehead — for a man and a woman: nothing is added to the face
   (no bindi, tilak, kumkum, sindoor, nose ring or make-up the photograph does not show; a mark the photograph
@@ -580,7 +610,8 @@ attribution (`Clip.voScript` is one string).
   no pull-out (the owner: "no walk-back, never do it") — and never cranes, orbits, pans, tilts or reveals. One
   presenter walks in most clips (toward the camera on a push-in, along the display on a side track, to the
   product, a few steps before the promise, the last steps in to invite) and may be filmed with a push-in, side
-  track, lateral dolly or short arc; a human pair, two children and Motu & Patlu-style drawn pairs walk only
+  track, lateral dolly or short arc; a human pair, two children and drawn pairs walk only (Motu & Patlu
+  themselves, since 2026-10-10, only where a clip's words need it — the rule above)
   together, side by side, along or across the floor — never toward the camera — filmed only sideways at one
   distance, the framing following whoever speaks; deities never walk (push-in, arc, glide); in the client's own
   photo the camera only pushes in or holds while the cast walks. Frames are composed caught mid-movement, and
@@ -652,6 +683,12 @@ attribution (`Clip.voScript` is one string).
   only reacts.
 - A pair in the client's own photos has no camera move at all (only a still camera while they walk across
   it): with no move toward them allowed and nothing beyond the photo shown, the walk is its only movement.
+  Motu & Patlu standing in their photo (2026-10-10) are filmed the same way — their performance is the movement.
+- Motu & Patlu's walk decision (2026-10-10) in the client-photo path is a word list (`lineNeedsWalk`; no scene plan
+  runs there): a way of saying "let's go" the list does not know leaves that clip standing (the safe side), and an
+  unusual phrase on it walks one clip. With AI backgrounds the scene planner's `walk` decides (it handles any
+  language); a plan without it falls back to the list. A kit made before 2026-10-10 keeps its mid-step frames — a
+  Veo regenerate or Input Final Script on it now plans those clips standing; Generate makes matching frames.
 - The script quality gate's thresholds (pass ≥ 8, each ≥ 7, facts ≥ 9) are set from the rubric, not
   measured against live Gemini scores; a final script with a different clip count than the kit is
   refused rather than re-framed (it has to go through Configuration → custom script and a new run).
@@ -714,12 +751,13 @@ attribution (`Clip.voScript` is one string).
   frame's own floor, never toward a door or away from the camera, frames composed mid-step with that floor in
   view, no move backward or beyond the frame, a client's photo never tracked — is the reason, not proof. Watch
   in Flow: a walk-toward clip whose camera pushes in can end too close; an arc or a sideways move shows a
-  little of the room beside the frame (Veo extends it); **Motu & Patlu now walk** — if Patlu's height drifts,
-  take `walk_*` out of `CAMERAS.pair` for drawn pairs (one table entry; keep `turn_present` + lateral dolly)
-  rather than growing the negative. The clip-1 hero pose changed from the front-clasp to `HERO_FRAME_POSE`;
+  little of the room beside the frame (Veo extends it); Motu & Patlu walking in nearly every clip DID drift (the
+  owner, 2026-10-10: heights and attire) — they now walk only where a clip's words need it (§17.2 step 6); the other
+  cartoon duos still walk as in this pass and may show the same drift (give the entry `walksOnlyWhenNeeded`, plus
+  its `pairInPlace` texts already shared by every pair). The clip-1 hero pose changed from the front-clasp to `HERO_FRAME_POSE`;
   if hands come out badly in hero frames, that one constant is the place to change it.
 - Veo's text limit: third-party summaries put Veo 3 at about 1,024 input tokens [NOT CONFIRMED — Google's
-  table did not load]. The dynamic-pass prompts are ~170–190 words for one presenter and ~310–370 for a pair;
+  table did not load]. The dynamic-pass prompts are ~170–190 words for one presenter and ~310–370 for a pair (~350–380 for Motu & Patlu, 2026-10-10);
   a Telugu line costs more tokens per word than English.
 - Flow's Frames to Video also takes an END frame (Google, Veo 3.1 with audio since 2025-10): a second frame
   per moving clip would pin the walk's end, the place and the heights. Not built — a suggestion to the owner.

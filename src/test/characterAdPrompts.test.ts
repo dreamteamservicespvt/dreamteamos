@@ -479,7 +479,9 @@ describe("voice-over prompt — promotional grounding", () => {
 describe("veo prompt", () => {
   const p = CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4);
   const subject = packVeoSubject(pack);
-  const plan = planClipMotion(4, "commercial", "cartoon", { twoHander: true });
+  // Motu and Patlu walk only where a clip's words take them somewhere (2026-10-10) — here the scene plan judged
+  // that clip 2 does, so it is the walking clip these assertions read.
+  const plan = planClipMotion(4, "commercial", "cartoon", { twoHander: true, walksWhenNeeded: true, choices: [null, { walk: true }] });
   const assembled = assembleVeoPrompt({
     aspectRatio: "9:16",
     plan: plan[1],
@@ -522,7 +524,7 @@ describe("veo prompt", () => {
   });
 
   it("starts from the attached frame and keeps its place, their sides and their heights while they move", () => {
-    expect(assembled).toContain("Keep both characters exactly as drawn, with the same designs, colours, builds and heights — Motu on the left and Patlu on the right — and the same place, logo, colours and light as the attached frame; they move within that place, and nothing new is added to it.");
+    expect(assembled).toContain("Keep both characters exactly as drawn, with the same designs, outfits, colours, builds and heights — Motu on the left and Patlu on the right — and the same place, logo, colours and light as the attached frame; they move within that place, and nothing new is added to it.");
     expect(assembled).toContain(`Heights never change: ${pack.scaleAnchor!}`);
     expect(p).toContain("Never describe a face, hair, clothes, the room or the light");
   });
@@ -532,7 +534,8 @@ describe("veo prompt", () => {
   });
 
   it("carries the negatives that stop the usual failures", () => {
-    expect(assembled).toContain("Negative prompt: No text or subtitles on screen, no background music or echo, no cuts, no camera shake, no frozen or static pose, no change of location or background, no unnatural movement, no extra people, no goodbye wave");
+    // "no morphing" — Motu and Patlu's heights and clothes drifted in the videos (2026-10-10).
+    expect(assembled).toContain("Negative prompt: No text or subtitles on screen, no background music or echo, no cuts, no camera shake, no frozen or static pose, no change of location or background, no unnatural movement, no morphing, no extra people, no goodbye wave");
     expect(assembled).toContain("one continuous 8-second shot");
   });
 

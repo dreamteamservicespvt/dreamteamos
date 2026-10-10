@@ -1200,6 +1200,14 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
    */
   const solo = pack.characters.length === 1;
   const shots = shotsForClipCount(segmentCount);
+  /**
+   * Motu and Patlu walk only where a clip's words take them somewhere (CharacterPack.walksOnlyWhenNeeded,
+   * 2026-10-10): every frame catches them STANDING side by side, mid-gesture, beside what its line is about —
+   * mid-step only where the clip's 🎬 note walks — because the video continues the pose a frame starts from,
+   * and a frame caught mid-step started the walk that redrew them.
+   */
+  const standsByDefault = motionPlan.some((p) => p.walksWhenNeeded);
+  const someWalk = motionPlan.some((p) => p.walks);
 
   /**
    * The logo is ATTACHED, so the model can see it. Describing it is worse than useless: the words
@@ -1256,7 +1264,20 @@ different aspect ratio.
 
 ${characterCastBlock(pack, wardrobe, castSheet)}
 
-${characterDirectionBlock(pack, "frame")}${motionPlan.length ? `
+${characterDirectionBlock(pack, "frame")}${standsByDefault ? `
+
+Each clip's video starts from THIS still and shows only what it shows, following its own 🎬 note. ${cast} are drawn
+characters, and every step makes the video model redraw their bodies — that is how their heights and outfits changed —
+so they perform each clip WHERE THEY STAND, side by side beside what its line is about: the one speaking reacts or
+explains with the whole upper body and both hands, the other answers calmly, filmed with the camera the note names.${someWalk ? `
+They walk together, side by side, only in a clip whose 🎬 note walks.` : ""}
+The variety of the ad comes from YOUR frames: each clip is a different real part of the business. The video can only
+animate what the frame shows, so each frame must already contain what its clip needs, caught MID-GESTURE — a hand
+mid-gesture, mid-reaction, never a stiff, posed stance, because the video continues the pose it starts from: what the
+line is about right beside them, within arm's reach and fully in view${someWalk ? "; for a walking clip only, both caught mid-step with clear open floor ahead of them" : ""};
+both at the same distance from the camera; clear space around the bodies; every object fully in view. Where the
+direction above describes walking somewhere, arriving or leading the way, the 🎬 note decides instead. Everything else
+in that direction still applies.` : motionPlan.length ? `
 
 Each clip's video starts from THIS still and shows only what it shows, following its own 🎬 note — and every clip MOVES
 like a shot from a real commercial: ${solo ? cast : "the characters"} ${motionPlan.some((p) => p.walks) ? `WALK${solo ? "" : " together, side by side,"} through the place — ${solo ? "toward the camera, " : ""}along the counter or display, or to the product — ` : ""}PRESENT
@@ -1314,8 +1335,12 @@ ${solo
 • POSITION LOCK: ${castSheet ? "the CAST SHEET's LEFT person" : pack.characters[0].name} ALWAYS stands on the LEFT of the frame and ${castSheet ? "its RIGHT person" : pack.characters[1].name} ALWAYS on the
   RIGHT, in every single clip. Write it into every prompt. The video tells who is speaking by where they
   stand, so the two must never swap sides.
-• Stage them as a two-hander, mid-conversation and mid-movement — caught mid-step side by side as each clip's 🎬 note says,
-  angled slightly towards each other but open to camera. The one who is speaking is the more animated of the two.
+• ${standsByDefault
+  ? `Stage them as a two-hander, mid-conversation and mid-gesture — standing side by side as each clip's 🎬 note says
+  (mid-step only where the note walks), angled slightly towards each other but open to camera. The one who is speaking is
+  the more animated of the two.`
+  : `Stage them as a two-hander, mid-conversation and mid-movement — caught mid-step side by side as each clip's 🎬 note says,
+  angled slightly towards each other but open to camera. The one who is speaking is the more animated of the two.`}
 • They must be the focus, but the business must be unmistakable behind them.
 • Both stand on the real floor, side by side, at the SAME distance from the camera — neither one nearer
   the lens — beside a real counter, shelf or door frame that their height can be read against.${pack.scaleAnchor ? `
@@ -1381,6 +1406,8 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
     performer: packPerformer(pack),
     // A pair walks only together and is filmed only from the side — the director is told so (prompts/motion PAIR_MOVES).
     twoHander: pack.characters.length > 1,
+    // Motu and Patlu walk only in a clip whose words take them somewhere (CharacterPack.walksOnlyWhenNeeded).
+    walksWhenNeeded: !!pack.walksOnlyWhenNeeded && pack.characters.length > 1,
   });
 };
 
@@ -1424,7 +1451,10 @@ export const packVeoSubject = (
       ? `both ${pack.family === "kids" ? "children's" : "people's"} exact faces, hair, outfits, ages and heights`
       : solo
       ? "the character exactly as in the frame, with the same design, colours, proportions and height"
-      : "both characters exactly as drawn, with the same designs, colours, builds and heights";
+      // Their clothes changed in the videos (CharacterPack.walksOnlyWhenNeeded, 2026-10-10), so the outfits are named.
+      : pack.walksOnlyWhenNeeded
+        ? "both characters exactly as drawn, with the same designs, outfits, colours, builds and heights"
+        : "both characters exactly as drawn, with the same designs, colours, builds and heights";
   const voiceOf = (name: string, voice: string) => cartoon
     ? `the original ${name} voice from the show (${voice})`
     : voice;

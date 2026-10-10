@@ -33,18 +33,44 @@ export interface ScenePlanPromptInput {
   deity?: boolean;
   /** Drawn characters are on screen: a drawn pair walks only together and is filmed only from the side (prompts/motion). */
   cartoon?: boolean;
+  /**
+   * The pair walks only in a clip whose words take them somewhere (Motu and Patlu, CharacterPack.walksOnlyWhenNeeded):
+   * the planner judges each clip's "walk" from its line and the background it plans (prompts/motion planClipMotion).
+   */
+  walksWhenNeeded?: boolean;
 }
 
 /** The how-to-film options, as the planner reads them: "approach_show (Approach and show)". */
-const optionsOf = (record: Record<string, { name: string }>, skip: string[] = []) =>
-  Object.entries(record).filter(([k]) => !skip.includes(k)).map(([k, v]) => `${k} (${v.name})`).join(", ");
+const optionsOf = <T extends { name: string }>(record: Record<string, T>, skip: string[] = [], nameOf: (v: T) => string = (v) => v.name) =>
+  Object.entries(record).filter(([k]) => !skip.includes(k)).map(([k, v]) => `${k} (${nameOf(v)})`).join(", ");
+
+interface FilmingOptions {
+  skipStagings: StagingKey[];
+  skipCameras: CameraMoveKey[];
+  walks: string;
+  cameras: string;
+  /** Where the cast stands in each clip's background. */
+  place?: string;
+  /** The "walk" field's rule, for a pair that walks only when needed. */
+  walkRule?: string;
+}
 
 /**
  * What the planner may choose for this cast — the same rules planClipMotion enforces (castKindOf), so a
  * choice it is offered is a choice the plan can use. The last clip's invitation is set in code.
  */
-function filmingOptions(input: ScenePlanPromptInput): { skipStagings: StagingKey[]; skipCameras: CameraMoveKey[]; walks: string; cameras: string } {
+function filmingOptions(input: ScenePlanPromptInput): FilmingOptions {
   const kind = castKindOf(input.deity ? "deity" : input.cartoon ? "cartoon" : "person", !!input.twoHander);
+  // Motu and Patlu (2026-10-10): each staging is what they DO where they stand; "walk" says whether the clip moves them.
+  if (input.walksWhenNeeded && (kind === "pair" || kind === "drawn_pair")) {
+    return {
+      skipStagings: ["walk_invite", "walk_toward"], skipCameras: ["push_in", "arc", "static_locked"],
+      walks: "These are two DRAWN characters, and every step makes the video model redraw their bodies — that is how their heights and outfits changed. So the staging is what they DO where they stand, side by side beside what the line is about: approach_show shows a product within reach (put it right beside them, in view); walk_across presents the counter, display or shelves beside them; walk_stop_present is the promise or trust; turn_present presents the place behind them.",
+      cameras: "side_track travels sideways WITH a walk; lateral_dolly glides sideways at one distance. The camera never moves toward, away from or around them.",
+      place: "standing beside what that clip's line is about, with space to present",
+      walkRule: "• \"walk\" — true ONLY for a clip whose own words take them somewhere: \"come, let's go inside\", \"let's go and see the …\", \"follow me\", \"come this way\". false for every other clip — a product, the place, a promise, a greeting and an invitation to the VIEWER (\"visit us today\", \"come to our shop\") are all performed where they stand. Most ads have no walking clip at all.",
+    };
+  }
   switch (kind) {
     case "drawn_pair":
     case "pair":
@@ -95,16 +121,16 @@ STEP 3 — ONE BACKGROUND PER CLIP. For each clip, the background that PROVES wh
 • read that clip's line and show the real thing it talks about — the food being served when it talks about food, the sanctum when it talks about the deity, the cake when it talks about the celebration, the stock when it talks about the products;
 • EVERY clip's background is DIFFERENT from every other clip's — a different part of the place with different real things in it. Two clips that look like the same corner is a failure;
 • realistic, photographable and Indian; real objects only; no readable text, banners, posters or signage apart from the client's own logo or name board;
-• ${subject} is IN that background, with open floor to walk on and space to present — never in a doorway, never outside on a road, never in a different building from the world.
+• ${subject} is IN that background, ${filming.place ?? "with open floor to walk on and space to present"} — never in a doorway, never outside on a road, never in a different building from the world.
 
 STEP 4 — WHAT TO AVOID. Things that would contradict the motive (e.g. for an annadanam: no restaurant billing counter, no menu board, no price tags).
 
 STEP 5 — HOW EACH CLIP IS FILMED. Every clip's video starts from its own still frame and shows only what that frame shows: ONE real action and ONE camera move that follows it, inside that part of the place — never a talking portrait. The variety of the ad comes from STEP 3 (a different real part of the place in every clip: the entrance seen from inside, the counter, the racks, the display, the work area) and from the action. For each clip choose, from what its line says:
-• "staging" — one of: ${optionsOf(STAGINGS, filming.skipStagings)}.
+• "staging" — one of: ${filming.walkRule ? optionsOf(STAGINGS, filming.skipStagings, (s) => s.pairInPlace?.name ?? s.name) : optionsOf(STAGINGS, filming.skipStagings)}.
   – walk_stop_present for a promise or trust; approach_show when the line names something that can be shown; walk_across or walk_toward when it is about the place itself; turn_present to present the place behind them.
   – ${filming.walks}
   – Mix them across the ad. A festival greeting and the closing invitation are set by the code; never a goodbye.
-• "camera" — one of: ${optionsOf(CAMERA_MOVES, filming.skipCameras)}. ${filming.cameras} Never the same move in two neighbouring clips.
+${filming.walkRule ? `${filming.walkRule}\n` : ""}• "camera" — one of: ${optionsOf(CAMERA_MOVES, filming.skipCameras)}. ${filming.cameras} Never the same move in two neighbouring clips.
 • "angle" — one of: ${optionsOf(SHOT_ANGLES)}. Eye level for most; slightly low for a confident hero; slightly high for an overview.${twoHander ? " A pair is always filmed at eye level." : ""}
 
 Return ONLY this JSON, no markdown:
@@ -115,7 +141,7 @@ Return ONLY this JSON, no markdown:
   "mood": "<the feeling the frames carry, in a phrase>",
   "avoid": ["<thing that contradicts the motive>", "..."],
   "clips": [
-    { "clip": 1, "background": "<the background for clip 1, one clear sentence naming the real place and what is in it>", "elements": ["<real object>", "<real object>", "<real object>"], "staging": "<staging key>", "camera": "<camera key>", "angle": "<angle key>" }
+    { "clip": 1, "background": "<the background for clip 1, one clear sentence naming the real place and what is in it>", "elements": ["<real object>", "<real object>", "<real object>"], "staging": "<staging key>", "camera": "<camera key>", "angle": "<angle key>"${filming.walkRule ? ", \"walk\": <true or false>" : ""} }
   ]
 }
 There must be exactly ${clipCount} objects in "clips", numbered 1 to ${clipCount}.`;

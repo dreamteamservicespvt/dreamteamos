@@ -3267,6 +3267,8 @@ Review it now and return the JSON verdict.` }] }],
       clipCount: segmentCount, adType: formData.adType, festivalName: formData.festivalName, subject,
       twoHander: !!pack && pack.characters.length > 1, deity: packPerformer(pack) === 'deity',
       cartoon: packPerformer(pack) === 'cartoon',
+      // Motu and Patlu: the planner also judges whether each clip's words need a walk (prompts/motion planClipMotion).
+      walksWhenNeeded: !!pack?.walksOnlyWhenNeeded,
     });
     const userPrompt = scenePlanUserPrompt({
       businessContent: formData.textInstructions || '',
@@ -4332,14 +4334,16 @@ const veoClipsFromScript = (
 ) => veoClipsFor(formData, readKitScript(script, formData), mainFramePrompts, indexes);
 
 /**
- * The motion plan's inputs for a run: each clip's spoken words, the scene plan's choices, the cast size
- * and the clips shot in a client photograph. The frame side and the video side both build it here.
+ * The motion plan's inputs for a run: each clip's spoken words, the scene plan's choices, the cast size,
+ * the clips shot in a client photograph and whether the cast walks only where a clip needs it (Motu and
+ * Patlu, CharacterPack.walksOnlyWhenNeeded). The frame side and the video side both build it here.
  */
 const motionOptionsFor = (pack: CharacterPack | null, lines: string[], sceneContext?: SceneContext | null, plates: boolean[] = []) => ({
   lines,
   choices: motionChoicesOf(sceneContext),
   twoHander: !!pack && pack.characters.length > 1,
   plates,
+  walksWhenNeeded: !!pack?.walksOnlyWhenNeeded,
 });
 
 /**

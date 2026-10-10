@@ -9,6 +9,38 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-10 (later): Motu & Patlu walk only where a clip's words need it** (`ai-ads.md` §17.2 step 6 / §24 / §25 /
+  §27, `data-model.md` sceneContext). The owner: "in all the clips they are walking, because of it the AI sometimes
+  changes their heights and their attire — make them walk only where it is necessary, based on the frame and the
+  voice-over script". Root cause: the 2026-10-05 dynamic pass planned a drawn pair exactly like a real pair — clip 1
+  a walk, the last a walk-in, the middle rotation 3 walks in 4, then "at least half the clips walk" — and in the
+  client's own photos a pair had NO in-place action, so every clip walked; every frame was drawn "caught mid-step" and
+  Veo continues the pose a frame starts in. A video model cannot keep a drawn body through a walk (it redraws both on
+  every frame), so Patlu's height and their clothes drifted. Fix (scope and "no cap" chosen by the owner: Motu & Patlu
+  only): `CharacterPack.walksOnlyWhenNeeded` on `duo_motu_patlu` (catalogue TS + JSON) → `planClipMotion({
+  walksWhenNeeded })`, built identically on the frame side and the video side (`motionOptionsFor`). Each beat is chosen
+  as before; a clip walks only when its words take them somewhere — the scene plan's new per-clip `walk` judgment
+  (`SCENE_PLAN_SYSTEM_PROMPT walksWhenNeeded`, read by `parseScenePlan` / `motionChoicesOf`), else `lineNeedsWalk`
+  (English, Telugu incl. "వెళ్లి … -దాం", Hindi, Tamil, Kannada, Malayalam; a viewer invitation never walks); never
+  the festival greeting. Every other clip is the same beat performed where they stand (`Staging.pairInPlace`,
+  `ROLE_ACTION.pairInPlace`), frames composed standing mid-gesture beside what the line is about, a short glide "both
+  seen from the same angle throughout" or (their photo) a still camera; the pack frame prompt and the director
+  (`VEO_DIRECTION_SYSTEM_PROMPT walksWhenNeeded`) say why; the keep sentence "they perform side by side where they
+  stand", the identity lock names their outfits, the negative adds "no morphing". Found by the live run and fixed:
+  `PAIR_SCALE` refused any "rise", so Motu's own catalogue gesture "both hands rise near his chest" threw away 2 of 8
+  good director actions — a hand, arm, palm, finger or brow rising is now a gesture (the body rising is still refused,
+  for every pair). Files: `prompts/motion.ts`, `prompts/characterAd.ts`, `prompts/scenePlan.ts`, `utils/scenePlan.ts`,
+  `characterPacks.ts`, `characterCatalogue.ts`, `docs/video-category-catalogue.json`, `types/aiPlatform.ts`,
+  `geminiService.ts`; tests `motionAndVeo` (new block: every length × ad type × photo mix stands when no line moves
+  them; the walking clip alone walks; the word reader in six languages; the scene plan's judgment wins; frames; the
+  prompt; the director; the scene plan), `characterAdPrompts`, `adPipelineEndToEnd` (standing run + a client-photo run
+  where only the "let's go inside" clip walks). Full vitest 227 / 3497+, build, typecheck (1 known). Live on
+  gemini-2.5-flash, two 4-clip Telugu Motu & Patlu runs (107 s / 42 calls and 32 s / 8 calls with a custom script):
+  the AI-written script got `walk: false` on all four clips and four standing frames; the custom script's
+  "లోపలికి వెళ్లి బ్రైడల్ కలెక్షన్ చూద్దాం" clip alone got `walk: true` and a walking frame and prompt; the director's
+  standing actions were specific (pointing at the bridal case, a hand on the chest). Prompts ~350–380 words. Not seen
+  yet: a Flow video from them.
+
 - **2026-10-10 (later): the "Add a Flow account" form asks for the Gemini API key** (`ai-accounts.md`,
   `docs/firestore-rules.md`). The owner: when adding a new account, also ask the API key. The form now has a
   Gemini API key section — AI Studio opened in the email being typed, the steps (folded for someone who has given

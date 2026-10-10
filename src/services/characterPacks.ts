@@ -161,6 +161,20 @@ export interface CharacterPack {
    * scale lock of every video prompt, so the still and the video agree.
    */
   scaleAnchor?: string;
+  /**
+   * The cast walks ONLY in a clip whose own words take them somewhere ("let's go inside", "follow me"),
+   * and performs every other clip where they stand, beside what its line is about (prompts/motion
+   * planClipMotion `walksWhenNeeded`). Only Motu and Patlu carry it.
+   *
+   * ── Why (2026-10-10, the owner: "in all the clips they are walking, because of it the AI sometimes
+   * changes their heights and their attire — make them walk only where it is necessary") ──────────────
+   * The 2026-10-05 dynamic pass walked a pair in nearly every clip — and in every clip shot in the client's
+   * photos. A video model cannot keep a drawn body through a walk: it redraws both characters on every frame
+   * from its own idea of them, and Patlu's height and their clothes drifted. Standing, they keep the frame's
+   * drawing. The same entries' video prompts also name the outfits in the keep sentence and forbid morphing.
+   * The owner chose Motu and Patlu only; another entry gets the same behaviour by carrying this field.
+   */
+  walksOnlyWhenNeeded?: boolean;
   /** Hard negatives repeated verbatim in every frame and video prompt. */
   negatives: string[];
 }

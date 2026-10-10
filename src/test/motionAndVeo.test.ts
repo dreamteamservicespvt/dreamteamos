@@ -2,11 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   CAMERA_MOVES, SHOT_ANGLES, STAGINGS, PAIR_MOVES, VEO_FRAME_LOCK, LEGACY_VEO_FRAME_LOCK, MOTION_COMPOSITION_HEADING,
   SCALE_ANCHOR_HEADING, VEO_DIRECTION_SYSTEM_PROMPT, assembleVeoPrompt, cameraLabel, cameraShot, castKindOf, clipRoles,
-  compositionFor, fillCast, framingForMotion, pairNamesOf, parseVeoDirections, planClipMotion, resolveDirection,
+  compositionFor, fillCast, framingForMotion, lineNeedsWalk, pairNamesOf, parseVeoDirections, planClipMotion, resolveDirection,
   speechAccentFor, spokenLinesIn, stagingForLine, stagingKeyOf, stagingPath, walkHint, withMotionComposition,
   withScaleAnchor, withoutApproach, withoutQuotedSpeech, withoutStillness, withoutTravel,
-  type ClipMotionPlan, type Performer,
+  type ClipMotionPlan, type MotionChoice, type Performer,
 } from "@/services/prompts/motion";
+import { SCENE_PLAN_SYSTEM_PROMPT } from "@/services/prompts/scenePlan";
 import { HERO_FRAME_POSE, MULTI_FRAME_SYSTEM_PROMPT, VEO_SEGMENT_SYSTEM_PROMPT, modelVeoSubject } from "@/services/prompts";
 import {
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT, CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT, characterDirectionBlock, packPerformer,
@@ -14,7 +15,7 @@ import {
 } from "@/services/prompts/characterAd";
 import { getCharacterPack, packSpeakers } from "@/services/characterPacks";
 import { formatDialogueScript, parseDialogueClips } from "@/utils/dialogueFormat";
-import { parseScenePlan } from "@/utils/scenePlan";
+import { motionChoicesOf, parseScenePlan } from "@/utils/scenePlan";
 import { veoEditProblems } from "@/utils/veoRefine";
 
 /**
@@ -26,6 +27,9 @@ import { veoEditProblems } from "@/utils/veoRefine";
  * owner: "no walk-back, never do it"). The prompt is five short parts, never describes the frame and never
  * names a place it must not show. Nobody waves goodbye. (That morning's prompts were static: one tiny walk
  * per ad, a locked camera for every pair, and a keep sentence that froze the picture.)
+ *
+ * The one exception (2026-10-10): Motu and Patlu walk only in a clip whose words take them somewhere — walking
+ * redrew them, and their heights and clothes drifted. See "Motu and Patlu walk only where a clip's words need it".
  */
 
 /** A move that shows MORE than the still, or moves the camera backward — what built the invented shops (history 2 and 4), and what the owner banned. */
@@ -380,7 +384,11 @@ describe("the Veo prompt", () => {
     speech: [{ voice: model.voice, line: spoken }], cast: model.cast, castPlural: model.castPlural,
   });
   const motu = packVeoSubject(getCharacterPack("duo_motu_patlu")!);
-  const motuPlan = planClipMotion(4, "commercial", "cartoon", { twoHander: true });
+  // Motu and Patlu walk only where a clip's words take them somewhere (2026-10-10): clip 1's line does, so it walks
+  // together along the floor; clips 2–4 are performed where they stand.
+  const motuPlan = planClipMotion(4, "commercial", "cartoon", {
+    twoHander: true, walksWhenNeeded: true, lines: ["Patlu, let's go inside and see!", "b", "c", "d"],
+  });
   const buildMotu = (i: number, direction?: any, language = "Telugu", speech = motu.speech([{ name: "Motu", text: "one" }, { name: "Patlu", text: "two" }])) => assembleVeoPrompt({
     aspectRatio: "9:16", plan: motuPlan[i], direction, identityLock: motu.identityLock, language, speech,
     cast: motu.cast, castPlural: motu.castPlural, twoHander: motu.twoHander, scaleAnchor: motu.scaleAnchor,
@@ -594,7 +602,9 @@ describe("the Veo prompt", () => {
     const anchor = getCharacterPack("duo_motu_patlu")!.scaleAnchor!;
     for (const i of [0, 1, 2, 3]) {
       const p = buildMotu(i);
-      expect(p).toContain(`Keep both characters exactly as drawn, with the same designs, colours, builds and heights — Motu on the left and Patlu on the right — and the same place, logo, colours and light ${VEO_FRAME_LOCK}; they move within that place, and nothing new is added to it.`);
+      // Clip 1 walks; the rest are performed where they stand — and their outfits are named (2026-10-10).
+      const within = motuPlan[i].walks ? "they move within that place" : "they perform side by side where they stand";
+      expect(p).toContain(`Keep both characters exactly as drawn, with the same designs, outfits, colours, builds and heights — Motu on the left and Patlu on the right — and the same place, logo, colours and light ${VEO_FRAME_LOCK}; ${within}, and nothing new is added to it.`);
       expect(p).toContain(`Heights never change: ${anchor}`);
       expect(p).not.toMatch(/\b(?:push-in|dolly in|zoom|arc shot)\b|\bwalks? (?:\w+ ){0,3}toward the camera\b/i);
     }
@@ -813,6 +823,213 @@ describe("character direction without the stillness or the travel", () => {
   it("keeps what a deity must never touch", () => {
     const video = characterDirectionBlock(getCharacterPack("god_ganesha")!, "video");
     expect(video).toContain("never points at, touches, holds or presents the client's products");
+  });
+});
+
+/**
+ * 2026-10-10, the owner: "in all the clips they are walking, because of it the AI sometimes changes their heights and
+ * their attire — make them walk only where it is necessary, based on the frame and the voice-over script". A video
+ * model cannot keep a drawn body through a walk: it redraws both characters on every frame. Motu and Patlu
+ * (CharacterPack.walksOnlyWhenNeeded) now walk only in a clip whose words take them somewhere, and perform every other
+ * clip where they stand, beside what its line is about — in the frame, the scene plan, the director and the prompt.
+ */
+describe("Motu and Patlu walk only where a clip's words need it", () => {
+  const pack = getCharacterPack("duo_motu_patlu")!;
+  const motuPlan = (n: number, adType = "commercial", extra: { lines?: string[]; plates?: boolean[]; choices?: (MotionChoice | null)[] } = {}) =>
+    planClipMotion(n, adType, packPerformer(pack), { twoHander: true, walksWhenNeeded: true, ...extra });
+  /** Lines that take them nowhere: a question, a fact, a promise, an invitation to the viewer. */
+  const still = ["Patlu, why is this shop always so full?", "మా కొత్త కలెక్షన్ చూడండి.", "Trusted for twenty years.", "ఈరోజే రండి."];
+  const subject = packVeoSubject(pack);
+  const build = (plan: ClipMotionPlan) => assembleVeoPrompt({
+    aspectRatio: "9:16", plan, identityLock: subject.identityLock, language: "Telugu",
+    speech: subject.speech([{ name: "Motu", text: "ఒకటి" }, { name: "Patlu", text: "రెండు" }]),
+    cast: subject.cast, castPlural: subject.castPlural, twoHander: true, scaleAnchor: subject.scaleAnchor,
+    sides: subject.sides, pairNames: subject.pairNames,
+  });
+
+  it("is switched on for Motu and Patlu only — the owner's choice", () => {
+    expect(pack.walksOnlyWhenNeeded).toBe(true);
+    // Every sale since the start carries the old id; it resolves to the same entry.
+    expect(getCharacterPack("motu_patlu")!.walksOnlyWhenNeeded).toBe(true);
+    for (const id of ["duo_doraemon_nobita", "duo_bheem_chutki", "duo_tom_jerry", "solo_motu", "solo_patlu", "human_duo_mixed", "kids_duo_girls", "god_ganesha", "normal_female"]) {
+      expect(getCharacterPack(id)?.walksOnlyWhenNeeded, id).toBeFalsy();
+    }
+    // Without the flag a drawn pair walks exactly as before.
+    expect(planClipMotion(4, "commercial", "cartoon", { twoHander: true, lines: still }).filter((c) => c.walks).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("performs every clip where they stand when no line takes them anywhere — every length, ad type and photo mix", () => {
+    for (const adType of ["commercial", "festival"]) for (let n = 1; n <= 8; n++) for (const photos of ["none", "all", "mixed"] as const) {
+      const plates = Array.from({ length: n }, (_, i) => photos === "all" || (photos === "mixed" && i % 2 === 1));
+      const plan = motuPlan(n, adType, { plates, lines: Array.from({ length: n }, (_, i) => still[i % still.length]) });
+      for (const clip of plan) {
+        const at = `${adType} ${n} ${photos}, clip ${clip.clip + 1}`;
+        expect(clip.walks, at).toBe(false);
+        expect(clip.walksWhenNeeded, at).toBe(true);
+        expect(clip.staging.walks, at).toBe(false);
+        expect(clip.twoHander, at).toBe(true);
+        expect(clip.angle.key, at).toBe("eye_level");
+        // A short glide at one angle — or, in their own photo, a still camera. Never toward them, never past them.
+        expect(clip.camera.key, at).toBe(clip.plate ? "static_locked" : "lateral_dolly");
+        expect(walkHint(clip), at).toBe("performed where they stand, no steps");
+        const action = stagingPath(clip, "Both characters", true, { a: "Motu", b: "Patlu" });
+        expect(action, at).not.toMatch(WALK_WORDS);
+        expect(action, at).not.toMatch(GOODBYE);
+        expect(compositionFor(clip), at).not.toMatch(/mid-step|walking/);
+        expect(framingForMotion(clip), at).not.toMatch(/\bWalk\b/);
+        const prompt = build(clip);
+        expect(prompt, at).not.toMatch(NEVER_MOVES);
+        expect(prompt, at).toContain("they perform side by side where they stand, and nothing new is added to it.");
+        expect(prompt, at).toContain("no morphing");
+        expect(prompt, at).toContain("no frozen pose,");
+      }
+    }
+  });
+
+  it("walks a clip whose words take them somewhere — and only that clip, in a scene or in their own photo", () => {
+    const lines = ["Patlu, why is this shop always so full?", "రా పట్లు, లోపలికి వెళ్దాం!", "Is the price really that low?", "ఈరోజే రండి."];
+    const plan = motuPlan(4, "commercial", { lines });
+    expect(plan.map((c) => c.walks)).toEqual([false, true, false, false]);
+    // Its beat is the rotation's (clip 1 already presents the display) — now performed as a walk.
+    expect(plan[1].staging.key).toBe("approach_show");
+    expect(plan[1].staging.walks).toBe(true);
+    expect(["side_track", "lateral_dolly"]).toContain(plan[1].camera.key);
+    expect(stagingPath(plan[1], "x", true, { a: "Motu", b: "Patlu" })).toMatch(/^both walk a few steps side by side to the product/);
+    expect(compositionFor(plan[1])).toContain("both caught mid-step side by side at the same distance from the camera");
+    const walking = build(plan[1]);
+    expect(walking).toContain("they move within that place, and nothing new is added to it.");
+    expect(walking).toContain("no frozen or static pose");
+    expect(walking).toContain("no morphing");
+    // In their own photo the walk is filmed from a still camera, and every other clip holds still too.
+    const photo = motuPlan(4, "commercial", { lines, plates: [true, true, true, true] });
+    expect(photo.map((c) => c.walks)).toEqual([false, true, false, false]);
+    expect(photo.every((c) => c.camera.key === "static_locked")).toBe(true);
+    expect(cameraShot(photo[1], "x", true)).toBe("Steady two-shot at eye level from a still camera as they walk a few steps across the frame");
+    expect(cameraShot(photo[0], "x", true)).toBe("Steady two-shot at eye level from a still camera, their own performance carrying the shot");
+    // No cap — the owner's choice: every clip whose words move them walks.
+    expect(motuPlan(4, "commercial", { lines: ["Let's go!", "Follow me, Motu.", "పదండి!", "Come this way, please."] }).every((c) => c.walks)).toBe(true);
+  });
+
+  it("reads the words that move them in every ad language — and never an invitation to the viewer", () => {
+    for (const line of [
+      "Let's go inside and see the new models.", "Let’s walk to the counter.", "Come with me, Motu!", "Follow me to the counter.",
+      "Come this way, please.", "రా పట్లు, లోపలికి వెళ్దాం!", "పదండి, కొత్త కలెక్షన్ చూద్దాం.", "పద మోటూ, చూద్దాం.", "చలో, షోరూమ్ చూద్దాం!",
+      "నాతో రా, చూపిస్తా.", "చుట్టూ చూద్దాం.", "అవునా పట్లు? లోపలికి వెళ్లి బ్రైడల్ సెక్షన్ చూద్దాం!", "పదా, పోదాం!",
+      "चलो, अंदर देखते हैं।", "வாங்க போலாம்.", "ಬನ್ನಿ ಹೋಗೋಣ.", "നമുക്ക് പോകാം.",
+    ]) expect(lineNeedsWalk(line), line).toBe(true);
+    for (const line of [
+      "Visit us today.", "Come inside our showroom.", "ఈరోజే రండి.", "లోపలికి రండి, ఆఫర్లు చూడండి.", "ఈ పదం చాలా బాగుంది.",
+      "ఈరోజే షాప్ కి వెళ్లి చూడండి. మేము ఎదురుచూస్తాం.",
+      "పదార్థాలు అన్నీ తాజావి.", "In this way you save money.", "Look at these new designs.", "మా కొత్త కలెక్షన్ చూడండి.", "",
+    ]) expect(lineNeedsWalk(line), line).toBe(false);
+  });
+
+  it("takes the scene plan's judgment over the code's reading, walks a beat planned in place, and greets in place", () => {
+    const lines = ["Let's go inside!", "a", "b", "c"];
+    expect(motuPlan(4, "commercial", { lines, choices: [{ walk: false }, { walk: true }] }).map((c) => c.walks)).toEqual([false, true, false, false]);
+    const turned = motuPlan(4, "commercial", { choices: [null, { staging: "turn_present", walk: true }] });
+    expect(turned[1].staging.key).toBe("walk_across");
+    expect(turned[1].walks).toBe(true);
+    const festival = motuPlan(4, "festival", { lines: ["Let's go and wish everyone!", "a", "b", "c"], choices: [{ walk: true }] });
+    expect(festival[0].walks).toBe(false);
+    expect(stagingPath(festival[0], "x", true, { a: "Motu", b: "Patlu" })).toBe("both turn to the camera together where they stand; Motu greets the viewer with a namaste and a festive smile, then Patlu answers with both hands opening in a warm, festive gesture");
+    expect(stagingPath(motuPlan(1)[0], "x", true, { a: "Motu", b: "Patlu" })).toContain("then both turn to the camera where they stand and Patlu invites the viewer in with both palms open — an invitation, never a goodbye wave");
+    // The same plan every time — the frame side and the video side build it alike.
+    expect(motuPlan(4, "commercial", { lines })).toEqual(motuPlan(4, "commercial", { lines }));
+  });
+
+  it("composes each frame for it — standing side by side beside what the line is about, mid-step only where it walks", () => {
+    const options = { segmentCount: 4, clipSummaries: still, locationMode: "ai_generated", locationPlan: "", aspectRatio: "9:16", adType: "commercial" } as const;
+    const stands = motuPlan(4, "commercial", { lines: still });
+    expect(compositionFor(stands[0])).toContain("both standing side by side at the same distance from the camera in front of the real counter, display or shelves");
+    expect(compositionFor(stands[1])).toContain("right beside the real product, counter or display the clip talks about — within arm's reach and fully in view");
+    expect(framingForMotion(stands[1])).toContain("🎬 THIS CLIP: Show it where they stand — filmed Eye level · 35mm · Lateral Dolly");
+    expect(withMotionComposition("A frame.", motuPlan(4, "commercial", { plates: [true, true, true, true] })[1], { plate: true }))
+      .toContain("both placed into it side by side at the same distance from the camera, standing on the real floor right beside what the line is about");
+    const frame = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(pack, { ...options, motionPlan: stands });
+    expect(frame).toContain("so they perform each clip WHERE THEY STAND, side by side beside what its line is about");
+    expect(frame).toContain("caught MID-GESTURE");
+    expect(frame).toContain("standing side by side as each clip's 🎬 note says");
+    expect(frame).not.toMatch(/every clip MOVES|caught mid-step side by side as each|for a walking clip only|They walk together/);
+    const oneWalk = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(pack, { ...options, motionPlan: motuPlan(4, "commercial", { lines: ["a", "Let's go inside!", "c", "d"] }) });
+    expect(oneWalk).toContain("They walk together, side by side, only in a clip whose 🎬 note walks.");
+    expect(oneWalk).toContain("for a walking clip only, both caught mid-step with clear open floor ahead of them");
+    // Another cartoon pair keeps the dynamic pass's walking frames.
+    const doraemon = getCharacterPack("duo_doraemon_nobita")!;
+    const other = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(doraemon, { ...options, motionPlan: planClipMotion(4, "commercial", "cartoon", { twoHander: true, lines: still }) });
+    expect(other).toContain("every clip MOVES");
+    expect(other).toContain("caught mid-step side by side as each clip's 🎬 note says");
+  });
+
+  it("names their outfits, films a standing clip with a short glide at one angle, and forbids morphing — Motu and Patlu only", () => {
+    expect(subject.identityLock).toBe("both characters exactly as drawn, with the same designs, outfits, colours, builds and heights");
+    expect(packVeoSubject(getCharacterPack("duo_doraemon_nobita")!).identityLock).toBe("both characters exactly as drawn, with the same designs, colours, builds and heights");
+    const [first] = motuPlan(4, "commercial", { lines: still });
+    const p = build(first);
+    expect(p).toContain("Slow lateral dolly two-shot at eye level, the camera gliding a short way sideways at one distance, both seen from the same angle throughout, the background sliding gently with parallax: both stand side by side beside the counter, display or shelves");
+    expect(p).toContain("The framing drifts a little toward whoever is speaking, never closer.");
+    expect(p).not.toMatch(STILL_WORDS);
+    expect(p.split("\n\n")).toHaveLength(5);
+    expect(spokenLinesIn(p)).toEqual(["ఒకటి", "రెండు"]);
+    expect(words(p)).toBeLessThanOrEqual(360);
+    const photo = build(motuPlan(4, "commercial", { lines: still, plates: [true, true, true, true] })[0]);
+    expect(photo).toContain("Steady two-shot at eye level from a still camera, their own performance carrying the shot: both stand side by side");
+    expect(photo).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; they perform side by side where they stand, and nothing new is added to it.`);
+    // A refine that keeps the line and the keep sentence is still accepted.
+    expect(veoEditProblems(p, p.replace("Slow lateral dolly", "Gentle lateral dolly"))).toEqual([]);
+    // Another drawn pair is untouched.
+    const other = assembleVeoPrompt({
+      aspectRatio: "9:16", plan: planClipMotion(4, "commercial", "cartoon", { twoHander: true })[0], identityLock: "x", language: "Telugu",
+      speech: [{ speaker: "A", voice: "v", line: "one" }, { speaker: "B", voice: "v", line: "two" }], cast: "Both characters", castPlural: true, twoHander: true,
+    });
+    expect(other).not.toContain("no morphing");
+    expect(other).toContain("they move within that place");
+  });
+
+  it("refuses a director's walk in a standing clip, keeps a performance in place, and tells the director why", () => {
+    const [first] = motuPlan(4, "commercial", { lines: still });
+    const names = { a: "Motu", b: "Patlu" };
+    for (const action of [
+      "Both walk side by side along the counter, Motu pointing at the necklaces while Patlu nods",
+      "Motu takes a few steps to the glass counter as Patlu follows",
+    ]) expect(resolveDirection(first, { action }, "x", true, names).action, action).toBe(stagingPath(first, "x", true, names));
+    const inPlace = "Motu points at the gold necklaces in the glass counter beside him with a whole open hand, eyes wide, as Patlu smiles; then Patlu answers with one calm palm toward them";
+    expect(resolveDirection(first, { action: inPlace }, "x", true, names).action).toBe(inPlace);
+    // The first live run (2026-10-10) threw these two away for "rise" — a hand rising is Motu's own gesture, not him growing.
+    for (const live of [
+      "Motu's hands rise near his chest in disbelief, his wide-eyed gaze bouncing from the BIS hallmark gold items in the display to Patlu as he asks. Patlu, maintaining his small, certain smile, looks at Motu and places a hand on his chest, then nods confidently as he speaks",
+      "Motu turns front-on to the camera, his hands rising near his chest in disbelief at the low wastage. Patlu then turns front-on with a warm smile, opening both palms toward the viewer in a direct invitation to the main road showroom",
+    ]) expect(resolveDirection(first, { action: live }, "x", true, names).action, live).toBe(live);
+    // The body rising still never passes.
+    for (const grows of ["Motu rises onto his toes with excitement as Patlu nods", "Patlu rising slowly as he answers Motu"]) {
+      expect(resolveDirection(first, { action: grows }, "x", true, names).action, grows).toBe(stagingPath(first, "x", true, names));
+    }
+    expect(CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4)).toContain("THEY WALK ONLY WHERE THE PLANNED ACTION WALKS — in a clip whose words take them somewhere.");
+    expect(CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(getCharacterPack("duo_doraemon_nobita")!, 4)).not.toContain("THEY WALK ONLY WHERE");
+  });
+
+  it("asks the scene plan to judge each clip's walk — for Motu and Patlu only — and reads it back", () => {
+    const base = { clipCount: 4, adType: "commercial", subject: "Motu and Patlu", twoHander: true, cartoon: true };
+    const p = SCENE_PLAN_SYSTEM_PROMPT({ ...base, walksWhenNeeded: true });
+    expect(p).toContain("\"walk\" — true ONLY for a clip whose own words take them somewhere");
+    expect(p).toContain("\"walk\": <true or false>");
+    expect(p).toContain("approach_show (Show it where they stand)");
+    expect(p).toContain("Motu and Patlu is IN that background, standing beside what that clip's line is about");
+    const other = SCENE_PLAN_SYSTEM_PROMPT(base);
+    expect(other).not.toContain("\"walk\"");
+    expect(other).toContain("approach_show (Approach and show)");
+    expect(other).toContain("with open floor to walk on and space to present");
+    const raw = JSON.stringify({
+      motive: "a jewellery shop promotion",
+      clips: [
+        { clip: 1, background: "the necklace counter", walk: false },
+        { clip: 2, background: "the bridal section", walk: true },
+        { clip: 3, background: "the billing desk", walk: "yes" },
+      ],
+    });
+    const context = parseScenePlan(raw, 3)!;
+    expect(context.clips.map((c) => c.walk)).toEqual([false, true, undefined]);
+    expect(motionChoicesOf(context).map((c) => c.walk)).toEqual([false, true, undefined]);
   });
 });
 
