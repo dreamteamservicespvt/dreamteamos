@@ -463,30 +463,43 @@ count 1–6 (default 3), text language (English default) → `generatePosterConc
 ### 17.3 AI provider, reliability, errors
 - **Provider:** Google Gemini through `@google/genai`, called **from the browser**. Every call
   goes through `callWithFallback` (exported as `callGeminiWithFallback`).
-- **Keys:** a pool of up to 30 keys (`VITE_API_KEY_n` / `API_KEY_n`, single-key fallbacks),
-  rotated on quota, rate-limit or invalid errors.
-- **Models:** `MODEL_LIST` (`gemini-2.5-flash` → `2.0-flash` → `2.5-flash-lite` → … →
-  `gemini-3.1-flash-lite-preview`), rotated on overload or 5xx. A 404 "not available to new users"
-  retires a model **for that key only**; any other 404 retires it for all keys.
-- **Thinking budget per call (2026-09-29):** `callWithFallback(apiCall, { effort })` — `fast` 0 tokens
-  (extraction, voice note, poster, splits, location scout, B-roll, overlays, wardrobe stylist), `standard` 768 (core
-  message, repairs, scene plan, frames, Veo director, poster concepts), `deep` 1536 (script writer,
-  review, quality judge). Applied only on `gemini-2.5-flash` (the lite models do not think by
-  default; 2.0 rejects the setting); a call with no effort keeps the model default. Measured: thinking
-  was ~75% of generated tokens and 10–16 s per call before.
-- **Key handling (2026-09-29):** each call starts on the NEXT usable key (round-robin — the free tier
-  allows ~5 requests/minute and ~20/day per key per model on 2.5-flash); invalid, expired and
-  "reported as leaked" keys are dead for the session with no wait before the next; a 429 rests that key
-  for Google's retry delay (30 min for a per-DAY limit); keys lacking a model ("new users" 404) are
-  skipped for it. Dead keys and per-model gaps are kept in localStorage for a day under a fingerprint
-  of the key set (never the keys), and the last good key index is where a new session starts.
-- **Errors:** after exhausting keys and models the call throws; the UI shows an error modal
-  (`status.error`). Many parsers are defensive (JSON repair, clip-number coercion). No
-  server-side proxy, no retry queue.
-- **Live testing:** run `generateAdAssets` with vite-node and text-only `formData`, timing each request
-  by wrapping `globalThis.fetch` (model, ms, status, `usageMetadata.thoughtsTokenCount`). On 2026-09-29,
-  of the 30 keys: several invalid (incl. 1, 12, 18), several "reported as leaked" (16, 23–28), key 2 has
-  no gemini-2.5-flash, and working keys hit the free-tier daily limit of 20 requests per model.
+- **Keys:** a pool of up to 30 keys (`VITE_API_KEY_n` / `API_KEY_n`, single-key fallbacks). Live on
+  2026-10-10: 19 work; 1, 12, 18 invalid; 13, 16, 23–28 "reported as leaked"; keys 2 and 20 are not
+  offered gemini-2.5-flash ("new users").
+- **Models (2026-10-10, `utils/geminiModels.GEMINI_MODELS`, each answered live that day):**
+  `gemini-2.5-flash` (the tuned primary; Google has deprecated it and serves it only to projects that used
+  it before) → `gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-3.5-flash-lite` → `gemini-2.5-flash-lite` →
+  `gemini-3.1-flash-lite` (shuts down 2027-05-07) → `gemini-flash-latest` → `gemini-flash-lite-latest` (Google's
+  never-retired aliases; 3.8-flash and 3.5-flash-lite that day). No previews, no names Google routes elsewhere.
+  `gemini-2.0-flash` / `-lite` (shut down 2026-06-01) were still listed and asked on every page load — the
+  owner saw their raw 404 on screen ("sometimes prompts are not generating").
+- **Call layer (`services/geminiService.callWithFallback`, rewritten 2026-10-10):** the shared state holds only
+  facts — retired models (localStorage, a week), dead keys, keys lacking a model, a rest per KEY × MODEL (Google's
+  delay, or until the daily reset at midnight Pacific = 12:30 PM IST in summer; daily rests kept in localStorage), a
+  model "used up for the day" after 3 daily 429s in a row (asked last, once per call, until the reset; kept in
+  localStorage), a 30 s busy spell per model after a 503. Each request picks its route from the TOP of the list on
+  the next key (round-robin); nothing moves a shared "current model" (the old pointer let one call's failures move
+  every call, and let a call give up with live models untried: 8 of 320 calls / 7 of 40 page loads in the busy-day
+  stress test; now 0). Google's errors are read by status and its own words (`readGeminiError`): a 404 retires a
+  model only when it names it; a 429 whose delay contains "404" is a rate limit; a 400 is thrown at once
+  ("Gemini could not process this request: …"), never sent round every key; a refused thinking setting is retried
+  without it; a caller's own error passes through. A call waits (≤ 75 s in all) for a soon-freed route, always asks
+  Google at least once, and otherwise throws `GeminiUnavailableError` — a sentence (`geminiUnavailable`: the daily
+  limit and when it resets, keys to replace, Google busy, offline), never JSON; `generateWithRetry` stops on it.
+- **Thinking per call (2026-09-29; per model 2026-10-10):** `callWithFallback(apiCall, { effort })` — `fast`
+  (extraction, voice note, poster, splits, location scout, B-roll, overlays, wardrobe stylist), `standard` (core
+  message, repairs, scene plan, frames, Veo director, poster concepts), `deep` (script writer, review, quality
+  judge). `utils/geminiModels.thinkingFor`: gemini-2.5-flash a budget 0 / 768 / 1536; the Gemini 3 Flash models a
+  level MINIMAL / LOW / MEDIUM (3.8-flash and flash-latest refuse MINIMAL → LOW); lite models none; a call with no
+  effort keeps the model default. 2.5 refuses a level and 3.x defaults to medium thinking (both measured live).
+- **Errors:** the UI shows `status.error` (the error modal) — now always a plain sentence from the call layer.
+  Many parsers are defensive (JSON repair, clip-number coercion). No server-side proxy, no retry queue.
+- **Live testing:** run `generateAdAssets` with vite-node and text-only `formData`, timing each request by
+  wrapping `globalThis.fetch` (model, ms, status, `usageMetadata.thoughtsTokenCount`); a wrapped fetch can also
+  answer one model with Google's own 429 body to rehearse a busy day. 2026-10-10: a 2-clip Telugu ad ran in 106 s
+  on gemini-2.5-flash (21 answers) and in 97 s with 2.5 Flash forced out for the day — all on gemini-3.8-flash, all
+  deliverables, script QA 8.6. A real-browser harness (Vite page + CDP, scratchpad) checked the localStorage memory
+  across reloads with real Google.
 
 ### 17.4 Cinematic Ads pipeline (`/tech-admin/cinematic-ads`)
 Project list (create, open, delete; **scoped to the creator**, `listProjects(createdBy)` ordered
@@ -527,6 +540,12 @@ attribution (`Clip.voScript` is one string).
   live links.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **AI ads — Gemini availability (owner, 2026-10-10: "sometimes prompts are not generating"):** a generation never
+  fails because Google retired a model, because one model is busy or used up for the day while another can answer,
+  or because some keys are dead; it uses the best model that can answer at that moment and goes back to the
+  primary model as soon as it can. When nothing can answer, the member is told in plain words why and what to do
+  (the daily limit and the time it resets, keys to replace, Google busy, offline) — never Google's raw error.
 
 - **AI ads — the cast is the configuration (owner, 2026-10-08):** an ad ordered with two people (a Male & Female
   Duo, two women, two men, two children, a cartoon pair) gets a script in which BOTH speak in every clip, each
@@ -669,8 +688,17 @@ attribution (`Clip.voScript` is one string).
 
 - `cinematic_projects` list query (`where createdBy` + `orderBy updatedAt`) needs a composite
   index; no index file is in the repo [NOT CONFIRMED in console].
-- `MODEL_LIST` still lists `gemini-2.0-flash`, reported retired in live tests; it costs an
-  attempt before removal.
+- **The model list is kept by hand (2026-10-10).** Google retires models every few months (2.0 Flash went on
+  2026-06-01; 2.5 Flash is deprecated, "limited to users who have actively used them in the past", with a
+  2026-10-20 shutdown on Google Cloud's Agent Platform and none announced yet for the Gemini API). The call layer
+  survives it — a retired model costs one request per browser per week and the two `-latest` aliases never
+  retire — but the list should be checked against Google's deprecations page when a model's shutdown nears.
+  The fallback models' WRITING has been judged on two live runs only (3.8 Flash's Telugu script scored 8.6 vs
+  2.5 Flash's 7.4 on the same brief); the prompts were tuned on 2.5 Flash. Google advises temperature 1.0 for
+  Gemini 3 — the wardrobe stylist (0), one call at 0.2 and one at 0.95 set their own; not seen to cause trouble.
+- A model is marked "used up for the day" after three daily 429s in a row on different keys; keys of that model
+  with requests left are then asked only when nothing else can answer (once per call). Requests are spread
+  evenly over the keys, so their limits run out together — but a key the owner upgrades mid-day waits for that.
 - Every AI video run now makes up to three more Gemini calls: the voice note (when one is
   attached), the scene plan (up to 2 attempts, skipped with client photos) and the Veo refine's plan
   step. More quota and latency per run; not measured live. Since 2026-10-01 a run whose facts carry an

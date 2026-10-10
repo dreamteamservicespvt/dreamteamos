@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { KeyRound, Loader2 } from "lucide-react";
 import AiModal, { buttonClass, fieldClass } from "./AiModal";
+import { ApiKeySteps } from "./ApiKeyField";
 import { addFlowAccount, updateFlowAccount, type Actor, type Person } from "@/services/aiAccounts";
 import type { FlowAccount, FlowSettings } from "@/types/aiAccounts";
-import { expiryOf, hasRecordedCredits, isDate, todayStr, validateFlowAccountInput, type FlowAccountInput } from "@/utils/flowCredits";
+import {
+  expiryOf, hasRecordedCredits, isDate, isValidEmail, normaliseEmail, todayStr, validateFlowAccountInput, type FlowAccountInput,
+} from "@/utils/flowCredits";
+import type { KeyCheck } from "@/utils/geminiKeys";
+import { useApiKeyEntry } from "@/hooks/useApiKeyEntry";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -14,9 +19,14 @@ export const prettyDate = (date?: string) => (date && isDate(date) ? format(new 
  * Adding or editing a Flow account. The member types the email, the password, the phone number it logs
  * in with and the day it was created; the expiry (creation + validity) is worked out and shown, never
  * typed. A manager adding one chooses whose account it is — their own backup, or a member's.
+ *
+ * A new account is also asked for the Gemini API key made in it (owner, 2026-10-10): the same steps and
+ * Google check as the card's key dialog, saved in the same transaction as the account. Someone without the
+ * key yet ticks "Add the key later" — it is asked every time, never silently skipped — and the card's
+ * "Add API key" and the "Add next key" card ask for it after.
  */
 export default function FlowAccountDialog({
-  open, onClose, actor, settings, account, owners,
+  open, onClose, actor, settings, account, owners, accounts = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -26,6 +36,8 @@ export default function FlowAccountDialog({
   account?: FlowAccount | null;
   /** For a manager adding an account: who it can belong to. */
   owners?: Person[];
+  /** The accounts this person can see — a new account's key already saved on one of them is refused. */
+  accounts?: FlowAccount[];
 }) {
   const { toast } = useToast();
   const editing = !!account;
@@ -35,21 +47,42 @@ export default function FlowAccountDialog({
   });
   const [errors, setErrors] = useState<Partial<Record<keyof FlowAccountInput, string>>>({});
   const [saving, setSaving] = useState(false);
+  const [keyLater, setKeyLater] = useState(false);
+  // Folded for someone who has given a key before — they know the steps; AI Studio stays one tap away.
+  const [keySteps, setKeySteps] = useState(true);
+  const keyEmail = normaliseEmail(form.email);
+  const keyEntry = useApiKeyEntry({
+    active: open && !editing && !keyLater,
+    resetKey: String(open),
+    email: isValidEmail(keyEmail) ? keyEmail : "",
+    accounts,
+  });
 
   useEffect(() => {
     if (!open) return;
     setErrors({});
+    setKeyLater(false);
     setForm(account
       ? { email: account.email, password: "", phone: account.phone, createdOn: account.createdOn, notes: account.notes || "", ownerId: account.ownerId }
       : { email: "", password: "", phone: "", createdOn: today, notes: "", ownerId: actor.uid });
   }, [open, account, actor.uid, today]);
+
+  useEffect(() => {
+    if (open) setKeySteps(!accounts.some((a) => a.apiKey && a.addedBy === actor.uid));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- decided when the form opens, not on every list snapshot
+  }, [open]);
 
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
 
   const save = async () => {
     const found = validateFlowAccountInput(form, today, { passwordRequired: !editing });
     setErrors(found);
-    if (Object.keys(found).length > 0) return;
+    // The key is asked with the account: pasted, or consciously left for later.
+    const keyProblem = editing || keyLater ? null
+      : !keyEntry.value.trim() ? "Paste this account's API key — or tick “Add the key later”."
+        : keyEntry.blocker;
+    if (keyProblem) keyEntry.setError(keyProblem);
+    if (Object.keys(found).length > 0 || keyProblem) return;
     setSaving(true);
     try {
       if (editing && account) {
@@ -58,9 +91,19 @@ export default function FlowAccountDialog({
         }, actor, settings);
         toast({ title: "Account updated", description: account.email });
       } else {
+        let apiKey: { key: string; check: KeyCheck } | undefined;
+        if (!keyLater) {
+          const check = await keyEntry.resolve();
+          if (check.status === "failed") { keyEntry.setError(check.message || "Google refused this key."); return; }
+          apiKey = { key: keyEntry.key, check };
+        }
         const owner = owners?.find((o) => o.uid === form.ownerId);
-        await addFlowAccount({ ...form, owner: owner || { uid: actor.uid, name: actor.name, role: actor.role } }, actor, settings);
-        toast({ title: "Flow account added", description: `${form.email.trim().toLowerCase()} — ${settings.monthlyCredits} credits a month.` });
+        await addFlowAccount({ ...form, owner: owner || { uid: actor.uid, name: actor.name, role: actor.role }, ...(apiKey ? { apiKey } : {}) }, actor, settings);
+        toast({
+          title: "Flow account added",
+          description: `${form.email.trim().toLowerCase()} — ${settings.monthlyCredits} credits a month${
+            apiKey ? (apiKey.check.status === "working" ? ", with its API key." : ", with its API key (Google could not be reached to check it yet).") : ". Add its API key on the card."}`,
+        });
       }
       onClose();
     } catch (err) {
@@ -130,6 +173,26 @@ export default function FlowAccountDialog({
               {owners.map((o) => <option key={o.uid} value={o.uid}>{o.uid === actor.uid ? `${o.name} (my backup)` : o.name}</option>)}
             </select>
           </label>
+        ) : null}
+        {!editing ? (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 min-w-0" data-test="flow-key-section">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground"><KeyRound className="h-3.5 w-3.5 text-primary" /> Gemini API key</span>
+              <label className="inline-flex min-h-[24px] cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+                <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={keyLater}
+                  onChange={(e) => { setKeyLater(e.target.checked); keyEntry.setError(""); }} data-test="flow-key-later" />
+                Add the key later
+              </label>
+            </div>
+            {keyLater ? (
+              <p className="mt-2 text-[11px] text-muted-foreground" data-test="flow-key-later-note">The account's card will ask for it (“Add API key”).</p>
+            ) : (
+              <div className="mt-3">
+                <p className="mb-3 text-[11px] text-muted-foreground">Make the free Gemini key in this account — DTS AdGen writes its prompts with these keys.</p>
+                <ApiKeySteps entry={keyEntry} email={isValidEmail(keyEmail) ? keyEmail : ""} stepsOpen={keySteps} onShowSteps={() => setKeySteps(true)} />
+              </div>
+            )}
+          </div>
         ) : null}
         <label className="block">
           {label("Notes (optional)")}

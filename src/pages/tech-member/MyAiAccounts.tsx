@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { KeyRound, Loader2, Plus, Zap } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFlowAccounts, useFlowSettings, useFlowUsage, usePaidAccounts } from "@/hooks/useAiAccounts";
 import FlowAccountsList, { type FlowAccountAction } from "@/components/ai-accounts/FlowAccountsList";
 import FlowAccountDialog from "@/components/ai-accounts/FlowAccountDialog";
+import ApiKeyDialog from "@/components/ai-accounts/ApiKeyDialog";
+import ApiKeyProgress from "@/components/ai-accounts/ApiKeyProgress";
 import CreditUsageDialog from "@/components/ai-accounts/CreditUsageDialog";
 import CreditCalculator from "@/components/ai-accounts/CreditCalculator";
 import TargetCard from "@/components/ai-accounts/TargetCard";
@@ -13,6 +15,7 @@ import { buttonClass, fieldClass } from "@/components/ai-accounts/AiModal";
 import { deleteFlowUsage, setActiveFlowAccount } from "@/services/aiAccounts";
 import type { FlowAccount, FlowUsageEntry } from "@/types/aiAccounts";
 import { accountState, targetProgress, todayStr } from "@/utils/flowCredits";
+import { apiKeyCoverage } from "@/utils/geminiKeys";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -23,6 +26,10 @@ import { useConfirm } from "@/hooks/useConfirm";
  * day it was made — and see how far they are toward the target. They mark the account they are using
  * now; every ad's credits are charged to it when the ad is marked complete, and when it runs out they
  * pick the next. Accounts an admin or leader assigned to them appear here too, saying so.
+ *
+ * Each account they opened also carries its Gemini API key (2026-10-10): the card says whether it has
+ * one, the progress card walks them through the accounts still without one ("Save & next"), and a newly
+ * added account goes straight on to its key.
  */
 export default function MyAiAccounts() {
   const user = useAuthStore((s) => s.user);
@@ -34,7 +41,11 @@ export default function MyAiAccounts() {
   const today = todayStr();
   const [month, setMonth] = useState(today.slice(0, 7));
   const { entries } = useFlowUsage(user, month);
-  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "edit"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "edit"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "apiKey"; accountId: string } | null>(null);
+  /** A just-added account whose key step opens once the list has it. */
+  const [keyNext, setKeyNext] = useState<string | null>(null);
+  /** Accounts given a key in this sitting — skipped by "Save & next" even before the list catches up. */
+  const keyedNow = useRef(new Set<string>());
 
   const uid = user?.uid || "";
   const held = useMemo(() => accounts.filter((a) => a.holderId === uid), [accounts, uid]);
@@ -45,6 +56,18 @@ export default function MyAiAccounts() {
   const used = states.reduce((sum, s) => sum + s.used, 0);
   const active = held.find((a) => a.id === user?.activeFlowAccountId);
   const activeState = active ? accountState(active, today) : null;
+  const coverage = useMemo(() => apiKeyCoverage(accounts, uid), [accounts, uid]);
+  const keyQueue = coverage.queue.filter((a) => !keyedNow.current.has(a.id));
+  const keyAccount = dialog?.kind === "apiKey" ? accounts.find((a) => a.id === dialog.accountId) || null : null;
+
+  useEffect(() => {
+    if (keyNext && accounts.some((a) => a.id === keyNext)) { setDialog({ kind: "apiKey", accountId: keyNext }); setKeyNext(null); }
+    // Once the list shows a saved key, the list is the truth again (a key removed later must reappear).
+    for (const id of [...keyedNow.current]) {
+      const a = accounts.find((x) => x.id === id);
+      if (!a || (a.apiKey && a.apiKey.status !== "failed")) keyedNow.current.delete(id);
+    }
+  }, [keyNext, accounts]);
 
   if (!user) return null;
 
@@ -54,6 +77,7 @@ export default function MyAiAccounts() {
       catch { toast({ title: "Could not switch accounts", variant: "destructive" }); }
     }
     if (action === "edit") setDialog({ kind: "edit", account });
+    if (action === "apiKey") setDialog({ kind: "apiKey", accountId: account.id });
   };
 
   const removeEntry = async (entry: FlowUsageEntry) => {
@@ -103,6 +127,9 @@ export default function MyAiAccounts() {
             </div>
           </div>
 
+          <ApiKeyProgress total={coverage.total} withKey={coverage.withKey} failed={coverage.failed} next={keyQueue[0] || null}
+            onNext={() => keyQueue[0] && setDialog({ kind: "apiKey", accountId: keyQueue[0].id })} />
+
           <section className="space-y-3">
             <h2 className="font-display text-base font-semibold text-foreground">My Flow accounts</h2>
             <FlowAccountsList accounts={accounts} viewerId={user.uid} activeId={user.activeFlowAccountId} manager={false} onAction={onAction}
@@ -130,7 +157,21 @@ export default function MyAiAccounts() {
       )}
 
       <FlowAccountDialog open={dialog?.kind === "add" || dialog?.kind === "edit"} onClose={() => setDialog(null)} actor={user} settings={settings}
-        account={dialog?.kind === "edit" ? dialog.account : null} />
+        account={dialog?.kind === "edit" ? dialog.account : null} onAdded={setKeyNext} />
+      <ApiKeyDialog
+        open={!!keyAccount}
+        onClose={() => setDialog(null)}
+        account={keyAccount}
+        accounts={accounts}
+        actor={user}
+        remaining={keyQueue.filter((a) => a.id !== keyAccount?.id).length}
+        showSteps={!accounts.some((a) => a.ownerId === uid && a.apiKey)}
+        onSaved={(saved, goNext) => {
+          keyedNow.current.add(saved.id);
+          const next = goNext ? keyQueue.find((a) => a.id !== saved.id) : null;
+          setDialog(next ? { kind: "apiKey", accountId: next.id } : null);
+        }}
+      />
       <CreditUsageDialog
         open={dialog?.kind === "usage"}
         onClose={() => setDialog(null)}

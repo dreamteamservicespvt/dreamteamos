@@ -19,6 +19,8 @@ import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@
 import { useTechProductivity } from "@/hooks/useTechProductivity";
 import { formatRatio, ratioBand, RATIO_BAND_STYLE, RATIO_TARGET, RATIO_LIMIT } from "@/utils/techProductivity";
 import { isActiveUser } from "@/utils/roleHelpers";
+import { applyCompOff } from "@/services/techAttendance";
+import CompOffPanel from "@/components/payroll/CompOffPanel";
 import type { AppUser } from "@/types";
 
 /**
@@ -134,6 +136,31 @@ export default function Payroll() {
   };
 
   /** Undo — the safety net. Every payment can be reversed, and the reversal is audit-logged. */
+  /**
+   * Holidays worked → Comp Off: the absences the period's unused credits cover become paid days
+   * (owner, 2026-10-10). The same marks the grid writes; the row re-prices from them at once.
+   */
+  const handleApplyCompOff = async (row: PayrollRow) => {
+    if (!user || row.compOffToApply.length === 0) return;
+    const days = row.compOffToApply.map(d => format(parse(d, "yyyy-MM-dd", new Date()), "dd MMM")).join(", ");
+    const { confirmed } = await confirm({
+      title: `Apply comp off for ${row.member.name}?`,
+      description: `${days} ${row.compOffToApply.length === 1 ? "becomes" : "become"} Comp Off — paid, for the holiday${row.compOffToApply.length === 1 ? "" : "s"} they worked. Their paid leaves are not touched. It can be changed back on the attendance grid.`,
+      confirmText: "Apply comp off",
+    });
+    if (!confirmed) return;
+    setBusyUid(row.member.uid);
+    try {
+      await applyCompOff(row.member, row.compOffToApply, { uid: user.uid, name: user.name });
+      toast({ title: "Comp off applied", description: `${row.member.name} · ${days}` });
+    } catch (error) {
+      console.error("Failed to apply comp off:", error);
+      toast({ title: "Could not apply comp off", variant: "destructive" });
+    } finally {
+      setBusyUid(null);
+    }
+  };
+
   const handleUndoPayment = async (row: PayrollRow) => {
     if (!user || !row.line) return;
     const { confirmed } = await confirm({
@@ -441,6 +468,13 @@ export default function Payroll() {
                           <FileText className="h-3 w-3" /> Receipt sent
                         </span>
                       )}
+                      {/* Holiday work waiting to be settled against absences — visible without opening the row. */}
+                      {row.compOffToApply.length > 0 && (
+                        <span data-test="comp-off-chip" title="Holidays worked can turn absences into paid Comp Off — open the row to apply"
+                          className="inline-flex items-center rounded-full bg-teal-500/15 px-2 py-1 text-[11px] font-semibold text-teal-600">
+                          Comp off: {row.compOffToApply.length}
+                        </span>
+                      )}
                       <ChevronDown className={`ml-auto hidden h-4 w-4 text-muted-foreground transition-transform lg:block ${isOpen ? "rotate-180" : ""}`} />
                     </div>
                   </button>
@@ -480,6 +514,9 @@ export default function Payroll() {
                           </p>
                         )}
                       </div>
+
+                      <CompOffPanel computation={row.liveComputation} toApply={row.compOffToApply}
+                        canApply={canManage} busy={busy} onApply={() => handleApplyCompOff(row)} />
 
                       {/* What Accounts recorded for this period — so a salary is never paid twice. */}
                       {row.receipts.length > 0 && (

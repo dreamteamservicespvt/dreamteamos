@@ -7,25 +7,28 @@
  * Notifications are best-effort and never fail the write they follow.
  */
 import {
-  arrayUnion, collection, doc, FieldPath, getDoc, getDocs, increment, query, runTransaction, serverTimestamp, setDoc,
+  arrayUnion, collection, deleteField, doc, FieldPath, getDoc, getDocs, increment, query, runTransaction, serverTimestamp, setDoc,
   updateDoc, where, writeBatch,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import type { AppUser, UserRole, WorkAssignment } from "@/types";
 import type {
-  AccountEvent, AccountSecret, FlowAccount, FlowClipRow, FlowSettings, FlowUsageEntry, PaidAccount, PaidProvider,
+  AccountEvent, AccountSecret, ApiKeySummary, FlowAccount, FlowClipRow, FlowSettings, FlowUsageEntry, GeminiApiKey, PaidAccount, PaidProvider,
 } from "@/types/aiAccounts";
 import {
   creditsFor, cycleStartOf, expiryOf, hasRecordedCredits, normaliseEmail, normalisePhone, teamAdminIdOf, todayStr, visibilityOf,
   type FlowAccountInput,
 } from "@/utils/flowCredits";
+import { apiKeyFingerprint, keyCheckFrom, normaliseApiKey, type KeyCheck } from "@/utils/geminiKeys";
 
 export const FLOW_ACCOUNTS = "flow_accounts";
 export const FLOW_SECRETS = "flow_account_secrets";
 export const FLOW_USAGE = "flow_usage";
 export const PAID_ACCOUNTS = "paid_accounts";
 export const PAID_SECRETS = "paid_account_secrets";
+/** gemini_api_keys/{flow account id} — the Gemini API key made in that account (2026-10-10). */
+export const GEMINI_KEYS = "gemini_api_keys";
 /** app_settings/flow_accounts — the credit rates, monthly credits, validity and target. */
 export const FLOW_SETTINGS_DOC = ["app_settings", "flow_accounts"] as const;
 
@@ -50,12 +53,14 @@ const notify = (to: Person, title: string, message: string, dedupeKey?: string) 
 // ── Flow accounts ─────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Adds a Flow account and its password. The email is the id, so the same account can never be added
+ * Adds a Flow account and its password — and its Gemini API key, when the form was given one (2026-10-10:
+ * the "Add a Flow account" form asks for it). The email is the id, so the same account can never be added
  * twice — the second attempt is told who already added it. A member adds their own (owner = them); a
- * manager may add a backup of their own or one owned by a member.
+ * manager may add a backup of their own or one owned by a member. All of it is one transaction: there is
+ * never an account whose key was lost, or a key without its account.
  */
 export async function addFlowAccount(
-  input: FlowAccountInput & { notes?: string; owner?: Person },
+  input: FlowAccountInput & { notes?: string; owner?: Person; apiKey?: { key: string; check: KeyCheck } },
   actor: Actor,
   settings: FlowSettings,
 ): Promise<string> {
@@ -83,6 +88,11 @@ export async function addFlowAccount(
     history: [event(actor, "added", owner.uid !== actor.uid ? { toId: owner.uid, toName: owner.name } : {})],
   };
   account.visibleTo = visibilityOf(account);
+  const keyed = input.apiKey?.key.trim() ? apiKeyRecords(account, input.apiKey.key, input.apiKey.check, actor) : null;
+  if (keyed) {
+    account.apiKey = keyed.summary;
+    account.history = [...(account.history || []), event(actor, "api_key_added")];
+  }
 
   await runTransaction(db, async (tx) => {
     const ref = doc(db, FLOW_ACCOUNTS, id);
@@ -93,6 +103,7 @@ export async function addFlowAccount(
     }
     tx.set(ref, { ...account, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     tx.set(doc(db, FLOW_SECRETS, id), { password: input.password, updatedAt: serverTimestamp(), updatedById: actor.uid } satisfies AccountSecret);
+    if (keyed) tx.set(doc(db, GEMINI_KEYS, id), { ...keyed.record, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   });
   return id;
 }
@@ -159,11 +170,12 @@ export async function assignFlowAccount(account: FlowAccount, to: Person, actor:
   }
 }
 
-/** Removes an account and its password. Its usage entries stay, as history. */
+/** Removes an account, its password and its Gemini API key. Its usage entries stay, as history. */
 export async function deleteFlowAccount(account: FlowAccount): Promise<void> {
   const batch = writeBatch(db);
   batch.delete(doc(db, FLOW_ACCOUNTS, account.id));
   batch.delete(doc(db, FLOW_SECRETS, account.id));
+  batch.delete(doc(db, GEMINI_KEYS, account.id));
   await batch.commit();
 }
 
@@ -172,10 +184,156 @@ export async function setActiveFlowAccount(uid: string, accountId: string | null
   await updateDoc(doc(db, "users", uid), { activeFlowAccountId: accountId || null });
 }
 
-/** A password, read only when someone asks to see or copy it. */
-export async function getAccountSecret(kind: "flow" | "paid", id: string): Promise<string> {
+/** A password — or a Flow account's Gemini API key — read only when someone asks to see or copy it. */
+export async function getAccountSecret(kind: "flow" | "paid" | "apiKey", id: string): Promise<string> {
+  if (kind === "apiKey") {
+    const snap = await getDoc(doc(db, GEMINI_KEYS, id));
+    return snap.exists() ? (snap.data() as GeminiApiKey).key || "" : "";
+  }
   const snap = await getDoc(doc(db, kind === "flow" ? FLOW_SECRETS : PAID_SECRETS, id));
   return snap.exists() ? (snap.data() as AccountSecret).password || "" : "";
+}
+
+// ── Gemini API keys (2026-10-10, utils/geminiKeys) ───────────────────────────────────────────────
+
+const MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1";
+
+/**
+ * Asks Google whether a key works. A models.list call: free — none of the key's generation quota is
+ * spent — and it answers an invalid or leaked key exactly as a generation call does (keyCheckFrom).
+ * Never throws: Google out of reach (or slower than 12 s) is "unchecked".
+ */
+export async function checkGeminiApiKey(key: string, fetcher: typeof fetch = fetch): Promise<KeyCheck> {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 12_000) : null;
+  try {
+    const res = await fetcher(MODELS_URL, { headers: { "x-goog-api-key": key }, signal: controller?.signal });
+    return keyCheckFrom(res.status, await res.text().catch(() => ""));
+  } catch {
+    return { status: "unchecked", message: "Google could not be reached to check this key." };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * The key's own document and the summary its account carries, for a key made in this account. A new key
+ * is never "in use": the one the admin deployed was the old key, and this one is not in Vercel yet.
+ */
+function apiKeyRecords(account: Pick<FlowAccount, "id" | "email" | "ownerId" | "ownerName" | "teamAdminId">, rawKey: string, check: KeyCheck, actor: Actor) {
+  const key = normaliseApiKey(rawKey);
+  if (!key) throw new Error("Paste the API key.");
+  const fingerprint = apiKeyFingerprint(key);
+  const now = Date.now();
+  const record: Omit<GeminiApiKey, "createdAt" | "updatedAt"> = {
+    id: account.id,
+    accountId: account.id,
+    accountEmail: account.email,
+    key,
+    fingerprint,
+    ownerId: account.ownerId,
+    ownerName: account.ownerName,
+    addedById: actor.uid,
+    addedByName: actor.name || "",
+    addedAt: now,
+    teamAdminId: account.teamAdminId || teamAdminIdOf(actor),
+    status: check.status,
+    ...(check.message ? { statusMessage: check.message } : {}),
+    checkedAt: now,
+    inUse: false,
+  };
+  const summary: ApiKeySummary = {
+    fingerprint,
+    status: check.status,
+    ...(check.message ? { message: check.message } : {}),
+    addedAt: now,
+    addedByName: actor.name || "",
+    checkedAt: now,
+  };
+  return { record, summary };
+}
+
+/**
+ * Saves the key made in this Flow account (a new one, or a replacement), with what Google said about it.
+ * The key goes to its own document and the account gets only its summary — one batch, so a card can
+ * never say "key added" for a key that is not there.
+ */
+export async function saveFlowApiKey(account: FlowAccount, rawKey: string, check: KeyCheck, actor: Actor): Promise<void> {
+  const { record, summary } = apiKeyRecords(account, rawKey, check, actor);
+  const batch = writeBatch(db);
+  batch.set(doc(db, GEMINI_KEYS, account.id), { ...record, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  batch.update(doc(db, FLOW_ACCOUNTS, account.id), {
+    apiKey: summary,
+    history: arrayUnion(event(actor, account.apiKey ? "api_key_replaced" : "api_key_added")),
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+}
+
+/**
+ * Takes a key off its account (the tech admin's "Remove"). The account goes back to "no key", so its
+ * owner's card asks for a new one — and the owner is told, when it was someone else who removed it.
+ */
+export async function removeFlowApiKey(
+  key: Pick<GeminiApiKey, "id" | "accountEmail" | "ownerId" | "ownerName">,
+  actor: Actor,
+  owner?: Person,
+): Promise<void> {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, GEMINI_KEYS, key.id));
+  batch.update(doc(db, FLOW_ACCOUNTS, key.id), {
+    apiKey: deleteField(),
+    history: arrayUnion(event(actor, "api_key_removed")),
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+  if (key.ownerId && key.ownerId !== actor.uid) {
+    await notify(owner || { uid: key.ownerId, name: key.ownerName }, "Add a new Gemini API key",
+      `${actor.name || "Your admin"} removed the API key on ${key.accountEmail}. Please make a new one in AI Studio and add it on the account.`);
+  }
+}
+
+/** Batches stay well under Firestore's 500 writes. */
+const chunks = <T,>(items: T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, i * size + size));
+
+/** The tech admin's label — these keys are (or are no longer) deployed to AdGen. */
+export async function setApiKeysInUse(keys: Pick<GeminiApiKey, "id">[], inUse: boolean, actor: Actor): Promise<void> {
+  const now = Date.now();
+  for (const part of chunks(keys, 400)) {
+    const batch = writeBatch(db);
+    for (const k of part) {
+      batch.update(doc(db, GEMINI_KEYS, k.id), { inUse, inUseAt: now, inUseByName: actor.name || "", updatedAt: serverTimestamp() });
+    }
+    await batch.commit();
+  }
+}
+
+/**
+ * Saves what Google said about each key — on the key and on its account's summary, together — and tells
+ * an owner whose key has just stopped working that it needs replacing (once per key: the dedupe key
+ * carries its fingerprint, so checking again does not ring again, but a new key that dies does).
+ */
+export async function saveApiKeyChecks(
+  results: { key: GeminiApiKey; check: KeyCheck }[],
+  owners: Record<string, Person> = {},
+): Promise<void> {
+  const now = Date.now();
+  for (const part of chunks(results, 200)) {
+    const batch = writeBatch(db);
+    for (const { key, check } of part) {
+      const message = check.message ? check.message : deleteField();
+      batch.update(doc(db, GEMINI_KEYS, key.id), { status: check.status, statusMessage: message, checkedAt: now, updatedAt: serverTimestamp() });
+      batch.update(doc(db, FLOW_ACCOUNTS, key.id), { "apiKey.status": check.status, "apiKey.message": message, "apiKey.checkedAt": now });
+    }
+    await batch.commit();
+  }
+  for (const { key, check } of results) {
+    if (check.status !== "failed" || key.status === "failed" || !key.ownerId) continue;
+    await notify(owners[key.ownerId] || { uid: key.ownerId, name: key.ownerName }, "Your Gemini API key stopped working",
+      `The key on ${key.accountEmail}: ${check.message || "Google refused it."} Please add a new key on the account.`,
+      `api_key_failed_${key.id}_${key.fingerprint}`);
+  }
 }
 
 // ── Credit usage ──────────────────────────────────────────────────────────────────────────────────

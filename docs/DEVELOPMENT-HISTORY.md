@@ -9,6 +9,83 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-10 (later): AdGen prompts no longer fail on a retired, busy or used-up Gemini model** (`ai-ads.md` §17.3 /
+  §24 / §27, `backend-security.md` §24 / §26.3). The owner: "sometimes prompts are not generating", showing Google's
+  raw `{"error":{"code":404,"message":"This model models/gemini-2.0-flash-lite is no longer available …"}}`. Found:
+  (1) `MODEL_LIST` still held gemini-2.0-flash and -lite, which Google shut down on 2026-06-01 (asked again on every
+  page load — retirement lived only in memory); (2) the root cause of the failures: the parallel calls of a run shared
+  ONE "current model" pointer and ONE "current key", so a call counted keys and models while others moved both, gave up
+  with live models untried and showed Google's last answer as raw JSON — on a busy free-tier day 8 of 320 calls (7 of 40
+  page loads) failed in a stress test of the old code, 0 after; (3) one 503 moved the whole session off
+  gemini-2.5-flash for good; (4) the error checks searched the text for "404" / "limit" / "invalid" — a 429 whose retry
+  delay read "14.404553s" retired a healthy model, a 400 went round every key; (5) rests were per KEY though Google's
+  quota is per key × model; (6) gemini-2.5-flash, the primary, is itself deprecated (2.5 models "limited to users who
+  have actively used them in the past", 2026-09-18). Measured live first (models.list on all 30 keys + one request per
+  candidate model and thinking setting): 19 keys work, 2.0 models 404, 3.8 / 3.6 Flash, 3.5 / 3.1 Flash-Lite and the
+  `-latest` aliases (→ 3.8-flash, 3.5-flash-lite) answer; 2.5 refuses a thinking LEVEL, 3.8 refuses MINIMAL, 3.x thinks
+  at medium by default. Built: `utils/geminiModels.ts` (pure, tested) — `GEMINI_MODELS` (2.5-flash → 3.8 → 3.6 → 3.5-lite
+  → 2.5-lite → 3.1-lite → flash-latest → flash-lite-latest), `thinkingFor` (budget on 2.5, level on Gemini 3 Flash, none
+  on lite), `readGeminiError` (by status and Google's own words; a 404 retires only the model it names),
+  `nextQuotaReset` (midnight Pacific), `restAfter`, `geminiUnavailable` / `GeminiUnavailableError` (the sentence a member
+  reads); `services/geminiService.callWithFallback` rewritten: shared state is facts only (retired models a week in
+  localStorage, dead keys, key-lacks-model, a rest per key × model — daily ones kept until the reset, a model "used up
+  for the day" after 3 daily 429s asked last and once per call, a 30 s busy spell), each request routes from the top of
+  the list on the next key, a refused thinking setting is retried without it, a 400 is thrown at once in Google's words,
+  the caller's own errors pass through, waits ≤ 75 s for a soon-free route, always asks Google once; `generateWithRetry`
+  stops on `GeminiUnavailableError`. Not changed: the primary model (2.5 Flash, the one the prompts were tuned on), the
+  call sites, Cinematic Ads (same layer). Tested: `geminiModels.test.ts` (25, Google's real error bodies),
+  `geminiModelFallback.test.ts` (21, a fake Google on the 2026-10-10 key health with virtual time — 15–16 of them fail on
+  the old code), `geminiCallSpeed` unchanged and passing; full vitest 225 files / 3457 tests; build; typecheck (1 known).
+  Live (real keys, vite-node): the SDK's real 404 for 2.0-flash-lite reads as retired; a 2-clip Telugu ad in 106 s on
+  2.5 Flash (21 answers, all deliverables, QA 7.4) and in 97 s with 2.5 Flash forced out for the day (every request on
+  3.8 Flash with LOW / MEDIUM levels, all deliverables, QA 8.6). Real browser (headless Chrome over CDP, scratchpad
+  harness, real Google): 6/6 — daily mark and retirement remembered across reloads (0 requests to them), a real 503
+  "high demand" from 3.8 Flash handed to 3.6 Flash, the plain message with the reset time "12:30 PM".
+
+- **2026-10-10 (afternoon): Gemini API keys on the Flow accounts** (`ai-accounts.md` §9.21 / §24 / §25 / §27,
+  `data-model.md`, `roles-routes.md`, `docs/firestore-rules.md`). The owner: everyone adds the Gemini API key made
+  in each Flow account they created (AI Studio → Create API key → "Gemini API Key" → Create project "aiads"), next to
+  the account, with instructions; the admin gets a separate section of only the keys — person and key — to copy a
+  set, and mark keys "using", for DTS AdGen's prompt generation. Asked (AskUserQuestion): AdGen stays as it is — the
+  owner deploys keys by hand, wanting a `.env` download and a plain copy of a set; the section is the **tech admin's
+  only**. Built: `gemini_api_keys/{account id}` (the key, apart like a password) + `flow_accounts.apiKey` (status
+  and a one-way fingerprint only), written in one batch; `utils/geminiKeys` (pure: read a pasted key, why it can't
+  be one, fingerprint, Google's answer → working / failed / unchecked, copy text, `.env` as `API_KEY_n` with a
+  person · account comment each, coverage queue, groups, who sees); `services/aiAccounts` check (Google's free
+  models.list, key in a header), save / remove / in-use / checks (owner told once when a key dies, asked for a new
+  one when removed), and `deleteFlowAccount` deletes the key; `ApiKeyDialog` (AI Studio opened in that account with
+  `?authuser=`, steps with copy chips, checked as it is pasted, duplicate refused, Save & next), `ApiKeyProgress`
+  (members' "N / M have a key" + Add next key), the key row and "No API key" filter on every card, a new account
+  going straight on to its key; `ApiKeysPanel` (tech admin: by person, filters, select any set → Copy keys /
+  Download .env / Check / Mark in use; refused keys left out of copies; a dead key marked in use says to take it out
+  of Vercel); the Overview's API keys column; `lib/clipboard` (`copyText` moved from DriveUploadSheet, `downloadText`).
+  Measured live: models.list answers AdGen's own 30 keys exactly as generation does — keys 1, 12, 18 invalid (400),
+  13, 16, 23–28 "reported as leaked" (403): 11 of 30 dead. Tested: `geminiKeys` (15) and `apiKeysOct10` (12: the
+  service on the in-memory Firestore; the real My AI Accounts and AI Accounts pages — Save & next through three
+  accounts, typo / invalid / leaked / duplicate refused, the admin's copy, .env, in use, check, remove, a team leader
+  without the tab and without keys); full vitest 227 / 3484; build; typecheck (1 known). Real browser (32/32, no
+  console errors): the same flows on the real pages, a real call to Google from the browser (CORS, header and
+  parsing — "not valid"), 390 px with no sideways scroll, the tech admin's five tabs fitting a phone.
+
+- **2026-10-10 (afternoon): comp-off for working on a holiday** (`people.md` §9.13 / §24, `data-model.md`). The owner:
+  people who work on a holiday were rewarded at pay time by marking one of their absences as Leave — which used up
+  the two paid leaves, so a member who had already taken two had the "reward" deducted (Anjali's and Aswinitha's
+  third L in September may be exactly that, ₹385 each). They asked for a separate option that is a paid day. Asked
+  (AskUserQuestion): the admin marks the holiday worked (not from check-ins); one-click Apply in Payroll + by hand on
+  the grid; credits good in the same pay cycle only; any work on a holiday = one full credit. Built: marks
+  `holiday_work` (W) and `comp_off` (C) (`AttendanceStatus`, `ATTENDANCE_META`); `tallyAttendance` / `computeSalary`
+  count W on every day (Sundays too) as credits, pay C in date order out of them, an uncovered C is unpaid
+  (`comp_off_unpaid`); `compOffToApply` (earliest absences only); `techAttendance.applyCompOff`; Team Attendance
+  editor (W on holiday dates, "Comp Off — paid · N left" on working days), grid summary line, `CompOffPanel` + chip on
+  Payroll and Sales Payroll, My Salary tile hint, payslip rows, SMM board mapping. Nothing else changes: the Sunday rule
+  holds (W adds no pay), paid leaves untouched. Tested: `compOffOct10` (10: the rule, the old Leave workaround's
+  deduction, same-cycle-only, uncovered C, Apply on the in-memory Firestore re-pricing the row, the real grid editor);
+  full vitest 223 / 3411 (one AI-platform UI test timed out under load and passes alone 3/3); build; typecheck.
+  Real browser (7/7, no console errors, 390px no sideways scroll): W marked on a Sunday through the editor; Comp Off
+  offered with "1 left" and disabled at 0; Payroll Apply turned Asha's 15 Sep absence into C (₹24,500 → ₹25,500, chip
+  gone, member notified); the grid read "1W 1C · 0 left"; My Salary showed it; Sales Payroll the same for Sita
+  (₹26,500 → ₹27,500). Open question noted for the owner: a check-in on an announced holiday earns no credit — only
+  the admin's W does, as chosen.
 - **2026-10-10 (later): inactive people are shown only in My Team** (`roles-routes.md` Deactivate, `people.md`).
   Owner: "except in the My Team sections, in all the remaining sections don't show the inactive persons — only the
   active." Asked (AskUserQuestion): hide only the PERSON (their past sales still count in totals, their pending

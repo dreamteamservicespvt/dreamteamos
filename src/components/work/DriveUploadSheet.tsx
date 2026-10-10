@@ -32,6 +32,7 @@ import { askAdminForDriveFolder, markDriveUploaded } from "@/services/workDrive"
 import { driveFileName, isUploadedToDrive, jobDrivePath, needsDriveUpload } from "@/utils/driveUpload";
 import { isPosterCategory } from "@/utils/posterSpec";
 import type { AppUser, WorkAssignment } from "@/types";
+import { copyText } from "@/lib/clipboard";
 
 type Member = Pick<AppUser, "uid" | "name" | "createdBy" | "googleDriveBaseUrl">;
 
@@ -49,29 +50,6 @@ function dayOf(iso?: string): Date {
     return new Date(y, m - 1, d);
   }
   return new Date();
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // Older WebViews: the textarea route still works where the Clipboard API is refused.
-    try {
-      const el = document.createElement("textarea");
-      el.value = text;
-      el.setAttribute("readonly", "");
-      el.style.position = "fixed";
-      el.style.opacity = "0";
-      document.body.appendChild(el);
-      el.select();
-      const ok = document.execCommand("copy");
-      el.remove();
-      return ok;
-    } catch {
-      return false;
-    }
-  }
 }
 
 export default function DriveUploadSheet({ assignment, user, justCompleted, submit, onClose }: {

@@ -179,7 +179,7 @@ export function handlesHeading(person: Pick<SmmTeamPerson, "handles" | "source">
 // ─── Today ─────────────────────────────────────────────────────────────────────────────────────────
 
 /** An admin's mark for a day (techAttendance's statuses — kept here as a plain union so this file stays pure). */
-export type DayMark = "full" | "half" | "absent" | "leave" | "holiday";
+export type DayMark = "full" | "half" | "absent" | "leave" | "holiday" | "holiday_work" | "comp_off";
 
 /**
  * What a person's day says today:
@@ -210,7 +210,11 @@ export interface TodayStatus {
   marked: boolean;
 }
 
-const KIND_OF_MARK: Record<DayMark, TodayKind> = { full: "present", half: "half", absent: "absent", leave: "leave", holiday: "holiday" };
+// Comp-off (2026-10-10): working on a holiday is being here today; a Comp Off day is a paid day away — no need to call.
+const KIND_OF_MARK: Record<DayMark, TodayKind> = {
+  full: "present", half: "half", absent: "absent", leave: "leave", holiday: "holiday",
+  holiday_work: "present", comp_off: "leave",
+};
 
 /**
  * One person's day, in the same order of authority as the salary's (`techAttendance.resolveStatus`): an admin's mark

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { KeyRound, Loader2, Plus, Settings2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-import { useFlowAccounts, useFlowSettings, useFlowUsage, usePaidAccounts, useTechTeam } from "@/hooks/useAiAccounts";
+import { useFlowAccounts, useFlowSettings, useFlowUsage, useGeminiApiKeys, usePaidAccounts, useTechTeam } from "@/hooks/useAiAccounts";
 import FlowAccountsList, { type FlowAccountAction } from "@/components/ai-accounts/FlowAccountsList";
 import FlowAccountDialog, { prettyDate } from "@/components/ai-accounts/FlowAccountDialog";
 import AssignDialog from "@/components/ai-accounts/AssignDialog";
@@ -9,17 +9,20 @@ import CreditUsageDialog from "@/components/ai-accounts/CreditUsageDialog";
 import CreditCalculator from "@/components/ai-accounts/CreditCalculator";
 import UsageList from "@/components/ai-accounts/UsageList";
 import PaidAccountsPanel from "@/components/ai-accounts/PaidAccountsPanel";
+import ApiKeyDialog from "@/components/ai-accounts/ApiKeyDialog";
+import ApiKeysPanel from "@/components/ai-accounts/ApiKeysPanel";
 import AiModal, { buttonClass, fieldClass } from "@/components/ai-accounts/AiModal";
 import {
   assignFlowAccount, deleteFlowAccount, deleteFlowUsage, saveFlowSettings, setActiveFlowAccount, updateFlowAccount, type Person,
 } from "@/services/aiAccounts";
 import { FLOW_CLIP_SECONDS, type FlowAccount, type FlowSettings, type FlowUsageEntry } from "@/types/aiAccounts";
 import { isDate, memberSummaries, teamAdminIdOf, teamTotals, todayStr } from "@/utils/flowCredits";
+import { canSeeAllApiKeys } from "@/utils/geminiKeys";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 import { cn } from "@/lib/utils";
 
-type Tab = "overview" | "flow" | "usage" | "paid";
+type Tab = "overview" | "flow" | "usage" | "paid" | "keys";
 
 const STATUS_TONE: Record<string, string> = {
   done: "bg-success/15 text-success", ahead: "bg-success/15 text-success", on_track: "bg-info/15 text-info",
@@ -30,7 +33,9 @@ const STATUS_LABEL: Record<string, string> = { done: "Done", ahead: "Ahead", on_
 /**
  * AI Accounts — for the tech admin and team leaders: every Flow account the team has (who opened it,
  * who uses it, what is left this month), each member against the account target, the credits every ad
- * used, the paid ChatGPT / Grok logins and who has them, and the numbers behind all of it.
+ * used, the paid ChatGPT / Grok logins and who has them, and the numbers behind all of it. The tech admin
+ * alone also has "API keys" (2026-10-10): every Gemini key the team made in its Flow accounts, by person,
+ * to copy, download as a .env for Vercel, check, and mark in use.
  */
 export default function AiAccounts() {
   const user = useAuthStore((s) => s.user);
@@ -45,7 +50,19 @@ export default function AiAccounts() {
   const [month, setMonth] = useState(today.slice(0, 7));
   const { entries } = useFlowUsage(user, month);
   const [memberFilter, setMemberFilter] = useState("");
-  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "edit" | "assign"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "settings" } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "edit" | "assign"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "settings" } | { kind: "apiKey"; accountId: string } | null>(null);
+  const keyAdmin = canSeeAllApiKeys(user);
+  // The keys themselves are read only while their tab is open (one read per key).
+  const { keys, loading: keysLoading } = useGeminiApiKeys(teamAdminIdOf(user), keyAdmin && tab === "keys");
+  /** A just-added account whose key step opens once the list has it. */
+  const [keyNext, setKeyNext] = useState<string | null>(null);
+  useEffect(() => {
+    const added = keyNext ? accounts.find((a) => a.id === keyNext) : null;
+    if (!added) return;
+    // Their own backup goes straight on to its key; one added for a member is the member's to key.
+    if (added.ownerId === user?.uid) setDialog({ kind: "apiKey", accountId: added.id });
+    setKeyNext(null);
+  }, [keyNext, accounts, user?.uid]);
 
   const persons: Person[] = useMemo(() => people.map((p) => ({ uid: p.uid, name: p.name, role: p.role })), [people]);
   const members = useMemo(() => people.filter((p) => p.role === "tech_member"), [people]);
@@ -53,6 +70,8 @@ export default function AiAccounts() {
   const totals = useMemo(() => teamTotals(accounts, today), [accounts, today]);
   const backups = accounts.filter((a) => !members.some((m) => m.uid === a.ownerId)).length;
   const shownAccounts = memberFilter ? accounts.filter((a) => a.ownerId === memberFilter || a.holderId === memberFilter) : accounts;
+  const keyAccount = dialog?.kind === "apiKey" ? accounts.find((a) => a.id === dialog.accountId) || null : null;
+  const keyCount = accounts.filter((a) => a.apiKey).length;
 
   if (!user) return null;
 
@@ -61,12 +80,13 @@ export default function AiAccounts() {
       if (action === "use") { await setActiveFlowAccount(user.uid, account.id); toast({ title: "Using this account now", description: account.email }); }
       if (action === "edit") setDialog({ kind: "edit", account });
       if (action === "assign") setDialog({ kind: "assign", account });
+      if (action === "apiKey") setDialog({ kind: "apiKey", accountId: account.id });
       if (action === "toggle") {
         await updateFlowAccount(account, { status: account.status === "disabled" ? "active" : "disabled" }, user, settings);
         toast({ title: account.status === "disabled" ? "Account enabled" : "Account disabled" });
       }
       if (action === "delete") {
-        const { confirmed } = await confirm({ title: "Delete this Flow account?", description: `${account.email} and its password are removed. Its credit entries stay as history.`, confirmText: "Delete", variant: "destructive" });
+        const { confirmed } = await confirm({ title: "Delete this Flow account?", description: `${account.email}, its password and its API key are removed. Its credit entries stay as history.`, confirmText: "Delete", variant: "destructive" });
         if (confirmed) { await deleteFlowAccount(account); toast({ title: "Account deleted" }); }
       }
     } catch (err) {
@@ -80,12 +100,14 @@ export default function AiAccounts() {
     try { await deleteFlowUsage(entry); toast({ title: "Entry deleted" }); } catch { toast({ title: "Could not delete it", variant: "destructive" }); }
   };
 
-  // Short labels on a phone, so all four fit without the row scrolling.
+  // Short labels and tighter padding on a phone, so all of them (five for the tech admin) fit without the row scrolling.
   const TABS: { id: Tab; label: string; short: string }[] = [
     { id: "overview", label: "Overview", short: "Overview" },
-    { id: "flow", label: `Flow accounts (${accounts.length})`, short: `Flow (${accounts.length})` },
+    // The tech admin's five tabs drop the counts on a phone (the team's hundreds of accounts would not fit).
+    { id: "flow", label: `Flow accounts (${accounts.length})`, short: keyAdmin ? "Flow" : `Flow (${accounts.length})` },
     { id: "usage", label: "Credit usage", short: "Usage" },
-    { id: "paid", label: `Paid accounts (${paid.length})`, short: `Paid (${paid.length})` },
+    { id: "paid", label: `Paid accounts (${paid.length})`, short: keyAdmin ? "Paid" : `Paid (${paid.length})` },
+    ...(keyAdmin ? [{ id: "keys" as Tab, label: `API keys (${keyCount})`, short: "Keys" }] : []),
   ];
 
   return (
@@ -105,7 +127,7 @@ export default function AiAccounts() {
       <div className="flex gap-1 overflow-x-auto border-b border-border" role="tablist">
         {TABS.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} data-test={`tab-${t.id}`}
-            className={cn("shrink-0 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            className={cn("shrink-0 px-2 sm:px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
               tab === t.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
             <span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span>
           </button>
@@ -151,6 +173,7 @@ export default function AiAccounts() {
                       <th className="text-left font-medium px-2 py-2">Pace</th>
                       <th className="text-right font-medium px-2 py-2">Holding</th>
                       <th className="text-right font-medium px-2 py-2">Used</th>
+                      <th className="text-right font-medium px-2 py-2" title="Accounts they opened that carry a working Gemini API key">API keys</th>
                       <th className="text-right font-medium px-4 py-2">Left</th>
                     </tr>
                   </thead>
@@ -165,6 +188,9 @@ export default function AiAccounts() {
                         </td>
                         <td className="px-2 py-2 text-right tabular-nums">{s.holding}</td>
                         <td className="px-2 py-2 text-right tabular-nums">{s.used}</td>
+                        <td className="px-2 py-2 text-right tabular-nums" data-test="member-keys">
+                          <b className={s.added > 0 && s.apiKeys >= s.added ? "text-success" : "text-foreground"}>{s.apiKeys}</b><span className="text-muted-foreground">/{s.added}</span>
+                        </td>
                         <td className="px-4 py-2 text-right tabular-nums font-semibold text-foreground">{s.remaining}</td>
                       </tr>
                     ))}
@@ -182,7 +208,7 @@ export default function AiAccounts() {
             <option value="">Everyone's accounts</option>
             {persons.map((p) => <option key={p.uid} value={p.uid}>{p.name}</option>)}
           </select>
-          <FlowAccountsList accounts={shownAccounts} viewerId={user.uid} activeId={user.activeFlowAccountId} manager onAction={onAction}
+          <FlowAccountsList accounts={shownAccounts} viewerId={user.uid} activeId={user.activeFlowAccountId} manager keyAdmin={keyAdmin} onAction={onAction}
             emptyText="No Flow accounts yet. Members add theirs from My AI Accounts; add backups with “Add Flow account”." />
         </div>
       ) : tab === "usage" ? (
@@ -193,12 +219,16 @@ export default function AiAccounts() {
           </div>
           <UsageList entries={entries} viewerId={user.uid} manager showUser onEdit={(entry) => setDialog({ kind: "usage", entry })} onDelete={removeEntry} />
         </div>
+      ) : tab === "keys" && keyAdmin ? (
+        <ApiKeysPanel keys={keys} loading={keysLoading} accounts={accounts} people={persons} actor={user} />
       ) : (
         <PaidAccountsPanel accounts={paid} manager actor={user} people={persons} />
       )}
 
       <FlowAccountDialog open={dialog?.kind === "add" || dialog?.kind === "edit"} onClose={() => setDialog(null)} actor={user} settings={settings}
-        account={dialog?.kind === "edit" ? dialog.account : null} owners={persons} />
+        account={dialog?.kind === "edit" ? dialog.account : null} owners={persons} onAdded={setKeyNext} />
+      <ApiKeyDialog open={!!keyAccount} onClose={() => setDialog(null)} account={keyAccount} accounts={accounts} actor={user}
+        onSaved={() => setDialog(null)} />
       <AssignDialog
         open={dialog?.kind === "assign"}
         onClose={() => setDialog(null)}

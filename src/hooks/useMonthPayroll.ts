@@ -9,7 +9,7 @@ import { isLinePaid, watchPayrollLines, watchPayrollRun } from "@/services/payro
 import { watchPeriodReceipts, type SalaryReceipt } from "@/services/salaryReceipts";
 import { useToday } from "@/hooks/useToday";
 import {
-  computeSalary, currentPayMonth, netPayable, nextPayDay, payPeriodForMonth, payPeriodLabel, periodDates,
+  compOffToApply, computeSalary, currentPayMonth, netPayable, nextPayDay, payPeriodForMonth, payPeriodLabel, periodDates,
   type PayDayInfo, type PayPeriod,
 } from "@/utils/payrollEngine";
 import {
@@ -64,6 +64,8 @@ export interface PayrollRow {
   liveNetSalary: number;
   /** Paid, and today's attendance prices the period differently from the payment. */
   changedSincePaid: boolean;
+  /** Absences the period's unused comp-off credits (holidays worked) can turn into paid Comp Off days. */
+  compOffToApply: string[];
   /** What the accounts admin has recorded for this period from Salary Management. */
   receipts: SalaryReceipt[];
 }
@@ -153,19 +155,20 @@ export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrol
         const line = lines.get(member.uid) ?? null;
         const paid = isLinePaid(line);
 
+        const days = periodDates(period).map(date => ({
+          date,
+          status: resolveStatus({
+            override: overrides.get(attendanceKey(member.uid, date)),
+            checkedIn: checkedIn.has(attendanceKey(member.uid, date)),
+            dateStr: date,
+            hasFestivalHoliday: holidays.has(date),
+            todayStr,
+          }),
+        }));
         const liveComputation = computeSalary({
           month: targetMonth,
           monthlySalary: member.salary || 0,
-          days: periodDates(period).map(date => ({
-            date,
-            status: resolveStatus({
-              override: overrides.get(attendanceKey(member.uid, date)),
-              checkedIn: checkedIn.has(attendanceKey(member.uid, date)),
-              dateStr: date,
-              hasFestivalHoliday: holidays.has(date),
-              todayStr,
-            }),
-          })),
+          days,
           todayStr,
           config: activeConfig,
           period,
@@ -186,6 +189,7 @@ export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrol
           netSalary,
           liveNetSalary,
           changedSincePaid: paid && Math.round(liveNetSalary) !== Math.round(netSalary),
+          compOffToApply: compOffToApply(days, activeConfig),
           receipts: receipts.get(member.uid) ?? [],
         };
       });

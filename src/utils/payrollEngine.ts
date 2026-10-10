@@ -224,6 +224,10 @@ export function dayCreditFactor(status: AttendanceStatus, config: PayrollConfig)
     case "holiday": return config.holidaysPaid ? 1 : 0;
     // "leave" is resolved into paid/unpaid by the quota pass before it reaches here.
     case "leave": return 1;
+    // Holiday work is paid as the holiday it is; its reward is the comp-off credit, not this day.
+    case "holiday_work": return config.holidaysPaid ? 1 : 0;
+    // A comp-off day is paid in full — when a credit covers it (see tallyAttendance).
+    case "comp_off": return 1;
     default: return 0;
   }
 }
@@ -245,6 +249,13 @@ export function dayCreditFactor(status: AttendanceStatus, config: PayrollConfig)
  * changes pay and is never counted (owner, 2026-10-09). That includes Leave: the quota pass used to
  * run before the Sunday skip, so a Sunday marked Leave took one of the two paid-leave slots and
  * pushed a real weekday's leave into a deduction.
+ *
+ * ── Comp-off (owner, 2026-10-10) ───────────────────────────────────────────────────────────────
+ * A holiday the admin marks as worked (`holiday_work`, W — a Sunday or an announced holiday) earns ONE
+ * credit for the period, whatever part of the day was worked; it adds no pay itself, so the Sunday rule
+ * holds. A `comp_off` day (C) is paid in full out of those credits — never one of the paid leaves — in
+ * date order; a C beyond the credits is unpaid. Credits belong to the period they were earned in
+ * ("same cycle only"): this tally only ever sees one period, so nothing carries over.
  */
 export interface AttendanceTally {
   full: number;
@@ -263,16 +274,29 @@ export interface AttendanceTally {
   leavesLeft: number;
   /** Which leave days were paid — the earliest `paidLeaveQuota` of them, in date order. */
   paidLeaveDates: Set<string>;
+  /** Holidays worked (W), Sundays included — one comp-off credit each. */
+  holidayWork: number;
+  holidayWorkDates: string[];
+  /** Comp Off days (C) a credit covers — paid like a full day. */
+  compOff: number;
+  /** Comp Off days beyond the credits — unpaid. */
+  compOffUnpaid: number;
+  /** Credits not used yet in this period. */
+  compOffLeft: number;
 }
 
 export function tallyAttendance(days: ResolvedDay[], config?: Partial<PayrollConfig>): AttendanceTally {
   const cfg: PayrollConfig = { ...DEFAULT_PAYROLL_CONFIG, ...config };
 
-  // One status per date (the last one given wins), with the weekly off left out.
+  // One status per date (the last one given wins). Holiday work is read off EVERY day first — it is
+  // usually a Sunday — and then the weekly off is left out of the counting.
+  const all = new Map<string, AttendanceStatus | null>();
+  for (const d of days) all.set(d.date, d.status ?? null);
+  const holidayWorkDates = [...all].filter(([, s]) => s === "holiday_work").map(([date]) => date).sort();
   const byDate = new Map<string, AttendanceStatus | null>();
-  for (const d of days) {
-    if (cfg.excludeSundays && isSundayDate(d.date)) continue;
-    byDate.set(d.date, d.status ?? null);
+  for (const [date, status] of all) {
+    if (cfg.excludeSundays && isSundayDate(date)) continue;
+    byDate.set(date, status);
   }
 
   /**
@@ -283,9 +307,14 @@ export function tallyAttendance(days: ResolvedDay[], config?: Partial<PayrollCon
   const leaveDates = [...byDate].filter(([, s]) => s === "leave").map(([date]) => date).sort();
   const paidLeaveDates = new Set(leaveDates.slice(0, Math.max(0, cfg.paidLeaveQuota)));
 
+  // Comp-off days are covered by the period's credits in date order, like leave by its allowance.
+  const compOffDates = [...byDate].filter(([, s]) => s === "comp_off").map(([date]) => date).sort();
+  const coveredCompOff = new Set(compOffDates.slice(0, holidayWorkDates.length));
+
   const t: AttendanceTally = {
     full: 0, half: 0, absent: 0, leave: 0, paidLeave: 0, unpaidLeave: 0, holiday: 0, pending: 0,
     presentDays: 0, leavesLeft: 0, paidLeaveDates,
+    holidayWork: holidayWorkDates.length, holidayWorkDates, compOff: 0, compOffUnpaid: 0, compOffLeft: 0,
   };
   for (const [date, status] of byDate) {
     switch (status) {
@@ -293,16 +322,39 @@ export function tallyAttendance(days: ResolvedDay[], config?: Partial<PayrollCon
       case "half": t.half += 1; break;
       case "absent": t.absent += 1; break;
       case "holiday": t.holiday += 1; break;
+      // Worked on an announced weekday holiday: still that holiday for pay (the credit is counted above).
+      case "holiday_work": t.holiday += 1; break;
       case "leave":
         t.leave += 1;
         if (paidLeaveDates.has(date)) t.paidLeave += 1; else t.unpaidLeave += 1;
+        break;
+      case "comp_off":
+        if (coveredCompOff.has(date)) t.compOff += 1; else t.compOffUnpaid += 1;
         break;
       default: t.pending += 1;
     }
   }
   t.presentDays = t.full + t.half * cfg.halfDayFactor;
   t.leavesLeft = Math.max(0, cfg.paidLeaveQuota - t.paidLeave);
+  t.compOffLeft = Math.max(0, t.holidayWork - t.compOff);
   return t;
+}
+
+/**
+ * The absences a period's unused comp-off credits can turn into paid Comp Off days — the earliest
+ * ones first, as many as there are credits. What Payroll's "Apply comp-off" writes (owner,
+ * 2026-10-10: holiday work is settled against absences at pay time). Only Absent days: a leave the
+ * person took stays a leave.
+ */
+export function compOffToApply(days: ResolvedDay[], config?: Partial<PayrollConfig>): string[] {
+  const cfg: PayrollConfig = { ...DEFAULT_PAYROLL_CONFIG, ...config };
+  const left = tallyAttendance(days, cfg).compOffLeft;
+  if (left <= 0) return [];
+  return days
+    .filter(d => d.status === "absent" && !(cfg.excludeSundays && isSundayDate(d.date)))
+    .map(d => d.date)
+    .sort()
+    .slice(0, left);
 }
 
 export interface ComputeSalaryInput {
@@ -354,8 +406,9 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
   const fullDays = tally.full, halfDays = tally.half;
   const paidLeaveDays = tally.paidLeave, unpaidLeaveDays = tally.unpaidLeave;
   const absentDays = tally.absent, holidayDays = tally.holiday, pendingDays = tally.pending;
+  const compOffDays = tally.compOff, compOffUnpaidDays = tally.compOffUnpaid;
   const earnedDays = fullDays + halfDays * config.halfDayFactor + paidLeaveDays
-    + (config.holidaysPaid ? holidayDays : 0);
+    + (config.holidaysPaid ? holidayDays : 0) + compOffDays;
 
   // Working days that have happened, and of those the ones still unresolved (today before the
   // check-in) — the attendance % is measured over the resolved ones.
@@ -391,7 +444,7 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
     : 0;
 
   const lines = buildLines(
-    { fullDays, halfDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays },
+    { fullDays, halfDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, compOffDays, compOffUnpaidDays },
     dailySalary,
     config,
     adjustments,
@@ -425,6 +478,11 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
     attendancePercent,
     paidLeaveQuota: config.paidLeaveQuota,
     paidLeavesRemaining: Math.max(0, config.paidLeaveQuota - paidLeaveDays),
+    holidayWorkDays: tally.holidayWork,
+    holidayWorkDates: tally.holidayWorkDates,
+    compOffDays,
+    compOffUnpaidDays,
+    compOffLeft: tally.compOffLeft,
     lines,
     adjustments,
   };
@@ -435,6 +493,7 @@ function buildLines(
   counts: {
     fullDays: number; halfDays: number; paidLeaveDays: number;
     unpaidLeaveDays: number; absentDays: number; holidayDays: number;
+    compOffDays: number; compOffUnpaidDays: number;
   },
   dailySalary: number,
   config: PayrollConfig,
@@ -461,6 +520,8 @@ function buildLines(
     lines.push(line("holiday", config.holidaysPaid ? "Holidays (paid)" : "Holidays (unpaid)",
       counts.holidayDays, config.holidaysPaid ? 1 : 0));
   }
+  if (counts.compOffDays) lines.push(line("comp_off", "Comp Off (holiday work)", counts.compOffDays, 1));
+  if (counts.compOffUnpaidDays) lines.push(line("comp_off_unpaid", "Comp Off without credit", counts.compOffUnpaidDays, 0));
 
   for (const adj of adjustments) {
     lines.push({
@@ -511,7 +572,7 @@ export function nextPayDay(from: Date, payDayOfMonth = DEFAULT_PAYROLL_CONFIG.pa
 
 export interface DeductionRow {
   /** Stable identity, so a UI can phrase the row without string-matching its label. */
-  key: "absent" | "half" | "unpaid_leave" | "unpaid_holiday";
+  key: "absent" | "half" | "unpaid_leave" | "unpaid_holiday" | "comp_off_unpaid";
   label: string;
   days: number;
   amount: number;
@@ -532,6 +593,8 @@ export function deductionsFor(c: SalaryComputation): { rows: DeductionRow[]; tot
     { key: "absent", label: "Absent", days: c.absentDays, amount: c.absentDays * rate },
     { key: "half", label: "Half days", days: c.halfDays, amount: c.halfDays * rate * (1 - halfFactor) },
     { key: "unpaid_leave", label: "Unpaid leave", days: c.unpaidLeaveDays, amount: c.unpaidLeaveDays * rate },
+    // A Comp Off day no holiday-work credit covers (absent on computations frozen before comp-off existed).
+    { key: "comp_off_unpaid", label: "Comp off without credit", days: c.compOffUnpaidDays ?? 0, amount: (c.compOffUnpaidDays ?? 0) * rate },
   ];
 
   // Holidays only cost the employee when company policy says they're unpaid.

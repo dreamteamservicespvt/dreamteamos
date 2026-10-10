@@ -16,6 +16,8 @@ import { downloadPayslip } from "@/utils/payslipPdf";
 import { useSalesMemberPay, type SalesPayRow } from "@/hooks/useSalesMemberPay";
 import { currentPayMonth, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import { isActiveUser } from "@/utils/roleHelpers";
+import { applyCompOff } from "@/services/techAttendance";
+import CompOffPanel from "@/components/payroll/CompOffPanel";
 import type { AppUser } from "@/types";
 
 /**
@@ -94,6 +96,28 @@ export default function SalesPayroll() {
     } catch (error) {
       console.error("Failed to mark sales salary paid:", error);
       toast({ title: "Could not record payment", variant: "destructive" });
+    } finally {
+      setBusyUid(null);
+    }
+  };
+
+  /** Holidays worked → Comp Off on the absences the unused credits cover (owner, 2026-10-10). */
+  const handleApplyCompOff = async (row: SalesPayRow) => {
+    if (!user || row.compOffToApply.length === 0) return;
+    const days = row.compOffToApply.map(d => format(parse(d, "yyyy-MM-dd", new Date()), "dd MMM")).join(", ");
+    const { confirmed } = await confirm({
+      title: `Apply comp off for ${row.member.name}?`,
+      description: `${days} ${row.compOffToApply.length === 1 ? "becomes" : "become"} Comp Off — paid, for the holiday${row.compOffToApply.length === 1 ? "" : "s"} they worked. Their paid leaves are not touched. It can be changed back on the attendance grid.`,
+      confirmText: "Apply comp off",
+    });
+    if (!confirmed) return;
+    setBusyUid(row.member.uid);
+    try {
+      await applyCompOff(row.member, row.compOffToApply, { uid: user.uid, name: user.name });
+      toast({ title: "Comp off applied", description: `${row.member.name} · ${days}` });
+    } catch (error) {
+      console.error("Failed to apply comp off:", error);
+      toast({ title: "Could not apply comp off", variant: "destructive" });
     } finally {
       setBusyUid(null);
     }
@@ -363,6 +387,12 @@ export default function SalesPayroll() {
                           <FileText className="h-3 w-3" />
                         </span>
                       )}
+                      {row.compOffToApply.length > 0 && (
+                        <span data-test="comp-off-chip" title={`Comp off: ${row.compOffToApply.length} absence(s) can be paid for holidays worked — open the row to apply`}
+                          className="inline-flex items-center rounded-full bg-teal-500/15 px-1.5 py-1 text-[10px] font-semibold text-teal-600">
+                          C{row.compOffToApply.length}
+                        </span>
+                      )}
                       <ChevronDown className={`ml-auto hidden h-4 w-4 text-muted-foreground transition-transform lg:block ${isOpen ? "rotate-180" : ""}`} />
                     </div>
                   </button>
@@ -394,6 +424,9 @@ export default function SalesPayroll() {
                           </p>
                         )}
                       </div>
+
+                      <CompOffPanel computation={row.liveComputation} toApply={row.compOffToApply}
+                        canApply busy={busy} onApply={() => handleApplyCompOff(row)} />
 
                       {/* What Accounts recorded for this period — so a salary is never paid twice. */}
                       {row.receipts.length > 0 && (

@@ -148,6 +148,8 @@ legacy users without the field active.
 | Cinematic Ads | | ✅ | | | | | |
 | Manage AI Accounts (any Flow/paid account: add, assign, disable, delete; settings) | ✅ (no route) | ✅ | ✅ | | | | |
 | Add own Flow accounts, "using now", record / correct own credits | | ✅ | ✅ | ✅ | | | |
+| Add / replace the Gemini API key on a Flow account they are shown (2026-10-10) | | ✅ (any) | own | own | | | |
+| AI Accounts → API keys tab: see every key, copy, .env, check, mark in use, remove (2026-10-10, owner: tech admin only) | rule only (no route) | ✅ | | | | | |
 | Chat monitor | | ✅ | | | ✅ | | |
 | Invoice Builder: make, generate, edit, PDF (2026-10-08; also enforced in the rules) | ✅ | ✅ | only while the switch is on | | ✅ | ✅ | ✅ |
 | See every invoice (others see their own) · Invoices → Settings (logo, business, bank, QR, tax, terms) | ✅ | ✅ | | | ✅ | | ✅ |

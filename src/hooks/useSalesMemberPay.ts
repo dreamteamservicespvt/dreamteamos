@@ -12,7 +12,7 @@ import { commissionRate } from "@/services/settlements";
 import { watchPeriodReceipts, type SalaryReceipt } from "@/services/salaryReceipts";
 import { useToday } from "@/hooks/useToday";
 import {
-  computeSalary, currentPayMonth, deductionsFor, netPayable, nextPayDay, payPeriodForMonth, payPeriodLabel,
+  compOffToApply, computeSalary, currentPayMonth, deductionsFor, netPayable, nextPayDay, payPeriodForMonth, payPeriodLabel,
   periodDates, type PayDayInfo, type PayPeriod,
 } from "@/utils/payrollEngine";
 import { salesIncentive, salesInPeriod } from "@/utils/salesPay";
@@ -60,6 +60,8 @@ export interface SalesPayRow {
   liveTotalEarnings: number;
   frozen: boolean;
   changedSincePaid: boolean;
+  /** Absences the period's unused comp-off credits (holidays worked) can turn into paid Comp Off days. */
+  compOffToApply: string[];
   receipts: SalaryReceipt[];
   line: PayrollLine | null;
   bank: EmployeeBank | null;
@@ -156,19 +158,20 @@ export function useSalesMemberPay(members: AppUser[], month?: string): SalesMemb
   const rows = useMemo<SalesPayRow[]>(() => {
     return members
       .map(member => {
+        const days = periodDates(period).map(date => ({
+          date,
+          status: resolveStatus({
+            override: overrides.get(attendanceKey(member.uid, date)),
+            checkedIn: checkedIn.has(attendanceKey(member.uid, date)),
+            dateStr: date,
+            hasFestivalHoliday: holidays.has(date),
+            todayStr,
+          }),
+        }));
         const liveComputation = computeSalary({
           month: targetMonth,
           monthlySalary: member.salary || 0,
-          days: periodDates(period).map(date => ({
-            date,
-            status: resolveStatus({
-              override: overrides.get(attendanceKey(member.uid, date)),
-              checkedIn: checkedIn.has(attendanceKey(member.uid, date)),
-              dateStr: date,
-              hasFestivalHoliday: holidays.has(date),
-              todayStr,
-            }),
-          })),
+          days,
           todayStr,
           config,
           period,
@@ -208,6 +211,7 @@ export function useSalesMemberPay(members: AppUser[], month?: string): SalesMemb
           liveTotalEarnings,
           frozen: paid,
           changedSincePaid: paid && Math.round(liveTotalEarnings) !== Math.round(totalEarnings),
+          compOffToApply: compOffToApply(days, config),
           receipts: receipts.get(member.uid) ?? [],
           line,
           bank: banks.get(member.uid) ?? null,

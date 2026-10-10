@@ -225,6 +225,22 @@ service cloud.firestore {
       allow read:  if isStaff() && (isTechManager() || request.auth.uid in get(/databases/$(database)/documents/paid_accounts/$(id)).data.assignedTo);
       allow write: if isTechManager();
     }
+    // 2026-10-10 — Gemini API keys (types/aiAccounts `GeminiApiKey`): the key made in each Flow account, one
+    // document per account (same id), apart from the account like its password. Who (owner, 2026-10-10): the
+    // tech admin reads every key — the API keys tab lists `where('teamAdminId','==',X)` — and otherwise only the
+    // people the account is shown to (`visibleTo`) read, add or replace its key. A team leader does NOT read
+    // other people's keys; the account's `apiKey` summary (status, never the key) is all their list shows.
+    // Deleting a Flow account (any tech manager) deletes its key in the same batch, so delete is theirs too.
+    // A new account's key is created in the SAME transaction as the account ("Add a Flow account" asks for it),
+    // so create/update read the account with getAfter — get() would see no account yet and refuse the member.
+    function isKeyAdmin() { return isStaff() && role() in ['main_admin', 'tech_admin']; }
+    match /gemini_api_keys/{id} {
+      function keyAccount() { return get(/databases/$(database)/documents/flow_accounts/$(id)); }
+      function keyAccountAfter() { return getAfter(/databases/$(database)/documents/flow_accounts/$(id)); }
+      allow read:           if isKeyAdmin() || (isStaff() && request.auth.uid in keyAccount().data.visibleTo);
+      allow create, update: if isKeyAdmin() || (isStaff() && request.auth.uid in keyAccountAfter().data.visibleTo);
+      allow delete:         if isTechManager() || (isStaff() && request.auth.uid in keyAccount().data.visibleTo);
+    }
 
     // ── Invoices (2026-10-08) ──────────────────────────────────────────────────────────────────
     // Who (owner, 2026-10-08): salespeople and the Main / Tech / Sales / Accounts Admin always; a
@@ -302,7 +318,7 @@ service cloud.firestore {
     // list is the change that makes their rules real, and should be tested against each HR screen.)
     match /{collection}/{document=**} {
       allow read, write: if isStaff() && !(collection in [
-        'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets',
+        'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets', 'gemini_api_keys',
         'invoices', 'invoice_counters', 'invoice_numbers', 'invoice_settings'
       ]);
     }
@@ -327,7 +343,7 @@ service cloud.firestore {
    ```sh
    KEY=<web-api-key>
    for c in employee_profiles hr_documents company_settings hr_counters member_credentials \
-            flow_account_secrets paid_account_secrets; do
+            flow_account_secrets paid_account_secrets gemini_api_keys; do
      printf '%s -> ' "$c"
      curl -s -o /dev/null -w '%{http_code}\n' \
        "https://firestore.googleapis.com/v1/projects/dts-manager/databases/(default)/documents/$c?key=$KEY&pageSize=1"
@@ -338,7 +354,9 @@ service cloud.firestore {
    rules missed.
 6. AI Accounts: sign in as a tech member and open **My AI Accounts** — their own Flow accounts list
    and **Show** reveals a password. Then sign in as a different member: that account must not be
-   listed at all. The tech admin and a team leader see every account on **AI Accounts**.
+   listed at all. The tech admin and a team leader see every account on **AI Accounts**. On an account
+   card, **Add API key** saves a key; the tech admin's **API keys** tab lists it, and a team leader's
+   **AI Accounts** has no API keys tab and shows other people's keys only as "Working" / "Not working".
 7. Invoices: sign in as a salesperson, make an invoice and press **Generate invoice** — it must come
    back numbered `DTS/26-27/000N` (if it says "permission", `invoice_counters` / `invoice_numbers`
    did not publish). A second salesperson must not see it in **Invoices**; the Accounts Admin must.

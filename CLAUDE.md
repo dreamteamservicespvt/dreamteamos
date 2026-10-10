@@ -218,8 +218,15 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 - 2026-10-10, **on `main` and live** (`7c36262`, pushed by the owner): **Attendance → Pay Salary on one source of truth** — one tally, paid =
   the payment record, Sales Payroll on the member's rule, Accounts linked to Payroll (`people.md` §9.13–9.14, `data-model.md`);
-  then, **in the working tree (not committed)**, **inactive people shown only in My Team / Team Management**
-  (`roleHelpers.isActiveUser`, `roles-routes.md`; it removes Payroll's "Left" rows that `7c36262` shipped).
+  then **inactive people shown only in My Team / Team Management** (`cbe33fc`, live; `roleHelpers.isActiveUser`,
+  `roles-routes.md`); then, **in the working tree (not committed)**, **comp-off** — W "Worked on holiday" earns a credit,
+  C "Comp Off" pays an absence, Apply in Payroll (`people.md` §9.13).
+- 2026-10-10, **in the working tree (not committed)**: **Gemini API keys on the Flow accounts** + the tech admin's
+  **API keys** tab (copy / `.env` / in use); AdGen still reads Vercel's `API_KEY_1…30` (`ai-accounts.md`).
+- 2026-10-10, **in the working tree (not committed)**: **AdGen's Gemini calls no longer fail on a retired, busy or
+  used-up model** — the model list made current (2.0 Flash, shut down 2026-06-01, was still asked; 3.8 / 3.6 Flash and
+  Google's never-retired `-latest` aliases added), `callWithFallback` rewritten on shared facts only, a plain sentence
+  when nothing can answer (`utils/geminiModels`; `ai-ads.md` §17.3).
 - 2026-10-08 (later), **on `main` and live** (pushed first to branch `claude/cast-consistency-smm-attendance`, then
   fast-forwarded into `main` at the owner's go-ahead — a branch is not on dreamteamos.vercel.app, which is built
   from `main`): **the ad's cast from the configuration to the last video prompt** (a Male & Female Duo — or any
@@ -232,20 +239,21 @@ errors:** done means every listed item is fully resolved with no build, console 
 - Before it on `main` (`abeab79`, 2026-10-08 17:10, the owner's commits): everything through 2026-10-05 (§31),
   **Sales → Tech on one permanent `saleId`** (`sales.md`, `orders-work.md`), **Real Owner Face** and **దసరా**
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
-- `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈843 KB; lazy pages for
+- `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈848 KB; lazy pages for
   AI Accounts, Invoices).
-- `npx vitest run` ✅ 222 files, 3401 tests, all pass, no unhandled errors (2026-10-10, after the attendance → pay
-  salary fix). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
+- `npx vitest run` ✅ 227 files, 3484 tests, all pass, no unhandled errors (2026-10-10, after the Gemini API keys,
+  with the parallel sessions' work in the tree). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
+- Most recent work (newest first; detail in §31): AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
   (AI Ads + Cinematic Ads) and Social Media → Attendance (2026-10-08, later); the Invoice Builder and Invoices →
   Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
   money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
   AI Accounts and Cinematic Ads work.
 - Open follow-ups the owner must act on: check one real Payroll month against Team Attendance (any paid row now flagged "Now ₹X" was paid a different amount than attendance gives); make one Male & Female Duo ad in Flow from the new prompts; decide the
   two open Cinematic Ads questions (a format changed mid-project resets nothing; a clip's animation prompt has no
-  line-by-line speaker — `ai-ads.md` §17.4); replace the invalid and "reported as leaked" Gemini keys (§26.3);
+  line-by-line speaker — `ai-ads.md` §17.4); replace the 11 dead Gemini keys in Vercel (2026-10-10: `API_KEY_1`, 12,
+  18 invalid; 13, 16, 23–28 leaked — §26.3) with working ones from AI Accounts → API keys → Download .env;
   publish `docs/firestore-rules.md` in the console (it also protects the Flow / ChatGPT / Grok passwords and the
   invoices, their numbers and the team-leader switch); check the invoice defaults and make one real invoice + PDF;
   move secrets out of source; authenticate `/api/send-notification`; generate a few clips in Flow (Frames to Video)
@@ -289,7 +297,7 @@ SMM posting needs client approval; a sale the tech team started can be edited (n
 (`employee_profiles`, `hr_documents`, `agreements`, `company_settings`, `onboarding_invites`,
 `member_credentials`, `public_badges`), pay (`payroll_*`, `salary_*`, `commission_settlements`,
 `leave_requests`, `daily_checkins`, `attendance`, `holidays`, `salesCheckins`), AI accounts
-(`flow_accounts`, `flow_usage`, `paid_accounts`, and their `*_secrets`), invoices (`invoices` with embedded
+(`flow_accounts`, `flow_usage`, `paid_accounts`, and their `*_secrets`, `gemini_api_keys`), invoices (`invoices` with embedded
 lines, `invoice_counters`, `invoice_numbers`, `invoice_settings` — §9.22; one engine, `utils/invoiceMath`).
 
 **Core pipeline.** `SaleForm` → `services/sales.recordSale` (the sale with its permanent `saleId` + order
@@ -322,7 +330,8 @@ photographed face (a FACE LOCK in every frame) and its video is only the owner's
 **AI Accounts.** Flow accounts (1000 credits a month from the creation day, 18 months, 7 / 10 / 12 /
 15 credits per 4 / 6 / 8 / 10-second clip, 30 per member by 29 October), the paid ChatGPT / Grok
 logins, and the credit entry every video job needs before Mark Complete (§9.21). Members see their
-own; the tech admin and team leaders manage all.
+own; the tech admin and team leaders manage all. Each Flow account also carries the Gemini API key made
+in it (2026-10-10); only the tech admin sees every key (API keys tab: copy, `.env`, check, in use).
 
 **Conventions.** The AI platform is styled with its own scoped system (`.adgen`,
 `components/ai-platform/adgen.css`, dark-only) — use `ag-*` classes there, Tailwind/shadcn

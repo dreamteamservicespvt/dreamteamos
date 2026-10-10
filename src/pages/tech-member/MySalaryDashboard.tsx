@@ -32,6 +32,8 @@ const DAY_TONE: Record<AttendanceStatus, string> = {
   absent: "bg-destructive/15 text-destructive border-destructive/30",
   leave: "bg-info/20 text-info border-info/30",
   holiday: "bg-muted text-muted-foreground border-border",
+  holiday_work: "bg-violet-500/15 text-violet-600 border-violet-500/30",
+  comp_off: "bg-teal-500/15 text-teal-600 border-teal-500/30",
 };
 
 export default function MySalaryDashboard() {
@@ -111,6 +113,7 @@ export default function MySalaryDashboard() {
         case "half": return `${d.days} half ${plural}`;
         case "unpaid_leave": return `${d.days} ${plural} unpaid leave`;
         case "unpaid_holiday": return `${d.days} unpaid ${d.days === 1 ? "holiday" : "holidays"}`;
+        case "comp_off_unpaid": return `${d.days} comp-off ${plural} without credit`;
         default: return `${d.days} ${plural} absent`;
       }
     }).join(" · "),
@@ -300,7 +303,11 @@ export default function MySalaryDashboard() {
             <Stat icon={Clock} label="Half Days" value={lc.halfDays} tone={lc.halfDays ? "warning" : undefined} />
             <Stat icon={AlertCircle} label="Absent" value={lc.absentDays} tone={lc.absentDays ? "destructive" : undefined} />
             <Stat icon={Coffee} label="Paid Leave Left" value={`${lc.paidLeavesRemaining}/${lc.paidLeaveQuota}`}
-              tone="info" hint={lc.unpaidLeaveDays ? `${lc.unpaidLeaveDays} unpaid` : undefined} />
+              tone="info" hint={[
+                lc.unpaidLeaveDays ? `${lc.unpaidLeaveDays} unpaid` : "",
+                // Comp-off is its own allowance — earned by working a holiday, never one of the paid leaves.
+                lc.holidayWorkDays ? `Comp-off: ${lc.compOffDays ?? 0} used · ${lc.compOffLeft ?? 0} left` : "",
+              ].filter(Boolean).join(" · ") || undefined} />
             <Stat icon={PiggyBank} label="Attendance" value={`${Math.round(lc.attendancePercent)}%`}
               tone={lc.attendancePercent >= 90 ? "success" : lc.attendancePercent >= 75 ? "warning" : "destructive"} />
           </section>

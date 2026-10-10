@@ -11,8 +11,8 @@ import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import type { AppUser } from "@/types";
-import type { FlowAccount, FlowSettings, FlowUsageEntry, PaidAccount } from "@/types/aiAccounts";
-import { FLOW_ACCOUNTS, FLOW_SETTINGS_DOC, FLOW_USAGE, PAID_ACCOUNTS } from "@/services/aiAccounts";
+import type { FlowAccount, FlowSettings, FlowUsageEntry, GeminiApiKey, PaidAccount } from "@/types/aiAccounts";
+import { FLOW_ACCOUNTS, FLOW_SETTINGS_DOC, FLOW_USAGE, GEMINI_KEYS, PAID_ACCOUNTS } from "@/services/aiAccounts";
 import { canManageAiAccounts, teamAdminIdOf, withFlowDefaults } from "@/utils/flowCredits";
 
 type Viewer = Pick<AppUser, "uid" | "role" | "createdBy"> | null | undefined;
@@ -98,6 +98,24 @@ export function usePaidAccounts(viewer: Viewer): { accounts: PaidAccount[]; load
     }, (err) => { console.warn("Paid accounts could not be read.", err); setLoading(false); });
   }, [uid, manager, team]);
   return { accounts, loading };
+}
+
+/**
+ * The team's Gemini API keys, live — for the tech admin's API keys tab only, and only while it is open
+ * (`enabled`): every key is a read, and nothing else on the page needs the keys themselves.
+ */
+export function useGeminiApiKeys(teamAdminId: string, enabled: boolean): { keys: GeminiApiKey[]; loading: boolean } {
+  const [keys, setKeys] = useState<GeminiApiKey[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!teamAdminId || !enabled) return;
+    setLoading(true);
+    return onSnapshot(query(collection(db, GEMINI_KEYS), where("teamAdminId", "==", teamAdminId)), (snap) => {
+      setKeys(snap.docs.map((d) => ({ ...(d.data() as GeminiApiKey), id: d.id })));
+      setLoading(false);
+    }, (err) => { console.warn("Gemini API keys could not be read.", err); setLoading(false); });
+  }, [teamAdminId, enabled]);
+  return { keys, loading };
 }
 
 /**

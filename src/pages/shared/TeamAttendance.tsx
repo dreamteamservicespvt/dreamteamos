@@ -15,7 +15,9 @@ import {
   clearAttendanceOverride,
   daysBetween,
   deleteHoliday,
+  isSunday,
   resolveStatus,
+  summarize,
   setAttendanceOverride,
   todayDate,
   watchCheckedInDaysInRange,
@@ -155,6 +157,14 @@ export default function TeamAttendance() {
       todayStr,
     });
 
+  /** For the open editor: is the day a Sunday / holiday (W can be marked), and how many comp-off credits are left. */
+  const editingCompOff = useMemo(() => {
+    if (!editing) return { holiday: false, left: 0 };
+    const holiday = isSunday(editing.date) || holidays.has(editing.date);
+    const cycle = summarize(days.map((d) => ({ date: d, status: statusFor(editing.member, d) })), payrollConfig);
+    return { holiday, left: cycle.compOffLeft };
+  }, [editing, holidays, days, overrides, checkedIn, todayStr, payrollConfig]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const applyStatus = async (member: AppUser, date: string, status: AttendanceStatus | "auto") => {
     if (!user) return;
     try {
@@ -284,7 +294,7 @@ export default function TeamAttendance() {
 
       {/* Legend + announced holidays */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {statusOptions.map((s) => (
+        {[...statusOptions, "holiday_work" as const, "comp_off" as const].map((s) => (
           <span key={s} className={cn("text-[11px] px-2 py-0.5 rounded-full border", ATTENDANCE_META[s].tone)}>
             {ATTENDANCE_META[s].short} · {ATTENDANCE_META[s].label}
           </span>
@@ -357,6 +367,23 @@ export default function TeamAttendance() {
           <div className="w-full max-w-xs rounded-xl border border-border bg-card p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-1 font-semibold text-foreground">{editing.member.name}</div>
             <div className="mb-3 text-xs text-muted-foreground">{format(new Date(editing.date), "EEEE, dd MMM yyyy")}</div>
+            {/* Comp-off (owner, 2026-10-10): a Sunday / holiday can be marked as worked — one credit this cycle;
+                a working day can be made Comp Off while a credit is left. */}
+            {editingCompOff.holiday ? (
+              <button onClick={() => applyStatus(editing.member, editing.date, "holiday_work")} data-test="mark-holiday-work"
+                className={cn("mb-2 w-full px-3 py-2 rounded-lg text-xs font-medium border text-left", ATTENDANCE_META.holiday_work.tone,
+                  editing.current === "holiday_work" && "ring-2 ring-primary")}>
+                {ATTENDANCE_META.holiday_work.label} <span className="font-normal opacity-80">— earns 1 comp off this cycle</span>
+              </button>
+            ) : (
+              <button onClick={() => applyStatus(editing.member, editing.date, "comp_off")} data-test="mark-comp-off"
+                disabled={editingCompOff.left <= 0 && editing.current !== "comp_off"}
+                title={editingCompOff.left <= 0 && editing.current !== "comp_off" ? "No comp off left — mark a holiday they worked first" : undefined}
+                className={cn("mb-2 w-full px-3 py-2 rounded-lg text-xs font-medium border text-left disabled:opacity-40", ATTENDANCE_META.comp_off.tone,
+                  editing.current === "comp_off" && "ring-2 ring-primary")}>
+                {ATTENDANCE_META.comp_off.label} <span className="font-normal opacity-80">— paid · {editingCompOff.left} left this cycle</span>
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               {statusOptions.map((s) => (
                 <button key={s} onClick={() => applyStatus(editing.member, editing.date, s)}

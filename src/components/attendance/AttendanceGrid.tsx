@@ -60,6 +60,14 @@ function Totals({ days, statuses, size, config }: {
         <span className="text-sky-600 font-semibold">{sum.leave}L</span>
       </div>
       <div className="text-[9px] text-muted-foreground mt-0.5">Leaves left: {sum.leavesLeft}</div>
+      {/* Comp-off (2026-10-10): holidays worked (W), comp-off days taken (C), credits left — once there are any. */}
+      {(sum.holidayWork > 0 || sum.compOff + sum.compOffUnpaid > 0) && (
+        <div className="text-[9px] mt-0.5 whitespace-nowrap" data-test="grid-comp-off">
+          <span className="text-violet-600 font-semibold">{sum.holidayWork}W</span>{" "}
+          <span className="text-teal-600 font-semibold">{sum.compOff + sum.compOffUnpaid}C</span>
+          <span className="text-muted-foreground"> · {sum.compOffLeft} left</span>
+        </div>
+      )}
     </>
   );
 }

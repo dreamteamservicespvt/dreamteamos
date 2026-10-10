@@ -1,4 +1,8 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type ThinkingConfig } from "@google/genai";
+import {
+  GEMINI_MODELS, GeminiUnavailableError, describeRest, geminiUnavailable, nextQuotaReset, readGeminiError, restAfter, thinkingFor,
+  type Effort, type GeminiErrorInfo, type GeminiThinking,
+} from "@/utils/geminiModels";
 import { AdFormData, FileStore, GeneratedOutputs, PosterConcept, type OverlayTextItem, type SceneContext, type VoiceBrief } from "@/types/aiPlatform";
 import { 
   MAIN_FRAME_SYSTEM_PROMPT,
@@ -187,52 +191,39 @@ let currentKeyIndex = (() => {
   }
 })();
 let savedGoodKey = currentKeyIndex;
-const rememberGoodKey = () => {
-  if (savedGoodKey === currentKeyIndex) return;
-  savedGoodKey = currentKeyIndex;
-  try { globalThis.localStorage?.setItem(LAST_GOOD_KEY, String(currentKeyIndex)); } catch { /* private mode */ }
+const rememberGoodKey = (keyIndex: number) => {
+  if (savedGoodKey === keyIndex) return;
+  savedGoodKey = keyIndex;
+  try { globalThis.localStorage?.setItem(LAST_GOOD_KEY, String(keyIndex)); } catch { /* private mode */ }
 };
 
-// Get the current API key
-const getCurrentApiKey = (): string => {
-  if (API_KEYS.length === 0) {
-    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
-  }
-  return API_KEYS[currentKeyIndex];
+// ── What the call layer knows ───────────────────────────────────────────────────────────────────────
+// Shared by every call, and only FACTS learnt from Google's answers: which models are retired, which keys are
+// dead, which key rests from which model and until when, which model is busy for a moment. Never a "current
+// model" that one call moves under the others — that was the 2026-10-10 bug (see callWithFallback).
+
+/** The models, best first — `utils/geminiModels.GEMINI_MODELS` (each answered live on 2026-10-10). */
+const MODEL_LIST = GEMINI_MODELS;
+
+/**
+ * Models Google has shut down (a 404 "This model models/x is no longer available"), and when each was found —
+ * kept in this browser for a week, so no call, on this page load or the next, asks one again. Until 2026-10-10
+ * this lived only in memory, and the list still held gemini-2.0-flash and gemini-2.0-flash-lite (shut down on
+ * 1 June 2026): every page load asked both again. A saved record that covers EVERY model is not trusted — that
+ * can only be a misreading, and it would stop all generation in this browser for a week.
+ */
+const RETIRED_MODELS_STORAGE = 'dts.gemini.retiredModels';
+const RETIRED_FOR_MS = 7 * 24 * 3600 * 1000;
+const retiredModels = new Map<string, number>();
+try {
+  const saved = JSON.parse(globalThis.localStorage?.getItem(RETIRED_MODELS_STORAGE) || 'null');
+  const fresh = Object.entries(saved ?? {}).filter(([, at]) => typeof at === 'number' && Date.now() - at < RETIRED_FOR_MS) as [string, number][];
+  if (!MODEL_LIST.every(m => fresh.some(([model]) => model === m))) for (const [model, at] of fresh) retiredModels.set(model, at);
+} catch { /* no storage, or nothing saved */ }
+const retireModel = (model: string) => {
+  retiredModels.set(model, Date.now());
+  try { globalThis.localStorage?.setItem(RETIRED_MODELS_STORAGE, JSON.stringify(Object.fromEntries(retiredModels))); } catch { /* private mode */ }
 };
-
-// Rotate to next API key (called when current key fails)
-const rotateToNextKey = (): boolean => {
-  const nextIndex = (currentKeyIndex + 1) % API_KEYS.length;
-  if (nextIndex === 0 && currentKeyIndex !== 0) {
-    // We've cycled through all keys
-    console.warn("All API keys have been tried. Starting over from the first key.");
-  }
-  currentKeyIndex = nextIndex;
-  console.log(`Rotated to API key ${currentKeyIndex + 1} of ${API_KEYS.length}`);
-  return true;
-};
-
-// Create a new AI instance with the current key
-const getAiInstance = (): GoogleGenAI => {
-  return new GoogleGenAI({ apiKey: getCurrentApiKey() });
-};
-
-// Multi-Model Fallback System
-// Models listed in priority order — if one fails, the next is tried automatically.
-// Models that return 404/not-found are permanently removed from the list for this session.
-const MODEL_LIST: string[] = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash-lite',
-  'gemini-flash-latest',
-  'gemini-flash-lite-latest',
-  'gemini-3.1-flash-lite-preview',
-];
-
-// Track permanently dead models (404 / not found) — removed for this session
-const deadModels = new Set<string>();
 
 /**
  * Models unavailable on ONE key, as "keyIndex|model".
@@ -241,55 +232,94 @@ const deadModels = new Set<string>();
  * not the model: Google stopped offering gemini-2.5-flash "to new users", so a key from a newer project
  * gets 404 while every older key still serves it. In live testing key 2 was one of those — its single
  * 404 removed gemini-2.5-flash for all 30 keys, and every generation, script, frame and video prompt
- * then ran on the lite models instead. A "not available to new users" 404 now retires the model for that
- * key only; any other 404 ("is no longer available", "not found") means Google retired the model itself,
- * and it is dropped for every key at once — trying a retired model on each of 30 keys first used up the
- * whole retry budget in live testing.
+ * then ran on the lite models instead. A "not available to new users" 404 now puts the model away for that
+ * key only; a 404 that names the model and says nothing of new users means Google retired the model itself
+ * (`retiredModels`).
  */
 const deadModelKeys = new Set<string>();
 const modelKeyId = (keyIndex: number, model: string) => `${keyIndex}|${model}`;
 
-let currentModelIndex = 0;
+/**
+ * Keys that can never answer — invalid, expired, or "reported as leaked" by Google (live on 2026-10-10: keys 1,
+ * 12 and 18 invalid; 13, 16 and 23–28 leaked). Every page load used to start on key 1 (invalid) and then key 2
+ * (no gemini-2.5-flash for new projects), so the first call of every session failed twice. Remembered, they are
+ * skipped.
+ */
+const deadKeys = new Set<number>();
 
-const getCurrentModel = (): string => {
-  // Skip dead models
-  while (currentModelIndex < MODEL_LIST.length && deadModels.has(MODEL_LIST[currentModelIndex])) {
-    currentModelIndex++;
+/**
+ * How long a key rests from a MODEL after a 429, as "keyIndex|model" → until when (ms).
+ *
+ * Google's free tier counts requests per project PER MODEL (~20 a day on each Flash model, a few a minute). This
+ * used to be one rest per KEY, so a key that had used up gemini-2.5-flash for the day was also kept off every
+ * other model it could still serve. Now only the pair rests: for the seconds Google asks ("retry in 41s"), or —
+ * when the day's requests are gone — until they come back at midnight Pacific time (`restAfter`).
+ */
+const restingUntil = new Map<string, number>();
+/** A key Google refused (401 / 403) for a model, the key otherwise alive, is left alone this long. */
+const REFUSED_REST_MS = 30 * 60 * 1000;
+
+/**
+ * Models whose free requests look used up for the day on every key: after DAY_GONE_AFTER keys in a row said so,
+ * with no answer from the model in between, it is asked only when no other model can answer — once per call at
+ * most — until the daily reset, or until it answers again. Requests are spread evenly over the keys, so their
+ * daily limits run out within minutes of each other; without this, the first call to meet a used-up model asked
+ * every remaining key in turn (up to nineteen failed round trips) before trying the next model, and on a day when
+ * EVERY model was used up a call made over a hundred failed requests before it could say so.
+ */
+const DAY_GONE_AFTER = 3;
+const LAST_RESORT_TRIES = 1;
+const dailyMisses = new Map<string, number>();
+const dayGoneUntil = new Map<string, number>();
+
+/**
+ * Dead keys, keys lacking a model, pairs resting for the DAY and models used up for the day are remembered in
+ * this browser under a fingerprint of the key set — never the keys — so a new session does not spend its first
+ * calls rediscovering them (each costs a failed round trip), and a new set of keys starts clean.
+ */
+const DEAD_KEYS_STORAGE = 'dts.gemini.deadKeys';
+const keySetFingerprint = (() => {
+  let h = 2166136261;
+  for (const k of API_KEYS) for (let i = 0; i < k.length; i++) h = Math.imul(h ^ k.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+})();
+/** Only rests this long are worth remembering across a reload — a day's limit, not a minute's. */
+const REMEMBERED_REST_MS = 10 * 60 * 1000;
+try {
+  const saved = JSON.parse(globalThis.localStorage?.getItem(DEAD_KEYS_STORAGE) || 'null');
+  if (saved?.fingerprint === keySetFingerprint && Date.now() - saved.at < 24 * 3600 * 1000 && Array.isArray(saved.keys)) {
+    for (const k of saved.keys) if (Number.isInteger(k) && k >= 0 && k < API_KEYS.length) deadKeys.add(k);
+    // …and the keys that cannot serve a particular model ("no longer available to new users").
+    if (Array.isArray(saved.modelKeys)) for (const id of saved.modelKeys) if (typeof id === 'string') deadModelKeys.add(id);
   }
-  if (currentModelIndex >= MODEL_LIST.length) {
-    // Reset index and find first alive model
-    currentModelIndex = 0;
-    while (currentModelIndex < MODEL_LIST.length && deadModels.has(MODEL_LIST[currentModelIndex])) {
-      currentModelIndex++;
-    }
+  // A rest carries its own end, so it is kept whatever the record's age — and so does a day's "used up".
+  if (saved?.fingerprint === keySetFingerprint) {
+    for (const [id, until] of Object.entries(saved.resting ?? {})) if (typeof until === 'number' && until > Date.now()) restingUntil.set(id, until);
+    for (const [model, until] of Object.entries(saved.dayGone ?? {})) if (typeof until === 'number' && until > Date.now()) dayGoneUntil.set(model, until);
   }
-  const aliveModels = MODEL_LIST.filter(m => !deadModels.has(m));
-  if (aliveModels.length === 0) {
-    throw new Error("All models are permanently dead (404). No working models available.");
-  }
-  return MODEL_LIST[currentModelIndex];
+} catch { /* no storage, or nothing saved */ }
+const saveKeyHealth = () => {
+  const now = Date.now();
+  const resting = Object.fromEntries([...restingUntil].filter(([, until]) => until - now >= REMEMBERED_REST_MS));
+  const dayGone = Object.fromEntries([...dayGoneUntil].filter(([, until]) => until > now));
+  try {
+    globalThis.localStorage?.setItem(DEAD_KEYS_STORAGE, JSON.stringify({
+      fingerprint: keySetFingerprint, at: now, keys: [...deadKeys], modelKeys: [...deadModelKeys], resting, dayGone,
+    }));
+  } catch { /* private mode */ }
 };
 
-const rotateToNextModel = (): boolean => {
-  const startIndex = currentModelIndex;
-  currentModelIndex = (currentModelIndex + 1) % MODEL_LIST.length;
-  // Skip dead models
-  let looped = false;
-  while (deadModels.has(MODEL_LIST[currentModelIndex])) {
-    currentModelIndex = (currentModelIndex + 1) % MODEL_LIST.length;
-    if (currentModelIndex === startIndex) {
-      looped = true;
-      break;
-    }
-  }
-  const aliveModels = MODEL_LIST.filter(m => !deadModels.has(m));
-  if (aliveModels.length === 0 || looped) {
-    console.error("All models exhausted.");
-    return false;
-  }
-  console.log(`Rotated to model: ${MODEL_LIST[currentModelIndex]} (${aliveModels.length} alive models remaining)`);
-  return true;
-};
+/**
+ * Models answering "high demand" / 5xx, until when (ms). Every call skips one for half a minute, then comes back
+ * to it. The old rotation moved ONE shared "current model" pointer instead, so a single busy answer moved every
+ * later call of the session down the list for good — off gemini-2.5-flash onto a lite model, which reads like a
+ * prompt problem in the scripts and is not one.
+ */
+const coolingUntil = new Map<string, number>();
+const BUSY_COOL_MS = 30 * 1000;
+
+/** Models that refused the thinking setting this layer added (a 400) — asked without one from then on. */
+const plainThinking = new Set<string>();
 
 /**
  * How long a call may THINK before it answers.
@@ -303,239 +333,251 @@ const rotateToNextModel = (): boolean => {
  *   fast      — no thinking: reading files, formatting, splitting, B-roll and overlay prompts;
  *   standard  — a short think: repairs, the core message, the scene plan, frames, the Veo director;
  *   deep      — a real think, still bounded: writing the script, reviewing it, judging it.
- * A call that says nothing keeps the model's own default, as before.
+ * A call that says nothing keeps the model's own default, as before. What each model takes — a token budget on
+ * gemini-2.5-flash, a level on the Gemini 3 Flash models (2026-10-10), nothing on the lite models — is
+ * `utils/geminiModels.thinkingFor`.
  */
-export type Effort = 'fast' | 'standard' | 'deep';
-const THINKING_BUDGET: Record<Effort, number> = { fast: 0, standard: 768, deep: 1536 };
+export type { Effort };
 
-/**
- * Only gemini-2.5-flash takes a budget this way. The lite models already answer without thinking (and
- * are only reached as fallbacks, where speed is the point), and the 2.0 models reject the setting.
- */
-const takesThinkingBudget = (model: string) => /^gemini-2\.5-flash(?!-lite)/.test(model);
-
-/** The client, with this call's thinking budget put into every request it makes. */
-const withThinkingBudget = (ai: GoogleGenAI, model: string, effort?: Effort): GoogleGenAI => {
-  if (!effort || !takesThinkingBudget(model)) return ai;
-  const budget = THINKING_BUDGET[effort];
+/** The client, with this call's thinking setting put into every request it makes (a request's own setting wins). */
+const withThinking = (ai: GoogleGenAI, thinking: GeminiThinking | undefined): GoogleGenAI => {
+  if (!thinking) return ai;
   const models = ai.models;
   const generateContent = models.generateContent.bind(models);
   const bounded = Object.create(models);
   bounded.generateContent = (params: Parameters<typeof models.generateContent>[0]) => generateContent({
     ...params,
-    config: { ...params.config, thinkingConfig: params.config?.thinkingConfig ?? { thinkingBudget: budget } },
+    // The SDK types the level as its own enum; the API takes these same strings.
+    config: { ...params.config, thinkingConfig: params.config?.thinkingConfig ?? (thinking as unknown as ThinkingConfig) },
   });
   return new Proxy(ai, { get: (target, prop, receiver) => (prop === 'models' ? bounded : Reflect.get(target, prop, receiver)) });
 };
 
-/**
- * Keys that can never answer this session — an invalid key, or one whose project cannot serve ANY
- * model we try. Every page load used to start on key 1 (invalid) and then key 2 (no gemini-2.5-flash
- * for new projects), so the first call of every session failed twice, and every rotation that
- * wrapped round tried them again. Remembered here, they are skipped.
- */
-const deadKeys = new Set<number>();
-/**
- * An answer that means the KEY is finished, whatever the model: invalid, expired, or "reported as
- * leaked" (403). Live testing met nine such keys among thirty, and each was being asked again on every
- * pass through the rotation.
- */
-const isInvalidKeyError = (message: string) => /API_KEY_INVALID|API key not valid|API key expired|reported as leaked/i.test(message);
+/** What one call has done so far — what it may not do again. */
+interface CallState {
+  /** Models this request cannot use ("… is not supported for this model"). */
+  skipModels: Set<string>;
+  /** How often this call has asked each model that is used up for the day (`LAST_RESORT_TRIES`). */
+  lastResortAsked: Map<string, number>;
+}
+
+const isDayGone = (model: string, now: number) => (dayGoneUntil.get(model) ?? 0) > now;
+/** A model this call may still consider: live, not excluded, and — if used up for the day — not yet tried as a last resort. */
+const mayAsk = (call: CallState, model: string, now: number) =>
+  !retiredModels.has(model) && !call.skipModels.has(model)
+  && !(isDayGone(model, now) && (call.lastResortAsked.get(model) ?? 0) >= LAST_RESORT_TRIES);
 
 /**
- * Dead keys are remembered in this browser for a day, by a fingerprint of the key set — never the keys
- * — so a new session does not spend its first several calls rediscovering them, and a new set of keys
- * starts clean.
- */
-const DEAD_KEYS_STORAGE = 'dts.gemini.deadKeys';
-const keySetFingerprint = (() => {
-  let h = 2166136261;
-  for (const k of API_KEYS) for (let i = 0; i < k.length; i++) h = Math.imul(h ^ k.charCodeAt(i), 16777619);
-  return (h >>> 0).toString(36);
-})();
-try {
-  const saved = JSON.parse(globalThis.localStorage?.getItem(DEAD_KEYS_STORAGE) || 'null');
-  if (saved?.fingerprint === keySetFingerprint && Date.now() - saved.at < 24 * 3600 * 1000 && Array.isArray(saved.keys)) {
-    for (const k of saved.keys) if (Number.isInteger(k) && k >= 0 && k < API_KEYS.length) deadKeys.add(k);
-    // …and the keys that cannot serve a particular model ("no longer available to new users").
-    if (Array.isArray(saved.modelKeys)) for (const id of saved.modelKeys) if (typeof id === 'string') deadModelKeys.add(id);
-  }
-} catch { /* no storage, or nothing saved */ }
-const saveKeyHealth = () => {
-  try {
-    globalThis.localStorage?.setItem(DEAD_KEYS_STORAGE, JSON.stringify({
-      fingerprint: keySetFingerprint, at: Date.now(), keys: [...deadKeys], modelKeys: [...deadModelKeys],
-    }));
-  } catch { /* private mode */ }
-};
-const markKeyDead = (k: number) => {
-  deadKeys.add(k);
-  saveKeyHealth();
-};
-
-/**
- * Keys resting after a 429, until when (ms). Each key is a free-tier project allowed only a few
- * requests a minute per model ("limit: 5, model: gemini-2.5-flash" in live testing), so a key that has
- * just said "retry in 49s" is left alone for 49 seconds instead of being asked again on the next call.
- */
-const keyRestingUntil = new Map<number, number>();
-const restFor = (message: string): number => {
-  // A key out of its DAILY requests will not recover in the "retry in 45s" Google also sends.
-  if (/PerDay/i.test(message)) return 30 * 60 * 1000;
-  const seconds = Number((message.match(/retry in ([\d.]+)s/i) || [])[1]);
-  return (Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 120) : 60) * 1000;
-};
-
-/** The next key worth trying for this model — alive, not known to lack it, and not resting. */
-const nextUsableKey = (model: string, from: number): number | null => {
-  const now = Date.now();
-  let resting: number | null = null;
-  for (let step = 1; step <= API_KEYS.length; step++) {
-    const k = (from + step) % API_KEYS.length;
-    if (deadKeys.has(k) || deadModelKeys.has(modelKeyId(k, model))) continue;
-    if ((keyRestingUntil.get(k) ?? 0) > now) { resting ??= k; continue; }
-    return k;
-  }
-  // Every live key is resting: the first of them is still better than a dead one.
-  return resting;
-};
-
-/**
- * Each call starts on the NEXT usable key, not the one the last call used.
+ * The route for a call's next request: the FIRST model in order that is live, not busy and not excluded for this
+ * request, with the next key after the round-robin pointer that can ask it. A model used up for the day comes
+ * last (`dayGoneUntil`).
  *
- * With a few requests a minute per key, one key carrying a whole run meant a 429 every few calls —
- * each a failed round trip and a pause before the retry. Spread across the keys, a run's fifteen-odd
- * calls never meet the limit, and the daily quota is used evenly instead of one key's at a time.
+ * Every call — and every retry — starts again from the top of the list, so the best model that can answer now
+ * always does. Each request takes the NEXT key, not the one the last call used: with a few requests a minute per
+ * key, one key carrying a whole run meant a 429 every few calls; spread across the keys, a run's fifteen-odd calls
+ * never meet the limit, and the daily quota is used evenly.
  */
-const startOnNextKey = (model: string) => {
-  const next = nextUsableKey(model, currentKeyIndex);
-  if (next !== null) currentKeyIndex = next;
+const routeNow = (call: CallState, now: number): { model: string; key: number } | null => {
+  for (const lastResort of [false, true]) {
+    for (const model of MODEL_LIST) {
+      if (!mayAsk(call, model, now) || (coolingUntil.get(model) ?? 0) > now) continue;
+      if (isDayGone(model, now) !== lastResort) continue;
+      for (let step = 1; step <= API_KEYS.length; step++) {
+        const key = (currentKeyIndex + step) % API_KEYS.length;
+        if (!deadKeys.has(key) && !deadModelKeys.has(modelKeyId(key, model)) && (restingUntil.get(modelKeyId(key, model)) ?? 0) <= now) {
+          return { model, key };
+        }
+      }
+    }
+  }
+  return null;
 };
 
-// Helper function to make API calls with automatic key + model rotation on failure
+/**
+ * When nothing can be asked this second: the route that frees up FIRST (a rest or a busy spell ending), the
+ * better model winning a tie — or null when no live model has a working key left at all.
+ */
+const firstFreeRoute = (call: CallState, now: number): { model: string; key: number; at: number } | null => {
+  let first: { model: string; key: number; at: number } | null = null;
+  for (const model of MODEL_LIST) {
+    if (!mayAsk(call, model, now)) continue;
+    for (let step = 1; step <= API_KEYS.length; step++) {
+      const key = (currentKeyIndex + step) % API_KEYS.length;
+      if (deadKeys.has(key) || deadModelKeys.has(modelKeyId(key, model))) continue;
+      const at = Math.max(restingUntil.get(modelKeyId(key, model)) ?? 0, coolingUntil.get(model) ?? 0);
+      if (!first || at < first.at) first = { model, key, at };
+    }
+  }
+  return first;
+};
+
+/** What one failed request teaches every call. */
+const learnFrom = (info: GeminiErrorInfo, model: string, key: number) => {
+  const pair = modelKeyId(key, model);
+  const now = Date.now();
+  switch (info.kind) {
+    case 'retired':
+      console.warn(`Gemini: Google has retired ${model}${info.successor ? ` (it suggests ${info.successor})` : ''} — it will not be asked again.`);
+      retireModel(model);
+      return;
+    case 'not_for_key':
+      console.warn(`Gemini: ${model} is not offered to API key ${key + 1}'s project — that key will not ask it again.`);
+      deadModelKeys.add(pair);
+      saveKeyHealth();
+      return;
+    case 'dead_key':
+      console.warn(`Gemini: API key ${key + 1} no longer works (${info.message.slice(0, 90)}) — it will not be asked again.`);
+      deadKeys.add(key);
+      saveKeyHealth();
+      return;
+    case 'rate_limited':
+    case 'refused': {
+      const rest = info.kind === 'refused' ? REFUSED_REST_MS : restAfter(info, now);
+      restingUntil.set(pair, now + rest);
+      const why = info.kind === 'refused' ? `was refused ${model} (${info.status})` : `is at its ${info.daily ? 'daily' : 'per-minute'} limit for ${model}`;
+      console.warn(`Gemini: API key ${key + 1} ${why} — resting that pair ${describeRest(rest, now)}.`);
+      if (info.daily) {
+        const misses = (dailyMisses.get(model) ?? 0) + 1;
+        dailyMisses.set(model, misses);
+        if (misses >= DAY_GONE_AFTER && !((dayGoneUntil.get(model) ?? 0) > now)) {
+          dayGoneUntil.set(model, nextQuotaReset(now));
+          console.warn(`Gemini: ${model} looks used up for the day — other models are asked first until the daily reset.`);
+        }
+      }
+      if (rest >= REMEMBERED_REST_MS) saveKeyHealth();
+      return;
+    }
+    case 'busy':
+      console.warn(`Gemini: ${model} is busy (${info.status ?? 'unavailable'}) — the next model answers for ${BUSY_COOL_MS / 1000}s.`);
+      coolingUntil.set(model, now + BUSY_COOL_MS);
+      return;
+    case 'thinking_unsupported':
+      console.warn(`Gemini: ${model} refused the thinking setting (${info.message.slice(0, 90)}) — asking it without one.`);
+      plainThinking.add(model);
+      return;
+    case 'model_cannot':
+      console.warn(`Gemini: ${model} cannot take this request (${info.message.slice(0, 90)}) — the next model is asked.`);
+      return;
+    case 'network':
+      console.warn(`Gemini: the request did not reach Google (${info.message.slice(0, 90)}).`);
+      return;
+  }
+};
+
+/**
+ * A model that answers is not used up; and the console says when the answering model changes — a fallback
+ * model writes differently, and that should never be mistaken for a prompt problem.
+ */
+let lastAnswered = '';
+const noteAnswered = (model: string) => {
+  dailyMisses.delete(model);
+  if (dayGoneUntil.delete(model)) saveKeyHealth();
+  if (model !== lastAnswered && (lastAnswered || model !== MODEL_LIST[0])) {
+    console.info(`Gemini: answered by ${model}${model === MODEL_LIST[0] ? '' : ` (${MODEL_LIST[0]} cannot answer right now)`}.`);
+  }
+  lastAnswered = model;
+};
+
+/** How long one call may wait, in all, for a per-minute limit or a busy model to free up — rather than fail. */
+const MAX_WAIT_MS = 75 * 1000;
+
+/**
+ * Every Gemini call in the app: the best model that can answer now, on the next key that can ask it.
+ *
+ * ── Why it was rewritten (2026-10-10) ───────────────────────────────────────────────────────────────
+ * The owner saw Google's raw 404 for gemini-2.0-flash-lite on the screen, and runs that sometimes did not
+ * finish. The old loop shared ONE "current model" pointer and ONE "current key" between the parallel calls of a
+ * run; each call counted the keys and models it had tried while the others moved both, so on a busy free-tier day
+ * a call decided every key and model had failed and gave up — with live models never asked — and showed Google's
+ * last error as raw JSON (reproduced in src/test/geminiModelFallback.test.ts: 1 of 8 parallel calls failed that
+ * way). Now the shared state holds only facts, and each request picks its own route from them (`routeNow`).
+ *
+ * Each failed request is read once (`utils/geminiModels.readGeminiError`) and teaches every call (`learnFrom`):
+ *   retired              → the model is never asked again (in this browser, for a week);
+ *   not_for_key          → that key never asks that model again;
+ *   dead_key             → the key is never asked again;
+ *   rate_limited/refused → that key rests from that model (Google's delay, or until the daily reset);
+ *   busy                 → the model is skipped by every call for 30 seconds;
+ *   thinking_unsupported → the same model again, without the thinking setting;
+ *   model_cannot         → the next model, for this request;
+ *   network              → once more on another key after a moment, then a clear message;
+ *   fatal                → thrown at once: the request itself is wrong. An error the call's own code threw (a
+ *                          reply it could not read) passes through unchanged; Google's is given in its words.
+ * When nothing can answer this second, the call waits for the first route to free up if that is soon (a
+ * per-minute limit, a busy spell), and otherwise stops with a sentence a member can act on
+ * (`utils/geminiModels.geminiUnavailable` — the daily limit and when it resets, keys to replace, Google busy),
+ * never Google's JSON. A call always asks Google at least once, so what this browser remembers can never fail a
+ * call on its own.
+ */
 const callWithFallback = async <T>(
   apiCall: (ai: GoogleGenAI, model: string) => Promise<T>,
   options: number | { effort?: Effort; maxRetries?: number } = {}
 ): Promise<T> => {
-  const { effort, maxRetries = API_KEYS.length * MODEL_LIST.length } =
+  if (API_KEYS.length === 0) {
+    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
+  }
+  const { effort, maxRetries = API_KEYS.length * MODEL_LIST.length + 3 } =
     typeof options === 'number' ? { maxRetries: options } : options;
-  let lastError: any = null;
-  const triedKeys = new Set<number>();
-  const triedModels = new Set<string>();
+  const state: CallState = { skipModels: new Set(), lastResortAsked: new Map() };
+  /** What Google answered, for the sentence a member sees if nothing can answer. */
+  const answers: GeminiErrorInfo[] = [];
+  let asked = 0;
+  let waited = 0;
+  let networkFailures = 0;
 
-  const aliveModelCount = () => MODEL_LIST.filter(m => !deadModels.has(m)).length;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const model = getCurrentModel();
-    // A new call moves on to the next key; a retry has already been moved by its failure below.
-    if (attempt === 0) startOnNextKey(model);
+  while (asked < maxRetries) {
+    const now = Date.now();
+    let route = routeNow(state, now);
+    if (!route) {
+      const free = firstFreeRoute(state, now);
+      if (!free) break;
+      const wait = free.at - now;
+      // A call always asks Google at least once: what this browser remembers can never fail a call on its own.
+      if (asked === 0 || wait <= 0) route = free;
+      else if (waited + wait <= MAX_WAIT_MS) {
+        console.warn(`Gemini: nothing can answer this second — waiting ${describeRest(wait, now)} for ${free.model}.`);
+        await new Promise(r => setTimeout(r, wait));
+        waited += wait;
+        continue;
+      } else break;
+    }
+    const { model, key } = route;
+    currentKeyIndex = key;
+    asked++;
+    if (isDayGone(model, now)) state.lastResortAsked.set(model, (state.lastResortAsked.get(model) ?? 0) + 1);
+    const thinking = plainThinking.has(model) ? undefined : thinkingFor(model, effort);
     try {
-      const ai = withThinkingBudget(getAiInstance(), model, effort);
-      const result = await apiCall(ai, model);
-      rememberGoodKey();
+      const result = await apiCall(withThinking(new GoogleGenAI({ apiKey: API_KEYS[key] }), thinking), model);
+      rememberGoodKey(key);
+      noteAnswered(model);
       return result;
     } catch (error: any) {
-      lastError = error;
-      const errorMessage = error?.message || String(error);
-      const statusCode = error?.status || error?.statusCode;
-      
-      // Check if model is permanently dead (404 Not Found)
-      const isModelNotFound =
-        statusCode === 404 ||
-        errorMessage.includes('404') ||
-        errorMessage.includes('not found') ||
-        errorMessage.includes('is not found') ||
-        errorMessage.includes('models/') && errorMessage.includes('not');
-      
-      if (isModelNotFound) {
-        // Only "no longer available to new users" is about the key; older keys still serve the model.
-        const keySpecific = /new users/i.test(errorMessage);
-        deadModelKeys.add(modelKeyId(currentKeyIndex, model));
-        saveKeyHealth();
-        const keysWithModel = keySpecific
-          ? API_KEYS.map((_, k) => k).filter(k => !deadModelKeys.has(modelKeyId(k, model)))
-          : [];
-        if (keysWithModel.length > 0) {
-          const next = keysWithModel.find(k => k > currentKeyIndex) ?? keysWithModel[0];
-          console.warn(`Model "${model}" is not available on API key ${currentKeyIndex + 1}; trying it on key ${next + 1}.`);
-          currentKeyIndex = next;
-          await new Promise(r => setTimeout(r, 300));
-          continue;
-        }
-        console.error(`Model "${model}" is not available (404)${keySpecific ? " on any API key" : ""}. Removing from rotation.`);
-        deadModels.add(model);
-        if (aliveModelCount() === 0) {
-          throw new Error(`All models are dead. Last error: ${errorMessage}`);
-        }
-        rotateToNextModel();
-        await new Promise(r => setTimeout(r, 300));
-        continue;
+      const info = readGeminiError(error, model);
+      if (info.kind === 'fatal' || (info.kind === 'thinking_unsupported' && !thinking)) {
+        throw info.status === undefined
+          ? error
+          : Object.assign(new Error(`Gemini could not process this request: ${info.message}`), { status: info.status, cause: error });
       }
-      
-      // Check if error is related to API key issues (rate limit, invalid key, quota exceeded)
-      const isKeyRelatedError = 
-        errorMessage.includes('quota') ||
-        errorMessage.includes('rate') ||
-        errorMessage.includes('limit') ||
-        errorMessage.includes('invalid') ||
-        errorMessage.includes('API key') ||
-        errorMessage.includes('401') ||
-        errorMessage.includes('403') ||
-        errorMessage.includes('429') ||
-        statusCode === 401 ||
-        statusCode === 403 ||
-        statusCode === 429;
-
-      // Check if error is model-related (overloaded, unavailable, etc.)
-      const isModelRelatedError =
-        errorMessage.includes('overloaded') ||
-        errorMessage.includes('unavailable') ||
-        errorMessage.includes('capacity') ||
-        errorMessage.includes('500') ||
-        errorMessage.includes('503') ||
-        statusCode === 500 ||
-        statusCode === 503;
-      
-      if (isKeyRelatedError && API_KEYS.length > 1) {
-        console.warn(`API key ${currentKeyIndex + 1} failed with model "${model}": ${errorMessage}. Trying next key...`);
-        triedKeys.add(currentKeyIndex);
-        // An invalid key never becomes valid mid-session — never try it again.
-        const deadKey = isInvalidKeyError(errorMessage);
-        if (deadKey) markKeyDead(currentKeyIndex);
-        // A key over its per-minute limit rests for as long as Google asks.
-        else if (statusCode === 429 || /429|RESOURCE_EXHAUSTED|quota/i.test(errorMessage)) {
-          keyRestingUntil.set(currentKeyIndex, Date.now() + restFor(errorMessage));
-        }
-        const next = nextUsableKey(model, currentKeyIndex);
-        if (next !== null) currentKeyIndex = next; else rotateToNextKey();
-
-        // If we've tried all keys with this model, try next model
-        if (triedKeys.size >= API_KEYS.length - deadKeys.size) {
-          console.warn(`All API keys exhausted for model "${model}". Trying next model...`);
-          triedKeys.clear();
-          triedModels.add(model);
-          if (!rotateToNextModel() || triedModels.size >= aliveModelCount()) {
-            throw new Error(`All ${API_KEYS.length} API keys and ${aliveModelCount()} models failed. Last error: ${errorMessage}`);
-          }
-        }
-
-        // A dead key answers at once and the next key is another project: there is nothing to wait for.
-        if (!deadKey) await new Promise(r => setTimeout(r, 500));
-      } else if (isModelRelatedError) {
-        console.warn(`Model "${model}" error: ${errorMessage}. Trying next model...`);
-        triedModels.add(model);
-        if (!rotateToNextModel() || triedModels.size >= aliveModelCount()) {
-          throw new Error(`All ${aliveModelCount()} models failed. Last error: ${errorMessage}`);
-        }
-        await new Promise(r => setTimeout(r, 500));
-      } else {
-        // Non-recoverable error, throw immediately
-        throw error;
+      answers.push(info);
+      learnFrom(info, model, key);
+      if (info.kind === 'model_cannot') state.skipModels.add(model);
+      if (info.kind === 'network') {
+        if (++networkFailures >= 2) break;
+        await new Promise(r => setTimeout(r, 1500));
       }
     }
   }
-  
-  throw lastError || new Error("API call failed after all retries");
+
+  const failure = geminiUnavailable({
+    errors: answers,
+    workingKeys: API_KEYS.length - deadKeys.size,
+    totalKeys: API_KEYS.length,
+    liveModels: MODEL_LIST.filter(m => !retiredModels.has(m)).length,
+    models: MODEL_LIST,
+    now: Date.now(),
+  });
+  console.error(`Gemini: ${failure.message}`, answers);
+  throw failure;
 };
 
 /**
@@ -2482,6 +2524,8 @@ export const generateAdAssets = async (
       } catch (err) {
         console.warn(`${sectionName} attempt ${attempt + 1} failed:`, err);
         lastError = err;
+        // Nothing could answer (every key and model is used up or busy): asking again a second later cannot help.
+        if (err instanceof GeminiUnavailableError) break;
         if (attempt < maxRetries) {
           // Brief pause before retry
           await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));

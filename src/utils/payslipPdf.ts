@@ -162,8 +162,12 @@ export async function generatePayslipPdf(input: PayslipInput): Promise<jsPDF> {
     ["Days Present", String(c.fullDays)],
     ["Half Days", String(c.halfDays)],
     ["Paid Leave", String(c.paidLeaveDays)],
-    ["Loss of Pay Days", String(c.unpaidLeaveDays + c.absentDays)],
+    ["Loss of Pay Days", String(c.unpaidLeaveDays + c.absentDays + (c.compOffUnpaidDays ?? 0))],
     ["Holidays", String(c.holidayDays)],
+    // Comp-off (2026-10-10): only on a slip that has some — holidays worked, and the paid days taken for them.
+    ...((c.holidayWorkDays ?? 0) > 0 || (c.compOffDays ?? 0) > 0
+      ? [["Holidays Worked", String(c.holidayWorkDays ?? 0)], ["Comp Off (paid)", String(c.compOffDays ?? 0)]] as [string, string][]
+      : []),
   ]);
 
   // ── Earnings and deductions ───────────────────────────────────────────────
@@ -178,6 +182,7 @@ export async function generatePayslipPdf(input: PayslipInput): Promise<jsPDF> {
       case "absent": return [`Loss of Pay (${days})`, r.amount];
       case "half": return [`Half Day Adjustment (${r.days})`, r.amount];
       case "unpaid_leave": return [`Leave Without Pay (${days})`, r.amount];
+      case "comp_off_unpaid": return [`Comp Off without credit (${days})`, r.amount];
       default: return [`Unpaid Holidays (${r.days})`, r.amount];
     }
   });

@@ -284,6 +284,8 @@ export interface MemberAccountSummary {
   remaining: number;
   /** Credits used this cycle on the accounts they hold. */
   used: number;
+  /** Accounts they opened that carry a Gemini API key Google has not refused (2026-10-10). */
+  apiKeys: number;
   progress: TargetProgress;
 }
 
@@ -304,6 +306,7 @@ export function memberSummaries(
       holding: held.length,
       remaining: states.filter((s) => s.usable).reduce((sum, s) => sum + s.remaining, 0),
       used: states.reduce((sum, s) => sum + s.used, 0),
+      apiKeys: owned.filter((a) => a.apiKey && a.apiKey.status !== "failed").length,
       progress: targetProgress(owned.length, settings, today),
     };
   });

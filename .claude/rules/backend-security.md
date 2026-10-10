@@ -196,7 +196,8 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
 - **Deactivated users** cannot log in and are signed out live.
-- **External APIs failing:** Gemini rotates keys and models, then errors to the UI; push and
+- **External APIs failing:** Gemini rotates keys and models (`ai-ads.md` §17.3), then tells the UI in a plain
+  sentence why nothing could answer (`GeminiUnavailableError`) — never Google's raw JSON; push and
   notification failures never block the main action; order, chat and campaign side-effects are
   "never fatal" to a sale.
 
@@ -219,7 +220,8 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
    `verifyScreenshot` has **no callers**, so it is dead code carrying a live-looking key); TURN
    credentials in `src/services/webrtcConfig.ts`.
 3. **Gemini keys shipped to every browser — and Google now reports several as leaked** (403 "Your API
-   key was reported as leaked" on keys 16 and 23–28, 2026-09-29), with more invalid. `envPrefix`
+   key was reported as leaked" on keys 13, 16 and 23–28, measured 2026-10-10; keys 1, 12, 18 invalid — 11 of 30
+   dead, 19 working). `envPrefix`
    includes `API_KEY_` and `GEMINI_`, so every key is in the public bundle, and `geminiService.ts` also
    logs each key's first 6 and last 4 characters to the console on load ("DEBUG … remove after
    verification"). The call layer skips dead keys, but each is capacity lost; they must be replaced, and

@@ -39,8 +39,9 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `fcmTokens/{token}` | — | `userId`, `token`, device id |
 | `activityLogs/{auto}` | `ActivityLogEntry` | actor, `action`, `details`, `adminId` (sales + tech feeds) |
 | `sessions/{auto}` | — | `userId`, `loginAt`, `logoutAt`, `duration` (minutes) |
-| `flow_accounts/{lower-case email}` | `FlowAccount` | `email`, `phone` (login number), `createdOn`, `expiresOn` (+18 months), `monthlyCredits`, `addedBy*`, `ownerId/Name` (whose target it counts toward), `holderId/Name` (who uses it), `visibleTo[]` (adder, owner, holder), `teamAdminId`, `status` (`active`/`disabled`), `usedByCycle` (cycle start → credits used), `lastUsed*`, `notes`, `history[]` |
+| `flow_accounts/{lower-case email}` | `FlowAccount` | `email`, `phone` (login number), `createdOn`, `expiresOn` (+18 months), `monthlyCredits`, `addedBy*`, `ownerId/Name` (whose target it counts toward), `holderId/Name` (who uses it), `visibleTo[]` (adder, owner, holder), `teamAdminId`, `status` (`active`/`disabled`), `usedByCycle` (cycle start → credits used), `lastUsed*`, `notes`, `history[]` (2026-10-10: also `api_key_added/replaced/removed`), `apiKey` (2026-10-10, optional: `fingerprint`, `status` `working`/`failed`/`unchecked`, `message`, `addedAt`, `addedByName`, `checkedAt` — the key's standing, never the key; absent = no key) |
 | `flow_account_secrets/{same id}`, `paid_account_secrets/{id}` | `AccountSecret` | `password` only — read on Show/Copy |
+| `gemini_api_keys/{flow account id}` (2026-10-10) | `GeminiApiKey` | the Gemini API key made in that Flow account: `key`, `fingerprint`, `accountId`/`accountEmail`, `ownerId/Name` (whose account), `addedById/Name`, `addedAt` (ms), `teamAdminId` (the tech admin's list is `where teamAdminId ==`), `status` + `statusMessage` + `checkedAt` (Google's last answer), `inUse` / `inUseAt` / `inUseByName` (the admin's "deployed to AdGen" label; a new key starts false). Written in one batch with the account's `apiKey`; deleted with the account |
 | `flow_usage/{auto}` | `FlowUsageEntry` | one ad (or manual entry) on one account: `accountId`, `userId`, `teamAdminId`, `assignmentId`/`uniqueId`/`businessName`, `rows[]` (seconds × count), `credits`, `cycleStart`, `date`, `month` (`yyyy-MM`), `source` (`completion`/`manual`), `editedBy*` |
 | `paid_accounts/{auto}` | `PaidAccount` | `provider` (`chatgpt`/`grok`/`other`), `label`, `email`, `plan`, `renewsOn`, `assignedTo[]`, `assignedNames`, `teamAdminId`, `history[]` |
 | `invoices/{auto}` (2026-10-08) | `Invoice` (`types/invoice.ts`) | content: `issueDate`, `dueDate`, `seller` + `payment` snapshots (`payment.qrImageUrl` = an uploaded QR, 2026-10-08), `customer`, **`items[]` embedded with a stable `id`** (one read, one atomic write), `tax` {`mode` gst/none, `pricesIncludeTax`, `placeOfSupply`, `defaultRate`}, `roundOff`, `terms`, `notes`; `number` (null = draft; `DTS/26-27/0001`, never changes once set), `sequence`, `financialYear`, `status` (`draft`/`issued`/`paid`/`cancelled`; Overdue derived), `totals` {taxable, tax, grandTotal in paise, itemCount — written from `invoiceMath`}, `ownerId/Name/Role` (members see their own), `revision`, `history[]` (ms `at`), `duplicatedFrom`, `sourceOrderId`, `issuedAt/ByUid/ByName`, `paidAt`, `cancelledAt` |
@@ -55,7 +56,8 @@ type, bodyText, `signatories[]`, status `issued`/`signed`/`declined`, view/downl
 `company_settings/main` (identity, logo, officer signatures, stamp) · `public_badges/{uid}`
 (card-face only) · `onboarding_invites/{10-char id}` (terms, frozen letters, signatures, access
 code, generated password after completion) · `member_credentials/{uid}` (**readable passwords**)
-· `daily_checkins` · `attendance/{memberId}_{date}` · `holidays/{date}` · `salesCheckins` ·
+· `daily_checkins` · `attendance/{memberId}_{date}` (`status` full / half / absent / leave / holiday, and since
+2026-10-10 `holiday_work` (W) / `comp_off` (C) — comp-off, `people.md` §9.13) · `holidays/{date}` · `salesCheckins` ·
 `leave_requests` · `salary_packages` · `payroll_config/default` · `employee_bank/{uid}` ·
 `payroll_runs/{month}` (typed and read, but **nothing in the app writes it**) · `payroll_lines/{month}_{memberId}`
 (the payment record — `paymentStatus`, `netSalary` = amount paid, frozen `computation`; 2026-10-09: `memberRole`, and
@@ -86,6 +88,7 @@ clients(phone digits) 1─* works           built from orders/assignments on com
 users 1─1 employee_profiles / employee_bank / public_badges / member_credentials (doc id = uid)
 users(tech) 1─* flow_accounts             via ownerId (target count) and holderId (in use)
 flow_accounts 1─* flow_usage              via accountId; usedByCycle mirrors the entries' credits
+flow_accounts 1─0..1 gemini_api_keys      same id; flow_accounts.apiKey mirrors the key's status
 users 1─* invoices                        via invoice.ownerId; invoices 1─0..1 invoice_numbers (number ⇄ invoiceId)
 orders 0..1─* invoices                    via invoice.sourceOrderId ("Fill from a sale"; informational only)
 ```

@@ -3,7 +3,10 @@ import type { Timestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { format, getDay } from "date-fns";
 import { tallyAttendance } from "@/utils/payrollEngine";
+import { sendNotification } from "@/services/notifications";
+import { getSalaryRoute } from "@/utils/roleHelpers";
 import type { PayrollConfig, ResolvedDay } from "@/types/payroll";
+import type { UserRole } from "@/types";
 
 /**
  * Tech attendance.
@@ -17,7 +20,15 @@ import type { PayrollConfig, ResolvedDay } from "@/types/payroll";
  * existing `daily_checkins` records, so we never write a row for every member every day.
  */
 
-export type AttendanceStatus = "full" | "half" | "absent" | "leave" | "holiday";
+/**
+ * A day's status. Two came with comp-off (owner, 2026-10-10):
+ *  • `holiday_work` (W) — the admin marks a Sunday or an announced holiday on which the person worked. It adds no pay
+ *    by itself (a Sunday never changes pay); it earns ONE comp-off credit for that pay cycle, a half day included.
+ *  • `comp_off` (C) — a working day the person is paid for in return. Paid like a full day, never one of the two paid
+ *    leaves. Credits are good for the cycle they were earned in only; a C beyond them is unpaid.
+ * Both are only ever admin marks (`attendance` overrides) — nothing derives them from check-ins.
+ */
+export type AttendanceStatus = "full" | "half" | "absent" | "leave" | "holiday" | "holiday_work" | "comp_off";
 
 export const ATTENDANCE_META: Record<AttendanceStatus, { label: string; short: string; tone: string }> = {
   full: { label: "Full Day", short: "P", tone: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30" },
@@ -25,6 +36,8 @@ export const ATTENDANCE_META: Record<AttendanceStatus, { label: string; short: s
   absent: { label: "Absent", short: "A", tone: "bg-rose-500/15 text-rose-600 border-rose-500/30" },
   leave: { label: "Leave", short: "L", tone: "bg-sky-500/15 text-sky-600 border-sky-500/30" },
   holiday: { label: "Holiday", short: "—", tone: "bg-slate-400/15 text-slate-500 border-slate-400/30" },
+  holiday_work: { label: "Worked on holiday", short: "W", tone: "bg-violet-500/15 text-violet-600 border-violet-500/30" },
+  comp_off: { label: "Comp Off", short: "C", tone: "bg-teal-500/15 text-teal-600 border-teal-500/30" },
 };
 
 /**
@@ -78,6 +91,31 @@ export async function setAttendanceOverride(
     },
     { merge: true },
   );
+}
+
+/**
+ * Turn absences into Comp Off days, paid out of the holiday-work credits (owner, 2026-10-10).
+ *
+ * Payroll's "Apply comp-off" passes the earliest absences the period's unused credits cover
+ * (`payrollEngine.compOffToApply`); each becomes a `comp_off` mark, exactly as if set on the grid,
+ * and the member is told once which days — paid now, for the holidays they worked.
+ */
+export async function applyCompOff(
+  member: { uid: string; name?: string; role?: UserRole },
+  dates: string[],
+  by: { uid: string; name?: string },
+): Promise<void> {
+  if (dates.length === 0) return;
+  await Promise.all(dates.map((date) => setAttendanceOverride(member, date, "comp_off", by)));
+  const days = dates.map((d) => format(new Date(`${d}T00:00:00`), "dd MMM")).join(", ");
+  sendNotification({
+    userId: member.uid,
+    type: "attendance_update",
+    title: "Comp Off Added",
+    message: `For the holiday${dates.length === 1 ? "" : "s"} you worked, ${days} ${dates.length === 1 ? "is" : "are"} now Comp Off — paid.`,
+    link: getSalaryRoute(member.role),
+    meta: { status: "comp_off", date: dates[0] },
+  }).catch(() => undefined);
 }
 
 /** Remove a manual override so the day falls back to the auto (check-in derived) status. */
@@ -162,6 +200,14 @@ export interface AttendanceSummary {
   /** working-day presence credit: full = 1, half = 0.5 */
   presentDays: number;
   leavesLeft: number;
+  /** Holidays worked (W) — each one comp-off credit for the period. */
+  holidayWork: number;
+  /** Comp Off days (C) paid out of those credits. */
+  compOff: number;
+  /** Comp Off days beyond the credits — unpaid. */
+  compOffUnpaid: number;
+  /** Credits still unused in the period. */
+  compOffLeft: number;
 }
 
 /**
@@ -182,6 +228,10 @@ export function summarize(days: ResolvedDay[], config?: Partial<PayrollConfig>):
     holiday: t.holiday,
     presentDays: t.presentDays,
     leavesLeft: t.leavesLeft,
+    holidayWork: t.holidayWork,
+    compOff: t.compOff,
+    compOffUnpaid: t.compOffUnpaid,
+    compOffLeft: t.compOffLeft,
   };
 }
 

@@ -313,6 +313,8 @@ export type SalaryLineKey =
   | "unpaid_leave"
   | "absent"
   | "holiday"
+  | "comp_off"
+  | "comp_off_unpaid"
   | "adjustment";
 
 /**
@@ -379,6 +381,17 @@ export interface SalaryComputation {
   attendancePercent: number;
   paidLeaveQuota: number;
   paidLeavesRemaining: number;
+
+  // Comp-off (2026-10-10). Optional: a computation frozen on a payment before then has none.
+  /** Holidays the person worked in the period (W) — one comp-off credit each. */
+  holidayWorkDays?: number;
+  holidayWorkDates?: string[];
+  /** Comp Off days (C) covered by those credits — paid in full. */
+  compOffDays?: number;
+  /** Comp Off days beyond the credits — unpaid. */
+  compOffUnpaidDays?: number;
+  /** Credits still unused in the period (they lapse when it ends). */
+  compOffLeft?: number;
 
   lines: SalaryLine[];
   adjustments: SalaryAdjustment[];

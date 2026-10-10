@@ -56,6 +56,19 @@ leave already on the ATTENDANCE record (grid marks included, Sundays not), with 
 and returns the split the panel's toast reports; undo clears only days still holding the approval's mark
 (`approvalMarks`); notifications link `roleHelpers.getSalaryRoute(role)` (sales members got `/tech/salary`).
 Announce Holiday jumps to the cycle holding the date (`periodMonthFor`).
+**Comp-off (owner, 2026-10-10).** Two more marks (`AttendanceStatus`): **W `holiday_work`** "Worked on holiday" —
+only an admin marks it (grid editor, offered only on a Sunday / announced holiday), earns ONE credit for that pay
+cycle whatever part of the day, adds no pay itself (an announced weekday holiday stays a paid holiday); **C
+`comp_off`** "Comp Off" — a working day paid in full out of the cycle's credits (date order), never one of the paid
+leaves; a C beyond the credits is unpaid (`comp_off_unpaid` deduction "Comp off without credit"). Credits never
+leave their cycle. `tallyAttendance` counts W on every day before the Sunday skip (`holidayWork`, `compOff`,
+`compOffUnpaid`, `compOffLeft`); `SalaryComputation` carries `holidayWorkDays/Dates`, `compOffDays`,
+`compOffUnpaidDays`, `compOffLeft` (optional — absent on older frozen payments). Grid editor: W on holiday dates,
+"Comp Off — paid · N left" on working days (disabled at 0); the grid summary adds "1W 1C · 0 left". Payroll and Sales
+Payroll: "Comp off: N" chip + `components/payroll/CompOffPanel` with **Apply** → `payrollEngine.compOffToApply`
+(earliest ABSENT days the unused credits cover, never a leave) → `techAttendance.applyCompOff` (C marks + one
+"Comp Off Added" notification). My Salary's Paid Leave tile shows "Comp-off: used · left"; the payslip lists
+Holidays Worked / Comp Off (paid); the SMM today board reads W as present and C as away.
 
 **9.14 Payroll, salary, commission** ✅. Tech payroll `pages/shared/Payroll.tsx`,
 `services/payroll.ts` (salary packages, config, bank/payout accounts), `services/payrollRun.ts`
@@ -127,6 +140,9 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
   the payment and paying again. Inactive people are not listed on any pay screen (owner, 2026-10-10); a **joiner**'s days
   before joining stay Absent (pay is pro-rata either way). Sales Payroll pays the same incentive the member's
   My Salary shows. Accounts' receipts start from the attendance figure and warn when Payroll already paid the period;
+  **Comp-off (owner, 2026-10-10):** an admin marks a holiday someone worked (W); each one, even half a day, lets one
+  absence in the SAME pay cycle become a paid Comp Off day (C) — one click in Payroll or by hand on the grid — without
+  touching the two paid leaves; unused credits lapse with the cycle;
   the member's history lists both.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
   dismissed on a working day, and does not appear on a Sunday or an announced holiday.

@@ -20,6 +20,8 @@
  *                                     assigned to members; no credit maths.
  *  • `app_settings/flow_accounts`   — the numbers: credits per clip length, monthly credits, validity,
  *                                     the target and its deadline.
+ *  • `gemini_api_keys/{email}`      — the Gemini API key made in that Flow account (2026-10-10), apart
+ *                                     like a password; the account carries only `apiKey` (its status).
  *
  * Every field added later stays optional: absent means the default.
  */
@@ -35,7 +37,8 @@ export type FlowAccountStatus = "active" | "disabled";
 export interface AccountEvent {
   /** ms since epoch. */
   at: number;
-  action: "added" | "assigned" | "edited" | "disabled" | "enabled" | "password_changed";
+  action: "added" | "assigned" | "edited" | "disabled" | "enabled" | "password_changed"
+    | "api_key_added" | "api_key_replaced" | "api_key_removed";
   byId: string;
   byName: string;
   /** For "assigned": who had it, and who has it now. */
@@ -77,7 +80,63 @@ export interface FlowAccount {
   lastUsedAt?: number;
   lastUsedByName?: string;
   notes?: string;
+  /**
+   * The Gemini API key made in this Google account — only that it exists and how it stands, never the
+   * key itself (that is in `gemini_api_keys/{id}`, read on Show/Copy). Absent = no key yet (2026-10-10).
+   */
+  apiKey?: ApiKeySummary;
   history?: AccountEvent[];
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+// ── Gemini API keys (2026-10-10) ──────────────────────────────────────────────────────────────────
+// Every Flow account is a Google account, and each can make one free Gemini API key in AI Studio (in a
+// project called "aiads"). A free key is its own project's quota, so a key from every account is a large
+// pool for DTS AdGen's prompt generation. Members add the key on the account's card; the tech admin
+// lists, checks, copies and downloads them (as a .env for Vercel) and labels the ones deployed "in use".
+// AdGen itself still reads its keys from the environment (API_KEY_1 … API_KEY_30) — the owner deploys them.
+
+/** Where a key stands: Google answered it, refused it (invalid / leaked / disabled), or was not reached. */
+export type ApiKeyStatus = "working" | "failed" | "unchecked";
+
+/** What the account list carries about its key — enough for the card and the counts, never the key. */
+export interface ApiKeySummary {
+  /** A one-way fingerprint of the key (utils/geminiKeys) — how the same key pasted twice is caught. */
+  fingerprint: string;
+  status: ApiKeyStatus;
+  /** Google's own words when it refused the key ("Your API key was reported as leaked…"). */
+  message?: string;
+  /** ms since epoch. */
+  addedAt: number;
+  addedByName?: string;
+  checkedAt?: number;
+}
+
+/** gemini_api_keys/{flow account id} — the key itself, read only by the tech admin and the account's people. */
+export interface GeminiApiKey {
+  /** = the Flow account's id (its lower-case email): one key per account. */
+  id: string;
+  accountId: string;
+  accountEmail: string;
+  key: string;
+  fingerprint: string;
+  /** Whose Flow account it is — the person the tech admin's list is grouped by. */
+  ownerId: string;
+  ownerName: string;
+  /** Who pasted it (the owner, nearly always), and when (ms). */
+  addedById: string;
+  addedByName: string;
+  addedAt: number;
+  /** The tech admin whose team the account belongs to — the admin's list is scoped on it. */
+  teamAdminId: string;
+  status: ApiKeyStatus;
+  statusMessage?: string;
+  checkedAt?: number;
+  /** The tech admin's label: this key is deployed to AdGen (pasted into Vercel). A new key starts false. */
+  inUse?: boolean;
+  inUseAt?: number;
+  inUseByName?: string;
   createdAt?: any;
   updatedAt?: any;
 }

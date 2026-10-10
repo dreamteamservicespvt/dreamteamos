@@ -5,9 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 
 /**
  * A password, fetched only when someone asks to see or copy it — lists never carry passwords (they
- * live in their own collection, see types/aiAccounts), so opening the page reads none of them.
+ * live in their own collection, see types/aiAccounts), so opening the page reads none of them. The same
+ * for a Flow account's Gemini API key (`kind="apiKey"`, 2026-10-10).
  */
-export default function SecretField({ kind, id }: { kind: "flow" | "paid"; id: string }) {
+export default function SecretField({ kind, id }: { kind: "flow" | "paid" | "apiKey"; id: string }) {
+  const what = kind === "apiKey" ? "API key" : "password";
   const { toast } = useToast();
   const [secret, setSecret] = useState<string | null>(null);
   const [shown, setShown] = useState(false);
@@ -22,7 +24,7 @@ export default function SecretField({ kind, id }: { kind: "flow" | "paid"; id: s
       setSecret(value);
       return value;
     } catch {
-      toast({ title: "Could not load the password", description: "You may not have access to this account.", variant: "destructive" });
+      toast({ title: `Could not load the ${what}`, description: "You may not have access to this account.", variant: "destructive" });
       return null;
     } finally {
       setBusy(false);
@@ -48,14 +50,14 @@ export default function SecretField({ kind, id }: { kind: "flow" | "paid"; id: s
 
   return (
     <span className="inline-flex items-center gap-1 min-w-0">
-      <span className="font-mono text-xs text-foreground truncate max-w-[9rem]" data-test="secret-value">
+      <span className="font-mono text-xs text-foreground truncate max-w-[9rem]" data-test="secret-value" title={shown && secret ? secret : undefined}>
         {shown && secret !== null ? (secret || "—") : "••••••••"}
       </span>
-      <button type="button" onClick={toggle} aria-label={shown ? "Hide password" : "Show password"} data-test="secret-toggle"
+      <button type="button" onClick={toggle} aria-label={shown ? `Hide ${what}` : `Show ${what}`} data-test="secret-toggle"
         className="h-6 w-6 shrink-0 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground">
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : shown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
       </button>
-      <button type="button" onClick={copy} aria-label="Copy password"
+      <button type="button" onClick={copy} aria-label={`Copy ${what}`} data-test="secret-copy"
         className="h-6 w-6 shrink-0 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground">
         {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
