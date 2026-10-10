@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { isActiveUser } from "@/utils/roleHelpers";
 import { useParams, useNavigate } from "react-router-dom";
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -259,7 +260,8 @@ export default function MemberLeadsDetail() {
 
     // Team members for the reassign dropdown (scoped query, not the whole users collection)
     fetchTeamMembers(currentUser.uid).then((teamMembers) => {
-      setMembers(teamMembers);
+      // The reassign pickers offer active people only (owner, 2026-10-10).
+      setMembers(teamMembers.filter(isActiveUser));
       setMember(teamMembers.find((u) => u.uid === memberId) || null);
     }).catch(() => {});
 

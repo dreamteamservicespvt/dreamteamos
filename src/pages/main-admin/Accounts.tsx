@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { isActiveUser } from "@/utils/roleHelpers";
 import { collection, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -41,7 +42,7 @@ export default function Accounts() {
     let loaded = 0;
     const checkDone = () => { loaded++; if (loaded >= 4) setLoading(false); };
     const unsubs: (() => void)[] = [];
-    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)).filter(isActiveUser)); /* only active people are shown */ checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "expenses"), (snap) => {
       setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense)).sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
       checkDone();

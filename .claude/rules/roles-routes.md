@@ -264,8 +264,13 @@ There is no "team" entity: **team = users sharing `createdBy`** (§7).
 - **Edit:** `EditMemberModal` (name, phone, salary/package, earnings option, Drive URL,
   `businessWhatsapp`, …), photo (`ProfilePhotoUpload`, Cloudinary, mirrored to the HR profile),
   employment type toggle (TeamAttendance), `externalCreator` / `smmLeader` toggles (tech admin).
-- **Deactivate:** `isActive` toggle. Instantly signs the user out and hides them from most lists
-  (My Team still shows them).
+- **Deactivate:** `isActive` toggle. Instantly signs the user out. **Owner, 2026-10-10: an inactive person is shown
+  ONLY in the tech / sales admin's My Team and the main admin's Team Management** (where people are switched on and
+  off) — every other list, card, picker, staff count, leaderboard, Payroll, Sales Payroll and Salary Management uses
+  `roleHelpers.isActiveUser` (`isActive !== false`). Only the PERSON is hidden: their past sales still count in team and
+  company totals (the sales admin's Dashboard / Analytics count leads of the whole team and list active people), a
+  sale of theirs awaiting approval stays in Sales Approvals, and Leads Management's number lookup still names them as
+  the holder (its Reassign picker offers active people only).
 - **Delete:** deletes `users/{uid}` and `member_credentials/{uid}` only. The **Firebase Auth
   account remains** (no admin SDK on the client), so the email stays taken. Their leads,
   assignments and HR data are not cleaned up.

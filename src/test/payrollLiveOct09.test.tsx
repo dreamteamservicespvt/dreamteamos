@@ -13,6 +13,10 @@ vi.mock("@/services/firebase", () => ({ db: {} }));
 const notify = vi.fn(async (_n: { userId: string; link?: string }) => undefined);
 vi.mock("@/services/notifications", () => ({ sendNotification: (n: { userId: string; link?: string }) => notify(n) }));
 vi.mock("@/services/auditLog", () => ({ recordAudit: vi.fn(async () => undefined) }));
+const AUTH = { user: { uid: "techadmin", name: "Tara", role: "tech_admin" } };
+vi.mock("@/store/authStore", () => ({
+  useAuthStore: Object.assign((sel: (s: unknown) => unknown) => sel(AUTH), { getState: () => AUTH }),
+}));
 // The analytics charts measure their box; jsdom has no ResizeObserver.
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
 
@@ -21,6 +25,7 @@ const { useMonthPayroll } = await import("@/hooks/useMonthPayroll");
 const { useSalesMemberPay } = await import("@/hooks/useSalesMemberPay");
 const { useSalaryMonth } = await import("@/hooks/useSalaryMonth");
 const { default: MemberAnalyticsDashboard } = await import("@/components/analytics/MemberAnalyticsDashboard");
+const { default: Payroll } = await import("@/pages/shared/Payroll");
 const { approveLeaveRequest, undoLeaveDecision } = await import("@/services/leave");
 const { markSalaryPaid, priceMemberForPeriod } = await import("@/services/payrollRun");
 const { computeSalary, isSundayDate, payPeriodForMonth, periodDates } = await import("@/utils/payrollEngine");
@@ -102,14 +107,14 @@ describe("Payroll — live from attendance until paid", () => {
     expect(result.current.totals.paid).toBe(25000);
   });
 
-  it("keeps a member who left mid-cycle payable for the days they worked — and nobody else who left", async () => {
-    mem.__seed("daily_checkins/ravi_2026-07-14", { memberId: "ravi", date: "2026-07-14" });
-    checkInAll("asha");
-    const members = [member("asha"), member("ravi", { isActive: false }), member("old", { isActive: false })];
-    const { result } = renderHook(() => useMonthPayroll(members, "2026-07"));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.rows.map(r => [r.member.uid, r.left])).toEqual([["asha", false], ["ravi", true]]);
-    expect(result.current.rows[1].computation.fullDays).toBe(1);
+  /** Owner, 2026-10-10: inactive people are shown only in My Team / Team Management — never on Payroll. */
+  it("lists only active people on the Payroll page, even one who worked this period", async () => {
+    mem.__seed("users/asha", { name: "Asha", role: "tech_member", isActive: true, salary: 26000, createdBy: "techadmin" });
+    mem.__seed("users/ravi", { name: "Ravi", role: "tech_member", isActive: false, salary: 26000, createdBy: "techadmin" });
+    mem.__seed("daily_checkins/ravi_2026-08-12", { memberId: "ravi", date: "2026-08-12" });
+    render(<Payroll />);
+    expect(await screen.findByText("Asha")).toBeTruthy();
+    expect(screen.queryByText("Ravi")).toBeNull();
   });
 
   it("reports a failed attendance read instead of pricing everybody Absent", async () => {

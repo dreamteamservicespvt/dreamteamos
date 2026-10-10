@@ -39,9 +39,9 @@ import type { AppUser } from "@/types";
  *   Every source now has to answer first.
  * • A failed read arrived as an empty result — the same as "no leave, nobody paid". It is an
  *   `error` now, and the page shows it instead of figures.
- * • Only active members were listed, so someone who left mid-cycle disappeared from Payroll and
- *   their last part-cycle could not be paid. A member who is no longer active still gets a row for
- *   any period they have attendance or a payment in (`left: true`).
+ *
+ * The page passes active members only (owner, 2026-10-10: inactive people are shown nowhere but My Team
+ * and Team Management — `roleHelpers.isActiveUser`), so a member is paid while active.
  *
  * Costs the same range-scoped listeners regardless of headcount, plus two equality listeners for
  * the period's accounts receipts.
@@ -64,8 +64,6 @@ export interface PayrollRow {
   liveNetSalary: number;
   /** Paid, and today's attendance prices the period differently from the payment. */
   changedSincePaid: boolean;
-  /** No longer active — listed because they have attendance or a payment in this period. */
-  left: boolean;
   /** What the accounts admin has recorded for this period from Salary Management. */
   receipts: SalaryReceipt[];
 }
@@ -96,20 +94,6 @@ export interface MonthPayrollState {
 const FROZEN_STAGES = new Set(["locked", "processing", "paid", "completed"]);
 
 const READ_FAILED = "Attendance or payment records could not be loaded, so salaries are not shown. Check the connection and reload before paying anyone.";
-
-/** The uid in an `attendanceKey` (`{uid}_{yyyy-MM-dd}`). */
-const uidOfKey = (key: string) => key.slice(0, -11);
-
-/**
- * Every uid with any attendance in the period — a check-in or an admin's mark.
- * What keeps a member who left mid-cycle on the payroll for the days they worked.
- */
-export function uidsWithAttendance(checkedIn: Set<string>, overrides: Map<string, unknown>): Set<string> {
-  const out = new Set<string>();
-  checkedIn.forEach(k => out.add(uidOfKey(k)));
-  overrides.forEach((_, k) => out.add(uidOfKey(k)));
-  return out;
-}
 
 export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrollState {
   const todayStr = useToday();
@@ -163,11 +147,8 @@ export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrol
   const rows = useMemo<PayrollRow[]>(() => {
     // A locked run is explained by the policy it was generated under, not today's policy.
     const activeConfig = runFrozen && run?.config ? run.config : config;
-    const active = uidsWithAttendance(checkedIn, overrides);
 
     return members
-      // Someone no longer active stays payable for a period they worked in or were paid for.
-      .filter(member => member.isActive !== false || active.has(member.uid) || lines.has(member.uid))
       .map(member => {
         const line = lines.get(member.uid) ?? null;
         const paid = isLinePaid(line);
@@ -205,7 +186,6 @@ export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrol
           netSalary,
           liveNetSalary,
           changedSincePaid: paid && Math.round(liveNetSalary) !== Math.round(netSalary),
-          left: member.isActive === false,
           receipts: receipts.get(member.uid) ?? [],
         };
       });

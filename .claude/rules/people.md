@@ -77,8 +77,8 @@ record:** `payrollRun.isLinePaid` (completed / transferred); `useMonthPayroll` /
 show a paid member's `payroll_lines` amount and frozen `computation` (My Salary's attendance tiles stay live) (nothing creates `payroll_runs`, so freezing on a
 run never happened), keep `liveComputation` / `liveNetSalary`, and `changedSincePaid` puts "Now ₹X" + "changed after it
 was paid … undo and pay again" on the row and a note on the member's page. Hooks load only when every source answered
-and surface `error` (pages show it, never figures). Members who left (`isActive === false`) keep a row (`left`, "Left"
-tag) for a period with attendance or a payment in it (`uidsWithAttendance`). The bank banner / Verify / payout method
+and surface `error` (pages show it, never figures). Only ACTIVE members are listed (`roleHelpers.isActiveUser`, owner
+2026-10-10 — a member deactivated before payday is paid after re-activating them in My Team). The bank banner / Verify / payout method
 use `payroll.isBankComplete` / `isBankVerified` / `payoutMethodOf` (legacy top-level fields were never set; tech
 Verify was a no-op). **Sales incentive = `utils/salesPay`** (`salesInPeriod`: verified money collected in the cycle by
 local day; `salesIncentive`: rate × base, withheld below 75% of the cycle's target) for both Sales Payroll and
@@ -124,7 +124,7 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
   on a **Sunday never changes pay** and is not counted (nor does it use a paid-leave day). A **rejected check-in
   (Member History) stays Present** — to deduct, mark the day on the grid. A **paid salary is the payment record**:
   later attendance or sales corrections are flagged against it ("Now ₹X"), never written over it; settle by undoing
-  the payment and paying again. A member who **left** mid-cycle stays payable for that cycle; a **joiner**'s days
+  the payment and paying again. Inactive people are not listed on any pay screen (owner, 2026-10-10); a **joiner**'s days
   before joining stay Absent (pay is pro-rata either way). Sales Payroll pays the same incentive the member's
   My Salary shows. Accounts' receipts start from the attendance figure and warn when Payroll already paid the period;
   the member's history lists both.

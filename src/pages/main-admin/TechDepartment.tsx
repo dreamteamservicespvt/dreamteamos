@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/services/firebase";
-import { getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
+import { getRoleLabel, getRoleColor, isActiveUser } from "@/utils/roleHelpers";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import type { AppUser } from "@/types";
 import { Code, Users, Video, CheckCircle, Clock, AlertCircle } from "lucide-react";
@@ -20,7 +20,7 @@ export default function TechDepartment() {
     const unsubs: (() => void)[] = [];
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      setTechAdmins(allUsers.filter((u) => u.role === "tech_admin"));
+      setTechAdmins(allUsers.filter((u) => u.role === "tech_admin" && isActiveUser(u)));
       setTechMembers(allUsers.filter((u) => u.role === "tech_member" && u.isActive !== false && !u.externalCreator));
       checkDone();
     }));

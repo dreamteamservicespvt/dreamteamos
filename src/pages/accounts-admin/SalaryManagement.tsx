@@ -4,7 +4,7 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
-import { getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
+import { getRoleLabel, getRoleColor, isActiveUser } from "@/utils/roleHelpers";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import type { AppUser } from "@/types";
 import { Users, Download, Edit3, Check, X, Loader2, Send, Receipt, Upload, FileText, Trash2, History } from "lucide-react";
@@ -68,6 +68,8 @@ export default function SalaryManagement() {
       setMembers(
         snap.docs
           .map((d) => ({ uid: d.id, ...d.data() } as AppUser))
+          // Only active people are listed, counted and paid here (owner, 2026-10-10).
+          .filter(isActiveUser)
           .sort((a, b) => (b.salary || 0) - (a.salary || 0))
       );
       setLoading(false);

@@ -270,6 +270,20 @@ export function getProfileRoute(role?: UserRole | null): string {
 }
 
 /**
+ * Is this person shown? (owner, 2026-10-10)
+ *
+ * Everywhere except the pages where people are switched on and off — the tech / sales admin's
+ * My Team and the main admin's Team Management — a person marked inactive is not listed, counted,
+ * paid or offered in a picker. Only the PERSON is hidden: work they left behind stays (their sales
+ * still count in team and company totals, a sale of theirs awaiting approval stays in Sales
+ * Approvals, a number they hold still shows who holds it). `isActive` absent = active, as on every
+ * record written before the field existed.
+ */
+export function isActiveUser(u: { isActive?: boolean } | null | undefined): boolean {
+  return !!u && u.isActive !== false;
+}
+
+/**
  * The page where someone sees their own salary and leave — the link a "Salary Paid" or "Leave
  * Approved" notification opens.
  *

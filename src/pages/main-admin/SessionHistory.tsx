@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { formatDate, formatTime } from "@/utils/formatters";
-import { getRoleLabel, getRoleColor } from "@/utils/roleHelpers";
+import { getRoleLabel, getRoleColor, isActiveUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
 import { Clock, Download, Users, Filter } from "lucide-react";
 
@@ -29,7 +29,7 @@ export default function SessionHistory() {
       setSessions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Session)).sort((a, b) => (b.loginAt?.seconds || 0) - (a.loginAt?.seconds || 0)));
       checkDone();
     }));
-    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)).filter(isActiveUser)); /* only active people are shown */ checkDone(); }));
     return () => unsubs.forEach((u) => u());
   }, []);
 
@@ -37,6 +37,8 @@ export default function SessionHistory() {
 
   const filtered = sessions.filter((s) => {
     const member = getMember(s.userId);
+    // Only active people are listed (owner, 2026-10-10) — their sessions with them.
+    if (!member) return false;
     if (memberFilter !== "all" && s.userId !== memberFilter) return false;
     if (roleFilter !== "all" && member?.role !== roleFilter) return false;
     return true;

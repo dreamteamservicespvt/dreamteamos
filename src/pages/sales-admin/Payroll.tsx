@@ -15,6 +15,7 @@ import { isLinePaid, markSalaryPaid, undoSalaryPayment } from "@/services/payrol
 import { downloadPayslip } from "@/utils/payslipPdf";
 import { useSalesMemberPay, type SalesPayRow } from "@/hooks/useSalesMemberPay";
 import { currentPayMonth, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import { isActiveUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
 
 /**
@@ -30,10 +31,9 @@ export default function SalesPayroll() {
   const { confirm, ConfirmDialog } = useConfirm();
 
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>("users");
-  // Members no longer active are passed too: the hook keeps one only for a period they worked in
-  // or were paid for, so somebody who left mid-cycle can still be paid for their last days.
+  // Inactive people are not listed (owner, 2026-10-10: only My Team shows them).
   const members = useMemo(
-    () => allUsers.filter(u => u.role === "sales_member"),
+    () => allUsers.filter(u => u.role === "sales_member" && isActiveUser(u)),
     [allUsers],
   );
 
@@ -314,13 +314,7 @@ export default function SalesPayroll() {
                         {row.member.name?.charAt(0)?.toUpperCase() || "?"}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {row.member.name}
-                          {row.left && (
-                            <span title="No longer active — listed for the days they worked in this period"
-                              className="ml-1.5 rounded-full bg-muted px-1.5 py-px text-[10px] font-semibold text-muted-foreground">Left</span>
-                          )}
-                        </p>
+                        <p className="truncate text-sm font-medium text-foreground">{row.member.name}</p>
                         <p className="truncate text-[11px] text-muted-foreground">
                           {bankOk ? payoutSummary(row.bank) : <span className="text-warning">Payout details missing</span>}
                         </p>

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { isActiveUser } from "@/utils/roleHelpers";
 import {
   Users, Search, Loader2, MessageCircle, X, Save, Mail, Globe, MapPin, Image as ImageIcon,
   CreditCard, Plus, Trash2, Contact, ShoppingBag, TrendingUp, Star, Gift, ExternalLink, CheckCircle2, DownloadCloud, CalendarDays, ArrowDownUp, UserPlus,
@@ -145,7 +146,8 @@ export default function Clients() {
     const qy = user.role === "sales_admin"
       ? query(collection(db, "users"), where("role", "==", "sales_member"), where("createdBy", "==", user.uid))
       : query(collection(db, "users"), where("role", "==", "sales_member"));
-    getDocs(qy).then((snap) => setSalesMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)))).catch(() => {});
+    // The salespeople offered for an upsell / review — active people only (owner, 2026-10-10).
+    getDocs(qy).then((snap) => setSalesMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)).filter(isActiveUser))).catch(() => {});
   }, [user, canManage]);
 
   const visible = useMemo(() => {

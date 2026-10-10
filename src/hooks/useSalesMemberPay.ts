@@ -11,7 +11,6 @@ import { isLinePaid, watchPayrollLines } from "@/services/payrollRun";
 import { commissionRate } from "@/services/settlements";
 import { watchPeriodReceipts, type SalaryReceipt } from "@/services/salaryReceipts";
 import { useToday } from "@/hooks/useToday";
-import { uidsWithAttendance } from "@/hooks/useMonthPayroll";
 import {
   computeSalary, currentPayMonth, deductionsFor, netPayable, nextPayDay, payPeriodForMonth, payPeriodLabel,
   periodDates, type PayDayInfo, type PayPeriod,
@@ -34,7 +33,8 @@ import type { AppUser, Lead } from "@/types";
  * verified sales, withheld below 75% of the cycle's target). This page used to count each sale's
  * full price on its UTC submission day with no target gate, so the admin paid a different
  * incentive from the one the member's My Salary showed. A paid member's row is the payment record,
- * as on the tech Payroll — see `useMonthPayroll` for that, the loading/error rules and leavers.
+ * as on the tech Payroll — see `useMonthPayroll` for that and the loading/error rules. The page
+ * passes active members only (owner, 2026-10-10).
  */
 
 export interface SalesPayRow {
@@ -60,7 +60,6 @@ export interface SalesPayRow {
   liveTotalEarnings: number;
   frozen: boolean;
   changedSincePaid: boolean;
-  left: boolean;
   receipts: SalaryReceipt[];
   line: PayrollLine | null;
   bank: EmployeeBank | null;
@@ -155,10 +154,7 @@ export function useSalesMemberPay(members: AppUser[], month?: string): SalesMemb
   }, [leads]);
 
   const rows = useMemo<SalesPayRow[]>(() => {
-    const active = uidsWithAttendance(checkedIn, overrides);
-
     return members
-      .filter(member => member.isActive !== false || active.has(member.uid) || lines.has(member.uid))
       .map(member => {
         const liveComputation = computeSalary({
           month: targetMonth,
@@ -212,7 +208,6 @@ export function useSalesMemberPay(members: AppUser[], month?: string): SalesMemb
           liveTotalEarnings,
           frozen: paid,
           changedSincePaid: paid && Math.round(liveTotalEarnings) !== Math.round(totalEarnings),
-          left: member.isActive === false,
           receipts: receipts.get(member.uid) ?? [],
           line,
           bank: banks.get(member.uid) ?? null,

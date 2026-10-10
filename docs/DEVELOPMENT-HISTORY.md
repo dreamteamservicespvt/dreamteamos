@@ -9,6 +9,27 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-10 (later): inactive people are shown only in My Team** (`roles-routes.md` Deactivate, `people.md`).
+  Owner: "except in the My Team sections, in all the remaining sections don't show the inactive persons — only the
+  active." Asked (AskUserQuestion): hide only the PERSON (their past sales still count in totals, their pending
+  approvals stay); Main Admin → Team Management counts as a My Team section. One rule, `roleHelpers.isActiveUser`
+  (`isActive !== false`). Newly filtered: Payroll and Sales Payroll (this reverses the same day's "leavers keep a
+  Left row" — `uidsWithAttendance` and `left` removed), Salary Management, Accounts Dashboard (staff count, salaries,
+  roles), main Accounts (salary total), Revenue Summary / Revenue Overview (per-person rows), main Session History
+  (dropdown and sessions), Tech / Sales Department (admin lists), Clients (upsell / review salesperson picker),
+  Feedback & Upsell, and the sales admin's Dashboard / Analytics / Leads Management / Member Leads (people listed =
+  active; leads still loaded for the whole team, so totals keep a leaver's sales; the number lookup still names a
+  holder who left; the Reassign pickers offer active people). Already active-only (checked): Team Attendance, HR,
+  Send Agreement recipients, Settlements, Leaderboard, Work Assign ×2, Orders, Work Reports, Tools, Drive, Session
+  History (tech/sales), AI Accounts, Social Media, chat / meetings / calls, birthdays, main Dashboard, Profit.
+  Unchanged on purpose: Sales Approvals (a leaver's pending sale stays to be verified), Send Agreement's sent /
+  received document lists (documents, not people), name lookups on records. Tested: `activePeopleOct10` (2) and the
+  real Payroll page on the in-memory Firestore (an inactive member who checked in is not listed); full vitest
+  222 / 3401; build; typecheck. Real browser (9/9 PASS, no console errors, 390px no sideways scroll): Payroll, Sales
+  Payroll, Salary Management (8 staff = the 8 active users), Accounts Dashboard, Tech / Sales Department, Session
+  History without the inactive people; the sales admin Dashboard lists 2 members but its period revenue ₹30,000
+  still includes the leaver's ₹20,000; Leads Management's number lookup names the leaver as holder and its Reassign
+  offers active people only; both My Team pages and Team Management still list the inactive people.
 - **2026-10-10: Attendance → Pay Salary on one source of truth** (`people.md` §9.13 / §9.14 / §24 / §25,
   `data-model.md`). Owner: Pay Salary must come straight from live attendance; "fix all the other issues like them in
   the OS". Asked (AskUserQuestion): Sunday marks never change pay; a rejected check-in stays Present; link Accounts'

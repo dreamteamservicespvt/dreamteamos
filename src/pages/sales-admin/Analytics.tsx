@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { isActiveUser } from "@/utils/roleHelpers";
 import { fetchTeamMembers, subscribeTeamLeads } from "@/services/teamLeads";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
@@ -56,7 +57,10 @@ function getGrade(score: number): { grade: string; color: string } {
 
 export default function SalesAnalytics() {
   const currentUser = useAuthStore((s) => s.user);
-  const [members, setMembers] = useState<AppUser[]>([]);
+  // The whole team, for counting: a past sale of someone who has left still counts in the totals.
+  const [teamMembers, setMembers] = useState<AppUser[]>([]);
+  // The people shown — active only (owner, 2026-10-10: inactive people appear only in My Team).
+  const members = useMemo(() => teamMembers.filter(isActiveUser), [teamMembers]);
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("today");
@@ -79,7 +83,7 @@ export default function SalesAnalytics() {
     return () => { cancelled = true; unsubLeads?.(); };
   }, [currentUser?.uid]);
 
-  const memberIds = members.map((m) => m.uid);
+  const memberIds = teamMembers.map((m) => m.uid);
   const teamLeads = leads.filter((l: any) => memberIds.includes(l.assignedTo));
 
   // Filter leads by period

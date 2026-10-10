@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
-import { getRoleColor, getRoleLabel } from "@/utils/roleHelpers";
+import { getRoleColor, getRoleLabel, isActiveUser } from "@/utils/roleHelpers";
 import { formatCurrency } from "@/utils/formatters";
 import type { AppUser } from "@/types";
 import { Phone, Users, TrendingUp, Target, ShoppingBag } from "lucide-react";
@@ -18,7 +18,7 @@ export default function SalesDepartment() {
     const unsubs: (() => void)[] = [];
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
       const allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      setSalesAdmins(allUsers.filter((u) => u.role === "sales_admin"));
+      setSalesAdmins(allUsers.filter((u) => u.role === "sales_admin" && isActiveUser(u)));
       setSalesMembers(allUsers.filter((u) => u.role === "sales_member" && u.isActive !== false));
       checkDone();
     }));

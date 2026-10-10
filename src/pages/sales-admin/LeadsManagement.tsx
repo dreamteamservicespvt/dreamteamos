@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { isActiveUser } from "@/utils/roleHelpers";
 import { useNavigate } from "react-router-dom";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -37,7 +38,10 @@ export default function LeadsManagement() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [members, setMembers] = useState<AppUser[]>([]);
+  // The whole team, for counting: a past sale of someone who has left still counts in the totals.
+  const [teamMembers, setMembers] = useState<AppUser[]>([]);
+  // The people shown — active only (owner, 2026-10-10: inactive people appear only in My Team).
+  const members = useMemo(() => teamMembers.filter(isActiveUser), [teamMembers]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -92,6 +96,7 @@ export default function LeadsManagement() {
           query={search}
           leads={leads}
           members={members}
+          allMembers={teamMembers}
           admin={currentUser!}
           confirm={confirm}
           toast={toast}
@@ -160,6 +165,7 @@ function NumberLookup({
   query,
   leads,
   members,
+  allMembers,
   admin,
   confirm,
   toast,
@@ -167,6 +173,8 @@ function NumberLookup({
   query: string;
   leads: Lead[];
   members: AppUser[];
+  /** The whole team, for names: a number held by someone who has left still says who holds it. */
+  allMembers: AppUser[];
   admin: AppUser;
   confirm: ConfirmFn;
   toast: ToastFn;
@@ -174,7 +182,7 @@ function NumberLookup({
   const now = useNow(1000);
   const digits = query.replace(/[^0-9]/g, "");
 
-  const memberName = (uid: string) => members.find((m) => m.uid === uid)?.name || "Unknown / other team";
+  const memberName = (uid: string) => allMembers.find((m) => m.uid === uid)?.name || "Unknown / other team";
 
   // Group every matching lead by its normalized number.
   const groups = useMemo(() => {

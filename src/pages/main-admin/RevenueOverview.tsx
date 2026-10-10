@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { formatCurrency, formatDate } from "@/utils/formatters";
-import { getRoleLabel } from "@/utils/roleHelpers";
+import { getRoleLabel, isActiveUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Filter } from "lucide-react";
 import {
@@ -22,7 +22,7 @@ export default function RevenueOverview() {
     let loaded = 0;
     const checkDone = () => { loaded++; if (loaded >= 3) setLoading(false); };
     const unsubs: (() => void)[] = [];
-    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)).filter(isActiveUser)); /* only active people are shown */ checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => { setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "leads"), (snap) => { setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     return () => unsubs.forEach((u) => u());

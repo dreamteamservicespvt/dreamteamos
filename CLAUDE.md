@@ -216,8 +216,10 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-10)
 
-- 2026-10-10, **working tree, not committed**: **Attendance → Pay Salary on one source of truth** — one tally, paid =
-  the payment record, Sales Payroll on the member's rule, Accounts linked to Payroll (`people.md` §9.13–9.14, `data-model.md`).
+- 2026-10-10, **on `main` and live** (`7c36262`, pushed by the owner): **Attendance → Pay Salary on one source of truth** — one tally, paid =
+  the payment record, Sales Payroll on the member's rule, Accounts linked to Payroll (`people.md` §9.13–9.14, `data-model.md`);
+  then, **in the working tree (not committed)**, **inactive people shown only in My Team / Team Management**
+  (`roleHelpers.isActiveUser`, `roles-routes.md`; it removes Payroll's "Left" rows that `7c36262` shipped).
 - 2026-10-08 (later), **on `main` and live** (pushed first to branch `claude/cast-consistency-smm-attendance`, then
   fast-forwarded into `main` at the owner's go-ahead — a branch is not on dreamteamos.vercel.app, which is built
   from `main`): **the ad's cast from the configuration to the last video prompt** (a Male & Female Duo — or any
@@ -232,7 +234,7 @@ errors:** done means every listed item is fully resolved with no build, console 
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
 - `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈843 KB; lazy pages for
   AI Accounts, Invoices).
-- `npx vitest run` ✅ 221 files, 3399 tests, all pass, no unhandled errors (2026-10-10, after the attendance → pay
+- `npx vitest run` ✅ 222 files, 3401 tests, all pass, no unhandled errors (2026-10-10, after the attendance → pay
   salary fix). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).

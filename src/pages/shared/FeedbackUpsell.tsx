@@ -16,6 +16,7 @@
  * and one seller's orders are subscribed to only while their book is open.
  */
 import { useEffect, useMemo, useState } from "react";
+import { isActiveUser } from "@/utils/roleHelpers";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import {
   ArrowLeft, Contact, Loader2, MessageCircle, Search, Sparkles, Users,
@@ -61,7 +62,8 @@ export default function FeedbackUpsell() {
     const unsub = onSnapshot(
       query(collection(db, "users"), where("role", "==", "sales_member")),
       (snap) => {
-        const all = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
+        // Only active people are listed (owner, 2026-10-10).
+        const all = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)).filter(isActiveUser);
         setMembers(
           user.role === "sales_admin"
             ? all.filter((m) => m.createdBy === user.uid)

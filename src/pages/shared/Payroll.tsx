@@ -18,6 +18,7 @@ import { downloadPayslip } from "@/utils/payslipPdf";
 import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import { useTechProductivity } from "@/hooks/useTechProductivity";
 import { formatRatio, ratioBand, RATIO_BAND_STYLE, RATIO_TARGET, RATIO_LIMIT } from "@/utils/techProductivity";
+import { isActiveUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
 
 /**
@@ -40,10 +41,9 @@ export default function Payroll() {
   const { data: allUsers, loading: usersLoading } = useFirestoreCollection<AppUser>("users");
 
   const members = useMemo(() => {
-    // External creators have no salary — never in payroll. Members who are no longer active are
-    // passed too: the hook keeps one only for a period they worked in or were paid for, so a
-    // member who left mid-cycle can still be paid for their last days (they vanished before).
-    const base = allUsers.filter(u => u.role === "tech_member" && !u.externalCreator);
+    // External creators have no salary — never in payroll. Inactive people are not listed
+    // (owner, 2026-10-10: only My Team shows them).
+    const base = allUsers.filter(u => u.role === "tech_member" && isActiveUser(u) && !u.externalCreator);
     return isTeamLeader ? base.filter(u => u.createdBy === user?.createdBy) : base;
   }, [allUsers, isTeamLeader, user?.createdBy]);
 
@@ -381,13 +381,7 @@ export default function Payroll() {
                         {row.member.name?.charAt(0)?.toUpperCase() || "?"}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {row.member.name}
-                          {row.left && (
-                            <span title="No longer active — listed for the days they worked in this period"
-                              className="ml-1.5 rounded-full bg-muted px-1.5 py-px text-[10px] font-semibold text-muted-foreground">Left</span>
-                          )}
-                        </p>
+                        <p className="truncate text-sm font-medium text-foreground">{row.member.name}</p>
                         <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
                           {bankOk
                             ? <>{isBankVerified(row.bank) && <ShieldCheck className="h-2.5 w-2.5 shrink-0 text-success" />}{payoutSummary(row.bank)}</>
