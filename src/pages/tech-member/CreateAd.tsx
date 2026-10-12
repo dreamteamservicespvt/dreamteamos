@@ -11,7 +11,7 @@ export default function CreateAd() {
   return (
     <div className="-m-4 md:-m-6">
       {/* onClose is a no-op here — there's nowhere to go back to; this page *is* their home. */}
-      <AIPlatformApp onClose={() => {}} />
+      <AIPlatformApp onClose={() => { }} />
     </div>
   );
-}
+} 
