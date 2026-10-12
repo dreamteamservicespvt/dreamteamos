@@ -13,6 +13,7 @@ import Login from "@/pages/auth/Login";
 import AppLayout from "@/components/layout/AppLayout";
 import { Loader2 } from "lucide-react";
 import AppUpdateBanner from "@/components/layout/AppUpdateBanner";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 
 
 /**
@@ -182,8 +183,9 @@ const App = () => (
         <AppUpdateBanner />
         {/* The half-second while a page's own chunk arrives. Same mark the shell uses, so a
             navigation never flashes something unfamiliar. */}
-        <Suspense fallback={<RouteFallback />}>
-        <Routes>
+        <ErrorBoundary>
+          <Suspense fallback={<RouteFallback />}>
+          <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
 
@@ -396,6 +398,7 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
     </TooltipProvider>
     </ThemeProvider>

@@ -6,6 +6,39 @@ import { initCapacitorPlugins } from "@/services/capacitor-plugins";
 // Initialize native Capacitor plugins (no-ops on web)
 initCapacitorPlugins();
 
+// Deployment chunk recovery: When a new version is deployed to production, previously loaded
+// tabs will request outdated JavaScript chunks that no longer exist on the server.
+// Vite emits `vite:preloadError`, while dynamic imports reject with module fetch/MIME failures.
+// Automatically reload the page once so the user seamlessly receives the latest bundle.
+function triggerDeploymentReload(reason: string) {
+  const reloadKey = "dts_deployment_reload_ts";
+  const lastReload = sessionStorage.getItem(reloadKey);
+  const now = Date.now();
+  if (!lastReload || now - Number(lastReload) > 15000) {
+    sessionStorage.setItem(reloadKey, String(now));
+    console.warn(`[DeploymentReload] Refreshing page due to: ${reason}`);
+    window.location.reload();
+  }
+}
+
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  triggerDeploymentReload("vite:preloadError");
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const msg = String(event.reason?.message || event.reason || "");
+  if (
+    msg.includes("dynamically imported module") ||
+    msg.includes("Importing a module script failed") ||
+    msg.includes("Strict MIME type checking") ||
+    msg.includes("Failed to fetch")
+  ) {
+    event.preventDefault();
+    triggerDeploymentReload("unhandledrejection: " + msg);
+  }
+});
+
 // PWA installability: some browsers only offer "Install app" once a service worker is
 // active. The FCM worker doubles as ours, but fcm.ts registers it only after notification
 // permission — register it up-front too (same URL + scope, so the later call is a no-op).

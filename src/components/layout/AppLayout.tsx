@@ -8,6 +8,7 @@ import Topbar from "./Topbar";
 import { Loader2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { initFCM, onForegroundMessage } from "@/services/fcm";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 /**
  * The overlays, fetched after the page they sit on top of.
  *
@@ -125,7 +126,13 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         <main className="flex-1 p-4 md:p-6 overflow-x-hidden overflow-y-auto">
           {/* Above the page, not inside it: a birthday belongs to the whole company, so it shows
               wherever someone happens to be working. External creators are not colleagues. */}
-          {!user.externalCreator && <Suspense fallback={null}><BirthdayGreeting /></Suspense>}
+          {!user.externalCreator && (
+            <ErrorBoundary fallback={null}>
+              <Suspense fallback={null}>
+                <BirthdayGreeting />
+              </Suspense>
+            </ErrorBoundary>
+          )}
           {/*
             The page's own chunk loads HERE, not around the whole app.
 
@@ -140,25 +147,29 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
 
             Inside the shell, only the content area waits. The chrome never blinks.
           */}
-          <Suspense fallback={<PageFallback />}>
-            <Outlet />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<PageFallback />}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         </main>
-        <Suspense fallback={null}>
-        <VideoCallManager />
-        {user.role === "tech_member" && !user.externalCreator && <DailyCheckinPrompt />}
-        {/* Asks employees once a day for whatever the company still needs from them, until it
-            has it all. Decides for itself who it applies to — see utils/profileCompletion. */}
-        <ProfileCompletionPrompt />
-        <MandatoryAgreementGate />
-        <UpdatePopup />
-        {/* The last three days before a social-media month's renewal date: a countdown and the
-            month's work report for the salesperson who sold it, once a day. */}
-        {user.role === "sales_member" && <SmmRenewalPopup />}
-        {/* 11 AM and 5 PM: everybody on a social-media month's team updates their posts (2026-10-05).
-            It decides for itself who holds a seat — see utils/smmStatusCheck. */}
-        {user.role.startsWith("tech_") && !user.externalCreator && <SmmStatusCheckPopup />}
-        </Suspense>
+        <ErrorBoundary fallback={null}>
+          <Suspense fallback={null}>
+            <VideoCallManager />
+            {user.role === "tech_member" && !user.externalCreator && <DailyCheckinPrompt />}
+            {/* Asks employees once a day for whatever the company still needs from them, until it
+                has it all. Decides for itself who it applies to — see utils/profileCompletion. */}
+            <ProfileCompletionPrompt />
+            <MandatoryAgreementGate />
+            <UpdatePopup />
+            {/* The last three days before a social-media month's renewal date: a countdown and the
+                month's work report for the salesperson who sold it, once a day. */}
+            {user.role === "sales_member" && <SmmRenewalPopup />}
+            {/* 11 AM and 5 PM: everybody on a social-media month's team updates their posts (2026-10-05).
+                It decides for itself who holds a seat — see utils/smmStatusCheck. */}
+            {user.role.startsWith("tech_") && !user.externalCreator && <SmmStatusCheckPopup />}
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </div>
   );
