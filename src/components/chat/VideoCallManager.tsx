@@ -820,7 +820,7 @@ export default function VideoCallManager() {
     const checkNativeCallAction = async () => {
       try {
         const { Capacitor } = await import("@capacitor/core");
-        const CallAction = Capacitor.Plugins["CallAction"];
+        const CallAction = (Capacitor as any).Plugins?.["CallAction"];
         if (!CallAction) return;
         const result = await CallAction.getPendingAction();
         if (!result || !result.action) return;

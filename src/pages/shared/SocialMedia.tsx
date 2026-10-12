@@ -29,11 +29,12 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaigns } from "@/hooks/useSmmCampaigns";
+import { useToast } from "@/hooks/use-toast";
 import {
-  closeEndedMonthsOnOpen, fetchFinishedCampaigns, healRenewalLinksOnOpen, holdUnrenewedHistoryOnOpen, notifyRenewalsDueOnOpen,
+  closeEndedMonthsOnOpen, createRenewalMonth, fetchFinishedCampaigns, healRenewalLinksOnOpen, holdUnrenewedHistoryOnOpen, notifyRenewalsDueOnOpen,
 } from "@/services/smm";
 import { canSeeSmmMoney, isSmmOverseer, isoDay } from "@/utils/smmPlan";
-import { canRenewSmm, canSetUpSmm, isOnHold, needsSetup, renewalDue } from "@/utils/smmPackage";
+import { canAdminRenewSmm, canRenewSmm, canSetUpSmm, isOnHold, needsSetup, renewalDue } from "@/utils/smmPackage";
 import { byGlanceUrgency, monthGlance, type SmmGlance } from "@/utils/smmGlance";
 import { overdueItemsFor } from "@/utils/smmReminders";
 import SmmCampaignCard from "@/components/smm/SmmCampaignCard";
@@ -108,6 +109,25 @@ export default function SocialMedia() {
   const [finished, setFinished] = useState<SmmCampaign[] | null>(null);
   const [finishedLoading, setFinishedLoading] = useState(false);
   const { renew, renewingId } = useSmmRenewal(user);
+  const [adminRenewingId, setAdminRenewingId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const handleAdminRenew = async (campaign: SmmCampaign) => {
+    if (!user) return;
+    setAdminRenewingId(campaign.id);
+    try {
+      const res = await createRenewalMonth({
+        previousCampaignId: campaign.id,
+        actor: { uid: user.uid, name: user.name, role: user.role },
+      });
+      toast({ title: "Next renewal month created", description: "Preserved completed month and started Month N+1." });
+      navigate(`/smm/${res.newCampaignId}`);
+    } catch (err) {
+      toast({ title: "Could not create renewal", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    } finally {
+      setAdminRenewingId(null);
+    }
+  };
 
   /*
     Months past their last day that have a decision behind them — renewed, or not renewing — are filed
@@ -432,7 +452,8 @@ export default function SocialMedia() {
               viewerUid={user?.uid}
               onSetUp={canSetUp ? setSettingUp : undefined}
               onRenew={user && canRenewSmm(c, user) ? renew : undefined}
-              renewing={renewingId === c.id}
+              onAdminRenew={user && canAdminRenewSmm(user) ? handleAdminRenew : undefined}
+              renewing={renewingId === c.id || adminRenewingId === c.id}
             />
           ))}
         </div>

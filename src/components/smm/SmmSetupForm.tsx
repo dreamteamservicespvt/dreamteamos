@@ -11,14 +11,14 @@
  * "Add SMM sale" dialog uses it as its last step.
  */
 import { useEffect, useMemo, useState } from "react";
-import { AtSign, CalendarRange, Check, Clapperboard, ListChecks, Loader2, PencilLine, Users, X } from "lucide-react";
+import { AtSign, CalendarRange, Check, Clapperboard, ListChecks, Loader2, Lock, PencilLine, RefreshCcw, Users, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { applyHistorySetup, applyMonthSetup, historySetupProblem, setupProblem } from "@/services/smmSetup";
-import { fetchAssignableMembers } from "@/services/smm";
+import { createRenewalMonth, fetchAssignableMembers } from "@/services/smm";
 import { ClipsPerVideoPicker } from "@/components/sales/SmmSaleFields";
 import { isoDay, teamMembers } from "@/utils/smmPlan";
 import {
-  DEFAULT_SMM_CLIPS_PER_VIDEO, SMM_SEATS, addMonthsIso, cleanPlatforms, clipsPerVideoOf, cycleRangeLabel, isNoSaleMonth,
+  DEFAULT_SMM_CLIPS_PER_VIDEO, SMM_SEATS, addMonthsIso, canAdminRenewSmm, cleanPlatforms, clipsPerVideoOf, cycleRangeLabel, isMonthLocked, isNoSaleMonth,
   monthCycle, sellerLineOf, type SmmSeat,
 } from "@/utils/smmPackage";
 import { daysBetween } from "@/utils/smmPlan";
@@ -416,32 +416,49 @@ export function SmmSetupDialog({ campaign, user, onClose, onSaved }: {
   const [value, setValue] = useState<SmmSetupValue>(() => setupValueOf(campaign));
   const [members, setMembers] = useState<{ uid: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [renewing, setRenewing] = useState(false);
   useEffect(() => { fetchAssignableMembers().then(setMembers); }, []);
   const today = isoDay(new Date());
+
   /*
-    A history month (2026-10-05) is edited as the record it is — its dates stay in the past and its
-    people are saved by name with no jobs (`applyHistorySetup`). A month already under way cannot be
-    moved wholly into the past from here — a finished month is recorded from "Add SMM sale", where it
-    becomes history.
+    Completed or historical months are LOCKED (2026-10-12). They cannot be edited to represent
+    the next renewal period. Their dates must remain in the past, and managing them updates the
+    historical record without creating live jobs. To start the next period, a new renewal month
+    record is created.
   */
-  const history = !!campaign.history;
+  const locked = isMonthLocked(campaign, today);
+  const canAdminRenew = canAdminRenewSmm(user);
   const problem = useMemo(
-    () => (history
+    () => (locked
       ? historySetupProblem(setupInputOf(value), today)
-      : setupProblem(setupInputOf(value), today)
-        || (value.endDate < today && campaign.status === "active" ? "The month can't end before today." : "")),
-    [value, today, campaign.status, history],
+      : setupProblem(setupInputOf(value), today)),
+    [value, today, locked],
   );
+
+  const createRenewal = async () => {
+    setRenewing(true);
+    try {
+      const actor = { uid: user.uid, name: user.name, role: user.role };
+      const res = await createRenewalMonth({ previousCampaignId: campaign.id, actor });
+      toast({ title: "Next renewal month created", description: "Preserved completed month and started Month N+1." });
+      onClose();
+      window.location.href = `/smm/${res.newCampaignId}`;
+    } catch (err) {
+      toast({ title: "Could not create renewal", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    } finally {
+      setRenewing(false);
+    }
+  };
 
   const save = async () => {
     if (problem) { toast({ title: problem, variant: "destructive" }); return; }
     setSaving(true);
     const actor = { uid: user.uid, name: user.name, role: user.role, createdBy: user.createdBy };
     try {
-      if (history) {
+      if (locked) {
         await applyHistorySetup(campaign.id, setupInputOf(value), actor);
         const people = teamMembers(value.team).map((m) => m.name).join(", ");
-        toast({ title: "History month saved", description: people ? `${people} on it — no job cards.` : cycleRangeLabel(monthCycle(value.startDate, value.endDate)) });
+        toast({ title: "Historical record saved", description: people ? `${people} on it — preserved as historical record.` : cycleRangeLabel(monthCycle(value.startDate, value.endDate)) });
         onSaved?.();
         onClose();
         return;
@@ -457,13 +474,13 @@ export function SmmSetupDialog({ campaign, user, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={() => !saving && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={() => !saving && !renewing && onClose()}>
       <div data-test="smm-setup-dialog" onClick={(e) => e.stopPropagation()}
         className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-border bg-card p-4 shadow-2xl sm:max-w-xl sm:rounded-xl">
         <div className="mb-3 flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold text-foreground">
-              {campaign.setupAt ? "Edit setup" : "Set up & assign"} — {campaign.businessName || campaign.clientName}
+              {locked ? "Manage historical record" : campaign.setupAt ? "Edit setup" : "Set up & assign"} — {campaign.businessName || campaign.clientName}
             </h3>
             <p className="text-xs text-muted-foreground">
               {campaign.packageLabel} · {sellerLineOf(campaign)}{isNoSaleMonth(campaign) ? " · no sale, not in revenue" : ""}
@@ -473,17 +490,43 @@ export function SmmSetupDialog({ campaign, user, onClose, onSaved }: {
             <X size={18} />
           </button>
         </div>
+
+        {locked && (
+          <div data-test="smm-setup-locked-banner" className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-foreground">
+            <div className="flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
+              <Lock size={14} /> Completed Month (Locked)
+            </div>
+            <p className="mt-1 text-muted-foreground">
+              This month ended on <b>{campaign.cycle?.endDate}</b> and is locked to preserve its complete history, dates, and work. It cannot be edited to represent the next renewal.
+            </p>
+            {canAdminRenew && !campaign.renewal?.nextCampaignId && (
+              <div className="mt-2.5 flex items-center justify-between border-t border-amber-500/20 pt-2">
+                <span className="text-[11px] text-muted-foreground">Ready to start the next renewal period?</span>
+                <button
+                  type="button"
+                  onClick={createRenewal}
+                  disabled={renewing}
+                  data-test="smm-setup-create-renewal"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {renewing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCcw size={12} />} Create next renewal
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* The value carries the month's accounts, so the form asks for them ("Accounts it covers"). */}
         <SmmSetupForm value={value} onChange={setValue} members={members} />
         <div className="mt-4 flex gap-2">
-          <button onClick={onClose} disabled={saving}
+          <button onClick={onClose} disabled={saving || renewing}
             className="flex-1 rounded-lg border border-border px-3 py-2.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">
             Cancel
           </button>
-          <button onClick={save} disabled={saving || !!problem} data-test="smm-setup-save"
+          <button onClick={save} disabled={saving || renewing || !!problem} data-test="smm-setup-save"
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             {saving && <Loader2 size={14} className="animate-spin" />}
-            {saving ? "Saving…" : problem || "Save setup"}
+            {saving ? "Saving…" : problem || (locked ? "Save historical record" : "Save setup")}
           </button>
         </div>
       </div>

@@ -35,7 +35,7 @@ import {
 import { assignSmmMonth, fetchMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
 import { dayToDate, isoDay } from "@/utils/smmPlan";
 import {
-  cleanPlatforms, cycleRangeLabel, cyclesOverlap, hasTeam, historyFiling, isNoSaleMonth, jobsByMember, linksForAccounts,
+  cleanPlatforms, cycleRangeLabel, cyclesOverlap, hasTeam, historyFiling, isMonthLocked, isNoSaleMonth, jobsByMember, linksForAccounts,
   monthCycle, monthLabel, needsSetup, noSaleMonthProblem, normaliseClipsPerVideo, saleDay, smmSalesOnLeads,
 } from "@/utils/smmPackage";
 import { normalizePhone, phoneLockId, phoneVariants } from "@/utils/phone";
@@ -321,8 +321,12 @@ export async function applyMonthSetup(
   if (setup.platforms) await setMonthPlatforms(campaignId, setup.platforms);
   const before = await fetchCampaign(campaignId);
   if (!before) throw new Error("This month no longer exists.");
-  const cycle = monthCycle(setup.startDate, setup.endDate);
+  const today = isoDay(new Date());
   const firstSetup = !before.setupAt;
+  if (isMonthLocked(before, today) && !firstSetup) {
+    throw new Error("This completed month is locked to preserve its history and cannot be edited to represent a renewal. Create a new month for the next period.");
+  }
+  const cycle = monthCycle(setup.startDate, setup.endDate);
 
   const after = await saveMonthSetup(campaignId, {
     cycle,
@@ -405,7 +409,7 @@ export function historySetupProblem(setup: MonthSetupInput, today: string): stri
   const problem = setupProblem(setup, today);
   if (problem) return problem;
   if (monthCycle(setup.startDate, setup.endDate).endDate >= today) {
-    return "A history month stays in the past — end it before today.";
+    return "A completed or historical month is locked and stays in the past — it cannot be extended or edited into the next renewal. Create a new renewal month for the next period.";
   }
   return "";
 }

@@ -34,7 +34,7 @@ import type { AppUser } from "@/types";
 /** How long the fields sit still before they are written. Long enough to type a title in. */
 const AUTOSAVE_MS = 900;
 
-export default function SmmItemDialog({ campaign, item, user, members, onClose, onMessage }: {
+export default function SmmItemDialog({ campaign, item, user, members, onClose, onMessage, canEdit = true }: {
   campaign: SmmCampaign;
   item: SmmContentItem;
   user: Pick<AppUser, "uid" | "name" | "role">;
@@ -43,6 +43,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
   onClose: () => void;
   /** Hand a ready-written message to the composer — the one place messages actually go out. */
   onMessage: (text: string, kind: SmmTemplateKind) => void;
+  canEdit?: boolean;
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -90,6 +91,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
    * first rather than making somebody wait for "Saved" before they may press Posted.
    */
   const pickStage = (next: SmmItemStatus) => {
+    if (!canEdit) return;
     if (history && next === "posted") {
       if (!uploadDate) {
         toast({ title: "Give it the day it went up first", description: "Set the upload date above — the calendar shows the post on that day.", variant: "destructive" });
@@ -125,6 +127,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
   const where = useRef({ campaignId: campaign.id, itemId: item.id });
   where.current = { campaignId: campaign.id, itemId: item.id };
   useEffect(() => {
+    if (!canEdit) return;
     if (skipFirst.current) { skipFirst.current = false; return; }
     const patch: Partial<SmmContentItem> = {
       title: title.trim(),
@@ -155,6 +158,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
   }, [title, uploadDate, uploadTime, platforms, notes, postUrls]); // eslint-disable-line react-hooks/exhaustive-deps
   // On close, whatever is still unsaved goes now — no state to set, the dialog is gone.
   useEffect(() => () => {
+    if (!canEdit) return;
     const patch = unsaved.current;
     if (!patch) return;
     unsaved.current = null;
@@ -164,6 +168,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async (key: string, fn: () => Promise<void>, ok?: string) => {
+    if (!canEdit) return;
     setBusy(key);
     try {
       await fn();
@@ -179,8 +184,10 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
     }
   };
 
-  const togglePlatform = (p: SmmPlatform) =>
+  const togglePlatform = (p: SmmPlatform) => {
+    if (!canEdit) return;
     setPlatforms((list) => (list.includes(p) ? list.filter((x) => x !== p) : [...list, p]));
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onClick={() => !busy && onClose()}>
@@ -204,11 +211,15 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
               <StatusChip status={item.status} />
               {/* The reassurance that replaces the Save button. */}
               <span data-test="smm-autosave" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                {saving
-                  ? <><Loader2 size={9} className="animate-spin" /> Saving…</>
-                  : savedAt
-                    ? <><Check size={9} className="text-success" /> Saved</>
-                    : <><CloudUpload size={9} /> Saves as you type</>}
+                {!canEdit ? (
+                  <span className="font-medium text-amber-500">View only</span>
+                ) : saving ? (
+                  <><Loader2 size={9} className="animate-spin" /> Saving…</>
+                ) : savedAt ? (
+                  <><Check size={9} className="text-success" /> Saved</>
+                ) : (
+                  <><CloudUpload size={9} /> Saves as you type</>
+                )}
               </span>
             </div>
           </div>
@@ -218,16 +229,23 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
           </button>
         </div>
 
+        {!canEdit && (
+          <div data-test="smm-item-readonly" className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-200">
+            <b>View only</b> · Only assigned team members or admins can edit this post or advance its stage.
+          </div>
+        )}
+
         {/* ── What it is ─────────────────────────────────────────────────────────────────── */}
         <div className="space-y-2.5">
           <div>
             <label className="text-[11px] font-medium text-muted-foreground">Title</label>
             <input
               value={title}
+              disabled={!canEdit}
               data-test="smm-item-title"
               onChange={(e) => setTitle(e.target.value)}
               placeholder="What is this post about?"
-              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -237,9 +255,10 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
               <input
                 type="date"
                 value={uploadDate}
+                disabled={!canEdit}
                 data-test="smm-item-date"
                 onChange={(e) => setUploadDate(e.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
               />
             </div>
             <div className="w-28">
@@ -247,9 +266,10 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
               <input
                 type="time"
                 value={uploadTime}
+                disabled={!canEdit}
                 data-test="smm-item-time"
                 onChange={(e) => setUploadTime(e.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -263,10 +283,11 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
                   type="button"
                   data-test={`smm-item-platform-${key}`}
                   aria-pressed={platforms.includes(key)}
+                  disabled={!canEdit}
                   onClick={() => togglePlatform(key)}
                   className={`h-8 rounded-md border px-2.5 text-[11px] font-medium transition-colors ${
                     platforms.includes(key) ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent"
-                  }`}
+                  } disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
                   {label}
                 </button>
@@ -279,10 +300,11 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
             <textarea
               value={notes}
               rows={2}
+              disabled={!canEdit}
               data-test="smm-item-notes"
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Anything the person making this needs to know"
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -292,12 +314,13 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
                 <label className="text-[11px] font-medium text-muted-foreground">Makes it</label>
                 <select
                   value={item.makerUid || ""}
+                  disabled={!canEdit}
                   data-test="smm-item-maker"
                   onChange={(e) => {
                     const m = members.find((x) => x.uid === e.target.value);
                     run("maker", () => assignItem(campaign.id, item.id, "maker", m ? { uid: m.uid, name: m.name } : null));
                   }}
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   <option value="">Nobody yet</option>
                   {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
@@ -307,12 +330,13 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
                 <label className="text-[11px] font-medium text-muted-foreground">Posts it</label>
                 <select
                   value={item.publisherUid || ""}
+                  disabled={!canEdit}
                   data-test="smm-item-publisher"
                   onChange={(e) => {
                     const m = members.find((x) => x.uid === e.target.value);
                     run("publisher", () => assignItem(campaign.id, item.id, "publisher", m ? { uid: m.uid, name: m.name } : null));
                   }}
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   <option value="">Nobody yet</option>
                   {members.map((m) => <option key={m.uid} value={m.uid}>{m.name}</option>)}
@@ -373,7 +397,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button
                   data-test="smm-send-approval"
-                  disabled={!!busy}
+                  disabled={!canEdit || !!busy}
                   onClick={() => run("ask", async () => {
                     await requestApproval(campaign.id, item.id);
                     onMessage(approvalRequestMessage(campaign, { ...item, title, uploadDate: uploadDate || null, uploadTime: uploadTime || null, platforms }), "approval_request");
@@ -385,7 +409,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
                 {waiting && (
                   <button
                     data-test="smm-chase"
-                    disabled={!!busy}
+                    disabled={!canEdit || !!busy}
                     onClick={() => run("chase", () => addApprovalChase(campaign.id, item.id, user, "Followed up"), "Follow-up recorded")}
                     className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-[11px] font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
                   >
@@ -396,15 +420,16 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
 
               <input
                 value={approvalNote}
+                disabled={!canEdit}
                 data-test="smm-approval-note"
                 onChange={(e) => setApprovalNote(e.target.value)}
                 placeholder="What did they say?"
-                className="mt-2 h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground outline-none focus:border-primary"
+                className="mt-2 h-8 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground outline-none focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
               />
               <div className="mt-1.5 flex gap-1.5">
                 <button
                   data-test="smm-approved"
-                  disabled={!!busy}
+                  disabled={!canEdit || !!busy}
                   onClick={() => run("yes", () => recordApproval(campaign.id, item.id, { approved: true, note: approvalNote.trim() || null }, user), "Approval recorded")}
                   className="h-8 flex-1 rounded-md bg-success px-2 text-[11px] font-medium text-white transition-colors hover:bg-success/90 disabled:opacity-50"
                 >
@@ -412,7 +437,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
                 </button>
                 <button
                   data-test="smm-changes"
-                  disabled={!!busy}
+                  disabled={!canEdit || !!busy}
                   onClick={() => run("no", () => recordApproval(campaign.id, item.id, { approved: false, note: approvalNote.trim() || null }, user), "Changes recorded")}
                   className="h-8 flex-1 rounded-md border border-warning/50 bg-warning/10 px-2 text-[11px] font-medium text-warning transition-colors hover:bg-warning/20 disabled:opacity-50"
                 >
@@ -433,7 +458,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
             status={item.status}
             approved={approved}
             busy={busy}
-            disabled={!!busy}
+            disabled={!canEdit || !!busy}
             onPick={pickStage}
           />
           {!approved && (
@@ -463,10 +488,11 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
                   <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</label>
                   <input
                     value={postUrls[key] || ""}
+                    disabled={!canEdit}
                     data-test={`smm-post-url-${key}`}
                     onChange={(e) => setPostUrls((u) => ({ ...u, [key]: e.target.value }))}
                     placeholder={`Paste the ${label} post link`}
-                    className="mt-0.5 h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+                    className="mt-0.5 h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary disabled:opacity-70 disabled:cursor-not-allowed"
                   />
                 </div>
               ))}
@@ -490,14 +516,16 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
           </div>
         )}
 
-        <button
-          data-test="smm-item-delete"
-          disabled={!!busy}
-          onClick={() => run("del", async () => { await removeItem(campaign.id, item.id); onClose(); })}
-          className="mt-4 -mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
-        >
-          <Trash2 size={12} /> Remove from the plan
-        </button>
+        {canEdit && (
+          <button
+            data-test="smm-item-delete"
+            disabled={!canEdit || !!busy}
+            onClick={() => run("del", async () => { await removeItem(campaign.id, item.id); onClose(); })}
+            className="mt-4 -mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+          >
+            <Trash2 size={12} /> Remove from the plan
+          </button>
+        )}
       </div>
     </div>
   );

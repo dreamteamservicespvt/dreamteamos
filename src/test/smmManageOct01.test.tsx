@@ -35,10 +35,10 @@ beforeEach(() => { mem.__reset(); sendNotification.mockClear(); });
 afterEach(cleanup);
 
 describe("who may delete a month and appoint the team lead", () => {
-  it("lets the main admin, tech admin, team leader and Social Media Team Lead delete — not every overseer", () => {
+  it("lets the main admin, tech admin, and team leader delete — not the view-only SMM Team Lead", () => {
     expect(plan.canDeleteSmmCampaign({ role: "tech_admin" })).toBe(true);
     expect(plan.canDeleteSmmCampaign({ role: "main_admin" })).toBe(true);
-    expect(plan.canDeleteSmmCampaign({ role: "tech_member", smmLeader: true })).toBe(true);
+    expect(plan.canDeleteSmmCampaign({ role: "tech_member", smmLeader: true })).toBe(false);
     // The owner gave the tech team leader delete on 2026-10-03.
     expect(plan.canDeleteSmmCampaign({ role: "tech_team_leader" })).toBe(true);
     expect(plan.canDeleteSmmCampaign({ role: "sales_admin" })).toBe(false);

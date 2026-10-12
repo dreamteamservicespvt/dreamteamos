@@ -23,7 +23,7 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaign } from "@/hooks/useSmmCampaigns";
 import {
-  deleteCampaign, fetchAssignableMembers, fetchCampaign, healRenewalLinksOnOpen, moveUnpostedToMonth, remindSellerToRenew,
+  createRenewalMonth, deleteCampaign, fetchAssignableMembers, fetchCampaign, healRenewalLinksOnOpen, moveUnpostedToMonth, remindSellerToRenew,
   setRenewal, undoDeleteCampaign,
 } from "@/services/smm";
 import { renameMonth } from "@/services/smmSetup";
@@ -36,8 +36,8 @@ import {
   canDeleteSmmCampaign, canEditCampaign, isPosted, isoDay,
 } from "@/utils/smmPlan";
 import {
-  NO_SALE_NOTE, SMM_SEATS, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, hasTeam,
-  isNoSaleMonth, monthLabel, needsSetup, renewalDue, sellerLabelOf, shortDayLabel, videoLengthLabel,
+  NO_SALE_NOTE, SMM_SEATS, canAdminRenewSmm, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, hasTeam,
+  isMonthLocked, isNoSaleMonth, monthLabel, needsSetup, renewalDue, sellerLabelOf, shortDayLabel, videoLengthLabel,
 } from "@/utils/smmPackage";
 import { monthGlance } from "@/utils/smmGlance";
 import { isGoneMonth } from "@/utils/smmRenewalLink";
@@ -146,19 +146,38 @@ export default function SmmCampaignPage() {
   const [members, setMembers] = useState<{ uid: string; name: string }[]>([]);
   const [settingUp, setSettingUp] = useState(false);
   const [previous, setPrevious] = useState<SmmCampaign | null>(null);
-  const [busy, setBusy] = useState<"" | "delete" | "move" | "remind" | "lost" | "rename">("");
+  const [busy, setBusy] = useState<"" | "delete" | "move" | "remind" | "lost" | "rename" | "adminRenew">("");
   /** The name being typed while the month is renamed in place; null when not renaming. */
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
-  const canEdit = canEditCampaign(campaign || { watchers: [], soldBy: "" }, user);
+  const today = isoDay(new Date());
+  const canEdit = campaign ? canEditCampaign(campaign, user) : false;
   const canSetUp = canSetUpSmm(user);
   const canDelete = canDeleteSmmCampaign(user);
   const canRenew = !!campaign && !!user && canRenewSmm(campaign, user);
+  const canAdminRenew = !!campaign && !!user && canAdminRenewSmm(user);
+  const locked = campaign ? isMonthLocked(campaign, today) : false;
   const { renew, renewingId } = useSmmRenewal(user);
   const navigate = useNavigate();
   const { confirm, ConfirmDialog } = useConfirm();
   const { toast } = useToast();
-  const today = isoDay(new Date());
+
+  const handleAdminRenew = async () => {
+    if (!campaign || !user) return;
+    setBusy("adminRenew");
+    try {
+      const res = await createRenewalMonth({
+        previousCampaignId: campaign.id,
+        actor: { uid: user.uid, name: user.name, role: user.role },
+      });
+      toast({ title: "Next renewal month created", description: "Preserved completed month and started Month N+1." });
+      navigate(`/smm/${res.newCampaignId}`);
+    } catch (err) {
+      toast({ title: "Could not create renewal", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    } finally {
+      setBusy("");
+    }
+  };
 
   useEffect(() => {
     if (canSetUp) fetchAssignableMembers().then(setMembers);
@@ -360,7 +379,10 @@ export default function SmmCampaignPage() {
                 <span data-test="smm-page-month-no" className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">Month {monthNo}</span>
               )}
               {campaign.history && <span className="rounded-full bg-info/15 px-2 py-0.5 text-[11px] font-semibold text-info">History</span>}
-              {!campaign.history && STATUS_LABEL[campaign.status] && (
+              {!campaign.history && locked && (
+                <span data-test="smm-page-locked-badge" className="rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-500">Completed (Locked)</span>
+              )}
+              {!campaign.history && !locked && STATUS_LABEL[campaign.status] && (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{STATUS_LABEL[campaign.status]}</span>
               )}
             </div>
@@ -395,10 +417,10 @@ export default function SmmCampaignPage() {
               </a>
             )}
             {/* A history month is edited too (2026-10-05) — its record and who did it, never jobs. */}
-            {canSetUp && (campaign.status === "active" || campaign.history) && (
+            {canSetUp && (campaign.status === "active" || campaign.history || locked) && (
               <button data-test="smm-page-setup" onClick={() => setSettingUp(true)}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-primary/50 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10">
-                <Settings2 size={13} /> {campaign.history || campaign.setupAt || !setupDue ? "Edit setup" : "Set up & assign"}
+                <Settings2 size={13} /> {locked ? "Manage historical record" : campaign.history || campaign.setupAt || !setupDue ? "Edit setup" : "Set up & assign"}
               </button>
             )}
             {canDelete && (
@@ -482,7 +504,7 @@ export default function SmmCampaignPage() {
       <SmmMyJobPanel campaign={campaign} user={user} />
 
       {/* ── Where this month sits in the client's run ─────────────────────────────────────── */}
-      {(renewalOf || nextId || renewDue || campaign.renewal?.state === "lost") && (
+      {(renewalOf || nextId || renewDue || campaign.renewal?.state === "lost" || (canAdminRenew && locked && !nextId)) && (
         <div data-test="smm-page-renewal" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3 text-xs">
           {renewalOf && (
             <Link to={`/smm/${renewalOf}`} className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 font-medium text-foreground hover:bg-accent">
@@ -502,13 +524,21 @@ export default function SmmCampaignPage() {
                     : canRenew
                       ? <>Renewal due — renew it by recording the sale.</>
                       : <>Renewal due — {campaign.soldByName} renews it by recording the sale.</>)
-                  : <>Month {monthNo} of this client.</>}
+                  : locked
+                    ? <>Completed and locked — month ended on {shortDayLabel(campaign.cycle.endDate)}.</>
+                    : <>Month {monthNo} of this client.</>}
           </span>
           {nextId && !nextGone && (
             <Link to={`/smm/${nextId}`} data-test="smm-page-next"
               className="inline-flex h-8 items-center gap-1 rounded-lg bg-success/15 px-2.5 font-medium text-success hover:bg-success/25">
               Next month <ArrowRight size={12} />
             </Link>
+          )}
+          {canAdminRenew && !nextId && (
+            <button onClick={handleAdminRenew} disabled={busy === "adminRenew"} data-test="smm-page-admin-renew"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              {busy === "adminRenew" ? <Loader2 size={12} className="animate-spin" /> : <RefreshCcw size={12} />} Create next renewal
+            </button>
           )}
           {renewDue && canRenew && (
             <>
@@ -522,7 +552,7 @@ export default function SmmCampaignPage() {
               </button>
             </>
           )}
-          {renewDue && !canRenew && canSetUp && campaign.soldBy !== user.uid && (
+          {renewDue && !canRenew && canSetUp && campaign.soldBy !== user.uid && !canAdminRenew && (
             <button onClick={remind} disabled={busy === "remind"} data-test="smm-page-remind"
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 font-medium text-foreground hover:bg-accent disabled:opacity-50">
               {busy === "remind" ? <Loader2 size={12} className="animate-spin" /> : <BellRing size={12} />} Remind {campaign.soldByName}
@@ -579,6 +609,7 @@ export default function SmmCampaignPage() {
 
       {item && (
         <SmmItemDialog campaign={campaign} item={item} user={user} members={canSetUp ? members : []}
+          canEdit={canEdit}
           onClose={() => setOpenItem(null)} onMessage={(text, kind) => setMessage({ text, kind })} />
       )}
 

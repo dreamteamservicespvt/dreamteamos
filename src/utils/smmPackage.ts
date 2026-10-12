@@ -733,11 +733,40 @@ export function canRecordSmmSaleForSeller(user: Viewer): boolean {
   return ["main_admin", "tech_admin", "tech_team_leader"].includes(user?.role || "");
 }
 
-/** Set a month up — dates, video length, page links, team — and change any of it later. */
+/**
+ * Set a month up — dates, video length, page links, team — and change any of it later.
+ * SMM Team Lead has view-only access to the overall Social Media team/work and cannot edit
+ * other members' setups or progress.
+ */
 export function canSetUpSmm(user: Viewer): boolean {
   if (!user) return false;
-  if (user.smmLeader) return true;
   return ["main_admin", "tech_admin", "tech_team_leader"].includes(user.role || "");
+}
+
+/**
+ * Whether the admin can directly create the next renewal month or manage historical records.
+ * Main admin, tech admin, and tech team leader have full oversight.
+ */
+export function canAdminRenewSmm(user: Viewer): boolean {
+  return ["main_admin", "tech_admin", "tech_team_leader"].includes(user?.role || "");
+}
+
+/**
+ * Whether a social media month is completed or historical, and therefore locked against being
+ * edited to represent the next renewal.
+ *
+ * Once a month's dates are past or its status is completed/renewed/lapsed or it is marked as history,
+ * its dates, assignments, content and history are locked. A new period must be created as a new month.
+ */
+export function isMonthLocked(
+  c: Pick<SmmCampaign, "status" | "history" | "cycle"> | null | undefined,
+  today: string,
+): boolean {
+  if (!c) return false;
+  if (c.history) return true;
+  if (c.status === "completed" || c.status === "renewed" || c.status === "lapsed") return true;
+  if (c.cycle?.endDate && c.cycle.endDate < today) return true;
+  return false;
 }
 
 /**
@@ -835,7 +864,8 @@ export function cyclesOverlap(a: SmmCycle, b: SmmCycle): boolean {
  * carry money and commission, stays with the admins (`canRecordSmmSaleForSeller`).
  */
 export function canAddNoSaleMonth(user: Viewer): boolean {
-  if (user?.smmLeader) return true;
+  if (!user) return false;
+  if (user.smmLeader) return true;
   return canRecordSmmSaleForSeller(user);
 }
 

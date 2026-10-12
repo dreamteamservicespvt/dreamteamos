@@ -24,11 +24,11 @@ import {
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import {
-  blankItem, buildInitialItems, canPublish, cycleFromStart, dayToDate, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo,
+  blankItem, buildInitialItems, canEditCampaign, canPublish, cycleFromStart, dayToDate, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo,
   isoDay, isPosted, newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
 } from "@/utils/smmPlan";
 import {
-  cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, historyFiling, historyMonthsFollowed, isOnHold,
+  cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, historyFiling, historyMonthsFollowed, isMonthLocked, isOnHold,
   itemsForAccounts, monthCycle, monthLabel, normaliseClipsPerVideo, renewalStartDate, saleDay, videosLine,
 } from "@/utils/smmPackage";
 import { dueItemsFor, dueLabel, dueNotificationKey, renewalsDueFor } from "@/utils/smmReminders";
@@ -359,6 +359,106 @@ async function linkRenewal(prev: SmmCampaign, next: SmmCampaign, soldByName: str
       dedupeKey: `smm_renewed_${next.id}_${uid}`,
     }).catch(() => undefined);
   }
+}
+
+/**
+ * Create a brand new month record for the next renewal period (2026-10-12).
+ *
+ * ── Architecture & Locking Guarantee ────────────────────────────────────────────────────────
+ * Completed / historical months are LOCKED to preserve their complete history, dates,
+ * assignments, content items, and work. When a client renews, we NEVER edit or overwrite
+ * the completed month. Instead, this function creates a NEW month document for the next period,
+ * carrying forward only the required configuration (business name, client details, package,
+ * platforms, page links, clips per video, commitments, and team), and linking it to the previous
+ * month as Month N+1.
+ */
+export async function createRenewalMonth(params: {
+  previousCampaignId: string;
+  actor: SmmActor;
+  startDate?: string;
+  endDate?: string;
+}): Promise<{ newCampaignId: string }> {
+  const prev = await fetchCampaign(params.previousCampaignId);
+  if (!prev || prev.status === "deleted" || prev.status === "removed") {
+    throw new Error("This month no longer exists.");
+  }
+
+  // If already renewed with a live next campaign, return it instead of duplicating
+  if (prev.renewal?.nextCampaignId) {
+    const existingNext = await fetchCampaign(prev.renewal.nextCampaignId).catch(() => null);
+    if (existingNext && existingNext.status !== "deleted" && existingNext.status !== "removed") {
+      return { newCampaignId: existingNext.id };
+    }
+  }
+
+  const today = isoDay(new Date());
+  const startDate = params.startDate || (prev.cycle?.endDate && prev.cycle.endDate >= today ? prev.cycle.endDate : renewalStartDate(prev.cycle, today));
+  const cycle = monthCycle(startDate, params.endDate);
+  const team = carriedTeam(prev.team);
+  const newRef = doc(collection(db, SMM_CAMPAIGNS));
+  const newId = newRef.id;
+
+  const commitments: Record<SmmContentKind, number> = {
+    poster: Math.max(0, prev.commitments?.poster || 0),
+    ai_ad: Math.max(0, prev.commitments?.ai_ad || 0),
+    real_video: Math.max(0, prev.commitments?.real_video || 0),
+  };
+
+  const input: CreateCampaignInput = {
+    orderId: newId,
+    leadId: prev.leadId || "",
+    saleItemKey: prev.saleItemKey || "",
+    clientPhone: prev.clientPhone,
+    clientPhoneId: prev.clientPhoneId,
+    clientName: prev.clientName,
+    businessName: prev.businessName || prev.clientName,
+    packageKey: prev.packageKey,
+    packageLabel: prev.packageLabel,
+    amount: prev.amount || 0,
+    soldBy: prev.soldBy || params.actor.uid,
+    soldByName: prev.soldByName || params.actor.name,
+    salesAdminId: prev.salesAdminId ?? null,
+    platforms: cleanPlatforms(prev.platforms),
+    commitments,
+  };
+
+  const newCampaign = prev.origin === "no_sale"
+    ? buildNoSaleCampaign(newId, input, {
+        startDate: cycle.startDate,
+        endDate: cycle.endDate,
+        clipsPerVideo: prev.clipsPerVideo,
+        pageLinks: prev.pageLinks,
+        team,
+        renewalOf: prev,
+      }, params.actor)
+    : {
+        ...buildSoldCampaign(input, {
+          startDate: cycle.startDate,
+          endDate: cycle.endDate,
+          clipsPerVideo: prev.clipsPerVideo,
+          pageLinks: prev.pageLinks,
+          team,
+          renewalOf: prev,
+        }),
+        id: newId,
+        orderId: "",
+        origin: prev.origin || "sale",
+      };
+
+  await setDoc(newRef, {
+    ...clean({
+      ...newCampaign,
+      ...(hasTeam(team) ? { setupAt: Timestamp.now(), setupByName: `Renewal by ${params.actor.name}` } : {}),
+    }),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  await linkRenewal(prev, { ...newCampaign, id: newId } as SmmCampaign, params.actor.name).catch((err) => {
+    console.warn("[smm] could not link renewal:", err);
+  });
+
+  return { newCampaignId: newId };
 }
 
 /**
@@ -698,6 +798,12 @@ export async function setItemStatus(
     const item = c.items.find((i) => i.id === itemId);
     if (!item) return null;
     if (item.status === status) return null;
+
+    const userRole = (actor as { role?: string }).role;
+    const isLead = (actor as { smmLeader?: boolean }).smmLeader;
+    if (isLead && userRole === "tech_member" && !canEditCampaign(c, actor as any)) {
+      throw new Error("You have view-only access to this campaign and cannot update its progress.");
+    }
 
     if (POSTABLE_STATUSES.includes(status) && !canPublish(item, c)) {
       throw new Error("The client has not approved this yet. Record their approval first.");
@@ -1124,14 +1230,22 @@ export async function saveMonthSetup(
     setupByUid: string;
   },
 ): Promise<SmmCampaign | null> {
-  return mutateCampaign(campaignId, () => ({
-    cycle: setup.cycle,
-    clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
-    pageLinks: setup.pageLinks ?? null,
-    setupAt: Timestamp.now(),
-    setupByName: setup.setupByName,
-    setupByUid: setup.setupByUid,
-  }));
+  const today = isoDay(new Date());
+  return mutateCampaign(campaignId, (c) => {
+    if (isMonthLocked(c, today) && c.setupAt) {
+      if (setup.cycle && setup.cycle.endDate >= today) {
+        throw new Error("This completed month is locked to preserve its history and cannot be edited to represent a renewal. Create a new month for the next period.");
+      }
+    }
+    return {
+      cycle: setup.cycle,
+      clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
+      pageLinks: setup.pageLinks ?? null,
+      setupAt: Timestamp.now(),
+      setupByName: setup.setupByName,
+      setupByUid: setup.setupByUid,
+    };
+  });
 }
 
 export async function setCommitments(

@@ -205,13 +205,13 @@ describe("renewing", () => {
 });
 
 describe("who may do what", () => {
-  it("lets only the tech side record a sale for a salesperson, and the SMM lead set months up", () => {
+  it("lets only the tech side record a sale for a salesperson, and restricts setup to admins", () => {
     expect(canRecordSmmSaleForSeller({ role: "tech_admin" })).toBe(true);
     expect(canRecordSmmSaleForSeller({ role: "tech_team_leader" })).toBe(true);
     expect(canRecordSmmSaleForSeller({ role: "main_admin" })).toBe(true);
     expect(canRecordSmmSaleForSeller({ role: "tech_member", smmLeader: true })).toBe(false);
     expect(canRecordSmmSaleForSeller({ role: "sales_admin" })).toBe(false);
-    expect(canSetUpSmm({ role: "tech_member", smmLeader: true })).toBe(true);
+    expect(canSetUpSmm({ role: "tech_member", smmLeader: true })).toBe(false);
     expect(canSetUpSmm({ role: "tech_team_leader" })).toBe(true);
     expect(canSetUpSmm({ role: "sales_admin" })).toBe(false);
     expect(canSetUpSmm({ role: "tech_member" })).toBe(false);

@@ -16,7 +16,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, RefreshCcw, Settings2 } from "lucide-react";
 import { isoDay, teamMembers } from "@/utils/smmPlan";
-import { NO_SALE_NOTE, clipsPerVideoOf, isNoSaleMonth, needsSetup, renewalDue, sellerLineOf, videoSeconds } from "@/utils/smmPackage";
+import { NO_SALE_NOTE, clipsPerVideoOf, isMonthLocked, isNoSaleMonth, needsSetup, renewalDue, sellerLineOf, videoSeconds } from "@/utils/smmPackage";
 import { monthGlance, type SmmGlance } from "@/utils/smmGlance";
 import { overdueItemsFor } from "@/utils/smmReminders";
 import { MonthGlance, StatusPill, TONE_STYLE } from "@/components/smm/SmmGlance";
@@ -33,7 +33,7 @@ const RENEWAL_STYLE: Record<string, string> = {
   lost: "bg-muted text-muted-foreground",
 };
 
-export default function SmmCampaignCard({ campaign, viewerUid, onSetUp, onRenew, renewing, glance: given }: {
+export default function SmmCampaignCard({ campaign, viewerUid, onSetUp, onRenew, onAdminRenew, renewing, glance: given }: {
   campaign: SmmCampaign;
   /** Used only to say how much of the late work is the viewer's own — everyone sees the same facts. */
   viewerUid?: string;
@@ -41,6 +41,8 @@ export default function SmmCampaignCard({ campaign, viewerUid, onSetUp, onRenew,
   onSetUp?: (c: SmmCampaign) => void;
   /** Offered to the month's own salesperson when its renewal is due. */
   onRenew?: (c: SmmCampaign) => void;
+  /** Offered to admins to start Month N+1 directly. */
+  onAdminRenew?: (c: SmmCampaign) => void;
   renewing?: boolean;
   /** Already worked out by the board (it sorts by it); computed here when not given. */
   glance?: SmmGlance;
@@ -128,7 +130,7 @@ export default function SmmCampaignCard({ campaign, viewerUid, onSetUp, onRenew,
         <span className="shrink-0 whitespace-nowrap">{sellerLineOf(campaign)}</span>
       </div>
 
-      {(glance.renewal.state !== "none" || (setupDue && onSetUp) || (renewDue && onRenew)) && (
+      {(glance.renewal.state !== "none" || (setupDue && onSetUp) || (renewDue && onRenew) || (onAdminRenew && !campaign.renewal?.nextCampaignId && (renewDue || isMonthLocked(campaign, today)))) && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5 sm:px-5">
           {glance.renewal.state !== "none" && (
             <span data-test={renewDue ? "smm-card-renewal-due" : "smm-card-renewal"}
@@ -142,6 +144,12 @@ export default function SmmCampaignCard({ campaign, viewerUid, onSetUp, onRenew,
               /* Dark words on amber — white on amber cannot be read. */
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-viz-wait px-3 text-xs font-semibold text-zinc-950 hover:bg-viz-wait/90">
               <Settings2 size={13} /> Set up & assign
+            </button>
+          )}
+          {onAdminRenew && !campaign.renewal?.nextCampaignId && (renewDue || isMonthLocked(campaign, today)) && (
+            <button onClick={() => onAdminRenew(campaign)} disabled={renewing} data-test="smm-card-admin-renew"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              {renewing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCcw size={13} />} Create next renewal
             </button>
           )}
           {renewDue && onRenew && (

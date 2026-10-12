@@ -573,21 +573,49 @@ export function teamMembers(team: SmmTeam): { uid: string; name: string; roles: 
   return [...map.values()];
 }
 
-/** Whether this person may change the plan: anyone on the month, its seller, or an overseer. */
+/** Whether this person is personally assigned to this social media campaign. */
+export function isAssignedToSmm(
+  campaign: Pick<SmmCampaign, "watchers" | "team"> | null | undefined,
+  uid: string | null | undefined,
+): boolean {
+  if (!campaign || !uid) return false;
+  if (campaign.watchers?.includes(uid)) return true;
+  const t = campaign.team;
+  if (t) {
+    if (t.creator?.uid === uid || t.publisher?.uid === uid || t.marketer?.uid === uid) return true;
+    if (t.assistants?.some((a) => a.uid === uid)) return true;
+  }
+  return false;
+}
+
+/** Whether the user has administrative privileges over SMM (tech admins, main admin, tech team leader, sales admin). */
+export function isSmmAdmin(user: { role?: string } | null | undefined): boolean {
+  if (!user) return false;
+  return ["main_admin", "tech_admin", "sales_admin", "tech_team_leader"].includes(user.role || "");
+}
+
+/**
+ * Whether this person may change the plan: an admin, the seller, or an assigned member.
+ *
+ * SMM Team Lead has view-only access to the overall Social Media team/work and cannot edit
+ * other members' setups or progress. When an SMM client is personally assigned to the Team Lead,
+ * they get the same working/editing permissions as an SMM Team Member for that assigned client only.
+ */
 export function canEditCampaign(
-  campaign: Pick<SmmCampaign, "watchers" | "soldBy">,
+  campaign: Pick<SmmCampaign, "watchers" | "soldBy" | "team">,
   user: { uid?: string; role?: string; smmLeader?: boolean } | null | undefined,
 ): boolean {
   if (!user?.uid) return false;
-  if (isSmmOverseer(user)) return true;
-  return campaign.watchers?.includes(user.uid) || campaign.soldBy === user.uid;
+  if (isSmmAdmin(user)) return true;
+  if (campaign.soldBy === user.uid) return true;
+  return isAssignedToSmm(campaign, user.uid);
 }
 
 /** The roles that see every campaign in the company, whether or not they are on it. */
 export function isSmmOverseer(user: { role?: string; smmLeader?: boolean } | null | undefined): boolean {
   if (!user) return false;
   if (user.smmLeader) return true;
-  return ["main_admin", "tech_admin", "sales_admin", "tech_team_leader"].includes(user.role || "");
+  return isSmmAdmin(user);
 }
 
 /**
@@ -599,14 +627,11 @@ export function canSeeSmmMoney(user: { role?: string } | null | undefined): bool
 }
 
 /**
- * Who may delete a month outright: the main admin, the tech admin, the tech team leader (added
- * 2026-10-03 — the owner's call, since the team leader now creates and sets months up too) and the
- * Social Media Team Lead. Narrower than `isSmmOverseer` on purpose — deleting throws away a month's
- * plan, ads and money trail, and a sales admin who only oversees months has no need to.
+ * Who may delete a month outright: the main admin, the tech admin, and the tech team leader.
+ * Team Lead has view-only access to overall team work and cannot delete months.
  */
 export function canDeleteSmmCampaign(user: { role?: string; smmLeader?: boolean } | null | undefined): boolean {
   if (!user) return false;
-  if (user.smmLeader) return true;
   return user.role === "main_admin" || user.role === "tech_admin" || user.role === "tech_team_leader";
 }
 
