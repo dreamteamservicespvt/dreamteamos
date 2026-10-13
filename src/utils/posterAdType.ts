@@ -30,7 +30,7 @@
  */
 import type { PosterConcept } from "@/types/aiPlatform";
 import { parsePosterSize } from "./posterSpec";
-import { stripUnverifiedNumbers } from "./businessFacts";
+import { digitsOf, MAX_CONTACT_NUMBERS, phoneKey, stripUnverifiedNumbers } from "./businessFacts";
 import { themeTextOf } from "./castSheet";
 
 export interface PosterAdType {
@@ -290,6 +290,26 @@ export interface PosterFormatInput {
   nameBoardText?: string;
   /** The language of the words printed on the poster (English by default). */
   textLanguage?: string;
+  /**
+   * How many verified numbers the Business Information carries (0–3) — the Format line then says to print
+   * exactly those, each once, or no phone number at all. Absent: the line says nothing about numbers.
+   */
+  contactCount?: number;
+}
+
+const NUMBER_WORDS = ["", "one", "two", "three"];
+
+/**
+ * The Format line's phone rule (owner, 2026-10-13: "1 number → exactly that 1; none → none"). The image
+ * generator is the last step and code cannot check its picture, so the prompt names the count: with no
+ * number it says so — a poster left silent about phones is where an image tool "completes" the ad with a
+ * "Call: 98765 43210" strip of its own.
+ */
+export function posterPhoneRule(count: number): string {
+  if (count <= 0) return "No phone number on the poster.";
+  return count === 1
+    ? "Print only the one contact number given above, once, digit for digit."
+    : `Print only the ${NUMBER_WORDS[count] ?? count} contact numbers given above, each once, digit for digit.`;
 }
 
 /**
@@ -306,7 +326,8 @@ export function posterFormatLine(input: PosterFormatInput): string {
     ? "Use the attached logo exactly as given."
     : `Show the business name${name ? ` "${withoutEnding(name)}"` : ""} as a clean wordmark, exactly as spelled.`;
   const language = (input.textLanguage || "").trim() || "English";
-  return `${posterSizePhrase(input.posterSize)}. ${brand} Words on the poster in ${language}.`;
+  const phones = input.contactCount === undefined ? "" : ` ${posterPhoneRule(input.contactCount)}`;
+  return `${posterSizePhrase(input.posterSize)}. ${brand} Words on the poster in ${language}.${phones}`;
 }
 
 // ── the business information ───────────────────────────────────────────────────────────────────
@@ -357,6 +378,24 @@ export interface PosterContact {
   whatsapp?: boolean;
 }
 
+/**
+ * The numbers a poster prints: each once (two spellings of one number are one — a WhatsApp mark on either
+ * stays), in the order given, at most MAX_CONTACT_NUMBERS. The list arrives verified and unique; this is the
+ * guard at the point of printing.
+ */
+export function uniquePosterContacts(phones: PosterContact[] | undefined): PosterContact[] {
+  const out: (PosterContact & { key: string })[] = [];
+  for (const p of phones || []) {
+    const display = p.display?.trim();
+    if (!display) continue;
+    const key = phoneKey(digitsOf(display));
+    const same = out.find((o) => o.key === key);
+    if (same) { same.whatsapp ||= !!p.whatsapp; continue; }
+    out.push({ display, whatsapp: !!p.whatsapp, key });
+  }
+  return out.slice(0, MAX_CONTACT_NUMBERS).map(({ display, whatsapp }) => ({ display, whatsapp }));
+}
+
 export interface PosterBusinessInput {
   /** The analysis's summary — or the profile's, built in code, when the analysis gave none. */
   summary: string;
@@ -386,8 +425,8 @@ export function posterBusinessInformation(input: PosterBusinessInput): string {
   if (occasion && !mentionsOccasion(summary, occasion, name)) {
     parts.push(tidyPunctuation(input.occasionLine || "") || `Occasion: ${occasion}`);
   }
-  const phones = (input.phones || []).filter((p) => p.display?.trim()).slice(0, 3);
-  if (phones.length) parts.push(`Contact: ${phones.map((p) => `${p.display.trim()}${p.whatsapp ? " (WhatsApp)" : ""}`).join(", ")}`);
+  const phones = uniquePosterContacts(input.phones);
+  if (phones.length) parts.push(`Contact: ${phones.map((p) => `${p.display}${p.whatsapp ? " (WhatsApp)" : ""}`).join(", ")}`);
   // As typed, apart from a stray double full stop or a trailing one — the template ends the sentence.
   const address = tidyPunctuation(rawAddress);
   if (address) parts.push(`Address: ${address}`);
@@ -679,15 +718,20 @@ export function assembleConceptPoster(input: ConceptPosterInput): ConceptPoster 
 
   const summary = analysis?.businessInformation?.trim()
     || fallbackPosterSummary({ businessInfo: input.businessInfo, businessName: input.businessName, brief: input.brief });
-  const businessInformation = posterBusinessInformation({
+  // The verified numbers, each once — the Contact line prints them and the Format line counts them.
+  const phones = uniquePosterContacts(input.phones);
+  const allowed = phones.map((p) => phoneKey(digitsOf(p.display)));
+  // The last line of defence, in the one assembly both poster systems use: a number in the business
+  // name, the occasion or the wordmark that is not one of the verified ones does not reach the prompt.
+  const businessInformation = stripUnverifiedNumbers(posterBusinessInformation({
     summary,
     businessName: input.businessName,
     occasion: input.occasion,
     occasionLine: input.occasionLine,
-    phones: input.phones,
+    phones,
     address: input.address,
-  });
-  const format = posterFormatLine(input);
+  }), allowed);
+  const format = stripUnverifiedNumbers(posterFormatLine({ ...input, contactCount: phones.length }), allowed);
   return {
     adType: type.id,
     adTypeName: type.name,

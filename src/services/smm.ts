@@ -30,7 +30,7 @@ import {
 } from "@/utils/smmPlan";
 import { useAuthStore } from "@/store/authStore";
 import {
-  cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, historyFiling, historyMonthsFollowed, isMonthLocked, isOnHold,
+  canAdminRenewSmm, cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, historyFiling, historyMonthsFollowed, isMonthLocked, isOnHold,
   itemsForAccounts, monthCycle, monthLabel, normaliseClipsPerVideo, renewalStartDate, saleDay, videosLine,
 } from "@/utils/smmPackage";
 import { dueItemsFor, dueLabel, dueNotificationKey, renewalsDueFor } from "@/utils/smmReminders";
@@ -373,6 +373,9 @@ async function linkRenewal(prev: SmmCampaign, next: SmmCampaign, soldByName: str
  * carrying forward only the required configuration (business name, client details, package,
  * platforms, page links, clips per video, commitments, and team), and linking it to the previous
  * month as Month N+1.
+ *
+ * No sale stands behind it, so it is the main admin's and the tech admin's alone (owner, 2026-10-13 —
+ * `assertMayCreateRenewalMonth`); the salesperson renews through the renewal sale.
  */
 export async function createRenewalMonth(params: {
   previousCampaignId: string;
@@ -381,6 +384,7 @@ export async function createRenewalMonth(params: {
   endDate?: string;
 }): Promise<{ newCampaignId: string }> {
   assertMayManageMonths();
+  assertMayCreateRenewalMonth();
   const prev = await fetchCampaign(params.previousCampaignId);
   if (!prev || prev.status === "deleted" || prev.status === "removed") {
     throw new Error("This month no longer exists.");
@@ -752,6 +756,22 @@ export function assertMayManageMonths(): void {
   if (signedInViewOnlyLead()) {
     throw new SmmViewOnlyError("View only — the Social Media Team Lead can't add, set up, assign or delete months. The tech admin or a team leader does that.");
   }
+}
+
+/** What anyone but the main admin and the tech admin is told when they reach for "Create next renewal". */
+export const SMM_CREATE_RENEWAL_ADMIN_ONLY =
+  "Only the main admin or the tech admin can create the next month directly. The salesperson renews it by recording the renewal sale.";
+
+/**
+ * "Create next renewal" is the main admin's and the tech admin's alone (owner, 2026-10-13 —
+ * `canAdminRenewSmm`; the team leader had it from 2026-10-12). Asked of whoever is signed in, as
+ * `assertMayManageMonths` is, so a screen that still offered the button cannot make the month. The
+ * view-only lead is refused by `assertMayManageMonths` first, with her own sentence. Nobody signed in (a
+ * script, a test) has nothing to check.
+ */
+function assertMayCreateRenewalMonth(): void {
+  const user = useAuthStore.getState().user;
+  if (user && !canAdminRenewSmm(user)) throw new Error(SMM_CREATE_RENEWAL_ADMIN_ONLY);
 }
 
 /* ── The one way in ─────────────────────────────────────────────────────────────────────────── */

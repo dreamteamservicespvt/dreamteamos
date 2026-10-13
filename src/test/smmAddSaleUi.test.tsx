@@ -420,6 +420,32 @@ describe("the board", () => {
     expect(screen.queryByTestId("smm-card-renew")).toBeNull();
   });
 
+  it("shows Create next renewal only to the main admin and the tech admin — not the team leader (owner, 2026-10-13)", () => {
+    const cardOf = () => screen.getAllByTestId("smm-campaign-card").find((c) => c.textContent?.includes("Ending Soon Co"))!;
+    for (const role of ["tech_admin", "main_admin"]) {
+      AUTH = { user: { uid: "kiran", name: "Kiran", role } };
+      render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+      expect(within(cardOf()).getByTestId("smm-card-admin-renew").textContent, role).toMatch(/Create next renewal/);
+      cleanup();
+    }
+    for (const user of [
+      { uid: "ravi", name: "Ravi", role: "tech_team_leader" },
+      { uid: "manasa", name: "Manasa", role: "tech_team_leader", smmLeader: true },
+    ]) {
+      AUTH = { user };
+      render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+      expect(within(cardOf()).queryByTestId("smm-card-admin-renew"), user.uid).toBeNull();
+      // The team leader still sets months up.
+      expect(screen.getAllByTestId("smm-card-setup").length, user.uid).toBeGreaterThan(0);
+      cleanup();
+    }
+    // The salesperson renews through the sale, never through the direct button.
+    AUTH = { user: { uid: "anil", name: "Anil", role: "sales_member" } };
+    render(<MemoryRouter><SocialMedia /></MemoryRouter>);
+    expect(within(cardOf()).getByTestId("smm-card-renew")).toBeTruthy();
+    expect(within(cardOf()).queryByTestId("smm-card-admin-renew")).toBeNull();
+  });
+
   it("marks a month that had no sale on its card — and its salesperson still renews it", () => {
     AUTH = { user: { uid: "anil", name: "Anil", role: "sales_member" } };
     const start = new Date(); start.setDate(start.getDate() - 29);

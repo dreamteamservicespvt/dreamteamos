@@ -745,11 +745,20 @@ export function canSetUpSmm(user: Viewer): boolean {
 }
 
 /**
- * Whether the admin can directly create the next renewal month or manage historical records.
- * Main admin, tech admin, and tech team leader have full oversight.
+ * Whether this person sees "Create next renewal" — starting Month N+1 straight away, with no renewal
+ * sale (services/smm `createRenewalMonth`).
+ *
+ * ── Only the main admin and the tech admin (owner, 2026-10-13) ──────────────────────────────────
+ * Added on 2026-10-12 for the main admin, tech admin AND tech team leader. The owner: "don't show this
+ * to the team lead, show this only to the admin and the sales person". The salesperson's own way to
+ * renew stays their Renew button — the renewal SALE (`canRenewSmm`: Sales Approvals, commission) —
+ * because this button makes a month with no sale behind it (asked, the owner kept it that way). A
+ * team leader now gets "Remind <salesperson>" on an undecided month instead, as before 2026-10-12.
+ * The Social Media Team Lead never had it (she is view-only, `isViewOnlySmmLead`). The service asks
+ * the same question of whoever is signed in (`assertMayCreateRenewalMonth`).
  */
 export function canAdminRenewSmm(user: Viewer): boolean {
-  return ["main_admin", "tech_admin", "tech_team_leader"].includes(user?.role || "");
+  return ["main_admin", "tech_admin"].includes(user?.role || "");
 }
 
 /**

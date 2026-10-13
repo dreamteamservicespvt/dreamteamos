@@ -9,6 +9,57 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-13: "Create next renewal" only for the main admin and the tech admin** (`smm.md` §9.9 "Locked months and
+  Create next renewal", §24, §25; `roles-routes.md` §8). The owner: "Create next renewal — don't show this to the team
+  lead, show this only to the admin and the sales person." The button (added 2026-10-12 in `5ca75b0`, on the client
+  card, the month page's renewal row and the locked month's setup banner) makes Month N+1 directly with no sale behind
+  it, and `canAdminRenewSmm` gave it to the main admin, tech admin AND tech team leader. Asked (AskUserQuestion), the
+  owner chose: the salesperson keeps their own Renew (the renewal sale, with approval and commission) rather than
+  this button; "admin" = the main admin and the tech admin (not the sales admin). Fix: `canAdminRenewSmm` →
+  `main_admin`, `tech_admin` (one rule, read by all three places), and `createRenewalMonth` refuses anybody else
+  signed in (`assertMayCreateRenewalMonth`, `SMM_CREATE_RENEWAL_ADMIN_ONLY`, after the view-only lead's own check),
+  so the rule does not depend on a hidden button. A team leader gets "Remind <salesperson>" on an undecided month
+  again (the page already showed it to anyone with setup rights who lacked this button). The Social Media Team
+  Lead never had it.
+  Files: `utils/smmPackage.ts`, `services/smm.ts`; tests `smmCreateRenewalAdminOct13.test.tsx` (new: the service
+  refuses the team leader, the salesperson and a member with nothing written and lets both admins make Month 2; the
+  real month page and setup dialog for each role), `smmAddSaleUi.test.tsx` (the board card for tech admin, main
+  admin, team leader with and without the flag, salesperson), `smmLockedRenewalOct12.test.ts` (team leader now
+  false). Checked in a real browser on the in-memory Firestore harness (each role; the admin creating Month 2;
+  1440 / 390 px). Build, typecheck (0) and the full suite pass.
+- **2026-10-13: contact numbers on the poster and the footer — one verified list, each number once** (`ai-ads.md` §17.2
+  step 1 / step 5 / Poster Creation, §24, §25, §27). The owner: "fake, missing, or duplicate numbers are appearing …
+  1 unique number → exactly that 1, 2 → those 2, 3 → those 3; never duplicate, never invent; one validated list for
+  Poster, Footer and every related prompt". The verification layer (`utils/businessFacts`, 2026-09-25) was sound at its
+  centre; the audit ran edge inputs through it and every deliverable and found eight leaks. **Duplicates:** the label's
+  contact block asked for "a WhatsApp pill of its own … beside the call pill(s)" under "EXACTLY 1 NUMBER — draw 1
+  contact pill" → the image tool drew a WhatsApp number twice, and two numbers as three pills; a label refine (a model
+  rewrite) could repeat, drop or renumber CONTACT lines and only an invented number was removed. **Fakes:** every typed
+  8–15-digit run was a phone number ("Order ID 4521789632", a bank account, a price) and printed as one; a poster with
+  no number said nothing about phones, so the image tool was free to add its own "Call" strip; Poster Creation had no
+  final scrub (only the video poster did); the scrubber could not find a run re-spelt by `splitRun` (dashes → spaces,
+  double spaces), so such an unverified number survived. **Wrong / altered:** "WhatsApp: X, Call: Y" marked Y WhatsApp,
+  "Call: X, WhatsApp: X" lost it, and "mobile: X, whatsapp: X" in a card's profile lost it too; "(+91) 98480 12345" was
+  printed "+91) 98480 12345" and "0884-2345678" in a run as "0884 2345678". **Missing:** a number spoken in the voice note
+  could come back in words (never typed), and the label, posters and overlays each cut their own list.
+  Fixes: a typed number counts only when phone-shaped or labelled as one, never when labelled an account / id /
+  registration / price, never glued to "@" (`findPhoneNumbers` → `label`, `labelZone`, `OTHER_LABEL`, `CONTACT_LABEL`,
+  `isWellFormedNumber(…, { allowShortLandline: false })`), and a number the member gave as something else is refused from
+  the model's profile; WhatsApp read from the nearest label (and "(WhatsApp)" right after); duplicates merged; spelling
+  kept (`balanceBrackets`, `splitRun` slices); the list capped at `MAX_CONTACT_NUMBERS` = 3 in `verifyBusinessFacts`;
+  **`contactNumbersOf`** the one list (label, both posters, overlays, frames, refines — `contactKeysOf` in geminiService,
+  `MAX_LABEL_CONTACTS` removed); `contactNumberProblems` the check. Label: `prompts/lowerThird` `whatsappSentence` (one of
+  the N pills), `labelContactLines`, `NO_CONTACT_LINE`, a 7th final-check item, `withLabelContacts` re-stamps a refine.
+  Poster: `posterPhoneRule` on the Format line (`contactCount`), `uniquePosterContacts`, the scrub inside
+  `assembleConceptPoster`. Frames: `stripUnverifiedNumbers` on generated and refined frame prompts (signage). Voice note:
+  a spoken phone number in digits. Legacy profiles (no `contactNumbers`) give only well-formed numbers.
+  Files: `utils/businessFacts.ts`, `utils/posterAdType.ts`, `services/prompts/lowerThird.ts`, `services/prompts/voiceNote.ts`,
+  `services/geminiService.ts`; tests `contactNumbersOct13.test.ts` (new: 18 scenarios — 0 / 1 / 2 / 3 numbers, WhatsApp
+  either way, one number written three ways, six copies of three, a fourth, ids / accounts / prices / UPI, a card read,
+  a card misread, the member's own format — each through the list, the label, the video poster, Poster Creation end to
+  end, a label refine that repeats / invents / drops, the overlays and a frame refine on a fake Gemini), and
+  `lowerThird`, `posterAdTypeOct12` updated for the new wording. No image was generated from the new prompts.
+
 - **2026-10-12 → 13: three items — the Social Media Team Lead view-only, Half Day leave, the poster prompts** (sessions
   dts-os-d1, then dts-os-e1 from `HANDOFF.md`; `smm.md`, `roles-routes.md`, `backend-security.md` §14, `people.md`,
   `data-model.md`, `ai-ads.md`). The owner's answers (AskUserQuestion): the lead keeps Edit team on Attendance and loses

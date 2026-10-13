@@ -348,8 +348,29 @@ browser. **Security:** the first rule of its own for `smm_campaigns` in `docs/fi
 for staff; create / delete not for her; update only where she is in `watchers` or is `soldBy`; kept out of the catch-all;
 every other role as before) — once published. Wording: her appointment notification, the Team Lead panel, My Team's
 toggle and the new-month bell ("It is on the Social Media board" — the admins put the team on it).
+**Locked months and "Create next renewal" (2026-10-12, commit `5ca75b0`; who sees it — owner, 2026-10-13).** A month
+whose last day has passed, or that is `completed` / `renewed` / `lapsed` or `history`, is **locked**
+(`smmPackage.isMonthLocked`): its Edit setup becomes "Manage historical record" (`applyHistorySetup`, dates kept in the
+past — `historySetupProblem`; `saveMonthSetup` refuses moving it into today), so a month is never stretched into the
+next period. The next period is a NEW month: **Create next renewal** (`smm.createRenewalMonth`: copies the name, client,
+package, amount, salesperson, accounts, page links, clips per video, counts and team; starts on the old end date, or the
+renewal day once that is past; `orderId: ""`; linked by `linkRenewal` — Month N+1, the same team's jobs, the tech side
+told; an existing next month is returned, never duplicated). Offered on the client card (`smm-card-admin-renew`, when the
+renewal is due or the month is locked and nothing follows it), the month page's renewal row (`smm-page-admin-renew`) and
+the locked setup banner (`smm-setup-create-renewal`). **No sale stands behind it** — no Sales Approvals, no commission.
+So it is **the main admin's and the tech admin's alone** (`canAdminRenewSmm`). The owner, 2026-10-13: "don't show this to
+the team lead, show this only to the admin and the sales person"; the Tech Team Leader had it from 2026-10-12, and the
+view-only Social Media Team Lead never did. Asked, the owner kept the salesperson on their own **Renew** (the renewal
+sale) rather than this button. The service refuses anybody else signed in (`assertMayCreateRenewalMonth`,
+`SMM_CREATE_RENEWAL_ADMIN_ONLY`; the view-only lead gets her own sentence first from `assertMayManageMonths`). A team
+leader gets **Remind <salesperson>** on an undecided month again, and still manages the locked month's record.
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **SMM "Create next renewal" (owner, 2026-10-13):** only the main admin and the tech admin see and may use it (the
+  next month made directly, with no sale behind it). The team leaders and the Social Media Team Lead do not. The
+  salesperson renews with their own Renew, the renewal sale (approval and commission as before). Enforced in the
+  screens and in `createRenewalMonth`.
 
 - **SMM Team Lead, view-only (owner, 2026-10-12):** the Social Media Team Lead sees every month and every person's
   work on it, but on a month somebody else works she changes nothing — no edit, delete, setup, assigning, messages to
@@ -433,6 +454,12 @@ toggle and the new-month bell ("It is on the Social Media board" — the admins 
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- SMM "Create next renewal" (2026-10-13, main + tech admin only): the service reads who is signed in from the auth store,
+  like the lead's guard. Nothing in `docs/firestore-rules.md` limits creating an `smm_campaigns` document to the two
+  admins, so a script that bypasses the app could still write one. The month it makes has no order and no sale, as it
+  has had since 2026-10-12. Checked by unit tests, the service on the in-memory Firestore, the real board, month page
+  and setup dialog for each role (`smmCreateRenewalAdminOct13`, `smmAddSaleUi`) and a browser harness — not against
+  live Firebase.
 - SMM Team Lead view-only (2026-10-12): the services read who is signed in from the auth store, so a script or a
   browser console that bypasses the app reaches Firestore with only the rule in `docs/firestore-rules.md` in the
   way — and that rule protects nothing until it is published (publication [NOT CONFIRMED]). The rule checks

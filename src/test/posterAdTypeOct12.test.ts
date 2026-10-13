@@ -25,6 +25,10 @@ const OWNER_NAMES = [
   "Visual Exaggeration Ads", "Product Benefit Conceptual Ads", "Shape-based Conceptual Ads", "Animal-based Visual Metaphor Ads",
 ];
 const FORMAT_LOGO = "9:16 vertical poster. Use the attached logo exactly as given. Words on the poster in English.";
+/** A whole prompt's Format line also counts the verified numbers — the fake profile below has one (2026-10-13). */
+const FORMAT_LOGO_ONE_NUMBER = `${FORMAT_LOGO} Print only the one contact number given above, once, digit for digit.`;
+/** The video kit's poster below is given the extraction's profile, which carries no verified number. */
+const FORMAT_LOGO_NO_NUMBER = `${FORMAT_LOGO} No phone number on the poster.`;
 
 describe("the eight ad types", () => {
   it("are the owner's eight, by name, in the owner's order — under the ids a job already stores", () => {
@@ -251,7 +255,7 @@ describe("Poster Creation, end to end", () => {
     expect(c.imagePrompt).toContain("Create a minimalist and creative ad in Animal-based Visual Metaphor Ads. Business Information: Sai Mobiles, Kakinada — every smartphone brand and same-day screen repair");
     expect(c.imagePrompt).toContain("Contact: 9160345678");
     expect(c.imagePrompt).not.toContain("98765 43210");
-    expect(c.imagePrompt.endsWith(`Format: ${FORMAT_LOGO}`)).toBe(true);
+    expect(c.imagePrompt.endsWith(`Format: ${FORMAT_LOGO_ONE_NUMBER}`)).toBe(true);
     // One analysis call — JSON, low temperature, never random.
     expect(analysisCalls()).toHaveLength(1);
     expect(analysisCalls()[0]).toMatchObject({ json: true, temperature: 0.2 });
@@ -296,7 +300,7 @@ describe("the video kit's poster row", () => {
     expect(isConceptPosterPrompt(prompt)).toBe(true);
     expect(prompt).toContain("in Shadow Metaphor Ads.");
     expect(prompt).toContain("Occasion: Diwali");
-    expect(prompt.endsWith(`Format: ${FORMAT_LOGO}`)).toBe(true);
+    expect(prompt.endsWith(`Format: ${FORMAT_LOGO_NO_NUMBER}`)).toBe(true);
     expect(analysisCalls()[0].user).toContain("A Diwali poster for this business");
   });
 
@@ -312,7 +316,7 @@ describe("the video kit's poster row", () => {
     const current = await gemini.writeVideoPosterPrompt(form(), extracted, { hasLogoFile: true });
     refineReply = JSON.stringify({ adType: "contrast_concept", businessInformation: "Sai Mobiles sells smartphones and repairs screens the same day" });
     const refined = await gemini.refineSection("poster", current, "mention same-day screen repair", form(), extracted);
-    expect(readConceptPosterPrompt(refined)).toMatchObject({ adTypeId: "animal_metaphor", format: FORMAT_LOGO });
+    expect(readConceptPosterPrompt(refined)).toMatchObject({ adTypeId: "animal_metaphor", format: FORMAT_LOGO_NO_NUMBER });
     expect(refined).toContain("repairs screens the same day");
   });
 });

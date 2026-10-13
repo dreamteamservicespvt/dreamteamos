@@ -63,17 +63,20 @@ import {
 } from "./prompts/everydaySpeech";
 import { WISH_AUDIENCE_TELUGU, wishAudienceIssues } from "./prompts/festivalWish";
 import { clipPlacements, spokenOnly, withCues, withPlacements } from "@/utils/clipPlacement";
-import { LOWER_THIRD_SYSTEM_PROMPT } from "./prompts/lowerThird";
+import { LOWER_THIRD_SYSTEM_PROMPT, labelContactLines, NO_CONTACT_LINE, withLabelContacts } from "./prompts/lowerThird";
 
-/** Three numbers still read as pills at video size; a fourth does not. */
-const MAX_LABEL_CONTACTS = 3;
 /**
  * A number the client gave as their WhatsApp gets its own green pill on the label — a VERIFIED one.
  * It used to test the whole profile for the word, so a "whatsapp": "Not provided" key drew a pill.
  */
-const hasWhatsAppNumber = (businessInfo: any): boolean => factsFromProfile(businessInfo).phones.some(p => p.whatsapp);
+const hasWhatsAppNumber = (businessInfo: any): boolean => contactNumbersOf(businessInfo).some(p => p.whatsapp);
+/**
+ * The keys of THE contact list (utils/businessFacts `contactNumbersOf`, at most three) — what every
+ * scrub keeps. The overlays used to keep every verified number while the label and posters kept three.
+ */
+const contactKeysOf = (businessInfo: unknown): string[] => contactNumbersOf(businessInfo).map(p => p.key);
 import {
-  factsFromProfile, sanitizeBusinessProfile, stripUnverifiedNumbers, verifiedKeys, verifyBusinessFacts, type BusinessFacts,
+  contactNumbersOf, factsFromProfile, sanitizeBusinessProfile, stripUnverifiedNumbers, verifyBusinessFacts, type BusinessFacts,
 } from "@/utils/businessFacts";
 import { SCRIPT_QA_SYSTEM_PROMPT } from "./prompts/scriptQa";
 import {
@@ -799,7 +802,8 @@ export const buildVideoBottomLabel = (params: {
   // Extract ONLY logo/name/contacts/address — never dump the full business JSON or any other data.
   const name = extractBusinessNameFromInfo(businessInfo);
   const facts = factsFromProfile(businessInfo);
-  const contacts = facts.phones.slice(0, MAX_LABEL_CONTACTS);
+  // THE contact list — the same one, in the same order, as the posters, overlays and refines print.
+  const contacts = contactNumbersOf(businessInfo);
   const address = facts.address;
   // No ratio directive here: a label is a tightly cropped strip laid over a video, not a video frame.
   const systemPrompt = buildBrandMarkDirective(noLogo, nameBoard, 'header')
@@ -824,13 +828,13 @@ export const buildVideoBottomLabel = (params: {
       ? 'NO BRAND IMAGE — this label has no logo circle and no brand tile; the NAME below is the only branding, and it appears exactly once'
       : 'LOGO = use the attached logo image exactly as provided, unchanged',
     name ? `NAME = ${name}` : '',
-    ...contacts.map((c, i) => `CONTACT ${i + 1} = ${c.display}${c.whatsapp ? ' (WhatsApp)' : ''}`),
-    contacts.length > 0 ? `EXACTLY ${contacts.length} NUMBER${contacts.length === 1 ? '' : 'S'} — draw ${contacts.length} contact pill${contacts.length === 1 ? '' : 's'}, no more and no fewer.` : '',
+    // One line per number, each once, then the pill count (prompts/lowerThird — a refine puts them back the same way).
+    ...labelContactLines(contacts),
     address ? `ADDRESS = ${address}` : '',
   ].filter(Boolean);
   // Explicit negatives for missing fields, so the image generator never fabricates them.
   const missing: string[] = [];
-  if (contacts.length === 0) missing.push('NO CONTACT NUMBER provided — do NOT show any contact pill and do NOT invent, guess, autocomplete, or fabricate any phone number. The raised right module stays, because it must still cover the watermark.');
+  if (contacts.length === 0) missing.push(NO_CONTACT_LINE);
   if (!address) missing.push('NO ADDRESS provided — do NOT show any address strip and do NOT invent, guess, autocomplete, or fabricate any address, street, area, city, pincode, or location. Close that space cleanly.');
   return [
     systemPrompt,
@@ -853,15 +857,12 @@ export const buildVideoBottomLabel = (params: {
 /** The video kit's poster is always a 9:16 vertical poster (owner, 2026-10-12: "poster ratio 9:16"). */
 export const VIDEO_POSTER_SIZE = '9:16';
 
-/** The verified numbers (one to three, as the member gave them) and address, for a poster's Business Information. */
-const posterFactsOf = (businessInfo: unknown) => {
-  const facts = factsFromProfile(businessInfo);
-  return {
-    facts,
-    phones: facts.phones.slice(0, MAX_LABEL_CONTACTS).map((p) => ({ display: p.display, whatsapp: p.whatsapp })),
-    address: facts.address,
-  };
-};
+/** THE contact list (one to three, as the member gave them) and the verified address, for a poster's Business Information. */
+const posterFactsOf = (businessInfo: unknown) => ({
+  keys: contactKeysOf(businessInfo),
+  phones: contactNumbersOf(businessInfo).map((p) => ({ display: p.display, whatsapp: p.whatsapp })),
+  address: factsFromProfile(businessInfo).address,
+});
 
 /** The name a poster is for: the no-logo name the member typed, else the business's own. */
 const posterBusinessName = (formData: AdFormData, businessInfo: unknown): string =>
@@ -927,7 +928,7 @@ export const writeVideoPosterPrompt = async (
 ): Promise<string> => {
   const occasion = formData.adType === 'festival' ? (formData.festivalName || '').trim() : '';
   const businessName = posterBusinessName(formData, businessInfo);
-  const { facts, phones, address } = posterFactsOf(businessInfo);
+  const { keys, phones, address } = posterFactsOf(businessInfo);
   const analysis = await analysePosterBusiness({
     fixedTypeId: null, businessInfo, businessName, clientBrief: formData.textInstructions, occasion,
   });
@@ -938,7 +939,7 @@ export const writeVideoPosterPrompt = async (
     nameBoardText: formData.logoNameText?.trim() || businessName,
     textLanguage: 'English',
   });
-  return stripUnverifiedNumbers(poster.prompt, verifiedKeys(facts));
+  return stripUnverifiedNumbers(poster.prompt, keys);
 };
 
 /**
@@ -956,7 +957,7 @@ const refineVideoPosterPrompt = async (
   const currentTypeId = current?.adTypeId ?? null;
   const occasion = formData.adType === 'festival' ? (formData.festivalName || '').trim() : '';
   const businessName = posterBusinessName(formData, businessInfo);
-  const { facts, phones, address } = posterFactsOf(businessInfo);
+  const { keys, phones, address } = posterFactsOf(businessInfo);
   const raw = await askPosterAnalysis(
     POSTER_REFINE_ANALYSIS_SYSTEM_PROMPT({ currentType: posterAdTypeById(currentTypeId), fixedType: null }),
     POSTER_REFINE_ANALYSIS_USER_PROMPT({
@@ -974,7 +975,7 @@ const refineVideoPosterPrompt = async (
     nameBoardText: formData.logoNameText?.trim() || businessName,
     textLanguage: 'English',
   });
-  return stripUnverifiedNumbers(poster.prompt, verifiedKeys(facts));
+  return stripUnverifiedNumbers(poster.prompt, keys);
 };
 
 const buildLanguageDirective = (formData: AdFormData): string => {
@@ -1162,7 +1163,7 @@ ${pack
           adType: formData.adType,
           festivalName: formData.festivalName,
           noLogo: formData.noLogo || false,
-          contactCount: factsFromProfile(businessInfo).phones.slice(0, MAX_LABEL_CONTACTS).length,
+          contactCount: contactNumbersOf(businessInfo).length,
           hasAddress: !!factsFromProfile(businessInfo).address,
           hasWhatsApp: hasWhatsAppNumber(businessInfo),
           ...labelDesignInputs(formData, null, null),
@@ -1200,12 +1201,15 @@ IMPORTANT:
     });
   });
 
-  const refined = response.text || currentContent;
+  let refined = response.text || currentContent;
 
-  // A refine is a model rewrite like any other: a number it adds that the business never gave goes.
+  // A refine is a model rewrite like any other: a number it adds that the business never gave goes, and
+  // its contact lines are put back from THE list — it could repeat one, drop one or renumber them (2026-10-13).
   if (sectionType === 'header') {
-    return stripUnverifiedNumbers(refined, verifiedKeys(factsFromProfile(businessInfo)));
+    return withLabelContacts(stripUnverifiedNumbers(refined, contactKeysOf(businessInfo)), contactNumbersOf(businessInfo));
   }
+  // A frame prints signage: a number on it is one of the business's own or nothing.
+  if (sectionType === 'mainFrame') refined = stripUnverifiedNumbers(refined, contactKeysOf(businessInfo));
   // A Real Owner Face frame keeps its face lock through a refine — the model may drop a stamp it was
   // given (utils/frameBrand.withOwnerFaceLock, 2026-10-08). Each clip's prompt, between the separators.
   if (sectionType === 'mainFrame' && pack?.usesClientFace) {
@@ -4161,6 +4165,10 @@ ${sceneContext ? `
      * photo to everything. The mapping is already decided in `clipPhotoPlan`, so this just says it
      * out loud, in code rather than trusting the model to have repeated it.
      */
+    // A frame prints signage — a shop board, a banner: any number the model wrote on it that is not one of
+    // the business's own is removed (2026-10-13; before the stamps, which carry no numbers).
+    const frameNumbers = contactKeysOf(businessInfo);
+    mainFramePrompts = mainFramePrompts.map(prompt => stripUnverifiedNumbers(prompt, frameNumbers));
     // Every frame carries the composition for the camera move its video will perform — stamped in
     // code, because the frame model drops it when asked (prompts/motion withMotionComposition).
     // A model ad's clip 1 keeps its hero pose — the face every later frame is matched to.
@@ -4740,7 +4748,7 @@ export const generateOverlayTexts = async (
   }
   const { numberedScript, clipCount } = toNumberedClipScript(voiceOverScript);
   const theme = overlayTheme(context, businessInfo);
-  const allowedNumbers = verifiedKeys(factsFromProfile(businessInfo));
+  const allowedNumbers = contactKeysOf(businessInfo);
 
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({

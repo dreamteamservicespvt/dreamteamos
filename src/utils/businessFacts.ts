@@ -26,6 +26,17 @@
  *  4. What comes back from a model is scrubbed of any number that is not one of them
  *     (stripUnverifiedNumbers) — the last line, not the first.
  *
+ * ── One list, everywhere (owner, 2026-10-13: "fake, missing or duplicate numbers") ─────────────────
+ * The audit that day found the numbers could still go wrong AFTER this file: a typed order id or bank
+ * account ("Order ID 4521789632") was taken for a phone number because every 8–15-digit run was; a
+ * "WhatsApp:" label marked the NEXT number too, and "Call: X, WhatsApp: X" lost it; "(+91) 98480 12345"
+ * was printed "+91) 98480 12345"; and the label, the posters and the overlays each cut their own list.
+ * Now a typed number counts only when it is shaped like a phone number or labelled as one, and never
+ * when it is labelled as an account / id / registration number / price; the label nearest a number is
+ * the one that describes it; the member's own spelling is kept; and the list is cut to three HERE
+ * (MAX_CONTACT_NUMBERS), so `contactNumbersOf` is the single list every poster, label, overlay, frame
+ * and refine prints — each number once (contactNumberProblems is the check the tests hold them to).
+ *
  * Kept pure: this decides what is printed on a client's ad, so every rule is unit-tested.
  */
 
@@ -41,8 +52,14 @@ export interface PhoneFact {
   whatsapp: boolean;
 }
 
+/**
+ * The most numbers a business's contact list holds: the label has three pill sizes (one, two, three) and
+ * a poster's contact line stays readable with three. A fourth number is reported, not printed.
+ */
+export const MAX_CONTACT_NUMBERS = 3;
+
 export interface BusinessFacts {
-  /** Verified numbers, typed ones first, no duplicates. Layouts use up to three. */
+  /** Verified numbers, typed ones first, no duplicates, at most MAX_CONTACT_NUMBERS. */
   phones: PhoneFact[];
   /** The verified address, or "" — in which case no address appears anywhere. */
   address: string;
@@ -70,9 +87,10 @@ export interface FactInputs {
 
 /**
  * A run that could be a phone number: digits with spaces, dashes, dots or brackets between them — on
- * ONE line (a newline would join a number to whatever the next line starts with).
+ * ONE line (a newline would join a number to whatever the next line starts with). A bracket may open
+ * before the "+" too: "(+91) 98480 12345" used to be read from its "+", and printed "+91) 98480 12345".
  */
-const PHONE_RUN = /\+?\(?\d[\d \t\-().]{5,}\d\)?/g;
+const PHONE_RUN = /\(?\+?\(?\d[\d \t\-().]{5,}\d\)?/g;
 /** Dates, years and year ranges have the digits of a phone number and are never one. */
 const DATE_LIKE = /^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$/;
 const YEAR_RANGE = /^(?:19|20)\d{2}\s*[-–/]\s*(?:19|20)?\d{2}$/;
@@ -101,9 +119,11 @@ export function isPlaceholderNumber(raw: string): boolean {
 
 /**
  * A real, well-formed number: an Indian mobile (6–9 then nine digits), a landline with its STD code,
- * a toll-free number, or an international number written with its country code.
+ * a toll-free number, or an international number written with its country code — and, unless
+ * `allowShortLandline` is false, an 8-digit city landline written without its code. Eight bare digits
+ * are also how an amount or an id looks, so a TYPED one counts only when it is labelled a phone.
  */
-export function isWellFormedNumber(raw: string): boolean {
+export function isWellFormedNumber(raw: string, opts: { allowShortLandline?: boolean } = {}): boolean {
   const trimmed = raw.trim();
   const d = digitsOf(trimmed);
   let local = d;
@@ -113,56 +133,145 @@ export function isWellFormedNumber(raw: string): boolean {
   if (/^0\d{9,11}$/.test(d)) return true;                                    // landline with STD code
   if (/^1[89]00\d{6,8}$/.test(d)) return true;                               // toll-free
   if (/^1860\d{7}$/.test(d)) return true;
-  if (trimmed.startsWith("+") && d.length >= 10 && d.length <= 15 && !d.startsWith("91")) return true; // abroad
-  if (d.length === 8 && /^[2-9]/.test(d)) return true;                       // a city landline without its code
+  if (/^\(?\+/.test(trimmed) && d.length >= 10 && d.length <= 15 && !d.startsWith("91")) return true; // abroad
+  if (opts.allowShortLandline !== false && d.length === 8 && /^[2-9]/.test(d)) return true; // a city landline without its code
   return false;
+}
+
+/**
+ * Brackets with no partner removed — punctuation the run picked up, not part of the number. "(+91) 98480
+ * 12345" keeps both of its own; "98480 12345)" from "(Call 98480 12345)" loses the stray one.
+ */
+function balanceBrackets(value: string): string {
+  const drop = new Set<number>();
+  const open: number[] = [];
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === "(") open.push(i);
+    else if (value[i] === ")") { if (open.length) open.pop(); else drop.add(i); }
+  }
+  open.forEach((i) => drop.add(i));
+  return drop.size ? [...value].filter((_, i) => !drop.has(i)).join("").replace(/\s{2,}/g, " ").trim() : value;
 }
 
 /** Tidy a number for printing without changing a single digit. */
 function tidy(value: string): string {
-  let v = value.replace(/\s+/g, " ").replace(/[\s,;.\-–]+$/, "").trim();
-  // A bracket with no partner is punctuation the run picked up, not part of the number.
-  if (v.startsWith("(") && !v.includes(")")) v = v.slice(1).trim();
-  if (v.endsWith(")") && !v.includes("(")) v = v.slice(0, -1).trim();
-  return v;
+  return balanceBrackets(value.replace(/\s+/g, " ").replace(/[\s,;.\-–]+$/, "").trim()).replace(/^[\s,;.\-–]+/, "");
 }
+
+/** Where a run holding several numbers may be cut: a space, or a dash with four or more digits after it. */
+const SPLIT_POINT = /\s+|(?<=\d)[-–](?=\s*\d{4,})/g;
 
 /**
  * A run holding more than one number — "98480 12345 99887 76655", two mobiles with only a space
  * between them — split back into its numbers. Tokens are gathered until they make a whole number.
+ * Each part is a SLICE of the run, so it keeps the member's own separators ("0884-2345678" used to come
+ * back as "0884 2345678") and the scrubber can find it in the text to remove it.
  */
-function splitRun(display: string): string[] {
-  const d = digitsOf(display);
-  if (d.length <= 13) return [display];
-  const tokens = display.split(/\s+|(?<=\d)[-–](?=\s*\d{4,})/).filter(Boolean);
+function splitRun(run: string): string[] {
+  if (digitsOf(run).length <= 13) return [run];
+  const tokens: { start: number; end: number }[] = [];
+  let last = 0;
+  for (const m of run.matchAll(SPLIT_POINT)) {
+    const at = m.index ?? 0;
+    if (at > last) tokens.push({ start: last, end: at });
+    last = at + m[0].length;
+  }
+  if (last < run.length) tokens.push({ start: last, end: run.length });
   const out: string[] = [];
-  let current = "";
+  let from = -1;
   for (const token of tokens) {
-    current = current ? `${current} ${token}` : token;
-    const cd = digitsOf(current);
+    if (from < 0) from = token.start;
+    const cd = digitsOf(run.slice(from, token.end));
     const whole = (cd.length === 10 && /^[6-9]/.test(cd)) || (cd.length === 11 && cd.startsWith("0"))
       || (cd.length === 12 && cd.startsWith("91")) || cd.length >= 13;
-    if (whole) { out.push(current); current = ""; }
+    if (whole) { out.push(run.slice(from, token.end)); from = -1; }
   }
-  if (current && digitsOf(current).length >= 8) out.push(current);
-  return out.length ? out : [display];
+  if (from >= 0 && digitsOf(run.slice(from)).length >= 8) out.push(run.slice(from));
+  return out.length ? out : [run];
 }
 
-/** The phone numbers written in a piece of text, in order, as written. */
-export function findPhoneNumbers(text: string): { display: string; key: string; whatsapp: boolean }[] {
-  const out: { display: string; key: string; whatsapp: boolean }[] = [];
+/** A digit run long enough, and shaped enough, to be a phone number — never a pincode, price, year or date. */
+function isPhoneLike(display: string): boolean {
+  const d = digitsOf(display);
+  if (d.length < 8 || d.length > 15 || DATE_LIKE.test(display) || YEAR_RANGE.test(display)) return false;
+  return d.length >= 10 || isWellFormedNumber(display) || (isPlaceholderNumber(display) && d.length >= 8);
+}
+
+// ── what the words before a number call it ───────────────────────────────────────────────────────
+
+/** How the words just before a number describe it: a way to reach the business, something else, or nothing. */
+export type NumberLabel = "contact" | "other" | "";
+
+/** A word that calls the number after it a way to reach the business — anywhere in its label. */
+const CONTACT_LABEL = /(?:^|[^\p{L}])(?:ph|phone|phones|mob|mobile|mobiles|cell|call|calls|contact|contacts|tel|telephone|landline|helpline|hotline|whats\s*app|wa|toll[\s-]*free|dial|reach|enquir(?:y|ies)|inquir(?:y|ies)|bookings?|reservations?|appointments?|office|shop|store|showroom|branch|emergency|ambulance|customer\s*care|support|numbers?)(?![\p{L}])|📞|☎|📱|ఫోన్|మొబైల్|కాల్|సంప్రదించ|వాట్సా?ప్|फ़?फोन|मोबाइल|नंबर/iu;
+/**
+ * A word that makes the number RIGHT after it something other than a phone number — an account, an id,
+ * a registration or a price ("Bank A/c No: 50100234567812", "Order ID 4521789632", "Rs. 35000000").
+ * It must sit immediately before the number: "Email ID: a@b.com, 9848012345" is still a phone number.
+ */
+const OTHER_LABEL = /(?:(?:^|[^\p{L}])(?:a\/?c|acc|acct|account|ifsc|gst|gstin|pan|aadh?aa?r|uid|uan|reg|regd|registration|licen[cs]e|lic|fssai|cin|tin|vat|udyam|msme|order|invoice|inv|bill|receipt|ref|reference|txn|transaction|utr|upi|serial|sl|s\.?\s?no|id|emp|employee|roll|survey|plot|door|flat|h\.?\s?no|d\.?\s?no|pin|pin\s*code|pincode|zip|rs|inr|mrp|price|cost|amount|fees?|salary|turnover|imei|chassis|policy|folio|otp)\.?\s*(?:no\.?|number|num|#|id)?|₹)\s*[:.#=\-–—]*\s*$/iu;
+const WHATSAPP_LABEL = /whats\s*app|(?:^|[^\p{L}])wa(?![\p{L}])|వాట్సా?ప్/iu;
+/**
+ * "(WhatsApp)", "- WhatsApp only" written just AFTER a number — it belongs to that number, not the next.
+ * Followed by a number of its own ("98480 12345 WhatsApp: 99887 76655") it is that number's label instead.
+ */
+const WHATSAPP_AFTER = /^\s*[([]?\s*[-–:]?\s*(?:whats\s*app|wa|వాట్సా?ప్)(?:\s+only)?\s*[)\]]?(?!\s*[:\-–]?\s*[+(]?\d)/iu;
+
+/**
+ * The words that label the number starting at `to`: what was written since the number before it (at most
+ * 40 characters), on its own line — or, when the line holds nothing but the number, the line above if it
+ * ends in a colon ("Contact:\n98480 12345"). A finished sentence before it is not its label ("WhatsApp us
+ * today. Call 98480 12345"); an abbreviation's full stop is ("Ph. No. 23456789").
+ */
+function labelZone(text: string, from: number, to: number): string {
+  const lines = text.slice(Math.max(from, to - 40), to).split(/\r?\n/);
+  let line = lines.pop() ?? "";
+  if (!/\p{L}/u.test(line) && lines.length && /[:\u{FF1A}]\s*$/u.test(lines[lines.length - 1])) line = `${lines[lines.length - 1]} ${line}`;
+  return line.split(/[;|]|(?<=\p{L}{4,})[.!?]\s+(?=\p{Lu})/u).pop() ?? "";
+}
+
+const labelOf = (zone: string): NumberLabel => (OTHER_LABEL.test(zone) ? "other" : CONTACT_LABEL.test(zone) ? "contact" : "");
+
+export interface FoundNumber {
+  /** As written, spacing tidied. */
+  display: string;
+  key: string;
+  whatsapp: boolean;
+  /** What the words before it call it — "other" for an account, id, registration number or price. */
+  label: NumberLabel;
+}
+
+/**
+ * The phone numbers written in a piece of text, in order, as written, each once. A number written twice
+ * is one number — a WhatsApp label on either copy makes it a WhatsApp number, and a contact label on
+ * either makes it a contact. A number glued to "@" is an email or a UPI id, not a number to call.
+ */
+export function findPhoneNumbers(text: string): FoundNumber[] {
+  const out: FoundNumber[] = [];
   if (!text) return out;
+  let previousEnd = 0;
   for (const match of text.matchAll(PHONE_RUN)) {
-    const before = text.slice(Math.max(0, (match.index ?? 0) - 40), match.index ?? 0);
-    const whatsapp = /whats\s*app|\bwa\b|వాట్సా?ప్/i.test(before.split(/[\n.;|]/).pop() || "");
-    for (const part of splitRun(tidy(match[0]))) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    const zone = labelZone(text, previousEnd, start);
+    const after = WHATSAPP_AFTER.exec(text.slice(end, end + 30));
+    previousEnd = end + (after ? after[0].length : 0);
+    if (text[end] === "@") continue;
+    const whatsapp = WHATSAPP_LABEL.test(zone) || !!after;
+    const label = labelOf(zone);
+    for (const part of splitRun(match[0])) {
       const display = tidy(part);
       const d = digitsOf(display);
       if (d.length < 8 || d.length > 15) continue;
       if (DATE_LIKE.test(display) || YEAR_RANGE.test(display)) continue;
       const key = phoneKey(d);
-      if (out.some((p) => p.key === key)) continue;
-      out.push({ display, key, whatsapp });
+      const same = out.find((p) => p.key === key);
+      if (same) {
+        same.whatsapp ||= whatsapp;
+        if (label === "contact") same.label = "contact";
+        continue;
+      }
+      out.push({ display, key, whatsapp, label });
     }
   }
   return out;
@@ -196,7 +305,10 @@ export function numbersInProfileDetailed(profile: unknown): { display: string; w
     if (typeof node === "string") {
       if (underContact && !EMPTY_VALUE.test(node.trim())) {
         for (const p of findPhoneNumbers(node)) {
-          if (!found.some((f) => phoneKey(digitsOf(f.display)) === p.key)) found.push({ display: p.display, whatsapp: whatsapp || p.whatsapp });
+          // The same number under "mobile" and again under "whatsapp" is one WhatsApp number.
+          const same = found.find((f) => phoneKey(digitsOf(f.display)) === p.key);
+          if (same) same.whatsapp ||= whatsapp || p.whatsapp;
+          else found.push({ display: p.display, whatsapp: whatsapp || p.whatsapp });
         }
       }
       return;
@@ -267,9 +379,21 @@ export function verifyBusinessFacts(input: FactInputs): BusinessFacts {
   const rejected: BusinessFacts["rejected"] = [];
   const phones: PhoneFact[] = [];
 
-  // 1 · typed — ground truth, apart from an obvious stand-in left in a template
+  // 1 · typed — ground truth for a PHONE number: shaped like one or labelled as one, never a stand-in
+  //     left in a template, and never what the member labelled an account, id, registration or price.
+  const notPhones = new Set<string>();
   for (const p of findPhoneNumbers(input.typedText)) {
     if (isPlaceholderNumber(p.display)) { rejected.push({ value: p.display, reason: "a placeholder number" }); continue; }
+    if (p.label === "other") {
+      notPhones.add(p.key);
+      rejected.push({ value: p.display, reason: "labelled as an account, id, registration number or price — not a number to call" });
+      continue;
+    }
+    if (p.label !== "contact" && !isWellFormedNumber(p.display, { allowShortLandline: false })) {
+      notPhones.add(p.key);
+      rejected.push({ value: p.display, reason: "not shaped like a phone number, and not labelled as one" });
+      continue;
+    }
     phones.push({ display: p.display, key: p.key, source: "typed", whatsapp: p.whatsapp });
   }
 
@@ -277,7 +401,14 @@ export function verifyBusinessFacts(input: FactInputs): BusinessFacts {
   for (const { display: raw, whatsapp } of numbersInProfileDetailed(input.profile)) {
     const display = tidy(raw);
     const key = phoneKey(digitsOf(display));
-    if (phones.some((p) => p.key === key)) continue;
+    const same = phones.find((p) => p.key === key);
+    if (same) {
+      // A card or flyer can show that a typed number is also the WhatsApp one; with nothing to read, the
+      // model's "whatsapp" key is only its guess.
+      if (whatsapp && input.hasContactDocuments) same.whatsapp = true;
+      continue;
+    }
+    if (notPhones.has(key)) { rejected.push({ value: display, reason: "the member gave it as something other than a phone number" }); continue; }
     if (isPlaceholderNumber(display)) { rejected.push({ value: display, reason: "a placeholder number" }); continue; }
     const typedTwin = phones.find((p) => p.source === "typed" && isMisreadOf(p.key, key));
     if (typedTwin) { rejected.push({ value: display, reason: `a misreading of the typed ${typedTwin.display}` }); continue; }
@@ -286,7 +417,13 @@ export function verifyBusinessFacts(input: FactInputs): BusinessFacts {
     phones.push({ display, key, source: "document", whatsapp });
   }
 
-  // 3 · the address
+  // 3 · the list every deliverable prints — cut here, once, so the label, the posters and the overlays
+  //     can never each keep a different three.
+  for (const extra of phones.splice(MAX_CONTACT_NUMBERS)) {
+    rejected.push({ value: extra.display, reason: `more than ${MAX_CONTACT_NUMBERS} numbers — the first ${MAX_CONTACT_NUMBERS} given are used` });
+  }
+
+  // 4 · the address
   let address = "";
   let addressSource: BusinessFacts["addressSource"] = "";
   const typedAddress = input.typedAddress?.trim() || addressInText(input.typedText);
@@ -312,7 +449,7 @@ export function verifyBusinessFacts(input: FactInputs): BusinessFacts {
 }
 
 /** The numbers a layout places: up to three, typed first. */
-export const layoutPhones = (facts: BusinessFacts, max = 3) => facts.phones.slice(0, max);
+export const layoutPhones = (facts: BusinessFacts, max = MAX_CONTACT_NUMBERS) => facts.phones.slice(0, max);
 
 /**
  * The profile every later prompt reads, carrying only verified contact facts.
@@ -374,19 +511,21 @@ export function stripUnverifiedNumbers(text: string, allowedKeys: string[]): str
   const allowed = new Set(allowedKeys);
   let changed = false;
   const out = text.replace(PHONE_RUN, (match) => {
-    return splitRun(tidy(match)).reduce((kept, part) => {
+    // The parts are slices of the match itself: a part re-spelt (spaces tidied, dashes turned into
+    // spaces) could not be found in it, and an unverified number with a double space survived.
+    return splitRun(match).reduce((kept, part) => {
       const display = tidy(part);
-      const d = digitsOf(display);
       // Pincodes, prices, door numbers, years and pixel sizes are never a phone number.
-      const phoneLike = d.length >= 10 || isWellFormedNumber(display) || isPlaceholderNumber(display) && d.length >= 8;
-      if (d.length < 8 || d.length > 15 || !phoneLike || DATE_LIKE.test(display) || YEAR_RANGE.test(display)) return kept;
-      if (allowed.has(phoneKey(d))) return kept;
+      if (!isPhoneLike(display)) return kept;
+      if (allowed.has(phoneKey(digitsOf(display)))) return kept;
       changed = true;
       return kept.replace(part, "");
     }, match);
   });
   if (!changed) return text;
   return out
+    // The dash or slash that joined a removed number to a kept one ("0884-2345678-" → "0884-2345678").
+    .replace(/(\d)[ \t]*[-–/][ \t]*(?=[\n,;|]|$)/gm, "$1")
     // The label a removed number leaves behind, when nothing follows it on its line.
     .replace(/(?:📞|☎️?|📱)\s*(?=[\n,;|]|$)/gm, "")
     .replace(/\b(?:call(?:\s+us|\s+now)?|ph|phone|mobile|mob|contact(?:\s+no\.?|\s+number)?|whatsapp|tel)\s*[:\-–]\s*(?=[\n,;|]|$)/gim, "")
@@ -406,16 +545,55 @@ export const verifiedKeys = (facts: BusinessFacts) => facts.phones.map((p) => p.
  */
 export function factsFromProfile(profile: unknown): BusinessFacts {
   const p = (profile && typeof profile === "object" ? profile : {}) as Record<string, unknown>;
-  const list = Array.isArray(p.contactNumbers) ? p.contactNumbers.filter((x): x is string => typeof x === "string") : numbersInProfile(p);
+  // `contactNumbers` is this file's own verified list. A profile without it was saved before the
+  // verification existed (2026-09-25): its numbers are the model's, so only well-formed ones are read.
+  const verified = Array.isArray(p.contactNumbers);
+  const list = verified ? (p.contactNumbers as unknown[]).filter((x): x is string => typeof x === "string") : numbersInProfile(p);
   const whatsapp = typeof p.whatsappNumber === "string" ? phoneKey(digitsOf(p.whatsappNumber)) : "";
   const phones: PhoneFact[] = [];
   for (const display of list) {
     const key = phoneKey(digitsOf(display));
     if (key.length < 8 || phones.some((x) => x.key === key) || isPlaceholderNumber(display)) continue;
+    if (!verified && !isWellFormedNumber(display)) continue;
     phones.push({ display: tidy(display), key, source: "document", whatsapp: key === whatsapp });
+    if (phones.length === MAX_CONTACT_NUMBERS) break;
   }
   const address = typeof p.address === "string" && p.address.trim() && !EMPTY_VALUE.test(p.address.trim())
     ? p.address.trim()
     : addressInProfile(p);
   return { phones, address, addressSource: address ? "document" : "", rejected: [] };
+}
+
+// ── the one list, and the check every printed copy is held to ────────────────────────────────────
+
+/**
+ * THE contact numbers of a business — read from its sanitized profile, as the member gave them, typed
+ * first, each once, at most MAX_CONTACT_NUMBERS. The Video Bottom Label, both poster systems, the
+ * overlays, the frames and every refine print this list and nothing else (2026-10-13).
+ */
+export const contactNumbersOf = (profile: unknown): PhoneFact[] => factsFromProfile(profile).phones;
+
+/**
+ * What is wrong with the numbers a finished prompt prints, in words — [] when it carries every one of
+ * `phones` exactly once and no other phone number. Spellings of one number count as that number
+ * ("+91 98480 12345" is 98480 12345).
+ */
+export function contactNumberProblems(text: string, phones: Pick<PhoneFact, "display" | "key">[]): string[] {
+  const problems: string[] = [];
+  const counts = new Map<string, number>();
+  for (const match of (text || "").matchAll(PHONE_RUN)) {
+    for (const part of splitRun(match[0])) {
+      const display = tidy(part);
+      if (!isPhoneLike(display)) continue;
+      const key = phoneKey(digitsOf(display));
+      if (!phones.some((p) => p.key === key)) problems.push(`${display} is not one of the business's numbers`);
+      else counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+  for (const p of phones) {
+    const n = counts.get(p.key) || 0;
+    if (n === 0) problems.push(`${p.display} is missing`);
+    else if (n > 1) problems.push(`${p.display} is printed ${n} times`);
+  }
+  return problems;
 }

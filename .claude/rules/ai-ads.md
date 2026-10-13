@@ -129,6 +129,21 @@ cached; small images and anything the browser cannot redraw go as they are).
    unverified town, email or website removed. The BUSINESS CONTENT brief a job opens with now also
    carries the business name and the client's notes, and a corrected brief is merged into a box the
    member already edited (`mergeBriefIntoInstructions`).
+   **One contact list (2026-10-13 — the owner: "fake, missing or duplicate numbers" on posters and footers).** A
+   TYPED number counts only when it is shaped like a phone number (a mobile, a landline with its STD code, toll-free,
+   abroad with "+") or labelled as one ("Ph. No. 27654321", "Contact:" on the line above) — never when the words right
+   before it make it something else (`OTHER_LABEL`: account / A/c, IFSC, GST, PAN, Aadhaar, registration, licence,
+   order / invoice / bill / ref / txn / id, door / plot / pin, Rs / ₹ / price / amount…: "Order ID 4521789632" was
+   printed as a phone number), and never when glued to "@" (an email or UPI id); a number the member gave as
+   something else is refused from the model's profile too. The label nearest a number is the one that describes it
+   (`labelZone`: since the number before, its own line or a "Label:" line above; "(WhatsApp)" right after a number is
+   that number's) — "WhatsApp: X, Call: Y" used to mark Y WhatsApp, and "Call: X, WhatsApp: X" lost it (a number
+   written twice is one number, WhatsApp if either copy says so). The member's spelling is kept ("(+91) 98480 12345"
+   came out "+91) …"; a split run turned "0884-2345678" into "0884 2345678"). The list is cut to
+   `MAX_CONTACT_NUMBERS` = 3 inside `verifyBusinessFacts` (a fourth is reported in `rejected`) and
+   **`contactNumbersOf(profile)` is the one list** the label, both posters, the overlays, the frames and every refine
+   print. `contactNumberProblems(text, list)` is the check (every number of the list exactly once, no other number).
+   The voice note writes a spoken phone number in digits, only the digits said (`prompts/voiceNote`).
 2. Decide the core message (`prompts/coreMessage.ts`).
 3. Write the voice-over (`VOICEOVER_SYSTEM_PROMPT`, language-aware, 18–20 words per clip; a
    two-speaker clip is **15–17**, 7–9 per line, `dialogueFormat.wordBudgetFor`). Mechanical repair
@@ -232,7 +247,13 @@ cached; small images and anything the browser cannot redraw go as they are).
    same ONE-ad-type system as Poster Creation, below: the festival's name as the campaign purpose, always 9:16 vertical,
    English, the logo or the name as the wordmark) — both from the VERIFIED facts: exactly as many contact pills / numbers
    as the business has (1–3), no address strip or line when there is none, and `stripUnverifiedNumbers` on every
-   model-written overlay and refine (the poster's numbers are put in by code). The poster cannot fail on the model
+   model-written overlay, frame (2026-10-13: signage) and refine (the poster's numbers are put in by code). **The label's
+   WhatsApp number is ONE of its N pills** (green, WhatsApp icon in place of the phone icon — `whatsappSentence`); until
+   2026-10-13 it asked for "a WhatsApp pill of its own … beside the call pill(s)" under "EXACTLY 1 NUMBER", so the image
+   tool drew the number twice. Its contact lines come from `prompts/lowerThird.labelContactLines` (each number once, then
+   "EXACTLY N NUMBERS — … each number written once") and its final check asks for exactly N pills and no other number
+   (or no number at all). A label REFINE is re-stamped from the list (`withLabelContacts`: a repeated, invented, dropped
+   or renumbered CONTACT line is replaced, and a saved label's old WhatsApp sentence is updated). The poster cannot fail on the model
    any more (its fallback is code); a Missing row and its Generate stay for an unexpected error. Frames the model skipped are written
    for exactly those clips (never a copy of the last frame), and the retry carries the images.
 6. Direct each clip's action and camera (`prompts/motion.ts`) → **Veo 3 prompts**. **Motion policy
@@ -497,13 +518,18 @@ to the owner's order, nothing → `product_benefit`) → assembled IN CODE (`uti
 a minimalist and creative ad in <name>. Business Information: <info>. Create one strong visual concept/metaphor that
 communicates the main product/service benefit." + blank line + "Format: 9:16 vertical poster. Use the attached logo exactly
 as given. Words on the poster in English." (no logo file or "No logo" → "Show the business name "X" as a clean wordmark,
-exactly as spelled." — never the word logo). The names: material_metaphor "Material-based Metaphor Ads", shadow_metaphor
+exactly as spelled." — never the word logo) + since 2026-10-13 the phone rule (`posterPhoneRule`, counted from the
+Contact line): "Print only the one contact number given above, once, digit for digit." / "… the two (three) contact
+numbers given above, each once, digit for digit." / with none, "No phone number on the poster." — a prompt silent about
+phones is where an image tool adds a "Call: 98765 43210" strip of its own. The names: material_metaphor "Material-based Metaphor Ads", shadow_metaphor
 "Shadow Metaphor Ads", contrast_concept "Contrast-based Conceptual Ads", proportion_concept "Proportion-based Conceptual Ads",
 visual_exaggeration "Visual Exaggeration Ads", product_benefit "Product Benefit Conceptual Ads", shape_concept "Shape-based
 Conceptual Ads", animal_metaphor "Animal-based Visual Metaphor Ads" (ids unchanged — stored on jobs). Business Information
 = the analysis's summary cleaned (`cleanPosterSummary`: every number, labelled contact, email, website and ad-type name
 out, ≤ 60 words; the name put in front when missing; the occasion added when missing) + "Contact: …" (1–3 VERIFIED numbers,
-"(WhatsApp)") + "Address: …" only when there is one; with no summary, the profile's own (`fallbackPosterSummary`).
+"(WhatsApp)", each once — `uniquePosterContacts`) + "Address: …" only when there is one; with no summary, the profile's own
+(`fallbackPosterSummary`). `assembleConceptPoster` scrubs its Business Information and Format line of any number not in the
+list (a number in the business name, the occasion or the wordmark) — Poster Creation had no final scrub before 2026-10-13.
 `posterPromptProblems` / `isConceptPosterPrompt` check the exact shape (one type named once, no "..", ≤ 200 words).
 Stored as `posterConcepts: [one]` (`conceptFromPoster`: `adTypeName`, `reason`, `benefit`, `businessInformation`,
 `format`, `chosenBy` fixed / analysis / kept / rule, and the old fields filled from them). `refinePosterConcept` (and the
@@ -596,6 +622,13 @@ attribution (`Clip.voScript` is one string).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
+- **AI ads — contact numbers (owner, 2026-10-13):** the poster and the footer (Video Bottom Label) print exactly the
+  unique contact numbers the business gave — the ones typed in the brief, the voice note's, or ones a card / flyer /
+  premises photo shows — each once, as written, never invented, changed or added: none given → no number at all (the
+  poster prompt says "No phone number on the poster"); one → that one; two → those two; three → those three; a
+  fourth is left out (the layouts carry three). A number written several ways is one number. An order id, account,
+  registration number, price or UPI id is never a phone number. The label's WhatsApp number is one of its pills, never
+  an extra one. The label, both posters, the overlays, the frames and every refine print the SAME list.
 - **AI ads — poster prompts (owner, 2026-10-12):** every poster prompt — Poster Creation and the video kit's poster —
   is ONE conceptual ad type out of the eight (Material-based Metaphor, Shadow Metaphor, Contrast-based Conceptual,
   Proportion-based Conceptual, Visual Exaggeration, Product Benefit Conceptual, Shape-based Conceptual, Animal-based Visual
@@ -694,6 +727,12 @@ attribution (`Clip.voScript` is one string).
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- Contact numbers (2026-10-13): what labels a typed number is read from word lists (`CONTACT_LABEL`, `OTHER_LABEL` in
+  `utils/businessFacts`) — English plus a few Telugu / Hindi words. An unlabelled number that is not phone-shaped (an
+  8-digit landline without its STD code, a 10-digit number starting 1–5 without "+") is left out; the member labels it
+  ("Ph: 27654321") to keep it. Shorthand ("98480 12345/46") gives only the number written in full. A fourth number is
+  dropped by design. The code cannot see the finished image: the poster and label prompts name the exact count, and
+  whether ChatGPT / Gemini obey it has not been seen on a generated image yet.
 - Cast consistency (2026-10-08): a kit saved before 2026-10-08 has no `spec`; its stored settings stand in, and
   those were written from the form at each save — a kit whose script is not that cast's is refused (not
   rebuilt) and has to be generated again or given a final script. An unknown speaker label in a MODEL's script is
@@ -813,6 +852,11 @@ attribution (`Clip.voScript` is one string).
 - A frame run with no logo FILE now uses the name board even when "No logo" is not ticked.
 - The script quality gate adds a judge call per draft and up to two more drafts: 1 extra call on a
   script that passes, up to ~6 on one that is rewritten twice (more quota and latency; not measured).
+- Contact numbers (2026-10-13): checked by `contactNumbersOct13.test.ts` (18 scenarios × the label, the video poster,
+  Poster Creation end to end, the label refine, the overlays and a frame refine on a fake Gemini that keeps adding,
+  repeating and dropping numbers). An earlier saved kit keeps its label and poster text until it is regenerated (a
+  label refine updates the old WhatsApp sentence); a profile saved before 2026-09-25 (no `contactNumbers`) now gives
+  only its well-formed numbers.
 - Verified facts drop a number the extraction put under a non-contact key or read from a product
   photo, and any number when only a logo was attached — by design, but a real number can be lost that
   way; the member types it into BUSINESS CONTENT to keep it.

@@ -72,8 +72,10 @@ describe("the contact module, by how many numbers there are", () => {
     expect(label({ contactCount: 3 })).toContain("THREE compact stacked pills");
   });
 
-  it("adds a WhatsApp pill only when there is a WhatsApp number", () => {
-    expect(label({ hasWhatsApp: true })).toContain("WhatsApp pill of its own, in WhatsApp green");
+  it("gives a WhatsApp number its green pill — one of the pills, never an extra one — only when there is one", () => {
+    expect(label({ hasWhatsApp: true })).toContain("drawn in its OWN pill — that pill is WhatsApp green");
+    expect(label({ hasWhatsApp: true })).toContain("not an extra one: never draw that number twice");
+    expect(label({ hasWhatsApp: true })).not.toContain("beside the call pill");
     expect(label()).not.toContain("WhatsApp");
   });
 });

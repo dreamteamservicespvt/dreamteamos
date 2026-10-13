@@ -134,12 +134,16 @@ describe("SMM Monthly Locking Architecture & Renewal", () => {
       expect(canSetUpSmm({ role: "tech_team_leader" })).toBe(true);
     });
 
-    it("allows only admins to create renewals and manage historical setups", () => {
+    it("allows only the main admin and the tech admin to create renewals (owner, 2026-10-13: not the team lead)", () => {
       expect(canAdminRenewSmm(leadUser)).toBe(false);
       expect(canAdminRenewSmm({ role: "tech_member" })).toBe(false);
       expect(canAdminRenewSmm({ role: "tech_admin" })).toBe(true);
       expect(canAdminRenewSmm({ role: "main_admin" })).toBe(true);
-      expect(canAdminRenewSmm({ role: "tech_team_leader" })).toBe(true);
+      expect(canAdminRenewSmm({ role: "tech_team_leader" })).toBe(false);
+      expect(canAdminRenewSmm({ role: "tech_team_leader", smmLeader: true })).toBe(false);
+      // The salesperson renews through the sale (`canRenewSmm`), never through this button.
+      expect(canAdminRenewSmm({ role: "sales_member" })).toBe(false);
+      expect(canAdminRenewSmm({ role: "sales_admin" })).toBe(false);
     });
 
     it("prevents unassigned Team Lead from updating item stage/progress", async () => {

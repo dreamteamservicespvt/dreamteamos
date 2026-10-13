@@ -216,6 +216,13 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-13)
 
+- 2026-10-13, **in the working tree (not committed)** — SMM **"Create next renewal" only for the main admin and the tech
+  admin** (not the team leaders; the salesperson keeps Renew, the sale), in the screens and in `createRenewalMonth`
+  (`smm.md`, `roles-routes.md`).
+- 2026-10-13 (later), **in the working tree (not committed)** — **contact numbers on the poster and the footer**: one
+  verified list (`utils/businessFacts.contactNumbersOf`, at most 3, each once, as written) printed by the label, both
+  posters, overlays, frames and refines; an order id / account / price is never a phone number; the label's WhatsApp
+  number is one of its pills, not an extra; the poster's Format line names the count or "No phone number" (`ai-ads.md`).
 - 2026-10-13, **in the working tree (not committed)** — the 3-item task of 2026-10-12: the **Social Media Team Lead is
   view-only** on months she is not on and works her own like a member (`smm.md`, `roles-routes.md`, the first
   `smm_campaigns` rule in `docs/firestore-rules.md`); **Half Day leave** — Full day / Half day, ½ of the allowance, the HL
@@ -250,17 +257,20 @@ errors:** done means every listed item is fully resolved with no build, console 
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
 - `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈848 KB; lazy pages for
   AI Accounts, Invoices).
-- `npx vitest run` ✅ 231 files, 3564 tests, all pass, no unhandled errors (2026-10-13, after the three items above,
-  with the parallel sessions' work in the tree). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
+- `npx vitest run` ✅ 233 files, 3619 tests, all pass, no unhandled errors (2026-10-13, after the contact-number fix and
+  the "Create next renewal" change).
+  Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (the VideoCallManager one was fixed in `5ca75b0`).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): SMM Team Lead view-only, Half Day leave, one-type poster prompts
-  (2026-10-13); Motu & Patlu walk only where needed; AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
+- Most recent work (newest first; detail in §31): one contact-number list for posters and the footer; SMM Team Lead
+  view-only, Half Day leave, one-type poster prompts (2026-10-13); Motu & Patlu walk only where needed; AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
   (AI Ads + Cinematic Ads) and Social Media → Attendance (2026-10-08, later); the Invoice Builder and Invoices →
   Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
   money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
   AI Accounts and Cinematic Ads work.
-- Open follow-ups the owner must act on: make one poster in Gemini from a new poster prompt (does the one ad type read?);
+- Open follow-ups the owner must act on: make one label and one poster image from new prompts with 1 and 2 numbers
+  (one a WhatsApp) — is each number printed once, and none invented on a no-number poster?;
+  make one poster in Gemini from a new poster prompt (does the one ad type read?);
   apply for, approve and pay one half-day leave; sign in as the Social Media Team Lead and check a month she is not on is
   View only; make one Motu & Patlu ad in Flow from the new prompts (standing clips: do
   heights and clothes hold?); check one real Payroll month against Team Attendance (any paid row now flagged "Now ₹X" was paid a different amount than attendance gives); make one Male & Female Duo ad in Flow from the new prompts; decide the

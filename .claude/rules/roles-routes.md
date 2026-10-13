@@ -141,6 +141,7 @@ legacy users without the field active.
 | Add an SMM month that had no sale — not counted (`canAddNoSaleMonth`) | ✅ | ✅ | ✅ | (smmLeader 2026-10-05 → 10-12 only) | | sees it, renews it | |
 | Set up / assign / edit an SMM month (`canSetUpSmm`) | ✅ | ✅ | ✅ | (smmLeader until 2026-10-12) | | | |
 | Renew an SMM month — as a sale (`canRenewSmm`) | | | | | | ✅ own month | |
+| "Create next renewal" — Month N+1 directly, no sale (`canAdminRenewSmm`; also refused in `createRenewalMonth`) | ✅ | ✅ | (2026-10-12 only; Remind instead since 10-13) | | | Renew (the sale) instead | |
 | Social Media → Money: company renewals in ₹ (`canSeeSmmMoney`, 2026-10-05) | ✅ | ✅ | | | ✅ | own card only | |
 | Social Media → Attendance: today's board of the Social Media team (days view only) + Edit team (`canSeeSmmAttendance` / `canEditSmmTeam`, 2026-10-08) | ✅ | ✅ | smmLeader | smmLeader | | | |
 | 11 AM / 5 PM "update your posts" popup (`SmmStatusCheckPopup`, 2026-10-05) | | if on a month's team | if on a month's team | if on a month's team | | | |

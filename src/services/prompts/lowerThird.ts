@@ -124,6 +124,23 @@ export interface LowerThirdInput {
   context?: { motive?: string; mood?: string; coreMessage?: string };
 }
 
+const COUNT_WORDS = ["NO", "ONE", "TWO", "THREE"];
+
+/**
+ * The WhatsApp sentence — the WhatsApp number's pill is one of the pills, never one more.
+ *
+ * It used to read "give it a WhatsApp pill of its own … beside the call pill(s)", under "EXACTLY 1 NUMBER —
+ * draw 1 contact pill": the image generator drew the number twice, a call pill and a green one, and a
+ * two-number label came back with three pills (owner, 2026-10-13: "duplicate numbers").
+ */
+function whatsappSentence(count: number): string {
+  const all = COUNT_WORDS[count] ?? String(count);
+  return `  - The number marked (WhatsApp) is drawn in its OWN pill — that pill is WhatsApp green with the WhatsApp icon in place of the phone icon. It is one of the ${all} pill${count === 1 ? "" : "s"}, not an extra one: never draw that number twice.`;
+}
+
+/** What the WhatsApp sentence said before 2026-10-13 — a saved label still holds it until it is rebuilt or refined. */
+const LEGACY_WHATSAPP_SENTENCE = "  - One of the numbers is a WhatsApp number: give it a WhatsApp pill of its own, in WhatsApp green, beside the call pill(s).";
+
 /** How the contacts are arranged, for the count this business actually has. */
 function contactBlock(count: number, hasWhatsApp: boolean): string {
   if (count <= 0) {
@@ -137,9 +154,70 @@ function contactBlock(count: number, hasWhatsApp: boolean): string {
       : "THREE compact stacked pills, tightened so all three stay legible";
   const eachWith = count === 1 ? "with" : "each with";
   return `  - ${shape}, ${eachWith} a small phone icon, a glass or gradient face, a metallic edge and a soft shadow.`
-    + (hasWhatsApp
-      ? "\n  - One of the numbers is a WhatsApp number: give it a WhatsApp pill of its own, in WhatsApp green, beside the call pill(s)."
-      : "");
+    + ` One number per pill, exactly as listed below — every number appears exactly once.`
+    + (hasWhatsApp ? `\n${whatsappSentence(count)}` : "");
+}
+
+// ── the values the member copies ───────────────────────────────────────────────────────────────
+
+/** A number placed on the label: as the business gave it, and whether it is a WhatsApp number. */
+export interface LabelContact {
+  display: string;
+  whatsapp?: boolean;
+}
+
+/** The line that stands in for the contact lines when the business gave no number. */
+export const NO_CONTACT_LINE = "NO CONTACT NUMBER provided — do NOT show any contact pill and do NOT invent, guess, autocomplete, or fabricate any phone number. The raised right module stays, because it must still cover the watermark.";
+
+const sameNumber = (a: string, b: string) => {
+  const key = (v: string) => v.replace(/\D/g, "").slice(-10);
+  return key(a) === key(b);
+};
+
+/**
+ * The label's contact lines, from the verified list (utils/businessFacts `contactNumbersOf`): one line per
+ * number, each number once, then how many pills that is. [] when the business gave none.
+ */
+export function labelContactLines(contacts: LabelContact[]): string[] {
+  const unique: LabelContact[] = [];
+  for (const c of contacts) {
+    if (!c.display?.trim()) continue;
+    const same = unique.find((u) => sameNumber(u.display, c.display));
+    if (same) { same.whatsapp ||= c.whatsapp; continue; }
+    unique.push({ display: c.display.trim(), whatsapp: !!c.whatsapp });
+  }
+  const n = unique.length;
+  if (n === 0) return [];
+  return [
+    ...unique.map((c, i) => `CONTACT ${i + 1} = ${c.display}${c.whatsapp ? " (WhatsApp)" : ""}`),
+    `EXACTLY ${n} NUMBER${n === 1 ? "" : "S"} — draw ${n} contact pill${n === 1 ? "" : "s"}, each number written once, no more and no fewer.`,
+  ];
+}
+
+const isContactValueLine = (line: string) =>
+  /^\s*CONTACT\s*\d+\s*[=:]/i.test(line) || /^\s*EXACTLY\s+\d+\s+NUMBERS?\b/i.test(line) || /^\s*NO CONTACT NUMBER provided\b/i.test(line);
+
+/**
+ * A label prompt with its contact lines put back from the verified list — after a refine, which is a
+ * model's rewrite: it could repeat a CONTACT line, drop one, or renumber them, and only an invented number
+ * was being removed. The lines go where the old ones stood (else after NAME =, else after the REAL CONTENT
+ * heading), and a saved label's old WhatsApp sentence becomes today's.
+ */
+export function withLabelContacts(text: string, contacts: LabelContact[]): string {
+  const lines = (text || "").split("\n");
+  const first = lines.findIndex(isContactValueLine);
+  const kept = lines.filter((line) => !isContactValueLine(line));
+  let at: number;
+  if (first >= 0) at = lines.slice(0, first).filter((line) => !isContactValueLine(line)).length;
+  else {
+    const name = kept.findIndex((line) => /^\s*NAME\s*=/i.test(line));
+    const heading = kept.findIndex((line) => /^\s*REAL CONTENT TO PLACE/i.test(line));
+    at = name >= 0 ? name + 1 : heading >= 0 ? heading + 1 : kept.length;
+  }
+  const stamp = labelContactLines(contacts);
+  kept.splice(at, 0, ...(stamp.length ? stamp : [NO_CONTACT_LINE]));
+  const count = Math.max(0, stamp.length - 1);
+  return kept.join("\n").split(LEGACY_WHATSAPP_SENTENCE).join(count ? whatsappSentence(count) : "");
 }
 
 /**
@@ -237,5 +315,8 @@ NEVER place: a slogan, a tagline, a promise, feature icons or feature words (pri
 3. Is the silhouette asymmetric — lower on the left, raised on the right — rather than one even bar?
 4. ${noLogo ? "Is the business name written exactly once, with no invented emblem, circle or monogram anywhere?" : "Is the logo untouched, and the business name written exactly once?"}
 5. Is there any slogan, feature word, service, offer or extra sentence anywhere? If so, delete it and redraw.
-6. Is the address on ONE line${hasAddress ? "" : " — or, as here, absent entirely, with no empty bar"}?`;
+6. Is the address on ONE line${hasAddress ? "" : " — or, as here, absent entirely, with no empty bar"}?
+7. ${contactCount > 0
+    ? `Are there exactly ${COUNT_WORDS[contactCount] ?? contactCount} contact pill${contactCount === 1 ? "" : "s"}, each number written once, digit for digit as listed below, and no other phone number anywhere?`
+    : "Is there no phone number anywhere on the label?"}`;
 }
