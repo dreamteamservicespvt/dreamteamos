@@ -95,13 +95,16 @@ export default function SmmMoneyPanel({ campaign, canEdit, actorName, actorUid, 
             <span className="flex-1">
               Tomorrow's campaigns need {formatCurrency(ledger.nextDayNeed)} and only {formatCurrency(Math.max(0, ledger.balance))} is left.
             </span>
-            <button
-              data-test="smm-budget-ask"
-              onClick={() => onMessage(budgetTopUpMessage(campaign, today))}
-              className="inline-flex items-center gap-1 rounded-md bg-destructive px-2 py-1 text-[11px] font-medium text-white hover:bg-destructive/90"
-            >
-              <Send size={10} /> Ask for a top-up
-            </button>
+            {/* Writing to the client is working the month — not for the view-only Team Lead (2026-10-12). */}
+            {canEdit && (
+              <button
+                data-test="smm-budget-ask"
+                onClick={() => onMessage(budgetTopUpMessage(campaign, today))}
+                className="inline-flex items-center gap-1 rounded-md bg-destructive px-2 py-1 text-[11px] font-medium text-white hover:bg-destructive/90"
+              >
+                <Send size={10} /> Ask for a top-up
+              </button>
+            )}
           </div>
         )}
 

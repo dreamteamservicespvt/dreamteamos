@@ -275,14 +275,16 @@ describe("Add SMM sale", () => {
     expect(setupSaleMonth).not.toHaveBeenCalled();
   });
 
-  it("offers the Social Media Team Lead a month with no sale — and says who records a new sale (2026-10-05)", async () => {
-    // The owner's screenshot: the lead found a fresh number and got "No social media sale…" and nothing to press.
+  it("offers the view-only Social Media Team Lead nothing to add — and says who records a new sale (2026-10-12)", async () => {
+    // 2026-10-05 the lead was given "Add a month that had no sale" (the owner's screenshot: a fresh number and
+    // nothing to press); 2026-10-12 the owner made her view-only and took it back. If she reaches this dialog
+    // at all (the board no longer offers it to her), she is told who records a sale and offered nothing to add.
     findSmmSalesForPhone.mockResolvedValue([]);
     render(<MemoryRouter><SmmAddSaleDialog user={{ uid: "ravi", name: "Ravi", role: "tech_member", smmLeader: true } as never} onClose={vi.fn()} onCreated={vi.fn()} /></MemoryRouter>);
     fireEvent.change(screen.getByTestId("smm-add-sale-phone"), { target: { value: "98765 43210" } });
     fireEvent.click(screen.getByTestId("smm-add-sale-find"));
     await screen.findByTestId("smm-add-sale-none");
-    expect(screen.getByTestId("smm-add-sale-no-sale")).toBeTruthy();
+    expect(screen.queryByTestId("smm-add-sale-no-sale")).toBeNull();
     expect(screen.queryByTestId("smm-add-sale-new")).toBeNull();
     expect(screen.getByTestId("smm-add-sale-new-who").textContent).toMatch(/tech admin, the tech team leader or the main\s+admin/);
   });

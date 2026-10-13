@@ -3,13 +3,13 @@
  *
  * ── What there is to go on ──────────────────────────────────────────────────────────────────────
  * The generator reports progress only at a handful of fixed checkpoints (services/geminiService
- * onProgress): video goes 0 → 10 → 20 → (40) → 45 → 100, poster goes 0 → 13.5 → 45 → 55 → (80) → 100.
+ * onProgress): video goes 0 → 10 → 20 → (40) → 45 → 100, poster goes 0 → 13.5 → 45 → 55 → 100.
  * Between 45 and 100 of a video run there is one long silence while three model calls run at once.
  * Nothing anywhere recorded how long a generation took, so there was no history to average either.
  *
  * So this is built in three layers, each honest about what it knows:
  *   1. A PLAN — each stretch between two checkpoints, with a baseline duration worked out from the
- *      run's own inputs (clip count, attached files, location photos, poster concepts).
+ *      run's own inputs (clip count, attached files, location photos).
  *   2. CALIBRATION — every finished run records how long each stretch really took against its
  *      baseline, in this browser. The next estimate multiplies the baseline by the recent median of
  *      that ratio, so it is a guess the first time and close after a handful of runs.
@@ -36,8 +36,6 @@ export interface RunProfile {
   characterPack: boolean;
   /** A pasted script is used verbatim, so there is almost no voice-over step. */
   customScript: boolean;
-  /** Poster: how many concepts are written. Ignored for video. */
-  conceptCount: number;
 }
 
 /** One stretch between two checkpoints. */
@@ -49,8 +47,9 @@ export interface Segment {
   /** Baseline duration before calibration, in milliseconds. */
   baselineMs: number;
   /**
-   * Only runs sometimes, and the plan cannot know in advance — the poster "fill in the missing
-   * concepts" pass. It adds nothing to the estimate until its checkpoint actually arrives.
+   * Only runs sometimes, and the plan cannot know in advance. It adds nothing to the estimate until its
+   * checkpoint actually arrives. (The poster's "fill in the missing concepts" pass was one, until a poster
+   * run became ONE prompt on 2026-10-12; none is planned now.)
    */
   optional?: boolean;
 }
@@ -74,13 +73,13 @@ const s = (seconds: number) => Math.round(seconds * 1000);
 export function planFor(profile: RunProfile): Segment[] {
   const files = Math.max(0, profile.fileCount);
   if (profile.mode === "poster") {
-    const concepts = clamp(profile.conceptCount || 3, 1, 6);
+    // Since 2026-10-12: one analysis call (the ad type + the business information); the prompt is built in code.
+    // The key stays "poster.concepts" so this browser's calibration history carries on.
     return [
       { key: "poster.prep", from: 0, baselineMs: s(1) },
       { key: "poster.extract", from: 13.5, baselineMs: s(7 + 1.2 * files) },
       { key: "poster.handoff", from: 45, baselineMs: s(0.5) },
-      { key: "poster.concepts", from: 55, baselineMs: s(10 + 5 * concepts) },
-      { key: "poster.fill", from: 80, baselineMs: s(6 + 3 * concepts), optional: true },
+      { key: "poster.concepts", from: 55, baselineMs: s(8) },
     ];
   }
 

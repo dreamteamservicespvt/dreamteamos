@@ -132,7 +132,7 @@ describe("poster jobs", () => {
       businessInfo: BRIEF, festival: "Diwali",
     }));
     expect(f).toMatchObject({ category: "poster", duration: "poster", pricePerUnit: 199, posterCount: 2, festival: "Diwali", businessInfo: BRIEF });
-    expect(f.posterSize).toBe("4:5");
+    expect(f.posterSize).toBe("9:16"); // the default since 2026-10-12 ("poster ratio 9:16")
     expect(f.posterStyle).toBe("auto");
   });
 

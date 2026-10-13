@@ -5,7 +5,7 @@
  * editors, and the AI Platform's Poster Creation panel. One component so the tech admin, the team
  * leader and the member making the poster can never be offered different sizes or different styles.
  *
- * Size is a preset chip (4:5 by default), or Custom → typed as a ratio (5 : 7) or as pixels
+ * Size is a preset chip (9:16 by default since 2026-10-12), or Custom → typed as a ratio (5 : 7) or as pixels
  * (1080 × 1350). Style is a card grid from the team's library (services/posterStyles). The occasion
  * is optional: the upcoming festivals and days, soonest first, or anything typed.
  */
@@ -238,7 +238,7 @@ export default function PosterSpecFields({
           <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground" data-test="poster-style-explainer">
             {style
               ? <><b className="text-foreground">{style.label}:</b> {style.short}. e.g. {style.references[0].visual.toLowerCase()}.</>
-              : <><b className="text-foreground">Best fit:</b> the AI reads the business and picks the strongest style for each concept, using at least two different styles.</>}
+              : <><b className="text-foreground">Best fit:</b> the AI reads the business and picks the ONE style that fits it best — one poster prompt, one style (2026-10-12).</>}
           </p>
         </div>
       )}

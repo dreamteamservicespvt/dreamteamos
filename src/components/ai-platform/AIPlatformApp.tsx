@@ -25,7 +25,7 @@ import { CHATGPT_URL, GEMINI_URL } from './generation/mission';
 import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender, packSpeakers, withCustomCharacter } from '@/services/characterPacks';
 import { attireLabel, attireOptionLabel, attireOptionsFor, castLabelFor, resolveModelSpec } from '@/utils/adRequirement';
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
-import { generateAdAssets, generatePosterConcepts, refinePosterConcept, DEFAULT_POSTER_CONCEPT_COUNT, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
+import { generateAdAssets, generatePosterConcepts, refinePosterConcept, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
 import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
 import { finalScriptTemplate } from '@/utils/finalScript';
 import { adSpecFromSaved, formForKit, savedSettingsOf } from '@/utils/adSpec';
@@ -121,12 +121,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     language: 'Telugu',
     noLogo: false,
     logoNameText: '',
-    // Poster Creation — read only in poster mode. 4:5 because that is how Instagram shows a
-    // poster uncropped, and English because image generators spell it most reliably.
+    // Poster Creation — read only in poster mode. 9:16 since 2026-10-12 (the owner: "poster ratio
+    // 9:16"), and English because image generators spell it most reliably. One prompt per run, so no count.
     posterSize: DEFAULT_POSTER_SIZE,
     posterStyle: AUTO_POSTER_STYLE,
     posterOccasion: '',
-    posterConceptCount: DEFAULT_POSTER_CONCEPT_COUNT,
     posterTextLanguage: 'English',
   });
 
@@ -884,7 +883,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     locationPhotos: creationMode === 'video' && formData.locationMode === 'real_provided' ? files.storeImage.length : 0,
     characterPack: creationMode === 'video' && !!activePack,
     customScript: creationMode === 'video' && useCustomScript && !!customScript.trim(),
-    conceptCount: formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT,
   });
 
   /** What the member is preparing for while this run goes, frozen at Start. */
@@ -899,7 +897,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       onLocation,
       locationPhotos: onLocation ? files.storeImage.length : 0,
       castLabel: creationMode === 'video' && activePack ? activePack.label : '',
-      conceptCount: formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT,
       ownerFace: creationMode === 'video' && !!activePack?.usesClientFace,
     };
   };
@@ -1241,7 +1238,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (!outputs) return;
     setSectionRegen(prev => ({ ...prev, poster: 'run' }));
     try {
-      const posterPrompt = await writeVideoPosterPrompt(kitForm(), outputs.businessInfo);
+      const posterPrompt = await writeVideoPosterPrompt(kitForm(), outputs.businessInfo, { hasLogoFile: !!files.logo });
       setOutputs(prev => (prev ? { ...prev, posterPrompt } : prev));
       clearSectionRegen('poster');
     } catch (e: any) {
@@ -1776,19 +1773,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           ...(occasion !== undefined ? { posterOccasion: occasion } : {}),
                         }))}
                       />
-                      <div className="mt-4 grid grid-cols-2 gap-3">
-                        <div>
-                          <label className={cn("block text-sm font-medium mb-1", isDark ? "text-slate-300" : "text-muted-foreground")}>Concepts to write</label>
-                          <select
-                            data-test="poster-concept-count"
-                            value={formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT}
-                            onChange={(e) => setFormData(prev => ({ ...prev, posterConceptCount: parseInt(e.target.value, 10) }))}
-                            className={cn("w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 outline-none",
-                              isDark ? "bg-white/[0.08] border-white/[0.14] text-slate-200 focus:ring-blue-800" : "bg-white border-slate-300 text-slate-700 focus:ring-blue-200")}
-                          >
-                            {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} concept{n === 1 ? '' : 's'}</option>)}
-                          </select>
-                        </div>
+                      {/* One prompt per run, in ONE ad type (owner, 2026-10-12) — the "Concepts to write" 1–6 count is gone. */}
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                           <label className={cn("block text-sm font-medium mb-1", isDark ? "text-slate-300" : "text-muted-foreground")}>Text on the poster</label>
                           <select
@@ -1805,7 +1791,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                         </div>
                       </div>
                       <p className={cn("mt-2 text-[11px] leading-relaxed", isDark ? "text-slate-400" : "text-slate-500")}>
-                        Each concept is a different idea with its own copy-paste image prompt. Upload the logo and any product or shop photos above — the concepts are built from what the business really sells.
+                        One short, copy-paste image prompt in the ONE ad type that fits this business best (or the style chosen above). Upload the logo and any product or shop photos above — the business information is read from them.
                       </p>
                     </div>
                   )}
@@ -2378,7 +2364,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   <span>
                     {status.isProcessing ? 'Processing...'
                       : assignment && assignmentBrief.loading ? 'Loading the brief…'
-                      : creationMode === 'poster' ? 'Generate Poster Concepts' : 'Start Generation'}
+                      : creationMode === 'poster' ? 'Generate Poster Prompt' : 'Start Generation'}
                   </span>
                 </button>
                 {status.isProcessing && (
@@ -2542,7 +2528,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       concepts={outputs.posterConcepts!}
                       posterSize={formData.posterSize || DEFAULT_POSTER_SIZE}
                       occasion={formData.posterOccasion}
-                      hasLogo={!!files.logo}
+                      hasLogo={!!files.logo && !formData.noLogo}
                       isDark={isDark}
                       refiningIndex={refiningConcept}
                       onRefine={handleRefineConcept}
@@ -2550,7 +2536,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   )}
                   {creationMode === 'poster' && !(outputs.posterConcepts?.length) && (
                     <p className={cn("rounded-xl border px-4 py-3 text-sm", isDark ? "border-white/10 text-slate-400" : "border-slate-200 text-slate-500")}>
-                      This saved work has no poster concepts yet — press <b>Generate Poster Concepts</b> to write them.
+                      This saved work has no poster prompt yet — press <b>Generate Poster Prompt</b> to write it.
                     </p>
                   )}
 
@@ -2676,17 +2662,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {creationMode === 'video' && outputs.posterPrompt && (
                       <OutputSection title="3. Poster Design" sectionKey="poster"
                         icon={PenTool} state={rowState('poster', true)}
-                        subtitle="Poster design prompt for the promotional poster."
+                        subtitle="One minimalist conceptual poster prompt, 9:16, in the ad type that fits the business."
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection}
                         isDark={isDark} copyContent={outputs.posterPrompt}>
-                        <GeneratedCard title="Poster" content={outputs.posterPrompt} isJson sectionType="poster"
+                        <GeneratedCard title="Poster" content={outputs.posterPrompt} sectionType="poster"
                           showRefinement={true} onRefine={(i) => handleRefineSection('poster', i)} isRefining={refiningSection === 'poster'} hideTitle />
                       </OutputSection>
                   )}
 
                   {creationMode === 'video' && !outputs.posterPrompt && (
                       <OutputSection title="3. Poster Design" sectionKey="poster" icon={PenTool} empty
-                        subtitle="Poster design prompt for the promotional poster."
+                        subtitle="One minimalist conceptual poster prompt, 9:16, in the ad type that fits the business."
                         state={rowState('poster', false)}
                         collapsedOutputs={collapsedOutputs} toggleOutputSection={toggleOutputSection} isDark={isDark}
                         actions={!status.isProcessing ? (

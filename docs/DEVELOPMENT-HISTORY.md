@@ -9,6 +9,60 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-12 → 13: three items — the Social Media Team Lead view-only, Half Day leave, the poster prompts** (sessions
+  dts-os-d1, then dts-os-e1 from `HANDOFF.md`; `smm.md`, `roles-routes.md`, `backend-security.md` §14, `people.md`,
+  `data-model.md`, `ai-ads.md`). The owner's answers (AskUserQuestion): the lead keeps Edit team on Attendance and loses
+  "Add a month that had no sale"; a half day uses ½ of the 2 paid leaves — inside it a full day's pay, past it half a
+  day's pay — for tech AND sales; BOTH poster systems switch, the prompt is the three sentences exactly + one Format line;
+  then "poster ratio 9:16".
+  **(1) SMM Team Lead, a hybrid role.** Root cause: `smmPlan.canEditCampaign` asked `isSmmOverseer` (sight), so the lead
+  could edit every month; `5ca75b0` had moved setup / delete off her but left every other write, a guard on
+  `setItemStatus` only, `canAddNoSaleMonth` true with its button hidden, write sweeps over everyone's months and copy
+  telling her she "runs every month". Now one answer, `canEditCampaign` (an SMM admin by role, the month's salesperson,
+  or somebody on the month) + `isViewOnlySmmLead`; `services/smm` `assertMayChangeMonth` inside `mutateCampaign`'s
+  transaction and `assertMayManageMonths` first in every managing write (`smmSetup`, `smmAssign` too), `SmmViewOnlyError`;
+  the on-open sweeps skip what she may not change; the month page says "View only." with every write control gone (post
+  dialog, Ads, Money, Report send, "Their chat", setup, rename, delete); her own month is a member's page; the first
+  `smm_campaigns` rule in `docs/firestore-rules.md` (unpublished). Test: `smmLeadViewOnlyOct12.test.tsx` (10) + 4 older
+  SMM tests updated.
+  **(2) Half Day leave.** `LeaveRequest.duration` (`full_day` / `half_day`, absent = full; `kind` deprecated); a half day
+  is one working date; the allowance settles in half days (`splitLeaveDays` share / paid / unpaid / mark); approval writes
+  the new mark **HL `half_leave`** (paid as a full day) or **H** past the allowance; a full day with ½ left is `leave` paid
+  ½; `tallyAttendance` / `computeSalary` / `deductionsFor` / `netPayable` count halves (new lines and the
+  `half_leave_unpaid` deduction; `paidHalfLeaveDays` / `unpaidHalfLeaveDays` optional on the computation;
+  `formatDayCount` / `formatDays` / `paidLeaveUsed`); every screen that shows leave updated (LeavePanel Full day / Half day,
+  LeaveApprovalsPanel chip, notifications and audit, grid + editor on both sides, calendars, AttendanceCard, UpdatePopup,
+  My Salary ×2, Payroll + CSV, Sales Payroll, Salary Management, payslip, the SMM TODAY board — whose icon map was the one
+  typecheck error the hand-off left). Whole-day results unchanged (every older payroll / attendance / leave suite green
+  untouched). Test: `halfDayLeaveOct12.test.tsx` (30).
+  **(3) Poster prompts.** Root cause: Poster Creation asked for 1–6 long art-directed concepts at temperature 0.95 with "at
+  least two different styles", and the video kit's poster row was a second, separate 150–220-word prompt. Now one system
+  for both (`utils/posterAdType` + `services/prompts/posterConcept`): one `standard` analysis call at temperature 0.2 →
+  JSON (type id, reason, benefit, ≤ 60-word business information) → the type (fixed style as it is, else the analysis's
+  one, else a deterministic keyword rubric) → the prompt assembled in code: the owner's three sentences + "Format: 9:16
+  vertical poster. Use the attached logo exactly as given. Words on the poster in English." (no logo → the name as a
+  wordmark, never the word logo); the model's numbers are stripped and the VERIFIED contacts / address added by code; one
+  prompt per run (the count select removed); refines change the type only when asked. `DEFAULT_POSTER_SIZE` = "9:16"; the
+  video kit's poster always 9:16. `PosterConceptsPanel` shows the new shape (old saves as before), the poster row is plain
+  text, Tools history "Poster Design", one Gemini tab in the mission guide, the ETA plan has one analysis. Removed:
+  `POSTER_SYSTEM_PROMPT`, the dead `generatePosterPrompt`, the old concept prompt builders and reply readers. Test:
+  `posterAdTypeOct12.test.ts` (all 8 types in the exact structure, Format variants, business-info cleaning, fallback,
+  Poster Creation / video row / both refines on a faked Gemini); posterConcepts, noLogoPrompts, generationEta,
+  missionWorkspace, posterSpec, businessBriefAndPosterJobs updated.
+  Also: the typecheck baseline is 0 errors since `5ca75b0` (CLAUDE.md §28 / §30 / §32 / §33, `backend-security.md` §26.6).
+  Verified: build ✅, full vitest ✅ 231 files, 3564 tests, typecheck 0 errors; browser (a throwaway harness in the scratchpad driving the REAL pages on the in-memory Firestore, headless Chrome
+  at 1440 and 390 px, no console errors, no overflow): the lead on someone else's month (View only, every write control
+  gone, the post dialog read-only and its month byte-identical after opening it, light + dark), on her own month (member
+  tools, a title autosaved), the board as lead, the tech admin unchanged; Half day on /tech/salary and /sales/salary
+  (Sunday refused, preview, saved `half_day`, past-allowance wording, withdraw), Team Attendance approve → HL / "1HL" /
+  "Leaves left: 1½" for the tech and the sales admin (sales editor without plain H), Payroll (paid HL no deduction; L L HL
+  → "Half-day leave without pay (1 day)" −₹500), the SMM TODAY board; the poster panel (new shape light + dark, Copy prompt
+  = exactly the prompt, Refine; an old saved generation unchanged) and the studio in Poster mode (no count select, 9:16
+  selected, "Generate Poster Prompt"). Fixed from it: the "View only" labels' light-theme contrast (1.6:1 → 6.3:1,
+  amber-800), read-only stage buttons no longer light on hover, the approval row on a phone (the buttons drop below the
+  text), the poster Refine input on desktop (26 px wide), "never describes it", and the studio's old "at least two styles"
+  explainer (`PosterSpecFields`). Not driven: live Firebase / the
+  published rule, live Gemini, an image made from the new poster prompt.
 - **2026-10-10 (later): a Copy link button beside "Open AI Studio"** in the Gemini API key steps (`ai-accounts.md`).
   The owner asked to copy the AI Studio link. `ApiKeySteps` (`components/ai-accounts/ApiKeyField.tsx`), shared by the
   key dialog and the Add a Flow account form, gets a `CopyLinkButton`. It copies the same `aiStudioUrlFor(email)` the

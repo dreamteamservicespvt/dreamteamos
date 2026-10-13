@@ -47,6 +47,8 @@ export default function AttendanceCard({ memberId }: { memberId: string }) {
   // Present days and the attendance % over the working days so far — the numbers My Salary shows.
   const presentDays = c.fullDays;
   const pct = Math.round(c.attendancePercent);
+  // Half-day leave (2026-10-12), paid or not — the day is neither a full day present nor an absence.
+  const halfLeave = (c.paidHalfLeaveDays ?? 0) + (c.unpaidHalfLeaveDays ?? 0);
 
   return (
     <div className="bg-card border border-border rounded-xl p-5">
@@ -58,7 +60,7 @@ export default function AttendanceCard({ memberId }: { memberId: string }) {
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
             pct >= 80 ? "bg-success/15 text-success" : pct >= 50 ? "bg-warning/15 text-warning" : "bg-destructive/15 text-destructive"
           }`}>
-            {presentDays} present{c.halfDays ? ` · ${c.halfDays} half` : ""}{c.absentDays ? ` · ${c.absentDays} absent` : ""} · {pct}%
+            {presentDays} present{c.halfDays ? ` · ${c.halfDays} half` : ""}{halfLeave ? ` · ${halfLeave} half-day leave` : ""}{c.absentDays ? ` · ${c.absentDays} absent` : ""} · {pct}%
           </span>
         )}
       </div>

@@ -1,6 +1,6 @@
 /**
  * The attendance grid — one row (or, on a phone, one month card) per member, one cell per day of the
- * pay cycle, P / H / A / L / holiday in the shared colours, and each member's totals.
+ * pay cycle, P / H / A / L / HL (half-day leave, 2026-10-12) / holiday in the shared colours, and each member's totals.
  *
  * Lifted out of Team Attendance on 2026-10-08 so Social Media → Attendance (the Social Media Team Lead's
  * view-only grid) draws the SAME grid rather than a second copy of it. With `onCellClick` a cell opens the
@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { ATTENDANCE_META, isSunday, summarize, type AttendanceStatus } from "@/services/techAttendance";
+import { formatDayCount } from "@/utils/payrollEngine";
 import type { PayrollConfig } from "@/types/payroll";
 
 export interface AttendanceGridMember {
@@ -59,7 +60,14 @@ function Totals({ days, statuses, size, config }: {
         <span className="text-rose-600 font-semibold">{sum.absent}A</span>{" "}
         <span className="text-sky-600 font-semibold">{sum.leave}L</span>
       </div>
-      <div className="text-[9px] text-muted-foreground mt-0.5">Leaves left: {sum.leavesLeft}</div>
+      {/* Half-day leave (2026-10-12), once there is any — its own line: a fifth count does not fit the 86px column. */}
+      {sum.halfLeave > 0 && (
+        <div className="text-[9px] mt-0.5 whitespace-nowrap" data-test="grid-half-leave">
+          <span className="text-indigo-600 font-semibold">{sum.halfLeave}HL</span>
+        </div>
+      )}
+      {/* In days — "1½" once half a day of the allowance is spent. */}
+      <div className="text-[9px] text-muted-foreground mt-0.5">Leaves left: {formatDayCount(sum.leavesLeft)}</div>
       {/* Comp-off (2026-10-10): holidays worked (W), comp-off days taken (C), credits left — once there are any. */}
       {(sum.holidayWork > 0 || sum.compOff + sum.compOffUnpaid > 0) && (
         <div className="text-[9px] mt-0.5 whitespace-nowrap" data-test="grid-comp-off">

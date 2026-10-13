@@ -6,10 +6,14 @@ import { recordAudit } from "./auditLog";
 import { sendNotification } from "./notifications";
 import { fetchPayrollConfig } from "./payroll";
 import { attendanceKey, clearAttendanceOverride, isSunday, setAttendanceOverride } from "./techAttendance";
-import { payPeriodForDate, payPeriodForMonth, periodDates } from "@/utils/payrollEngine";
-import { splitLeaveDays, describeLeaveSplit, type LeaveSplit } from "@/utils/leaveAllowance";
+import { formatDayCount, payPeriodForDate, payPeriodForMonth, periodDates } from "@/utils/payrollEngine";
+import {
+  splitLeaveDays, describeLeaveSplit, isWholeDaySplit, type LeaveMark, type LeaveSplit,
+} from "@/utils/leaveAllowance";
 import { getSalaryRoute } from "@/utils/roleHelpers";
-import { DEFAULT_PAYROLL_CONFIG, type LeaveRequest, type LeaveStatus } from "@/types/payroll";
+import {
+  DEFAULT_PAYROLL_CONFIG, type LeaveDuration, type LeaveRequest, type LeaveStatus,
+} from "@/types/payroll";
 import type { AppUser, UserRole } from "@/types";
 
 /**
@@ -30,7 +34,36 @@ import type { AppUser, UserRole } from "@/types";
  *
  * Approving and un-approving are symmetric: un-approving clears the same overrides it wrote,
  * whichever kind they were, so a mistaken approval leaves no trace on anyone's salary.
+ *
+ * ── Half-day leave (owner, 2026-10-12) ───────────────────────────────────────────────────────
+ * A request is a full day (as always) or a HALF day: one working day, of which the member works one half. It uses
+ * half a day of the same allowance. Inside it the day is written `half_leave` and paid in full (worked half + paid
+ * leave half); past it the day is written `half` — paid as a half day, the half-day version of "leave past the
+ * allowance counts as absence". `duration` on the request says which, and undo reads it back (`approvalMarks`).
  */
+
+/** A half-day request? Absent `duration` is a full day — every request made before half days existed. */
+export const isHalfDayLeave = (request: Pick<LeaveRequest, "duration">): boolean => request.duration === "half_day";
+
+/** "Half day" / "Full day" — how a request's length is shown on every list. */
+export const leaveDurationLabel = (request: Pick<LeaveRequest, "duration">): string =>
+  isHalfDayLeave(request) ? "Half day" : "Full day";
+
+/**
+ * The working days a request covers. A half-day request is its ONE date, whatever `toDate` holds (it is written
+ * equal to `fromDate`; reading only `fromDate` keeps a hand-edited document from becoming a range of half days).
+ */
+export function requestWorkingDates(request: Pick<LeaveRequest, "fromDate" | "toDate" | "duration">): string[] {
+  return isHalfDayLeave(request)
+    ? leaveWorkingDates(request.fromDate, request.fromDate)
+    : leaveWorkingDates(request.fromDate, request.toDate);
+}
+
+/** "half-day leave on 2026-07-22" / "leave 2026-07-20 → 2026-07-22" — a request in an audit line. */
+function requestInWords(request: Pick<LeaveRequest, "fromDate" | "toDate" | "duration">): string {
+  if (isHalfDayLeave(request)) return `half-day leave on ${request.fromDate}`;
+  return `leave ${request.fromDate}${request.toDate !== request.fromDate ? ` → ${request.toDate}` : ""}`;
+}
 
 /** Every date in an inclusive range. */
 export function datesBetween(fromDate: string, toDate: string): string[] {
@@ -153,6 +186,8 @@ export interface SubmitLeaveInput {
   fromDate: string;
   toDate: string;
   reason: string;
+  /** Full day (the default) or half day — a half day is `fromDate` alone; `toDate` is ignored and written equal. */
+  duration?: LeaveDuration;
 }
 
 /** Employee submits a leave request. Nothing hits attendance until someone approves it. */
@@ -160,19 +195,26 @@ export async function submitLeaveRequest(
   member: Pick<AppUser, "uid" | "name">,
   input: SubmitLeaveInput,
 ): Promise<string> {
-  const days = leaveWorkingDates(input.fromDate, input.toDate);
+  const halfDay = input.duration === "half_day";
+  // A half day is one date: the day the member works half of.
+  const toDate = halfDay ? input.fromDate : input.toDate;
+  const days = leaveWorkingDates(input.fromDate, toDate);
   if (days.length === 0) {
-    throw new Error("That range contains no working days — Sundays are already days off.");
+    throw new Error(halfDay
+      ? "That day is a Sunday — already a day off, so there is nothing to take half of."
+      : "That range contains no working days — Sundays are already days off.");
   }
 
   const ref = await addDoc(collection(db, "leave_requests"), {
     memberId: member.uid,
     memberName: member.name,
     fromDate: input.fromDate,
-    toDate: input.toDate,
+    toDate,
     // Denormalised to the PAY period, not the calendar month, so quota maths lines up with salary.
     month: periodMonthFor(input.fromDate),
-    kind: "paid",
+    // Written on every new request; a request without it is a full day (all of them before 2026-10-12). `kind`
+    // ("paid" on every request, read by nothing) is no longer written — see LeaveRequest.kind.
+    duration: (halfDay ? "half_day" : "full_day") satisfies LeaveDuration,
     reason: input.reason.trim(),
     status: "pending" satisfies LeaveStatus,
     createdAt: serverTimestamp(),
@@ -182,46 +224,68 @@ export async function submitLeaveRequest(
     action: "leave_submitted",
     actor: { uid: member.uid, name: member.name },
     target: { id: member.uid, name: member.name },
-    summary: `${member.name} requested leave ${input.fromDate}${input.toDate !== input.fromDate ? ` → ${input.toDate}` : ""} (${days.length} working day${days.length === 1 ? "" : "s"})`,
-    after: { ...input, workingDays: days.length },
+    summary: halfDay
+      ? `${member.name} requested a half-day leave on ${input.fromDate}`
+      : `${member.name} requested leave ${input.fromDate}${toDate !== input.fromDate ? ` → ${toDate}` : ""} (${days.length} working day${days.length === 1 ? "" : "s"})`,
+    // Built field by field: Firestore refuses `undefined`, and an audit write that fails is silently lost.
+    after: {
+      fromDate: input.fromDate, toDate, reason: input.reason,
+      duration: halfDay ? "half_day" : "full_day", workingDays: halfDay ? 0.5 : days.length,
+    },
   });
 
   return ref.id;
 }
 
 /**
- * Every working day this member already holds as approved LEAVE, across all their requests.
+ * Leave a member already holds, split by how much of the allowance each day takes: `full` days weigh a whole day,
+ * `half` days (half-day leave) half a day — what `splitLeaveDays` measures a new request against.
+ */
+export interface LeaveOnRecord {
+  full: string[];
+  half: string[];
+}
+
+/**
+ * The days a member's APPROVED requests booked as leave, full and half (pure — the requests are passed in).
  *
  * Deliberately only the days recorded as leave: a day already settled as an absence has been paid
- * for once, and counting it against the allowance again would charge twice for one day off.
- * `excludeRequestId` keeps a request from being measured against itself when it is re-approved.
+ * for once, and counting it against the allowance again would charge twice for one day off. A
+ * half-day request's day is half a day (2026-10-12). `excludeRequestId` keeps a request from being
+ * measured against itself when it is re-approved.
  */
-async function approvedLeaveDatesFor(memberId: string, excludeRequestId?: string): Promise<string[]> {
+export function approvedLeaveOnRequests(requests: LeaveRequest[], excludeRequestId?: string): LeaveOnRecord {
+  const out: LeaveOnRecord = { full: [], half: [] };
+  for (const r of requests) {
+    if (r.status !== "approved" || r.id === excludeRequestId) continue;
+    // Days this request itself booked as absence are not leave and never were.
+    const absent = new Set(r.absentDates || []);
+    const days = requestWorkingDates(r).filter(date => !absent.has(date));
+    (isHalfDayLeave(r) ? out.half : out.full).push(...days);
+  }
+  return out;
+}
+
+/** The member's approved requests, read — the fallback when the attendance record cannot be. */
+async function approvedLeaveFor(memberId: string, excludeRequestId?: string): Promise<LeaveOnRecord> {
   try {
     const snap = await getDocs(query(
       collection(db, "leave_requests"),
       where("memberId", "==", memberId),
       where("status", "==", "approved"),
     ));
-    return snap.docs
-      .filter(d => d.id !== excludeRequestId)
-      .flatMap(d => {
-        const r = d.data() as LeaveRequest;
-        // Days this request itself booked as absence are not leave and never were.
-        const absent = new Set(r.absentDates || []);
-        return leaveWorkingDates(r.fromDate, r.toDate).filter(date => !absent.has(date));
-      });
+    return approvedLeaveOnRequests(snap.docs.map(d => ({ ...(d.data() as LeaveRequest), id: d.id })), excludeRequestId);
   } catch (err) {
     // A failed lookup must not block an approval. The worst case is a generous split, which the
     // payroll engine's own quota pass still catches at salary time.
     console.error("[leave] could not read the member's approved leave:", err);
-    return [];
+    return { full: [], half: [] };
   }
 }
 
 /**
  * Every working day this member holds as LEAVE on the attendance record itself — the source the
- * salary is priced from.
+ * salary is priced from: `leave` marks as full days, `half_leave` marks as half days (2026-10-12).
  *
  * ── Why the record and not the requests (2026-10-09) ─────────────────────────────────────────
  * Counting approved requests missed leave an admin marked straight onto the grid (it belongs to no
@@ -233,16 +297,19 @@ async function approvedLeaveDatesFor(memberId: string, excludeRequestId?: string
  *
  * Falls back to the requests when the record cannot be read.
  */
-async function leaveDatesOnRecord(memberId: string, excludeDates: Set<string>, excludeRequestId?: string): Promise<string[]> {
+async function leaveDatesOnRecord(memberId: string, excludeDates: Set<string>, excludeRequestId?: string): Promise<LeaveOnRecord> {
   try {
     const snap = await getDocs(query(collection(db, "attendance"), where("memberId", "==", memberId)));
-    return snap.docs
+    const marks = snap.docs
       .map(d => d.data() as { date?: string; status?: string })
-      .filter(a => a.status === "leave" && !!a.date && !excludeDates.has(a.date) && !isSunday(a.date))
-      .map(a => a.date as string);
+      .filter(a => !!a.date && !excludeDates.has(a.date) && !isSunday(a.date));
+    return {
+      full: marks.filter(a => a.status === "leave").map(a => a.date as string),
+      half: marks.filter(a => a.status === "half_leave").map(a => a.date as string),
+    };
   } catch (err) {
     console.error("[leave] could not read the member's attendance; counting approved requests instead:", err);
-    return approvedLeaveDatesFor(memberId, excludeRequestId);
+    return approvedLeaveFor(memberId, excludeRequestId);
   }
 }
 
@@ -277,12 +344,16 @@ async function salaryLinkFor(memberId: string): Promise<string> {
  *
  * Returns the split, so the approver is told what the approval actually did (the panel used to
  * report its own pre-approval estimate, "all paid", for a request that had just become absences).
+ *
+ * A half-day request (2026-10-12) is settled the same way at half the weight: `half_leave` when half a day of the
+ * allowance is left, `half` when it is not; leave already on record counts `half_leave` marks as half a day.
  */
 export async function approveLeaveRequest(
   request: LeaveRequest,
   actor: { uid: string; name?: string },
 ): Promise<LeaveSplit> {
-  const days = leaveWorkingDates(request.fromDate, request.toDate);
+  const halfDay = isHalfDayLeave(request);
+  const days = requestWorkingDates(request);
   const [policy, used, link] = await Promise.all([
     fetchPayrollConfig(),
     leaveDatesOnRecord(request.memberId, new Set(days), request.id),
@@ -290,7 +361,9 @@ export async function approveLeaveRequest(
   ]);
   const split = splitLeaveDays({
     requestedDates: days,
-    alreadyApprovedLeaveDates: used,
+    duration: halfDay ? "half_day" : "full_day",
+    alreadyApprovedLeaveDates: used.full,
+    alreadyApprovedHalfLeaveDates: used.half,
     quota: policy.paidLeaveQuota,
     cycleStartDay: policy.payDayOfMonth,
   });
@@ -299,7 +372,8 @@ export async function approveLeaveRequest(
     setAttendanceOverride(
       { uid: request.memberId, name: request.memberName },
       day.date,
-      day.kind,
+      // leave / absent for a full day; half_leave / half for a half day.
+      day.mark,
       actor,
     ),
   ));
@@ -321,20 +395,28 @@ export async function approveLeaveRequest(
     actor,
     target: { id: request.memberId, name: request.memberName },
     month: request.month,
-    summary: `Approved ${request.memberName}'s leave ${range} — ${split.leaveDates.length} paid leave, ${split.absentDates.length} absence`,
+    summary: isWholeDaySplit(split) && !halfDay
+      ? `Approved ${request.memberName}'s leave ${range} — ${split.leaveDates.length} paid leave, ${split.absentDates.length} absence`
+      : `Approved ${request.memberName}'s ${requestInWords(request)} — ${formatDayCount(split.paidDays)} paid leave, ${formatDayCount(split.unpaidDays)} unpaid`,
     before: { status: request.status },
-    after: { status: "approved", leaveDates: split.leaveDates, absentDates: split.absentDates },
+    after: {
+      status: "approved", duration: halfDay ? "half_day" : "full_day",
+      leaveDates: split.leaveDates, absentDates: split.absentDates, paidDays: split.paidDays, unpaidDays: split.unpaidDays,
+    },
   });
 
+  const when = `${request.fromDate}${request.toDate !== request.fromDate ? ` to ${request.toDate}` : ""}`;
   await sendNotification({
     userId: request.memberId,
     type: "leave_approved",
-    title: "Leave Approved",
+    title: halfDay ? "Half-day Leave Approved" : "Leave Approved",
     // Said plainly and up front. Discovering on payday that half the week was unpaid is the
-    // complaint this whole rule has to avoid causing.
-    message: split.absentDates.length
-      ? `Your leave for ${request.fromDate}${request.toDate !== request.fromDate ? ` to ${request.toDate}` : ""} is approved. ${describeLeaveSplit(split)}`
-      : `Your leave for ${request.fromDate}${request.toDate !== request.fromDate ? ` to ${request.toDate}` : ""} has been approved.`,
+    // complaint this whole rule has to avoid causing. A half day always says how it is paid.
+    message: halfDay
+      ? `Your half-day leave on ${request.fromDate} ${split.unpaidDays > 0 ? "is approved" : "has been approved"}. ${describeLeaveSplit(split)}`
+      : split.unpaidDays > 0
+        ? `Your leave for ${when} is approved. ${describeLeaveSplit(split)}`
+        : `Your leave for ${when} has been approved.`,
     link,
   }).catch(() => undefined);
 
@@ -354,12 +436,13 @@ export async function rejectLeaveRequest(
     reviewNote: note.trim(),
   });
 
+  const what = isHalfDayLeave(request) ? "half-day leave" : "leave";
   await recordAudit({
     action: "leave_rejected",
     actor,
     target: { id: request.memberId, name: request.memberName },
     month: request.month,
-    summary: `Rejected ${request.memberName}'s leave ${request.fromDate}: ${note.trim() || "no reason given"}`,
+    summary: `Rejected ${request.memberName}'s ${what} ${request.fromDate}: ${note.trim() || "no reason given"}`,
     before: { status: request.status },
     after: { status: "rejected", note },
   });
@@ -369,8 +452,8 @@ export async function rejectLeaveRequest(
     type: "leave_rejected",
     title: "Leave Not Approved",
     message: note.trim()
-      ? `Your leave request for ${request.fromDate} was not approved: ${note.trim()}`
-      : `Your leave request for ${request.fromDate} was not approved.`,
+      ? `Your ${what} request for ${request.fromDate} was not approved: ${note.trim()}`
+      : `Your ${what} request for ${request.fromDate} was not approved.`,
     link: await salaryLinkFor(request.memberId),
   }).catch(() => undefined);
 }
@@ -378,10 +461,17 @@ export async function rejectLeaveRequest(
 /**
  * What the approval of `request` wrote on each of its days — `leave` within the allowance,
  * `absent` beyond it. A request approved before the split was recorded wrote `leave` on every day.
+ * A half-day request's one day holds `half_leave` within the allowance, `half` beyond it (2026-10-12).
  */
-export function approvalMarks(request: Pick<LeaveRequest, "fromDate" | "toDate" | "leaveDates" | "absentDates">): Map<string, "leave" | "absent"> {
+export function approvalMarks(
+  request: Pick<LeaveRequest, "fromDate" | "toDate" | "leaveDates" | "absentDates" | "duration">,
+): Map<string, LeaveMark> {
   const absent = new Set(request.absentDates || []);
-  return new Map(leaveWorkingDates(request.fromDate, request.toDate).map(date => [date, absent.has(date) ? "absent" : "leave"]));
+  const half = isHalfDayLeave(request);
+  return new Map(requestWorkingDates(request).map((date): [string, LeaveMark] => [
+    date,
+    absent.has(date) ? (half ? "half" : "absent") : (half ? "half_leave" : "leave"),
+  ]));
 }
 
 /**
@@ -391,7 +481,8 @@ export function approvalMarks(request: Pick<LeaveRequest, "fromDate" | "toDate" 
  * leave phantom leave days silently reducing someone's salary — but ONLY a day still holding the
  * mark the approval put there. It used to clear every day of the request, so a day an admin had
  * since corrected by hand (Leave → Present, say) was wiped back to whatever the check-ins said.
- * If a day cannot be read, it is cleared, as before.
+ * If a day cannot be read, it is cleared, as before. A half-day request's day is cleared only while it
+ * still holds the `half_leave` or `half` its approval wrote (`approvalMarks` reads `duration`).
  */
 export async function undoLeaveDecision(
   request: LeaveRequest,
@@ -421,7 +512,7 @@ export async function undoLeaveDecision(
     actor,
     target: { id: request.memberId, name: request.memberName },
     month: request.month,
-    summary: `Undid the ${request.status} decision on ${request.memberName}'s leave ${request.fromDate}`,
+    summary: `Undid the ${request.status} decision on ${request.memberName}'s ${isHalfDayLeave(request) ? "half-day leave" : "leave"} ${request.fromDate}`,
     before: { status: request.status },
     after: { status: "pending" },
   });
@@ -441,7 +532,7 @@ export async function cancelLeaveRequest(
     actor,
     target: { id: request.memberId, name: request.memberName },
     month: request.month,
-    summary: `${request.memberName} withdrew their leave request for ${request.fromDate}`,
+    summary: `${request.memberName} withdrew their ${isHalfDayLeave(request) ? "half-day leave" : "leave"} request for ${request.fromDate}`,
     before: { status: request.status },
     after: { status: "cancelled" },
   });

@@ -161,9 +161,15 @@ export async function generatePayslipPdf(input: PayslipInput): Promise<jsPDF> {
     ["Working Days", String(c.workingDays)],
     ["Days Present", String(c.fullDays)],
     ["Half Days", String(c.halfDays)],
+    // Decimals ("1.5"), never "½": the slip's standard font may not carry the glyph (2026-10-12).
     ["Paid Leave", String(c.paidLeaveDays)],
     ["Loss of Pay Days", String(c.unpaidLeaveDays + c.absentDays + (c.compOffUnpaidDays ?? 0))],
     ["Holidays", String(c.holidayDays)],
+    // Half-day leave (2026-10-12): only on a slip that has some — inside the allowance (a full day's pay) and past it
+    // (paid like a half day; its cost is the "Half-day Leave Adjustment" deduction, as a half day's is).
+    ...((c.paidHalfLeaveDays ?? 0) > 0 || (c.unpaidHalfLeaveDays ?? 0) > 0
+      ? [["Half-day Leave (paid)", String(c.paidHalfLeaveDays ?? 0)], ["Half-day Leave (unpaid)", String(c.unpaidHalfLeaveDays ?? 0)]] as [string, string][]
+      : []),
     // Comp-off (2026-10-10): only on a slip that has some — holidays worked, and the paid days taken for them.
     ...((c.holidayWorkDays ?? 0) > 0 || (c.compOffDays ?? 0) > 0
       ? [["Holidays Worked", String(c.holidayWorkDays ?? 0)], ["Comp Off (paid)", String(c.compOffDays ?? 0)]] as [string, string][]
@@ -181,7 +187,9 @@ export async function generatePayslipPdf(input: PayslipInput): Promise<jsPDF> {
     switch (r.key) {
       case "absent": return [`Loss of Pay (${days})`, r.amount];
       case "half": return [`Half Day Adjustment (${r.days})`, r.amount];
+      // "0.5 days" when the allowance ran out halfway through a day of leave (2026-10-12).
       case "unpaid_leave": return [`Leave Without Pay (${days})`, r.amount];
+      case "half_leave_unpaid": return [`Half-day Leave Adjustment (${r.days})`, r.amount];
       case "comp_off_unpaid": return [`Comp Off without credit (${days})`, r.amount];
       default: return [`Unpaid Holidays (${r.days})`, r.amount];
     }

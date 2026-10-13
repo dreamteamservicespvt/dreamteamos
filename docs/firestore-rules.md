@@ -190,6 +190,29 @@ service cloud.firestore {
     // lead's "Edit team" writes `app_settings/smm_team` ({added[], removed[]}, arrayUnion / arrayRemove) — the
     // lead is a tech member, so both go through the staff catch-all below. A rule limiting attendance reads to the
     // member themself, or `app_settings` writes to admins, would empty the board / stop Edit team.
+    //
+    // 2026-10-12 — the FIRST rule of its own for `smm_campaigns` (kept out of the catch-all below). The owner
+    // made the Social Media Team Lead (`smmLeader` on a tech member) VIEW-ONLY: she reads every month and
+    // everyone's work on it, and on a month somebody else works she changes nothing; she never adds, restores
+    // or deletes a month. On a month she IS on she works like any member — `watchers` always lists the month's
+    // salesperson and every seat (utils/smmPlan.smmWatchers, written with every team change). The app asks the
+    // same question before every write (services/smm `assertMayChangeMonth` / `assertMayManageMonths`), so a
+    // refusal here only meets a write that went round the screens. Every OTHER role keeps exactly what the
+    // catch-all gave it — the sales flows above create, edit and delete months from the salesperson's browser.
+    // A lead who is also a Tech Team Leader or an admin keeps her role's full rights. Cost: one `users` read
+    // per month write (none per read). Her "Edit team" (`app_settings/smm_team`) stays hers (owner, same day).
+    function isViewOnlySmmLead() {
+      let me = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return me.get('smmLeader', false) == true
+        && !(me.get('role', '') in ['main_admin', 'tech_admin', 'sales_admin', 'tech_team_leader']);
+    }
+    match /smm_campaigns/{monthId} {
+      allow read:           if isStaff();
+      allow create, delete: if isStaff() && !isViewOnlySmmLead();
+      allow update:         if isStaff() && (!isViewOnlySmmLead()
+                              || request.auth.uid in resource.data.get('watchers', [])
+                              || resource.data.get('soldBy', '') == request.auth.uid);
+    }
 
     // ── AI Accounts: Flow accounts, their passwords, the credit ledger, paid logins ─────────────
     // (types/aiAccounts.) Passwords live in their own collections so a list never carries them, and
@@ -319,14 +342,15 @@ service cloud.firestore {
     match /{collection}/{document=**} {
       allow read, write: if isStaff() && !(collection in [
         'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets', 'gemini_api_keys',
-        'invoices', 'invoice_counters', 'invoice_numbers', 'invoice_settings'
+        'invoices', 'invoice_counters', 'invoice_numbers', 'invoice_settings',
+        'smm_campaigns'
       ]);
     }
   }
 }
 ```
 
-## After publishing, check these seven things
+## After publishing, check these eight things
 
 1. Open an ID card and scan its QR (or visit `/verify/<uid>` signed out) — it must say **Verified
    employee**. If it says "could not be verified", press **Republish all badges** in
@@ -362,6 +386,11 @@ service cloud.firestore {
    did not publish). A second salesperson must not see it in **Invoices**; the Accounts Admin must.
    With the switch off (Tech Admin → Settings → Invoice Builder), a team leader opening `/invoices`
    sees "isn't turned on for you", and a tech member is sent away by the route guard.
+8. Social Media (2026-10-12): sign in as the Social Media Team Lead. On `/smm` every month is listed; a
+   month somebody else works says **View only** at the top and offers no edit, delete or send buttons. On
+   a month she is on, change a post's stage — it must save. A salesperson must still record an SMM sale
+   (its month appears), and the tech admin must still set a month up and delete one — if any of these
+   says "permission", the `smm_campaigns` rule did not publish as written.
 
 ## Status
 

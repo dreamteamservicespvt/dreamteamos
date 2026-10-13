@@ -12,7 +12,7 @@ import {
   ATTENDANCE_META, AttendanceStatus, attendanceKey, daysBetween, isSunday,
   resolveStatus, summarize, todayDate, watchHolidayRecordsInRange, watchOverridesInRange, Holiday,
 } from "@/services/techAttendance";
-import { currentPayMonth, payPeriodForMonth } from "@/utils/payrollEngine";
+import { currentPayMonth, formatDayCount, payPeriodForMonth } from "@/utils/payrollEngine";
 import { useToday } from "@/hooks/useToday";
 import { usePayrollConfig } from "@/hooks/usePayrollConfig";
 
@@ -27,7 +27,7 @@ const fmtTs = (ts?: { toDate?: () => Date }): string => (ts?.toDate ? format(ts.
 
 /**
  * One combined "My Days" calendar for a member: every day shows the attendance status
- * (P/H/A/L/holiday) merged with check-in data; clicking a day opens the full story of
+ * (P/H/A/L/HL/holiday) merged with check-in data; clicking a day opens the full story of
  * that day — attendance, check-in/out times, videos, and every work item assigned or
  * completed that day.
  */
@@ -124,14 +124,15 @@ export default function MyDayCalendar({ memberId }: { memberId: string }) {
         Cycle {format(new Date(`${period.start}T00:00:00`), "dd MMM")} – {format(new Date(`${period.end}T00:00:00`), "dd MMM yyyy")} · attendance and salary run 10th to 9th
       </p>
 
-      {/* Cycle summary chips */}
-      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
+      {/* Cycle summary chips. Half-day leave (2026-10-12) has its own; "Leaves left" is in days, so it can read 1½. */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
         {([
           ["Present", summary.full, "text-emerald-500 bg-emerald-500/10"],
           ["Half Day", summary.half, "text-amber-500 bg-amber-500/10"],
           ["Absent", summary.absent, "text-rose-500 bg-rose-500/10"],
           ["Leave", summary.leave, "text-sky-500 bg-sky-500/10"],
-          [`Leaves left`, summary.leavesLeft, "text-foreground bg-accent"],
+          ["Half-day leave", summary.halfLeave, "text-indigo-500 bg-indigo-500/10"],
+          [`Leaves left`, formatDayCount(summary.leavesLeft), "text-foreground bg-accent"],
         ] as const).map(([label, val, tone]) => (
           <div key={label} className={cn("rounded-lg px-2 py-2 text-center", tone)}>
             <div className="font-display font-bold text-lg leading-none">{val}</div>

@@ -119,12 +119,12 @@ describe("the rules of a month with no sale", () => {
     expect(pkg.cyclesOverlap(a, pkg.monthCycle("2026-07-01", "2026-08-03"))).toBe(false);
   });
 
-  it("is for the tech admin, team leader, main admin and (2026-10-05) the Social Media Team Lead", () => {
+  it("is for the tech admin, team leader and main admin (the Social Media Team Lead 2026-10-05 → 2026-10-12 only)", () => {
     expect(pkg.canAddNoSaleMonth({ role: "tech_admin" })).toBe(true);
     expect(pkg.canAddNoSaleMonth({ role: "tech_team_leader" })).toBe(true);
     expect(pkg.canAddNoSaleMonth({ role: "main_admin" })).toBe(true);
-    // The owner, 2026-10-05: the lead lists an old client's earlier months — but still records no sale.
-    expect(pkg.canAddNoSaleMonth({ role: "tech_member", smmLeader: true })).toBe(true);
+    // The owner, 2026-10-12: the lead is view-only on months she is not on — she adds no month.
+    expect(pkg.canAddNoSaleMonth({ role: "tech_member", smmLeader: true })).toBe(false);
     expect(pkg.canRecordSmmSaleForSeller({ role: "tech_member", smmLeader: true })).toBe(false);
     expect(pkg.canAddNoSaleMonth({ role: "tech_member" })).toBe(false);
     expect(pkg.canAddNoSaleMonth({ role: "sales_member" })).toBe(false);

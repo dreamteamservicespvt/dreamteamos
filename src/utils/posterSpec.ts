@@ -4,13 +4,16 @@
  * Three shapes are stored, and every one of them is a plain string so it can sit on a work
  * assignment, a saved generation and a WhatsApp brief without a schema of its own:
  *
- *   "4:5"         a preset ratio (the four the team actually posts at)
+ *   "9:16"        a preset ratio (the four the team actually posts at)
  *   "5:7"         a custom ratio, typed as width : height
  *   "1080x1350"   exact pixels, typed as width × height
  *
- * ── Why 4:5 is the default ────────────────────────────────────────────────────────────────────
- * It is the tallest shape Instagram shows uncropped in the feed, which is where nearly every
- * poster the team makes ends up. Square and story sizes are one tap away; anything else is typed.
+ * ── Why 9:16 is the default (owner, 2026-10-12: "poster ratio 9:16") ─────────────────────────
+ * The posters go out as WhatsApp statuses and stories first. It was 4:5 (the tallest shape the
+ * Instagram feed shows uncropped) until then. Every place that needs a size and has none — a new
+ * studio run, a poster job from a sale, Work Assign — takes this constant; a size an admin or a
+ * member deliberately picks on a job or in the studio still wins in Poster Creation. The video
+ * kit's "3. Poster Design" is always 9:16 vertical (geminiService.writeVideoPosterPrompt).
  *
  * ── Why the shorter side is 1080 ──────────────────────────────────────────────────────────────
  * Every platform the posters go to renders 1080 wide, so a ratio is turned into pixels by holding
@@ -32,7 +35,7 @@ export const POSTER_RATIO_PRESETS: PosterRatioPreset[] = [
   { value: "9:16", label: "9:16", hint: "Story / WhatsApp status" },
 ];
 
-export const DEFAULT_POSTER_SIZE = "4:5";
+export const DEFAULT_POSTER_SIZE = "9:16";
 
 /** The shorter side of a ratio-sized poster, in pixels. */
 export const POSTER_BASE_PIXELS = 1080;

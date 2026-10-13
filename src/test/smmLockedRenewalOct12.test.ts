@@ -39,6 +39,7 @@ vi.mock("firebase/firestore", () => ({
 import { isMonthLocked, canSetUpSmm, canAdminRenewSmm } from "@/utils/smmPackage";
 import { canEditCampaign, isAssignedToSmm } from "@/utils/smmPlan";
 import { createRenewalMonth, saveMonthSetup, setItemStatus } from "@/services/smm";
+import { useAuthStore } from "@/store/authStore";
 import { historySetupProblem } from "@/services/smmSetup";
 import type { SmmCampaign } from "@/types/smm";
 
@@ -152,9 +153,16 @@ describe("SMM Monthly Locking Architecture & Renewal", () => {
         items: [{ id: "item1", status: "planned", approval: { state: "approved" } }],
       };
 
-      await expect(
-        setItemStatus(cId, "item1", "in_progress", leadUser),
-      ).rejects.toThrow(/view-only access/);
+      // The services ask who is SIGNED IN (the auth store, as the Firestore rule reads request.auth) — not
+      // the actor a caller passes, which a caller could get wrong (2026-10-12, smmLeadViewOnlyOct12).
+      useAuthStore.setState({ user: leadUser as never });
+      try {
+        await expect(
+          setItemStatus(cId, "item1", "in_progress", leadUser),
+        ).rejects.toThrow(/View only/);
+      } finally {
+        useAuthStore.setState({ user: null });
+      }
     });
   });
 

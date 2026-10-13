@@ -43,6 +43,11 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
   onClose: () => void;
   /** Hand a ready-written message to the composer — the one place messages actually go out. */
   onMessage: (text: string, kind: SmmTemplateKind) => void;
+  /**
+   * Whether the viewer may work this post (smmPlan.canEditCampaign). False for the view-only Social Media
+   * Team Lead on a month somebody else works (2026-10-12): every field, stage, approval, message and the
+   * remove button go quiet — and nothing is autosaved — while everything stays readable.
+   */
   canEdit?: boolean;
 }) {
   const { toast } = useToast();
@@ -212,7 +217,8 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
               {/* The reassurance that replaces the Save button. */}
               <span data-test="smm-autosave" className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
                 {!canEdit ? (
-                  <span className="font-medium text-amber-500">View only</span>
+                  /* amber-800 on light: the warning yellow measured 1.6:1 on the card (browser check, 2026-10-13). */
+                  <span className="font-medium text-amber-800 dark:text-warning">View only</span>
                 ) : saving ? (
                   <><Loader2 size={9} className="animate-spin" /> Saving…</>
                 ) : savedAt ? (
@@ -230,8 +236,10 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
         </div>
 
         {!canEdit && (
-          <div data-test="smm-item-readonly" className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-200">
-            <b>View only</b> · Only assigned team members or admins can edit this post or advance its stage.
+          /* Not amber-200: that pale text vanished on the light theme's near-white card. The label is amber-800 on
+             light — the warning yellow on its own tint measured 1.6:1 (browser check, 2026-10-13). */
+          <div data-test="smm-item-readonly" className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-2.5 text-xs text-foreground">
+            <b className="text-amber-800 dark:text-warning">View only</b> · Only the people on this month and the admins can change this post or move its stage.
           </div>
         )}
 
@@ -498,6 +506,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
               ))}
             </div>
 
+            {canEdit && (
             <button
               data-test="smm-posting-update"
               disabled={liveLinks.length === 0}
@@ -513,6 +522,7 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
                 ? "Paste a link to send the update"
                 : `Send posting update (${liveLinks.length} link${liveLinks.length === 1 ? "" : "s"})`}
             </button>
+            )}
           </div>
         )}
 

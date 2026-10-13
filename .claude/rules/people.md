@@ -31,7 +31,7 @@ paths:
 **9.13 Attendance, check-in/out, leave** ✅. Tech: `components/attendance/*` (`DailyCheckinPrompt`,
 mandatory for tech members on working days — **not shown on Sundays or on an announced
 `holidays/{date}`**, so the platform opens directly; `CheckoutModal` with a Drive-upload declaration and, since 2026-10-03, today's finished jobs marked in the Drive or not (`todaysDriveUploads`, one-tap "Uploaded"); `MyDayCalendar`),
-`services/techAttendance.ts` (statuses `full|half|absent|leave|holiday`; overrides and holidays
+`services/techAttendance.ts` (statuses `full|half|absent|leave|half_leave|holiday` + comp-off's two; overrides and holidays
 persisted, Full/Absent derived from check-ins). Sales: `services/salesCheckin.ts`,
 `components/sales/AttendanceCard.tsx`. Shared grid `pages/shared/TeamAttendance.tsx` (with the
 WhatsApp update step and `LeaveApprovalsPanel`); since 2026-10-08 the grid itself is
@@ -69,6 +69,31 @@ Payroll: "Comp off: N" chip + `components/payroll/CompOffPanel` with **Apply** �
 (earliest ABSENT days the unused credits cover, never a leave) → `techAttendance.applyCompOff` (C marks + one
 "Comp Off Added" notification). My Salary's Paid Leave tile shows "Comp-off: used · left"; the payslip lists
 Holidays Worked / Comp Off (paid); the SMM today board reads W as present and C as away.
+**Half-day leave (owner, 2026-10-12).** Apply for leave asks **Full day / Half day** first (`LeavePanel`, the same panel on
+/tech/salary and /sales/salary; default Full day). A half day is ONE working date (no To field; a Sunday is refused in the
+form and by `submitLeaveRequest`), saved as `leave_requests.duration: "half_day"` with `toDate = fromDate` (a full day
+writes `"full_day"`; absent = full day; `kind` is no longer written). It uses **half a day of the allowance** (2 per pay
+period): the allowance is settled in half-day units, earliest first (`leaveAllowance.splitLeaveDays` with `duration` and
+`alreadyApprovedHalfLeaveDates`; each day has `share` / `paid` / `unpaid` / `mark`). Approval writes **HL
+`half_leave`** ("Half-day leave", indigo) when ½ is left — paid as a FULL day (the half worked + the paid leave half) — else
+**H `half`**, paid as a half day; a full day that finds only ½ left is written `leave` and paid ½ (verdict "Half a day of
+paid leave, then half a day unpaid"). Leave on record counts `half_leave` marks as ½ (`leaveDatesOnRecord` → `{full,
+half}`); `approvalMarks` / undo read `duration`. `tallyAttendance` spends the allowance in halves across L and HL by
+date: `halfLeave`, `halfLeavePaid`, `halfLeaveUnpaid`, `allowanceUsed`, `leavesLeft` may end in ½; an L day earns its
+paid portion (1, ½, 0). `computeSalary`: paid HL = 1 day, unpaid HL = `halfDayFactor` (exactly an H); new lines
+`half_leave` "Half-day Leave (paid)" and `half_leave_unpaid`; `SalaryComputation.paidHalfLeaveDays` /
+`unpaidHalfLeaveDays` (optional — absent on older frozen payments) and `paidLeavesRemaining` = the tally's;
+`deductionsFor` row `half_leave_unpaid` "Half-day leave without pay"; `paidLeaveUsed(c)`. Whole-day results are
+unchanged. Shown everywhere in days (`payrollEngine.formatDayCount` "1½", `formatDays` "half a day"; the payslip prints
+decimals "1.5" and its Half-day Leave rows): the LeavePanel header ("1½ of 2 paid leaves used"), preview (inside the
+allowance / "costs half a day's pay") and history ("Half day · 22 Jul"); `LeaveApprovalsPanel` (Full day / Half day chip,
+"one half of the day off", "at least half a day unpaid", toast "Half-day leave approved"); notifications ("Half-day Leave
+Approved", "Your half-day leave request … was not approved") and audit lines; the grid (HL cells, "1HL" totals line, "Leaves
+left: 1½", legend; the editor offers Half-day leave on the tech AND sales side — sales still hides plain H for hand-marking
+but shows H/HL), MyDayCalendar / SalesDayCalendar chips, the sales AttendanceCard, UpdatePopup, My Salary's tiles and
+deductions, Payroll's deduction rows and CSV (two columns), Sales Payroll's breakdown, Salary Management, and the Social
+Media TODAY board (`half_leave` / a pending half-day request → the away group, "Half-day leave" / "Asked for a half-day
+leave — not approved yet", `smmAttendance.halfDayLeaveAskedOn`).
 
 **9.14 Payroll, salary, commission** ✅. Tech payroll `pages/shared/Payroll.tsx`,
 `services/payroll.ts` (salary packages, config, bank/payout accounts), `services/payrollRun.ts`
@@ -144,6 +169,11 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
   absence in the SAME pay cycle become a paid Comp Off day (C) — one click in Payroll or by hand on the grid — without
   touching the two paid leaves; unused credits lapse with the cycle;
   the member's history lists both.
+- **Half-day leave (owner, 2026-10-12):** a member (tech or sales) applies for a Full day or a Half day; a half day is one
+  working day and uses half a day of the two paid leaves. Inside the allowance the day is paid in full; past it the day
+  is recorded as a half day and costs half a day's pay (exactly what a Half Day costs, at the policy's factor). A full day
+  of leave that finds only half a day of allowance left is half paid. Approve, reject, undo, the grid, the calendars,
+  the salary, the payslip and the Social Media board all show and count it as half a day.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
   dismissed on a working day, and does not appear on a Sunday or an announced holiday.
 - **HR:** 14 document types in lifecycle order; both officers sign all types (falls back to the
@@ -164,6 +194,14 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
   Friday") are printed on letters but the engine only knows Sunday. The cycle start and leave allowance come from
   `payroll_config/default`, which no screen edits (defaults apply). Checked by unit tests, the real hooks/pages on
   the in-memory Firestore and a real-browser harness — not against live Firebase.
+
+- Half-day leave (2026-10-12): one date per request (two half days are two requests); which half (morning / afternoon)
+  is not recorded. A half day past the allowance is written as a plain Half Day (H), so the grid no longer shows it was
+  leave (the request still says so). An admin can hand-mark HL on the grid; nothing stops an HL on a day with no request
+  (as with L). The payslip prints halves as decimals ("1.5"). Checked by unit tests (`halfDayLeaveOct12`: the split, the
+  tally at factors 0.5 and 0.75, deductions, the payslip text, LeavePanel and LeaveApprovalsPanel, approval / reject /
+  undo on the in-memory Firestore; every older payroll / attendance / leave suite unchanged) and a real-browser harness
+  — not against live Firebase.
 
 **NOT IMPLEMENTED ❌** (referenced or planned, absent in code):
 - CTC breakup annexure on offer letters (needs salary-structure percentages).

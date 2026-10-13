@@ -13,7 +13,9 @@ import { ATTENDANCE_META, type AttendanceStatus } from "@/services/techAttendanc
 import BankDetailsModal from "@/components/payroll/BankDetailsModal";
 import LeavePanel from "@/components/payroll/LeavePanel";
 import { downloadPayslip } from "@/utils/payslipPdf";
-import { currentPayMonth, deductionsFor, netPayable as netPayableOf, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import {
+  currentPayMonth, deductionsFor, formatDayCount, formatDays, netPayable as netPayableOf, payPeriodLabel, shiftPayMonth,
+} from "@/utils/payrollEngine";
 import type { EmployeeBank } from "@/types/payroll";
 
 /**
@@ -31,6 +33,8 @@ const DAY_TONE: Record<AttendanceStatus, string> = {
   half: "bg-warning/20 text-warning border-warning/30",
   absent: "bg-destructive/15 text-destructive border-destructive/30",
   leave: "bg-info/20 text-info border-info/30",
+  // Half-day leave (2026-10-12) — the indigo of its attendance mark everywhere else.
+  half_leave: "bg-indigo-500/15 text-indigo-600 border-indigo-500/30",
   holiday: "bg-muted text-muted-foreground border-border",
   holiday_work: "bg-violet-500/15 text-violet-600 border-violet-500/30",
   comp_off: "bg-teal-500/15 text-teal-600 border-teal-500/30",
@@ -93,6 +97,8 @@ export default function MySalaryDashboard() {
    */
   const { rows: deductions } = useMemo(() => deductionsFor(c), [c]);
   const lc = liveComputation;
+  /** Half-day leave days in the period, paid or not (2026-10-12) — shown under the leave tile. */
+  const halfLeaveDays = (lc.paidHalfLeaveDays ?? 0) + (lc.unpaidHalfLeaveDays ?? 0);
   // Once paid, the amount that was paid (the same record the admin's Payroll shows); before that,
   // the engine's salary-less-deductions — the figure Payroll will pay.
   const netPayable = paidLine ? paidLine.netSalary : netPayableOf(c);
@@ -111,7 +117,9 @@ export default function MySalaryDashboard() {
       const plural = d.days === 1 ? "day" : "days";
       switch (d.key) {
         case "half": return `${d.days} half ${plural}`;
-        case "unpaid_leave": return `${d.days} ${plural} unpaid leave`;
+        // Can be half a day since half-day leave (2026-10-12): "half a day unpaid leave", never "0.5 days".
+        case "unpaid_leave": return `${formatDays(d.days)} unpaid leave`;
+        case "half_leave_unpaid": return `${d.days} half-day leave${d.days === 1 ? "" : "s"} without pay`;
         case "unpaid_holiday": return `${d.days} unpaid ${d.days === 1 ? "holiday" : "holidays"}`;
         case "comp_off_unpaid": return `${d.days} comp-off ${plural} without credit`;
         default: return `${d.days} ${plural} absent`;
@@ -227,9 +235,9 @@ export default function MySalaryDashboard() {
                   deductions.map(d => (
                     <div key={d.key} className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-muted-foreground">{d.label}</span>
-                      {/* Days, never rupees — the day is the fact the employee can act on. */}
+                      {/* Days, never rupees — the day is the fact the employee can act on ("half a day" for a ½). */}
                       <span className="shrink-0 font-medium tabular-nums text-destructive">
-                        {d.days} {d.days === 1 ? "day" : "days"}
+                        {formatDays(d.days)}
                       </span>
                     </div>
                   ))
@@ -302,9 +310,11 @@ export default function MySalaryDashboard() {
             <Stat icon={CheckCircle2} label="Full Days" value={lc.fullDays} tone="success" />
             <Stat icon={Clock} label="Half Days" value={lc.halfDays} tone={lc.halfDays ? "warning" : undefined} />
             <Stat icon={AlertCircle} label="Absent" value={lc.absentDays} tone={lc.absentDays ? "destructive" : undefined} />
-            <Stat icon={Coffee} label="Paid Leave Left" value={`${lc.paidLeavesRemaining}/${lc.paidLeaveQuota}`}
+            {/* In days: a half-day leave uses ½ of the allowance, so this can read "1½/2" (2026-10-12). */}
+            <Stat icon={Coffee} label="Paid Leave Left" value={`${formatDayCount(lc.paidLeavesRemaining)}/${formatDayCount(lc.paidLeaveQuota)}`}
               tone="info" hint={[
-                lc.unpaidLeaveDays ? `${lc.unpaidLeaveDays} unpaid` : "",
+                lc.unpaidLeaveDays ? `${formatDayCount(lc.unpaidLeaveDays)} unpaid` : "",
+                halfLeaveDays ? `${halfLeaveDays} half-day leave${halfLeaveDays === 1 ? "" : "s"}` : "",
                 // Comp-off is its own allowance — earned by working a holiday, never one of the paid leaves.
                 lc.holidayWorkDays ? `Comp-off: ${lc.compOffDays ?? 0} used · ${lc.compOffLeft ?? 0} left` : "",
               ].filter(Boolean).join(" · ") || undefined} />

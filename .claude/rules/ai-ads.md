@@ -24,6 +24,7 @@ paths:
 **9.7 AI Ads Platform (ad generation)** ✅. `components/ai-platform/*`, `services/geminiService.ts`,
 `services/prompts.ts`, `services/prompts/*`, `services/characterPacks.ts` +
 `characterCatalogue.ts` (35 special-category entries incl. three human duos), `services/posterStyles.ts`,
+`utils/posterAdType.ts` + `services/prompts/posterConcept.ts` (both poster systems: one ad type, the owner's structure),
 `services/adLanguages.ts`, `components/ai-platform/adgen.css` (the studio's design system, §11),
 `utils/businessFacts.ts` (verified contact numbers and address), `utils/castSheet.ts` +
 `utils/castWardrobe.ts` + `services/prompts/castWardrobe.ts` (the invented cast and its wardrobe stylist), `utils/scriptQa.ts` +
@@ -227,11 +228,12 @@ cached; small images and anything the browser cannot redraw go as they are).
    (`castWardrobeLine`; a refine keeps the ordered `wardrobeDirective`). Also stamped: a pack's
    **scale anchor** (`withScaleAnchor`: e.g. Motu and Patlu's height against a real counter). VIDEO
    BOTTOM LABEL (`buildVideoBottomLabel`, code-assembled from `prompts/lowerThird.ts`, fed the festival
-   theme and the video's motive / core message) and the poster prompt (`writeVideoPosterPrompt`,
-   `POSTER_SYSTEM_PROMPT`) — both from the VERIFIED facts: exactly as many contact pills / numbers as the
-   business has (1–3, laid out for the count), no address strip or line when there is none, and
-   `stripUnverifiedNumbers` on every model-written poster, concept, overlay and refine. A poster that
-   fails twice leaves one Missing row instead of failing the run. Frames the model skipped are written
+   theme and the video's motive / core message) and the poster prompt (`writeVideoPosterPrompt` — since 2026-10-12 the
+   same ONE-ad-type system as Poster Creation, below: the festival's name as the campaign purpose, always 9:16 vertical,
+   English, the logo or the name as the wordmark) — both from the VERIFIED facts: exactly as many contact pills / numbers
+   as the business has (1–3), no address strip or line when there is none, and `stripUnverifiedNumbers` on every
+   model-written overlay and refine (the poster's numbers are put in by code). The poster cannot fail on the model
+   any more (its fallback is code); a Missing row and its Generate stay for an unexpected error. Frames the model skipped are written
    for exactly those clips (never a copy of the last frame), and the retry carries the images.
 6. Direct each clip's action and camera (`prompts/motion.ts`) → **Veo 3 prompts**. **Motion policy
    (2026-10-05, the dynamic pass — the owner's brief after the morning's prompts still gave static Flow
@@ -409,7 +411,7 @@ look; UI shows text, CapCut SFX and From → To words, no timecodes), B-roll sto
 imagery for festival ads; reads the scene plan and core message), regenerate Veo for chosen clips.
 
 **Outputs** (`GeneratedOutputs`): 1. Main Frame Prompts (per clip), 2. **VIDEO BOTTOM LABEL**,
-3. Poster Design (JSON), 4. Voice Over Script, 5. Veo 3 Video Prompts, plus B-roll, overlay
+3. Poster Design (plain text since 2026-10-12; Tools history says "Poster Design"), 4. Voice Over Script, 5. Veo 3 Video Prompts, plus B-roll, overlay
 images, the core message, `sceneContext`, `voiceBrief` (shown in a "what we understood /
 background plan" panel above the sections) and `scriptQa`. **Every row is always drawn** with its own
 state (Writing… / Missing / Failed / Updated from final script / Script QA n/10) and, when missing, its
@@ -478,11 +480,40 @@ still arriving — the "completed but deliverables missing" glitch). `SavedItems
 Tools → Ad Generation History groups versions per job (`utils/generationHistory.ts`). Submitting
 the job is `useCompleteWork` (§16).
 
-**Poster Creation:** size (`utils/posterSpec.ts`: 4:5 default, ratios or pixels), style
-(`services/posterStyles.ts`, 8 styles + auto), occasion (`utils/posterOccasions.ts`), concept
-count 1–6 (default 3), text language (English default) → `generatePosterConcepts` → concepts
-(title, idea, headline, **image prompt**, negative prompt) → `refinePosterConcept`.
-`PosterConceptsPanel` links to Gemini for image generation.
+**Poster Creation — ONE prompt in ONE conceptual ad type (owner, 2026-10-12).** The owner: "First analyze all available
+business information, product/service, ad type, campaign purpose, and requirements, then intelligently select the ONE most
+suitable conceptual ad style … a very short, clean, creative prompt in this exact structure … Do not randomly select the
+type, do not use multiple types, do not generate long technical prompts, and do not lose important business context"; then
+"poster ratio 9:16". Inputs: size (`utils/posterSpec.ts`: **9:16 default** since that day — `DEFAULT_POSTER_SIZE`, used by
+the studio, a poster sale's job and Work Assign; ratios or pixels), style (`services/posterStyles.ts`, 8 + "✨ Best fit"),
+occasion (`utils/posterOccasions.ts`), text language (English default) — the "Concepts to write" 1–6 count is gone
+(`posterConceptCount` @deprecated). `generatePosterConcepts`: extraction as before → ONE analysis call
+(`services/prompts/posterConcept` `POSTER_ANALYSIS_SYSTEM_PROMPT` / `_USER_PROMPT`: who the business is, what it sells, the
+main benefit, the kind of ad and its purpose (`posterPurposeLine`), the brief's must-haves → JSON `{adType, reason, benefit,
+businessInformation (≤ 60 words, no numbers / address / invented offers)}`; `standard` effort, temperature 0.2, asked twice
+at most) → the type: a fixed style (job `posterStyle` or the member's pick) as it is, else the analysis's one id
+(`resolvePosterAdTypeId` reads an id or a name), else the code's keyword rubric (`fallbackPosterAdType`, deterministic, ties
+to the owner's order, nothing → `product_benefit`) → assembled IN CODE (`utils/posterAdType.assembleConceptPoster`): "Create
+a minimalist and creative ad in <name>. Business Information: <info>. Create one strong visual concept/metaphor that
+communicates the main product/service benefit." + blank line + "Format: 9:16 vertical poster. Use the attached logo exactly
+as given. Words on the poster in English." (no logo file or "No logo" → "Show the business name "X" as a clean wordmark,
+exactly as spelled." — never the word logo). The names: material_metaphor "Material-based Metaphor Ads", shadow_metaphor
+"Shadow Metaphor Ads", contrast_concept "Contrast-based Conceptual Ads", proportion_concept "Proportion-based Conceptual Ads",
+visual_exaggeration "Visual Exaggeration Ads", product_benefit "Product Benefit Conceptual Ads", shape_concept "Shape-based
+Conceptual Ads", animal_metaphor "Animal-based Visual Metaphor Ads" (ids unchanged — stored on jobs). Business Information
+= the analysis's summary cleaned (`cleanPosterSummary`: every number, labelled contact, email, website and ad-type name
+out, ≤ 60 words; the name put in front when missing; the occasion added when missing) + "Contact: …" (1–3 VERIFIED numbers,
+"(WhatsApp)") + "Address: …" only when there is one; with no summary, the profile's own (`fallbackPosterSummary`).
+`posterPromptProblems` / `isConceptPosterPrompt` check the exact shape (one type named once, no "..", ≤ 200 words).
+Stored as `posterConcepts: [one]` (`conceptFromPoster`: `adTypeName`, `reason`, `benefit`, `businessInformation`,
+`format`, `chosenBy` fixed / analysis / kept / rule, and the old fields filled from them). `refinePosterConcept` (and the
+video row's `refineSection('poster')` → `refineVideoPosterPrompt`): the refine analysis (`POSTER_REFINE_ANALYSIS_*`) then the
+same assembly — the type changes only when the request asks for another (`refineAnalysis` / `instructionAsksForTypeChange`),
+never a fixed one; a kept type keeps its reason; an unusable answer throws "unchanged". `PosterConceptsPanel`: "Poster
+prompt", the ad type, how it was chosen, why + main benefit, Copy prompt, Refine, Open image generator; a generation saved
+before shows its old concepts as it did. The mission guide opens ONE Gemini tab; `generationEta` plans one analysis
+(`poster.concepts`, 8 s, no fill-in pass). Removed: the old concept prompt and its readers (`utils/posterConcepts` keeps only
+`posterConceptAsText`), `POSTER_SYSTEM_PROMPT`, the dead `generatePosterPrompt`.
 
 ### 17.3 AI provider, reliability, errors
 - **Provider:** Google Gemini through `@google/genai`, called **from the browser**. Every call
@@ -511,8 +542,8 @@ count 1–6 (default 3), text language (English default) → `generatePosterConc
   Google at least once, and otherwise throws `GeminiUnavailableError` — a sentence (`geminiUnavailable`: the daily
   limit and when it resets, keys to replace, Google busy, offline), never JSON; `generateWithRetry` stops on it.
 - **Thinking per call (2026-09-29; per model 2026-10-10):** `callWithFallback(apiCall, { effort })` — `fast`
-  (extraction, voice note, poster, splits, location scout, B-roll, overlays, wardrobe stylist), `standard` (core
-  message, repairs, scene plan, frames, Veo director, poster concepts), `deep` (script writer, review, quality
+  (extraction, voice note, splits, location scout, B-roll, overlays, wardrobe stylist), `standard` (core
+  message, repairs, scene plan, frames, Veo director, the poster analysis and its refine — both poster systems, 2026-10-12), `deep` (script writer, review, quality
   judge). `utils/geminiModels.thinkingFor`: gemini-2.5-flash a budget 0 / 768 / 1536; the Gemini 3 Flash models a
   level MINIMAL / LOW / MEDIUM (3.8-flash and flash-latest refuse MINIMAL → LOW); lite models none; a call with no
   effort keeps the model default. 2.5 refuses a level and 3.x defaults to medium thinking (both measured live).
@@ -565,6 +596,13 @@ attribution (`Clip.voScript` is one string).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
+- **AI ads — poster prompts (owner, 2026-10-12):** every poster prompt — Poster Creation and the video kit's poster —
+  is ONE conceptual ad type out of the eight (Material-based Metaphor, Shadow Metaphor, Contrast-based Conceptual,
+  Proportion-based Conceptual, Visual Exaggeration, Product Benefit Conceptual, Shape-based Conceptual, Animal-based Visual
+  Metaphor Ads), chosen by analysing the business — never at random, never two — unless the job or the member fixed a
+  style, which is kept. The prompt is the owner's three sentences word for word plus one Format line (size, logo, text
+  language); its business information keeps the business's real facts and only its verified contact numbers and
+  address. A poster run writes one prompt. Posters are 9:16 unless a size is chosen; the video kit's poster is always 9:16.
 - **AI ads — Gemini availability (owner, 2026-10-10: "sometimes prompts are not generating"):** a generation never
   fails because Google retired a model, because one model is busy or used up for the day while another can answer,
   or because some keys are dead; it uses the best model that can answer at that moment and goes back to the
@@ -693,8 +731,14 @@ attribution (`Clip.voScript` is one string).
   measured against live Gemini scores; a final script with a different clip count than the kit is
   refused rather than re-framed (it has to go through Configuration → custom script and a new run).
 - Character catalogue regeneration from JSON has no committed generator script.
-- Header/poster prompts in no-logo mode may still reference a logo container (noted 2026-07,
-  [NOT CONFIRMED] current).
+- Header prompts in no-logo mode may still reference a logo container (noted 2026-07, [NOT CONFIRMED] current). The
+  poster's no longer can: its Format line never names a logo without one (2026-10-12).
+- Poster prompts (2026-10-12): the type is the model's judgment (or the keyword rubric when it does not answer); a
+  business the rubric's word lists do not know gets Product Benefit. The Format line comes from the form, so a refine
+  cannot change the size or the text language ("make the words Telugu" is not applied — change it on the form and
+  Generate). Old saved kits keep their long poster prompts until regenerated. Checked by unit tests and the pipeline on a
+  faked Gemini (`posterAdTypeOct12`, `adPipelineEndToEnd`) and the panel / studio in a real browser (1440 / 390 px) — no
+  live Gemini analysis was run and no poster image has been made from the new prompts yet.
 
 **NOT IMPLEMENTED ❌** (referenced or planned, absent in code):
 - Hand-over of a cinematic project to a teammate (in the 2026-09-19 spec; the list is per-creator

@@ -9,8 +9,11 @@
  * oversees the months sees who to ask.
  *
  * The lead keeps their own role (a tech member keeps their work, attendance and salary screens) and
- * gains every month in the company: see, assign, start and delete (smmPlan.isSmmOverseer,
- * canDeleteSmmCampaign). They are notified when appointed and whenever a new month is sold.
+ * SEES every month in the company (smmPlan.isSmmOverseer). Since 2026-10-12 (owner) that sight is
+ * view-only: on a month somebody else works they change nothing; on a month they are on they work it
+ * exactly like any member (smmPlan.canEditCampaign, isViewOnlySmmLead). Setting months up, assigning
+ * and deleting stay with the tech admin, the team leaders and the main admin. They are notified when
+ * appointed and whenever a new month is sold.
  */
 import { useEffect, useState } from "react";
 import { Crown, Loader2, UserPlus, X } from "lucide-react";
@@ -40,7 +43,7 @@ export default function SmmTeamLeadPanel({ user }: { user: Pick<AppUser, "uid" |
     setBusy(true);
     try {
       await setSmmTeamLead(person, true, user);
-      toast({ title: `${person.name} is now the Social Media Team Lead`, description: "They have been notified, and now see and manage every month." });
+      toast({ title: `${person.name} is now the Social Media Team Lead`, description: "They have been notified. They now see every month (view only) and work on the months they are on." });
       setPicked("");
     } catch {
       toast({ title: "Could not appoint the team lead", description: "Try again.", variant: "destructive" });
@@ -52,7 +55,7 @@ export default function SmmTeamLeadPanel({ user }: { user: Pick<AppUser, "uid" |
   const standDown = async (person: Person) => {
     const { confirmed } = await confirm({
       title: `Remove ${person.name} as Social Media Team Lead?`,
-      description: "They keep the months they are on, but no longer see or manage every month.",
+      description: "They keep the months they are on, but no longer see every month.",
       confirmText: "Remove",
       variant: "destructive",
     });
@@ -91,10 +94,10 @@ export default function SmmTeamLeadPanel({ user }: { user: Pick<AppUser, "uid" |
           ))
         )}
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p data-test="smm-team-lead-role" className="mt-1 text-xs text-muted-foreground">
         {user.smmLeader
-          ? "You run every social media month: set months up, assign the team, delete months, and you are told the moment a new one is sold."
-          : "Runs every social media month — sets months up, assigns the team, deletes months, and is told the moment a new one is sold."}
+          ? "You see every social media month and everyone's work on it — view only. On the months you are on, you work like any member. You are told the moment a new month is sold."
+          : "Sees every social media month and everyone's work on it (view only), and works on the months they are on, like any member. Setting months up, assigning and deleting stay with the tech admin and the team leaders."}
       </p>
       {canAppoint && (
         <div className="mt-2 flex flex-wrap items-center gap-2">

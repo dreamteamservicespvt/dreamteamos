@@ -107,23 +107,23 @@ export function buildMissionTasks(facts: RunFacts): MissionTask[] {
   return tasks;
 }
 
+/** A poster run is ONE prompt in one ad type since 2026-10-12 — so one Gemini tab. */
 function posterTasks(facts: RunFacts): MissionTask[] {
-  const n = Math.max(1, facts.conceptCount);
   return [
     {
       id: "tabs",
       kind: "tabs",
-      title: `Open ${plural(n, "Gemini tab")}`,
-      detail: "One tab per poster concept. Gemini's image model takes the attached logo with each prompt.",
+      title: "Open a Gemini tab",
+      detail: "Gemini's image model takes the attached logo with the prompt.",
       href: GEMINI_URL,
-      tabs: n,
+      tabs: 1,
     },
-    logoTask(facts, n, "tab"),
+    logoTask(facts, 1, "tab"),
     {
       id: "paste",
       kind: "info",
-      title: "Concepts arrive together",
-      detail: "Every concept lands at once when DTS finishes. Paste each image prompt into its own tab.",
+      title: "The prompt arrives when DTS finishes",
+      detail: "Copy the poster prompt into the tab and generate the image.",
     },
   ];
 }
@@ -195,8 +195,7 @@ const STAGE_OF: Record<string, { key: string; label: string }> = {
   "poster.prep": { key: "brief", label: "Reading the brief" },
   "poster.extract": { key: "brief", label: "Reading the brief" },
   "poster.handoff": { key: "brief", label: "Reading the brief" },
-  "poster.concepts": { key: "concepts", label: "Poster concepts" },
-  "poster.fill": { key: "concepts", label: "Poster concepts" },
+  "poster.concepts": { key: "concepts", label: "Ad type & prompt" },
 };
 
 /** The pipeline as a few named stages, with where this run is in it. */
@@ -219,7 +218,7 @@ export function missionStages(profile: RunProfile, checkpoints: Checkpoint[]): M
 
 /** One line describing the run, e.g. "4 clips · 9:16 · Motu Patlu · shot on location". */
 export function runSummary(facts: RunFacts): string {
-  if (facts.mode === "poster") return plural(Math.max(1, facts.conceptCount), "poster concept");
+  if (facts.mode === "poster") return "1 poster prompt";
   return [
     plural(Math.max(1, facts.clipCount), "clip"),
     facts.aspectRatio,

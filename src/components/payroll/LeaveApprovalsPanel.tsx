@@ -5,10 +5,11 @@ import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 import {
-  approveLeaveRequest, leaveWorkingDates, rejectLeaveRequest, undoLeaveDecision,
-  watchPendingLeaveRequests,
+  approveLeaveRequest, isHalfDayLeave, leaveDurationLabel, rejectLeaveRequest, requestWorkingDates,
+  undoLeaveDecision, watchPendingLeaveRequests,
 } from "@/services/leave";
-import { splitLeaveDays, describeLeaveSplit } from "@/utils/leaveAllowance";
+import { splitLeaveDays, describeLeaveSplit, isWholeDaySplit } from "@/utils/leaveAllowance";
+import { formatDays } from "@/utils/payrollEngine";
 import type { LeaveRequest } from "@/types/payroll";
 
 /**
@@ -21,6 +22,9 @@ import type { LeaveRequest } from "@/types/payroll";
  *
  * The warning on a row is a FLOOR, not a forecast — see `splitFor`. The binding split is computed
  * at approval against the member's live record, and reported back in the toast.
+ *
+ * Each row says Full day or Half day (2026-10-12): a half day is one date, takes half a day of the allowance, and is
+ * written as Half-day leave (paid in full) or — past the allowance — as a half day.
  */
 
 interface LeaveApprovalsPanelProps {
@@ -52,7 +56,8 @@ export default function LeaveApprovalsPanel({ visibleMemberIds }: LeaveApprovals
    * toast and the employee's notification report it.
    */
   const splitFor = (request: LeaveRequest) => splitLeaveDays({
-    requestedDates: leaveWorkingDates(request.fromDate, request.toDate),
+    requestedDates: requestWorkingDates(request),
+    duration: isHalfDayLeave(request) ? "half_day" : "full_day",
   });
 
   const visible = visibleMemberIds
@@ -68,7 +73,7 @@ export default function LeaveApprovalsPanel({ visibleMemberIds }: LeaveApprovals
       const split = await approveLeaveRequest(request, { uid: user.uid, name: user.name });
       setLastDecision({ ...request, status: "approved", leaveDates: split.leaveDates, absentDates: split.absentDates });
       toast({
-        title: "Leave approved",
+        title: isHalfDayLeave(request) ? "Half-day leave approved" : "Leave approved",
         description: `${request.memberName} · ${describeLeaveSplit(split)}`,
       });
     } catch (error) {
@@ -82,7 +87,7 @@ export default function LeaveApprovalsPanel({ visibleMemberIds }: LeaveApprovals
   const handleReject = async (request: LeaveRequest) => {
     if (!user) return;
     const { confirmed, inputValue } = await confirm({
-      title: `Reject ${request.memberName}'s leave?`,
+      title: `Reject ${request.memberName}'s ${isHalfDayLeave(request) ? "half-day leave" : "leave"}?`,
       description: "They'll be notified. A short reason helps them plan.",
       confirmText: "Reject",
       variant: "destructive",
@@ -158,25 +163,38 @@ export default function LeaveApprovalsPanel({ visibleMemberIds }: LeaveApprovals
       ) : (
         <div className="divide-y divide-warning/10">
           {visible.map(request => {
-            const days = leaveWorkingDates(request.fromDate, request.toDate);
+            const half = isHalfDayLeave(request);
+            const days = requestWorkingDates(request);
             const split = splitFor(request);
             const busy = busyId === request.id;
             return (
-              <div key={request.id} className="flex flex-wrap items-center gap-3 px-4 py-3 md:px-5">
-                <div className="min-w-0 flex-1">
+              <div key={request.id} data-test="leave-approval-row" className="flex flex-wrap items-center gap-3 px-4 py-3 md:px-5">
+                {/* Full width on a phone, so Reject / Approve drop below it: beside them the text had 91px at 390px. */}
+                <div className="min-w-0 flex-1 basis-full sm:basis-0">
                   <p className="text-sm font-semibold text-foreground">
                     {request.memberName}
+                    {/* Full day or half day — the first thing an approver needs to know about the request. */}
+                    <span data-test="leave-duration"
+                      className={`ml-2 inline-block rounded-full border px-2 py-px align-middle text-[10px] font-semibold ${
+                        half ? "border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300" : "border-border bg-background text-muted-foreground"
+                      }`}>
+                      {leaveDurationLabel(request)}
+                    </span>
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      {day(request.fromDate)}
-                      {request.toDate !== request.fromDate && ` – ${day(request.toDate)}`}
-                      {" · "}{days.length} working day{days.length === 1 ? "" : "s"}
-                      {split.absentDates.length > 0 && (
+                      {/* One unit: at 390px the duration chip pushed "13 Oct" onto two lines (browser check, 2026-10-13). */}
+                      <span className="whitespace-nowrap">
+                        {day(request.fromDate)}
+                        {!half && request.toDate !== request.fromDate && ` – ${day(request.toDate)}`}
+                      </span>
+                      {half ? " · one half of the day off" : <>{" · "}{days.length} working day{days.length === 1 ? "" : "s"}</>}
+                      {split.unpaidDays > 0 && (
                         <>
                           {" · "}
                           <span data-test="leave-absence-warning"
                             title="Two paid leave days per pay period. Leave already taken this period will push more of these into absence."
                             className="font-semibold text-warning">
-                            at least {split.absentDates.length} absence
+                            {/* Whole days keep their old words; anything with a half says it in days. */}
+                            {isWholeDaySplit(split) ? `at least ${split.absentDates.length} absence` : `at least ${formatDays(split.unpaidDays)} unpaid`}
                           </span>
                         </>
                       )}

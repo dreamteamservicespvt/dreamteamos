@@ -12,9 +12,9 @@ import {
 
 const VIDEO: RunProfile = {
   mode: "video", clipCount: 4, fileCount: 3, locationPhotos: 0,
-  characterPack: false, customScript: false, conceptCount: 0,
+  characterPack: false, customScript: false,
 };
-const POSTER: RunProfile = { ...VIDEO, mode: "poster", conceptCount: 3 };
+const POSTER: RunProfile = { ...VIDEO, mode: "poster" };
 
 describe("the plan", () => {
   it("follows the video checkpoints the generator actually reports", () => {
@@ -25,10 +25,10 @@ describe("the plan", () => {
     expect(planFor({ ...VIDEO, locationPhotos: 5 }).map((s) => s.from)).toEqual([0, 10, 15, 20, 40, 45, 85]);
   });
 
-  it("follows the poster checkpoints, with the fill-in pass optional", () => {
+  it("follows the poster checkpoints — one analysis since 2026-10-12, no fill-in pass", () => {
     const plan = planFor(POSTER);
-    expect(plan.map((s) => s.from)).toEqual([0, 13.5, 45, 55, 80]);
-    expect(plan.find((s) => s.from === 80)?.optional).toBe(true);
+    expect(plan.map((s) => s.from)).toEqual([0, 13.5, 45, 55]);
+    expect(plan.some((s) => s.optional)).toBe(false);
   });
 
   it("grows with the work: more clips, more files, a character pack", () => {
@@ -82,12 +82,20 @@ describe("the estimate", () => {
     expect(estimateRemainingMs(plan, [{ percent: 100, at: 0 }], 0)).toBe(0);
   });
 
-  it("ignores the optional poster pass until it actually starts", () => {
+  it("ignores an optional stretch until it actually starts", () => {
+    const plan = [
+      { key: "a", from: 0, baselineMs: 1000 },
+      { key: "b", from: 50, baselineMs: 2000 },
+      { key: "c", from: 80, baselineMs: 3000, optional: true },
+    ];
+    expect(estimateRemainingMs(plan, [{ percent: 50, at: 0 }], 0)).toBe(2000);
+    expect(estimateRemainingMs(plan, [{ percent: 80, at: 0 }], 0)).toBe(3000);
+  });
+
+  it("the poster's last stretch is the one analysis call", () => {
     const poster = planFor(POSTER);
-    const fill = poster.find((s) => s.optional)!.baselineMs;
-    const concepts = poster.find((s) => s.key === "poster.concepts")!.baselineMs;
-    expect(estimateRemainingMs(poster, [{ percent: 55, at: 0 }], 0)).toBe(concepts);
-    expect(estimateRemainingMs(poster, [{ percent: 80, at: 0 }], 0)).toBe(fill);
+    const analysis = poster.find((s) => s.key === "poster.concepts")!.baselineMs;
+    expect(estimateRemainingMs(poster, [{ percent: 55, at: 0 }], 0)).toBe(analysis);
   });
 
   it("applies this browser's calibrated speed", () => {

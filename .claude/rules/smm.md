@@ -72,8 +72,8 @@ waiting on the client, extra work, team) and the next month's dates; Renew (the 
 Later; several clients page 1 of N. Rules: `SMM_RENEWAL_POPUP_DAYS`, `daysToRenewal`,
 `renewalCountdownLabel/Steps`, `renewalPopupMonths` in `utils/smmPackage.ts`.
 **A month that had no sale (2026-10-03, later)** — for clients served before sales were recorded in the
-app. Add SMM sale → number → **Add a month that had no sale** (tech admin, team leader, main admin and,
-since 2026-10-05, the Social Media Team Lead; `canAddNoSaleMonth`): salesperson, the package it ran on (fills counts + accounts) or Custom, then the
+app. Add SMM sale → number → **Add a month that had no sale** (tech admin, team leader and main admin —
+`canAddNoSaleMonth`; the Social Media Team Lead too from 2026-10-05 until 2026-10-12, when she became view-only): salesperson, the package it ran on (fills counts + accounts) or Custom, then the
 ordinary setup form → `smmSetup.addNoSaleMonth` → `origin: "no_sale"`, auto id, no order/lead/sale
 item, **amount 0**, `soldBy` = the salesperson — so it is in their Social Media with its dates and they
 get Renew, but nothing reaches revenue, leaderboards or commission. Refused (`noSaleMonthProblem`,
@@ -190,9 +190,9 @@ not touch `platforms`).
 **An old client's earlier months, their people and their work (2026-10-05, owner).** The team lists the
 months a client had before the app ("the previous months' work that we made for the client") and fills
 their work in afterwards. (1) **The Social Media Team Lead may add a month that had no sale**
-(`canAddNoSaleMonth`); recording a NEW sale stays with the three admins, and a number with no sale now says
-who records one (`smm-add-sale-new-who`) — the lead used to get "No social media sale has been recorded"
-and nothing to press. (2) **A history month keeps who did its work** — the setup form's team section,
+(`canAddNoSaleMonth`; WITHDRAWN 2026-10-12 — she is view-only, see "The Team Lead, view-only" below); recording a
+NEW sale stays with the three admins, and a number with no sale now says who records one (`smm-add-sale-new-who`)
+— the lead used to get "No social media sale has been recorded" and nothing to press. (2) **A history month keeps who did its work** — the setup form's team section,
 hidden for past dates before, now reads **"Who did the work"** (optional): saved by name, their seats on
 every row and in `watchers` (so it is in their Social Media and they may edit it), with **no job card, no
 chat, no work alert** (`smmSetup.historyTeam` → `buildSoldCampaign({ team })` for `addNoSaleMonth` /
@@ -214,7 +214,7 @@ dropped when a month is added in this session (`useSmmClientMonths.forgetClientM
 screen points to one the read does not hold — an August added in front stayed off September's calendar for
 five minutes. (6) The post dialog writes whatever is still unsaved when it closes (it was dropped with its
 900 ms autosave timer — the last thing typed in each post). (7) `assignSmmMonth`: a tech member assigning
-(the Team Lead) puts their creator, the tech admin, in the client chat — the lead used to fill both places.
+(the Team Lead, until 2026-10-12) puts their creator, the tech admin, in the client chat — the lead used to fill both places.
 **Renewals kept true, renewal money, the Money tab, the post-status popup (2026-10-05, owner, session
 dts-os-ba).** (1) **"Renewed" follows the renewal sale.** When the renewal sale is withdrawn — deleted by the
 salesperson, rejected or taken back by the sales admin (`cancelOrderForSale`, which passes `saleWithdrawn` to
@@ -316,9 +316,48 @@ listeners; the board turns to the new day at midnight. Reads: the team's user re
 (`hooks/useUsersByIds`), today's check-ins (one equality on `date`), today's marks and holiday, the pending leave
 requests, one settings document. The member / salesperson filters are hidden on this view; on a phone the admins'
 five view tabs sit three and two. Team Attendance keeps the pay-cycle grid, now drawn by the shared
-`components/attendance/AttendanceGrid`.
+`components/attendance/AttendanceGrid`. Half-day leave (2026-10-12, `people.md` §9.13): an approved one reads "Half-day leave" and a
+pending one "Asked for a half-day leave — not approved yet", both in *Not coming today*.
+**The Team Lead, view-only — a hybrid role (owner, 2026-10-12).** The owner: "VIEW-ONLY access to all SMM team members,
+their assignments, progress, and work status, with no ability to edit, delete, or manage other members' work — and the
+exact same working permissions as an SMM Team Member for SMM assignments personally assigned to them" (Manasa leads;
+Sreerasthu Silvers is assigned to her → she works it like a member and only views the rest). Asked, the owner kept her
+**Edit team** on Attendance and took away **Add a month that had no sale**. Before: `canEditCampaign` asked
+`isSmmOverseer`, so the lead could edit every month; commit `5ca75b0` (same day, another tool) had moved setup and delete
+off her but left her every other write, a guard on one write only (`setItemStatus`), `canAddNoSaleMonth` still true with
+its button hidden, write sweeps over everyone's months from her board, the client-message buttons on others' months, and
+copy telling her she "runs every month". Now: **one answer** — `smmPlan.canEditCampaign` (an SMM admin by role, the
+month's salesperson, or somebody on the month: `watchers` / a seat, `isAssignedToSmm`); `isViewOnlySmmLead` = the flag on a
+role that is not `isSmmAdmin` (a Tech Team Leader or admin with the flag keeps everything); `isSmmOverseer` (sight) is
+unchanged. **Screens:** a month she is not on shows "View only." at the top (`smm-page-view-only`); its Content add
+buttons, the post dialog (fields, stage, approvals, remove, Send posting update — `SmmItemDialog canEdit`, its banner on
+theme tokens), Ads, Money (incl. Ask for a top-up), Report's Send the monthly report, "Their chat" (the client's own
+`/c/<id>` page, where typing talks to the client), setup, rename and delete are gone; a month she is on is a member's
+page (her job panel too). No Add SMM sale, setup, assign, rename, move pieces or
+delete anywhere — a member has none of those either. **Services (the backend check):** `services/smm` — `SmmViewOnlyError`;
+`assertMayChangeMonth` inside `mutateCampaign`'s transaction (the month as the database holds it), so every working write
+(posts, stages, approvals, ads, budget, renewal links) is refused on a month she is not on; `assertMayManageMonths` first
+in every managing write, even on her own month (delete / undo, `createRenewalMonth`, `setCampaignTeam`, `saveMonthSetup`,
+`setCycle`, `setCommitments`, `setMonthCommitments`, `setMonthPlatforms`, `moveUnpostedToMonth`; `smmSetup.renameMonth`,
+`applyMonthSetup`, `applyHistorySetup`, `setupSaleMonth`, `addNoSaleMonth`; `smmAssign.assignSmmMonth` — before any job is
+created or withdrawn). Who is signed in is read from the auth store (`useAuthStore.getState().user`, the live `users/{uid}`),
+as the rule reads `request.auth`; nobody signed in (scripts, tests) and every other role pass untouched. The on-open sweeps
+skip what she may not change (`mayChangeMonth`: `closeEndedMonthsOnOpen`, `fileFollowedHistoryMonths`,
+`healRenewalLinksOnOpen` — so the admins file and repair the rest) and `holdUnrenewedHistoryOnOpen` never runs from her
+browser. **Security:** the first rule of its own for `smm_campaigns` in `docs/firestore-rules.md` (`isViewOnlySmmLead`: read
+for staff; create / delete not for her; update only where she is in `watchers` or is `soldBy`; kept out of the catch-all;
+every other role as before) — once published. Wording: her appointment notification, the Team Lead panel, My Team's
+toggle and the new-month bell ("It is on the Social Media board" — the admins put the team on it).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **SMM Team Lead, view-only (owner, 2026-10-12):** the Social Media Team Lead sees every month and every person's
+  work on it, but on a month somebody else works she changes nothing — no edit, delete, setup, assigning, messages to
+  the client or management of that person's work. On a month she is personally on she has exactly a member's working
+  rights (and, like a member, no setup, assigning, renaming, moving pieces or deleting). She adds no month (the
+  "month that had no sale" went back to the three admins) and keeps Edit team on the Attendance board. A Tech Team
+  Leader or admin who also has the flag keeps their role's full rights. Enforced in the screens, in every service
+  that writes a month (refused with "View only — …"), and in the Firestore rule (once published).
 
 - **SMM attendance (owner, 2026-10-08):** the Social Media Team Lead (and the tech / main admin) sees, in Social
   Media, TODAY's attendance of the Social Media team before her daily meeting — who has not checked in (with Call and
@@ -348,13 +387,13 @@ five view tabs sit three and two. Team Attendance keeps the pay-cycle grid, now 
 - **SMM accounts (owner, 2026-10-05):** the tech side sets which accounts a month covers in setup; a post
   already live keeps the accounts it went on; at least one account is required.
 - **SMM past months (owner, 2026-10-05):** the Social Media Team Lead may add a month that had no sale (but
-  never record a sale); a past (history) month keeps who did its work by name — never a job card — and they
+  never record a sale — and since 2026-10-12 not even that: she is view-only); a past (history) month keeps who did its work by name — never a job card — and they
   can see it and fill it in; on a past month a post is marked posted without the client-approval step, but
   only with the day it went up; a running month keeps the approval rule; an earlier month added later joins
   the client's run (Month 1 → 2 …).
 
 - **SMM deletion and lead (2026-10-01, team leader added 2026-10-03):** the main admin, the tech
-  admin, the tech team leader and the Social Media Team Lead delete a month; a deleted sold month never
+  admin and the tech team leader delete a month (the Social Media Team Lead too until 2026-10-12); a deleted sold month never
   comes back with its sale; only the tech admin and main admin appoint the team lead; extra work always
   says what it is (and a video its length), and the seller is told.
 - **SMM months (owner, 2026-10-03):** every month is a sale — recorded by the salesperson or, by the
@@ -367,8 +406,8 @@ five view tabs sit three and two. Team Attendance keeps the pay-cycle grid, now 
   for a client who already has months (that is a renewal). The tech side may rename a month and change
   how many videos/posters it owes; a worked row is never removed. A deleted month can be undone for 5 s.
   The one exception — **a month that had no sale (owner, 2026-10-03):** a client served before sales
-  were recorded in the app is added by the tech admin / team leader / main admin (and, since 2026-10-05,
-  the Social Media Team Lead) with the salesperson's name: amount 0, counted in nobody's revenue or commission, shown in the salesperson's login with its
+  were recorded in the app is added by the tech admin / team leader / main admin (the Social Media Team
+  Lead could from 2026-10-05 until 2026-10-12) with the salesperson's name: amount 0, counted in nobody's revenue or commission, shown in the salesperson's login with its
   dates. It cannot start in the future, overlap any month of the client, cover a recorded sale's dates,
   or come after a recorded sale. Its next month is the salesperson's Renew — a sale. A month's deadline
   is its last day, on the order and every job, including a renewal's; a later edit or approval of the
@@ -394,6 +433,14 @@ five view tabs sit three and two. Team Attendance keeps the pay-cycle grid, now 
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- SMM Team Lead view-only (2026-10-12): the services read who is signed in from the auth store, so a script or a
+  browser console that bypasses the app reaches Firestore with only the rule in `docs/firestore-rules.md` in the
+  way — and that rule protects nothing until it is published (publication [NOT CONFIRMED]). The rule checks
+  `watchers` / `soldBy` (the app writes `watchers` with every team change); the screens and services also count a
+  seat. "On the month" means a seat or `watchers` — a person given only a post (`makerUid` / `publisherUid`, no seat)
+  is not on it, for the lead as for any member (as before). Her board files and repairs only her own months; the
+  admins' boards do the rest. Checked by unit tests, service tests on the in-memory Firestore and the real month page
+  rendered for her (`smmLeadViewOnlyOct12`), plus a browser harness — not against live Firebase or the published rule.
 - SMM attendance (2026-10-08, the TODAY board): today only — earlier days stay in Team Attendance. "Not checked in"
   is the same at 10 AM and at 10 PM (no office start time exists in the app, so nobody is called "late"). Team leaders
   never check in, so their day is "no check-in record". A check-in is read from `daily_checkins` only (the team holds

@@ -75,15 +75,17 @@ beforeEach(() => {
 });
 
 describe("who may add a month that had no sale", () => {
-  it("now includes the Social Media Team Lead — who still may not record a sale", () => {
-    expect(pkg.canAddNoSaleMonth({ role: "tech_member", smmLeader: true })).toBe(true);
+  it("is the three admins again — the Social Media Team Lead lost it when she became view-only (2026-10-12)", () => {
+    expect(pkg.canAddNoSaleMonth({ role: "tech_member", smmLeader: true })).toBe(false);
     expect(pkg.canRecordSmmSaleForSeller({ role: "tech_member", smmLeader: true })).toBe(false);
     expect(pkg.canAddNoSaleMonth({ role: "tech_member" })).toBe(false);
     expect(pkg.canAddNoSaleMonth({ role: "sales_member" })).toBe(false);
     expect(pkg.canAddNoSaleMonth({ role: "tech_admin" })).toBe(true);
   });
 
-  it("a running month the Team Lead adds puts their tech admin in the client chat", async () => {
+  // The service path a tech member's assignment takes (the Team Lead's, 2026-10-05 → 2026-10-12): kept, since
+  // nobody is signed in here — with the view-only lead signed in, smmLeadViewOnlyOct12 shows it refused.
+  it("a running month a tech member assigns puts their tech admin in the client chat", async () => {
     const result = await setup.addNoSaleMonth(month(-10, TEAM, RAVI_LEAD));
     expect(result.history).toBe(false);
     const room = read(`order_chats/${result.campaignId}`)!;

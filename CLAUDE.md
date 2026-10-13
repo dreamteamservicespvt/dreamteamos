@@ -68,7 +68,7 @@
 
 - **Commands:** `npm run dev` (port 8080) · `npm run build` (Vite; the build-truth check) ·
   `npx vitest run` (full suite ≈2 min) · `npx tsc -p tsconfig.check.json --noEmit` (typecheck;
-  expect only the VideoCallManager error) · `npm run lint`. `vite dev` does not run `/api`; use
+  expect 0 errors since `5ca75b0`) · `npm run lint`. `vite dev` does not run `/api`; use
   `vercel dev` or the DEV fallbacks.
 - **Imports:** `@/` alias → `src/`. Types from `@/types` / `@/types/<domain>`.
 - **Layering:** pure rules in `src/utils/` (no React, no Firestore, unit-tested) →
@@ -194,7 +194,7 @@ errors:** done means every listed item is fully resolved with no build, console 
    and exercise every fix. If something fails or a new error appears, debug, fix and test again. State
    plainly what could not be driven (e.g. live Firebase or Gemini).
 6. **Check for regressions:** `npm run build`, `npx vitest run`,
-   `npx tsc -p tsconfig.check.json --noEmit` (1 known error).
+   `npx tsc -p tsconfig.check.json --noEmit` (0 errors).
 7. **Loop** through steps 2–6 until every item is 100% resolved.
 8. **Update the context** so it describes the new actual state:
    - **the module file** for each changed module: its sections plus its own §24 rules and §25 / §27
@@ -214,8 +214,13 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-10)
+## 32. CURRENT PROJECT STATE (as of 2026-10-13)
 
+- 2026-10-13, **in the working tree (not committed)** — the 3-item task of 2026-10-12: the **Social Media Team Lead is
+  view-only** on months she is not on and works her own like a member (`smm.md`, `roles-routes.md`, the first
+  `smm_campaigns` rule in `docs/firestore-rules.md`); **Half Day leave** — Full day / Half day, ½ of the allowance, the HL
+  mark, counted in halves everywhere (`people.md`, `data-model.md`); **poster prompts** — ONE conceptual ad type, the
+  owner's three sentences + a Format line, for Poster Creation AND the video kit's poster, 9:16 by default (`ai-ads.md`).
 - 2026-10-10, **in the working tree (not committed)**: **Motu & Patlu walk only where a clip's words need it** — every
   other clip is acted out standing, so Veo keeps their heights and clothes (`ai-ads.md` §17.2 step 6, §24).
 
@@ -245,21 +250,24 @@ errors:** done means every listed item is fully resolved with no build, console 
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
 - `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈848 KB; lazy pages for
   AI Accounts, Invoices).
-- `npx vitest run` ✅ 227 files, 3484 tests, all pass, no unhandled errors (2026-10-10, after the Gemini API keys,
+- `npx vitest run` ✅ 231 files, 3564 tests, all pass, no unhandled errors (2026-10-13, after the three items above,
   with the parallel sessions' work in the tree). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
-- `npx tsc -p tsconfig.check.json --noEmit` → 1 known error (VideoCallManager).
+- `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (the VideoCallManager one was fixed in `5ca75b0`).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): Motu & Patlu walk only where needed; AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
+- Most recent work (newest first; detail in §31): SMM Team Lead view-only, Half Day leave, one-type poster prompts
+  (2026-10-13); Motu & Patlu walk only where needed; AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
   (AI Ads + Cinematic Ads) and Social Media → Attendance (2026-10-08, later); the Invoice Builder and Invoices →
   Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
   money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
   AI Accounts and Cinematic Ads work.
-- Open follow-ups the owner must act on: make one Motu & Patlu ad in Flow from the new prompts (standing clips: do
+- Open follow-ups the owner must act on: make one poster in Gemini from a new poster prompt (does the one ad type read?);
+  apply for, approve and pay one half-day leave; sign in as the Social Media Team Lead and check a month she is not on is
+  View only; make one Motu & Patlu ad in Flow from the new prompts (standing clips: do
   heights and clothes hold?); check one real Payroll month against Team Attendance (any paid row now flagged "Now ₹X" was paid a different amount than attendance gives); make one Male & Female Duo ad in Flow from the new prompts; decide the
   two open Cinematic Ads questions (a format changed mid-project resets nothing; a clip's animation prompt has no
   line-by-line speaker — `ai-ads.md` §17.4); replace the 11 dead Gemini keys in Vercel (2026-10-10: `API_KEY_1`, 12,
   18 invalid; 13, 16, 23–28 leaked — §26.3) with working ones from AI Accounts → API keys → Download .env;
-  publish `docs/firestore-rules.md` in the console (it also protects the Flow / ChatGPT / Grok passwords and the
+  publish `docs/firestore-rules.md` in the console (it also holds the Social Media Team Lead's view-only rule, protects the Flow / ChatGPT / Grok passwords and the
   invoices, their numbers and the team-leader switch); check the invoice defaults and make one real invoice + PDF;
   move secrets out of source; authenticate `/api/send-notification`; generate a few clips in Flow (Frames to Video)
   from the dynamic-pass prompts — a single presenter, a human duo, Motu & Patlu (watch Patlu's height), a client
@@ -343,7 +351,7 @@ in it (2026-10-10); only the tech admin sees every key (API keys tab: copy, `.en
 everywhere else. `@/` alias; heavy "why" comments; optional fields for back-compat, no
 migrations; deterministic ids + `dedupeKey`; transactions for shared arrays; edit both
 duplicated WorkAssign/MemberAssignments pages; verify with `npm run build` + `npx vitest run` +
-`npx tsc -p tsconfig.check.json --noEmit` (1 known error); browser checks via a throwaway
+`npx tsc -p tsconfig.check.json --noEmit` (0 errors); browser checks via a throwaway
 harness with a faked Firebase.
 
 **Known limitations.** Secrets in source and the Gemini keys in the bundle; unauthenticated push

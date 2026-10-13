@@ -203,9 +203,11 @@ export default function TechAdminMyTeam() {
    * Promote somebody to run the social-media side, without taking anything away from them.
    *
    * An SMM Leader keeps their existing role — their work, their attendance, their salary screens —
-   * and gains sight of every monthly client in the company plus the right to assign them. That is
-   * why it is a flag rather than a role: making it a role would mean the best social-media person
-   * on the team loses the screens they use every day the moment they are promoted.
+   * and gains sight of every monthly client in the company: view only on the months others work, a
+   * member's full tools on the months they are on (owner, 2026-10-12 — before that the flag also let
+   * them set months up, assign and delete). That is why it is a flag rather than a role: making it a
+   * role would mean the best social-media person on the team loses the screens they use every day the
+   * moment they are promoted.
    */
   const toggleSmmLeader = async (member: AppUser) => {
     const next = !member.smmLeader;
@@ -216,7 +218,7 @@ export default function TechAdminMyTeam() {
       toast({
         title: next ? "Made Social Media Team Lead" : "No longer Social Media Team Lead",
         description: next
-          ? `${member.name} now sees and manages every social media month, on top of their own work.`
+          ? `${member.name} now sees every social media month (view only), and works on the months they are on.`
           : `${member.name} sees only the social media months they are on.`,
       });
     } catch {
@@ -551,7 +553,7 @@ export default function TechAdminMyTeam() {
                         )}
                         {!m.externalCreator && (
                           <button onClick={() => toggleSmmLeader(m)} data-test="smm-leader-toggle"
-                            title={m.smmLeader ? "Remove Social Media Team Lead" : "Make Social Media Team Lead (manages every social media month)"}
+                            title={m.smmLeader ? "Remove Social Media Team Lead" : "Make Social Media Team Lead (sees every social media month; works on the months they are on)"}
                             className={`w-8 h-8 rounded-md inline-flex items-center justify-center transition-colors ${m.smmLeader ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-primary hover:bg-primary/10"}`}>
                             <Megaphone size={15} />
                           </button>

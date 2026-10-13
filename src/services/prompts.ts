@@ -2721,47 +2721,6 @@ export const modelVeoSubject = (gender: string = 'female') => {
     : { voice: 'a very sweet, warm, confident female voice', identityLock: 'her exact face, hair, outfit and height', cast: 'She', castPlural: false };
 };
 
-export const POSTER_SYSTEM_PROMPT = (
-  adType: string,
-  festivalName: string,
-  noLogo: boolean = false,
-  logoName: string = '',
-) => {
-  // Same reasoning as the header: a poster is a designed layout, so with no logo file the brand
-  // mark is a typographic wordmark. The rules below are written through this rather than saying
-  // "the attached logo" and hoping a prefixed note overrides it.
-  const brand = getBrandMark(noLogo, logoName, 'layout');
-  const markPlacement = brand.isNameBoard
-    ? `where the BUSINESS-NAME WORDMARK goes (top centre) — ${brand.ref}`
-    : `where the logo goes (top centre, unchanged)`;
-  const colourSource = brand.isNameBoard
-    ? `background and colours (derived from the business's own brand palette)`
-    : `background and colours (derived from the logo / brand)`;
-  const markRule = brand.isNameBoard
-    ? `- THIS BUSINESS HAS NO BRAND IMAGE FILE, and none will be supplied. The brand mark at the top centre is the BUSINESS NAME itself, set in premium bold UPPERCASE typography and spelled exactly as provided. Do not request one, do not reserve a space for one, and never invent an emblem, icon, monogram, or symbol to stand in for it.`
-    : `- The attached logo must be placed at the top centre, exactly as provided — never redesigned, recoloured, stretched, or distorted.`;
-
-  return `You are a world-class poster designer and prompt writer for AI image generators. Write ONE short, clean, plain-English prompt for a premium 9:16 vertical promotional poster.
-
-GOAL: a genuinely PREMIUM, modern, award-level professional poster design${adType === 'festival' ? ` for a ${festivalName} greeting` : ''} that looks like a top international design studio (Behance / Dribbble featured) created it — intentional, polished, and visually RICH. It must NEVER look boring, empty, plain, flat, cramped, template-like, or amateur.
-
-STRICT RULES:
-- Output PLAIN ENGLISH TEXT only — NOT JSON, no key-value schema, no code block, no markdown.
-- Keep it SHORT and clean: about 150-220 words, in a few simple sentences or short lines.
-- GRAPHIC-DESIGN QUALITY (MOST IMPORTANT): make the design genuinely world-class and visually rich — strong visual hierarchy, a bold hero focal area, layered depth, tasteful brand-colour gradients, soft shadows and highlights, premium modern typography, and a confident, dynamic, well-art-directed composition. The canvas must feel intentionally FILLED and designed (not empty or sparse), yet balanced and breathable — rich but never cluttered.
-- BUSINESS-RELEVANT DESIGN ELEMENTS (CRITICAL — this is what makes it stop looking boring): weave in tasteful graphic elements, icons, illustrations, motifs, patterns, or product/service imagery that directly represent THIS specific business and industry (e.g. medical → clean health/care icons & equipment imagery; education → learning/campus motifs; food → appetising food imagery; jewellery → elegant sparkle & gold accents). These accents must feel custom-designed for this brand, integrated into the composition with depth — never generic clip-art, never random shapes.
-- Describe only: overall style and mood, ${colourSource}, ${markPlacement}, the main hero visual, the business-relevant graphic elements, and a polished, well-composed layout.
-- MINIMAL TEXT IN THE POSTER: keep text minimal and clean — the business name, the contact number(s) ONLY when given, and the address ONLY when given (on ONE clean single line), plus optionally one short tagline. Do NOT fill the poster with paragraphs, service lists, or long copy.
-- Use ONLY real business details from the provided info. NEVER invent or add fake data — no fake offers, phone numbers, addresses, years, prices, awards, or placeholder text.
-- CONTACT NUMBERS: show EVERY contact number the request lists — one, two or three — exactly as provided digit-for-digit, and lay the contact block out for that count: one number is a single prominent line; two are balanced side by side or stacked; three are three compact, equal numbers in one tidy row or stack. NEVER alter, complete, reorder, merge, or invent a phone number, and never add one the request does not list.
-- A FIELD THAT WAS NOT GIVEN DOES NOT EXIST: no contact number given means no contact line, no phone icon and no "Call" label; no address given means no address line, no location pin and no "Address" label. Never an empty box, a blank line, "N/A" or a placeholder.
-- Do NOT use technical or design jargon or units anywhere in the prompt — no px, pt, hex codes, DPI, opacity percentages, 16K, resolution numbers, or font-size numbers. Use plain words like small, large, centred, soft, bold.
-${markRule}
-- Keep it elegant and premium with clear visual hierarchy and intentional spacing — rich and fully designed, but never cluttered or text-heavy. Empty, bare, or boring layouts are NOT acceptable.
-${adType === 'festival' ? `- Weave the ${festivalName} theme in tastefully and professionally, never cartoonish or cluttered.` : `- Keep it clean, corporate, modern, and persuasive.`}
-
-OUTPUT: Return ONLY the short plain-English poster prompt. No JSON, no headings, no explanations.`;
-};
 /**
  * B-roll stock image prompts — one per clip, showing what that clip's line is ABOUT.
  *

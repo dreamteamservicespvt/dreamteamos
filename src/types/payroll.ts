@@ -160,7 +160,18 @@ export const REQUIRED_BANK_FIELDS: Record<PayoutMethod, (keyof PayoutAccount)[]>
 // ─── Leave ──────────────────────────────────────────────────────────────────
 
 export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
+/** @deprecated Only ever written as "paid" (see `LeaveRequest.kind`). A request's length is `LeaveDuration`. */
 export type LeaveKind = "paid" | "unpaid" | "half_day";
+
+/**
+ * How much of a day a leave request asks off (owner, 2026-10-12).
+ *
+ * `full_day` — every working day in `fromDate → toDate`, as leave always was.
+ * `half_day` — ONE working day (`fromDate === toDate`): the member works the other half. It uses half a day of the
+ * paid-leave allowance, and inside the allowance the day is paid in full (worked half + paid leave half); past the
+ * allowance it is recorded and paid as a half day (H) — "leave past the allowance counts as absence", for half a day.
+ */
+export type LeaveDuration = "full_day" | "half_day";
 
 export interface LeaveRequest {
   id: string;
@@ -171,7 +182,20 @@ export interface LeaveRequest {
   toDate: string;
   /** Denormalised for month queries — the month of `fromDate`. */
   month: string;
-  kind: LeaveKind;
+  /**
+   * Full day or half day (2026-10-12). **Absent = a full day** — every request made before half-day leave existed.
+   *
+   * A half-day request covers exactly one working day (`toDate === fromDate`, never a Sunday — `submitLeaveRequest`
+   * refuses one). Approval writes `half_leave` on that day when half a day of the allowance is left, else `half`; a
+   * full-day request still writes `leave` within the allowance and `absent` beyond it (`approveLeaveRequest`).
+   */
+  duration?: LeaveDuration;
+  /**
+   * @deprecated Never read. Every request was written `kind: "paid"` whatever it turned out to be, because whether a
+   * day is paid is decided at approval against the allowance (`leaveDates` / `absentDates`), not when it is asked.
+   * No longer written since 2026-10-12; a request's length is `duration`.
+   */
+  kind?: LeaveKind;
   reason: string;
   status: LeaveStatus;
   /**
@@ -183,6 +207,11 @@ export interface LeaveRequest {
    * not consume the allowance a second time.
    *
    * Absent on requests approved before this rule existed; those simply have no absence days.
+   *
+   * Half-day leave (2026-10-12): `leaveDates` holds the days the allowance pays any of — a half day written
+   * `half_leave`, or a full day of which only half was left (written `leave`; the salary pays it ½) — and
+   * `absentDates` the days it pays none of: a full day written `absent`, a half day written `half`. Read with
+   * `duration` (`services/leave.approvalMarks`) to know which mark the approval wrote.
    */
   leaveDates?: string[];
   absentDates?: string[];
@@ -311,6 +340,8 @@ export type SalaryLineKey =
   | "half"
   | "paid_leave"
   | "unpaid_leave"
+  | "half_leave"
+  | "half_leave_unpaid"
   | "absent"
   | "holiday"
   | "comp_off"
@@ -349,17 +380,23 @@ export interface SalaryComputation {
   /** monthlySalary ÷ workingDays, unrounded — round only at display/total time. */
   dailySalary: number;
 
-  // Attendance buckets
+  // Attendance buckets — each working day sits in exactly one of them (a full day of leave the allowance covers only
+  // half of is ½ in `paidLeaveDays` and ½ in `unpaidLeaveDays`).
   fullDays: number;
   halfDays: number;
+  /** Full-day leave (L) the allowance pays, in days — may end in a half since half-day leave exists (2026-10-12). */
   paidLeaveDays: number;
+  /** Full-day leave (L) past the allowance, in days — may end in a half, like `paidLeaveDays`. */
   unpaidLeaveDays: number;
   absentDays: number;
   holidayDays: number;
   /** Working days not yet resolved (today in progress, or still in the future). */
   pendingDays: number;
 
-  /** Working-day credit already earned: full=1, half=0.5, paid leave=1, holiday per policy. */
+  /**
+   * Working-day credit already earned: full=1, half=the half-day factor, paid leave=1 (½ for a half-paid day),
+   * half-day leave=1 inside the allowance / the half-day factor past it, holiday per policy.
+   */
   earnedDays: number;
   /** Working days already passed, whatever their status. */
   elapsedWorkingDays: number;
@@ -380,7 +417,14 @@ export interface SalaryComputation {
   /** Attendance % over elapsed working days. */
   attendancePercent: number;
   paidLeaveQuota: number;
+  /** Allowance still unused, in days — may end in a half (½ per half-day leave). See `payrollEngine.paidLeaveUsed`. */
   paidLeavesRemaining: number;
+
+  // Half-day leave (2026-10-12). Optional: a computation frozen on a payment before then has none (read as 0).
+  /** Half-day leave days (HL) the allowance covers — each uses ½ of it and pays a FULL day (worked half + leave half). */
+  paidHalfLeaveDays?: number;
+  /** Half-day leave days past the allowance — each paid like a half day (`halfDayFactor`), as an H. */
+  unpaidHalfLeaveDays?: number;
 
   // Comp-off (2026-10-10). Optional: a computation frozen on a payment before then has none.
   /** Holidays the person worked in the period (W) — one comp-off credit each. */

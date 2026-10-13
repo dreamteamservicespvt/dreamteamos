@@ -90,34 +90,54 @@ export interface AdFormData {
    * ── Poster Creation ──────────────────────────────────────────────────────────────────────
    * Only read when the creation mode is "poster". See utils/posterSpec and services/posterStyles.
    */
-  /** Canvas as a stored string: "4:5" (default), a custom ratio "5:7", or pixels "1080x1350". */
+  /** Canvas as a stored string: "9:16" (default since 2026-10-12), a preset "4:5", a custom ratio "5:7", or pixels "1080x1350". */
   posterSize?: string;
   /** A services/posterStyles id, or "auto" for best fit. */
   posterStyle?: string;
   /** The occasion the poster is themed for — "" for a plain commercial poster. */
   posterOccasion?: string;
-  /** How many distinct concepts to write (1–6, default 3). */
+  /**
+   * @deprecated Since 2026-10-12 a poster run writes ONE prompt in ONE ad type (owner: "do not use multiple
+   * types"). Old saved settings may still carry a count; nothing reads it.
+   */
   posterConceptCount?: number;
   /** Language of the words printed on the poster (default English). */
   posterTextLanguage?: string;
 }
 
 /**
- * One poster idea, ready to run: the metaphor, the words, and a copy-paste image prompt.
- * Produced by geminiService.generatePosterConcepts and finalised by utils/posterConcepts.
+ * One poster, ready to run: a copy-paste image prompt and what it was made from.
+ *
+ * Since 2026-10-12 (owner) a run makes ONE, in ONE conceptual ad type, assembled by utils/posterAdType
+ * (`conceptFromPoster`): `imagePrompt` is the owner's three sentences + the Format line, `title` the type's
+ * name, `idea` the reason, `whyItWorks` the benefit, and the fields below say so directly. A generation saved
+ * before then holds one to six art-directed concepts with a headline and a negative prompt and no `adTypeName`
+ * — they still render as they were (PosterConceptsPanel).
  */
 export interface PosterConcept {
   title: string;
-  /** services/posterStyles id actually used. */
+  /** services/posterStyles id actually used (= the ad type's id). */
   style: string;
-  /** The metaphor in one sentence. */
+  /** The metaphor in one sentence (older concepts) — the reason the type was chosen (2026-10-12). */
   idea: string;
   whyItWorks?: string;
   headline: string;
   subline?: string;
-  /** The full image-generation prompt, opening with the canvas sentence. */
+  /** The full image-generation prompt — the copy-paste text. */
   imagePrompt: string;
   negativePrompt?: string;
+  /** The owner's name for the ad type, e.g. "Shadow Metaphor Ads" (2026-10-12; absent on older concepts). */
+  adTypeName?: string;
+  /** Why this type fits the business, one sentence. */
+  reason?: string;
+  /** The main product/service benefit, as the analysis named it. */
+  benefit?: string;
+  /** The prompt's Business Information slot: the summary plus the verified contacts and address. */
+  businessInformation?: string;
+  /** The Format line's text (size · logo · text language). */
+  format?: string;
+  /** How the type was chosen: fixed by the job / member, by the analysis, kept on a refine, or by the code's rule. */
+  chosenBy?: "fixed" | "analysis" | "kept" | "rule";
 }
 
 export type LocationMode = 'real_provided' | 'ai_generated';

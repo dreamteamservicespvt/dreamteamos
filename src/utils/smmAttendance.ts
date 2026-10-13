@@ -179,15 +179,18 @@ export function handlesHeading(person: Pick<SmmTeamPerson, "handles" | "source">
 // ─── Today ─────────────────────────────────────────────────────────────────────────────────────────
 
 /** An admin's mark for a day (techAttendance's statuses — kept here as a plain union so this file stays pure). */
-export type DayMark = "full" | "half" | "absent" | "leave" | "holiday" | "holiday_work" | "comp_off";
+export type DayMark = "full" | "half" | "absent" | "leave" | "half_leave" | "holiday" | "holiday_work" | "comp_off";
 
 /**
  * What a person's day says today:
  *   present / half — checked in (or marked so) · not_in — no check-in yet, nothing explains it (the people to call)
  *   leave — approved leave · leave_asked — a leave request for today nobody has decided yet · absent — marked absent
+ *   half_leave — an approved half-day leave · half_leave_asked — a half-day request for today nobody decided yet
  *   holiday — Sunday or an announced holiday · no_checkin — a team leader: they never check in, so nobody can tell
  */
-export type TodayKind = "present" | "half" | "not_in" | "leave" | "leave_asked" | "absent" | "holiday" | "no_checkin";
+export type TodayKind =
+  | "present" | "half" | "not_in" | "leave" | "leave_asked" | "half_leave" | "half_leave_asked" | "absent" | "holiday"
+  | "no_checkin";
 
 export interface TodayInput {
   /** Whether this person checks in at all — a tech member does; a tech team leader never has. */
@@ -200,6 +203,8 @@ export interface TodayInput {
   dayOff: boolean;
   /** A leave request covering today is waiting for a decision. */
   leaveAsked: boolean;
+  /** …and it is a HALF-day request (2026-10-12) — the member is away for half of today only. */
+  leaveAskedHalf?: boolean;
 }
 
 export interface TodayStatus {
@@ -211,8 +216,9 @@ export interface TodayStatus {
 }
 
 // Comp-off (2026-10-10): working on a holiday is being here today; a Comp Off day is a paid day away — no need to call.
+// Half-day leave (2026-10-12): approved time off for half of today — accounted for, no need to call.
 const KIND_OF_MARK: Record<DayMark, TodayKind> = {
-  full: "present", half: "half", absent: "absent", leave: "leave", holiday: "holiday",
+  full: "present", half: "half", absent: "absent", leave: "leave", half_leave: "half_leave", holiday: "holiday",
   holiday_work: "present", comp_off: "leave",
 };
 
@@ -227,7 +233,7 @@ export function todayStatusOf(input: TodayInput): TodayStatus {
   if (input.mark) return { kind: KIND_OF_MARK[input.mark], inAt, outAt, marked: true };
   if (input.checkin) return { kind: "present", inAt, outAt, marked: false };
   if (input.dayOff) return { kind: "holiday", inAt, outAt, marked: false };
-  if (input.leaveAsked) return { kind: "leave_asked", inAt, outAt, marked: false };
+  if (input.leaveAsked) return { kind: input.leaveAskedHalf ? "half_leave_asked" : "leave_asked", inAt, outAt, marked: false };
   if (!input.checksIn) return { kind: "no_checkin", inAt, outAt, marked: false };
   return { kind: "not_in", inAt, outAt, marked: false };
 }
@@ -240,6 +246,9 @@ export const TODAY_GROUP_OF: Record<TodayKind, TodayGroup> = {
   not_in: "call",
   leave: "away",
   leave_asked: "away",
+  // Away for half the day with leave behind it (or asked for) — nobody needs to chase them before the meeting.
+  half_leave: "away",
+  half_leave_asked: "away",
   absent: "away",
   present: "present",
   half: "present",
@@ -257,24 +266,46 @@ export interface TodayCounts {
   absent: number;
 }
 
-/** The four numbers on top: present (and half days), not checked in, on leave (asked or approved), absent. */
+/** The four numbers on top: present (and half days), not checked in, on leave (asked or approved, full or half day), absent. */
 export function todayCounts(kinds: TodayKind[]): TodayCounts {
   const c: TodayCounts = { present: 0, notIn: 0, leave: 0, absent: 0 };
   for (const k of kinds) {
     if (k === "present" || k === "half") c.present += 1;
     else if (k === "not_in") c.notIn += 1;
-    else if (k === "leave" || k === "leave_asked") c.leave += 1;
+    else if (k === "leave" || k === "leave_asked" || k === "half_leave" || k === "half_leave_asked") c.leave += 1;
     else if (k === "absent") c.absent += 1;
   }
   return c;
 }
 
+/** A leave request as the board reads it. `duration` absent = a full day (every request before 2026-10-12). */
+type AskedRequest = { memberId: string; fromDate: string; toDate: string; status?: string; duration?: string };
+
+/** Does an undecided request cover `day`? A half-day request covers its one date only. */
+const asksFor = (r: AskedRequest, day: string): boolean => {
+  if (r.status && r.status !== "pending") return false;
+  const to = r.duration === "half_day" ? r.fromDate : (r.toDate || r.fromDate);
+  return r.fromDate <= day && day <= to;
+};
+
 /** The people with a leave request covering `day` that nobody has decided yet. */
-export function leaveAskedOn(requests: { memberId: string; fromDate: string; toDate: string; status?: string }[], day: string): Set<string> {
+export function leaveAskedOn(requests: AskedRequest[], day: string): Set<string> {
   const out = new Set<string>();
-  for (const r of requests) {
-    if (r.status && r.status !== "pending") continue;
-    if (r.fromDate <= day && day <= (r.toDate || r.fromDate)) out.add(r.memberId);
-  }
+  for (const r of requests) if (asksFor(r, day)) out.add(r.memberId);
   return out;
+}
+
+/**
+ * Of those, the people whose undecided request for `day` is only a HALF day (2026-10-12) — the board says "Asked for
+ * a half-day leave". Somebody who also asked for the whole day is not among them: the whole day is what they asked.
+ */
+export function halfDayLeaveAskedOn(requests: AskedRequest[], day: string): Set<string> {
+  const half = new Set<string>();
+  const full = new Set<string>();
+  for (const r of requests) {
+    if (!asksFor(r, day)) continue;
+    (r.duration === "half_day" ? half : full).add(r.memberId);
+  }
+  for (const uid of full) half.delete(uid);
+  return half;
 }

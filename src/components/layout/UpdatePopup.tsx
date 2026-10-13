@@ -158,7 +158,7 @@ function AttendanceCard({ current, onDone, onClose }: {
   return (
     <div className="w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
       <div className={`px-5 pt-6 pb-5 text-center bg-gradient-to-b ${
-        status === "full" ? "from-emerald-500/15" : status === "half" ? "from-amber-500/15" : status === "absent" ? "from-rose-500/15" : status === "leave" ? "from-sky-500/15" : "from-slate-400/15"
+        status === "full" ? "from-emerald-500/15" : status === "half" ? "from-amber-500/15" : status === "absent" ? "from-rose-500/15" : status === "leave" ? "from-sky-500/15" : status === "half_leave" ? "from-indigo-500/15" : "from-slate-400/15"
       } to-transparent`}>
         <div className={`mx-auto w-14 h-14 rounded-full flex items-center justify-center mb-3 border ${info.tone}`}>
           <CalendarCheck2 className="w-7 h-7" />

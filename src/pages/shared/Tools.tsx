@@ -715,7 +715,7 @@ export default function Tools() {
           {[
             { key: 'mainFrame', title: `Main Frame Prompts (${viewingItem.mainFramePrompts?.length || 0} Clips)`, content: viewingItem.mainFramePrompts, isArray: true },
             { key: 'header', title: 'Brand Label (Lower Third)', content: viewingItem.headerPrompt, isArray: false },
-            { key: 'poster', title: 'Poster Design (JSON)', content: viewingItem.posterPrompt, isArray: false },
+            { key: 'poster', title: 'Poster Design', content: viewingItem.posterPrompt, isArray: false },
             { key: 'voiceOver', title: 'Voice Over Script', content: viewingItem.voiceOverScript, isArray: false },
             { key: 'veo', title: `VEO Prompts (${viewingItem.veoPrompts?.length || 0} Segments)`, content: viewingItem.veoPrompts, isArray: true },
           ].filter(s => s.isArray ? (s.content as string[])?.length > 0 : !!(s.content as string)).map(section => (
@@ -765,11 +765,13 @@ export default function Tools() {
             </div>
           ))}
 
-          {/* Poster concepts */}
+          {/* Poster concepts — one poster prompt since 2026-10-12 (its ad type in place of a concept title). */}
           {viewingItem.posterConcepts && viewingItem.posterConcepts.length > 0 && (
             <div className="bg-card border border-border rounded-xl overflow-hidden" data-test="history-poster-concepts">
               <div className="w-full flex items-center justify-between px-4 py-3">
-                <span className="font-semibold text-sm text-foreground">Poster Concepts ({viewingItem.posterConcepts.length})</span>
+                <span className="font-semibold text-sm text-foreground">
+                  {viewingItem.posterConcepts.some(c => c.adTypeName) ? 'Poster Prompt' : `Poster Concepts (${viewingItem.posterConcepts.length})`}
+                </span>
                 <button onClick={() => handleCopyHistorySection('posterConcepts', viewingItem.posterConcepts!.map((c, i) => posterConceptAsText(c, i)).join('\n\n────────\n\n'))}
                   className="p-1 rounded hover:bg-accent transition-colors">
                   {copiedHistorySection === 'posterConcepts' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
@@ -779,13 +781,13 @@ export default function Tools() {
                 {viewingItem.posterConcepts.map((c, idx) => (
                   <div key={idx} className="bg-background border border-border rounded-lg p-3">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-xs font-bold text-primary">Concept {idx + 1}: {c.title}</span>
+                      <span className="text-xs font-bold text-primary">{c.adTypeName ? `Ad type: ${c.adTypeName}` : `Concept ${idx + 1}: ${c.title}`}</span>
                       <button onClick={() => handleCopyHistorySection(`poster-${idx}`, c.imagePrompt)}
                         className="p-1 rounded hover:bg-accent transition-colors">
                         {copiedHistorySection === `poster-${idx}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
                       </button>
                     </div>
-                    <p className="text-[11px] text-muted-foreground mb-1">{posterStyleLabel(c.style)}{c.headline ? ` · “${c.headline}”` : ''}</p>
+                    {!c.adTypeName && <p className="text-[11px] text-muted-foreground mb-1">{posterStyleLabel(c.style)}{c.headline ? ` · “${c.headline}”` : ''}</p>}
                     {c.idea && <p className="text-xs text-foreground mb-2">{c.idea}</p>}
                     <p className="text-sm text-foreground whitespace-pre-wrap">{c.imagePrompt}</p>
                   </div>

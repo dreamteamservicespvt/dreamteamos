@@ -27,14 +27,23 @@ import type { UserRole } from "@/types";
  *  • `comp_off` (C) — a working day the person is paid for in return. Paid like a full day, never one of the two paid
  *    leaves. Credits are good for the cycle they were earned in only; a C beyond them is unpaid.
  * Both are only ever admin marks (`attendance` overrides) — nothing derives them from check-ins.
+ *
+ * One more came with half-day leave (owner, 2026-10-12):
+ *  • `half_leave` (HL) — "Half-day leave": the person worked half the day and the other half is LEAVE. It uses half a
+ *    day of the paid-leave allowance; inside it the day is paid in full (the worked half + the paid leave half),
+ *    past it the day pays like a half day. Written by an approved half-day request (`services/leave`) or by hand.
+ *    Not the same as `half` (H), which is half a day WORKED with no leave behind it — half a day's pay, no allowance.
  */
-export type AttendanceStatus = "full" | "half" | "absent" | "leave" | "holiday" | "holiday_work" | "comp_off";
+export type AttendanceStatus = "full" | "half" | "absent" | "leave" | "half_leave" | "holiday" | "holiday_work" | "comp_off";
 
 export const ATTENDANCE_META: Record<AttendanceStatus, { label: string; short: string; tone: string }> = {
   full: { label: "Full Day", short: "P", tone: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30" },
   half: { label: "Half Day", short: "H", tone: "bg-amber-500/15 text-amber-600 border-amber-500/30" },
   absent: { label: "Absent", short: "A", tone: "bg-rose-500/15 text-rose-600 border-rose-500/30" },
   leave: { label: "Leave", short: "L", tone: "bg-sky-500/15 text-sky-600 border-sky-500/30" },
+  // Indigo: a kind of leave (next to Leave's sky) that is plainly not Leave, nor the amber Half Day. Two letters fit
+  // every cell that shows a mark — the 18px desktop column, the phone cards and the calendars' 8px chip.
+  half_leave: { label: "Half-day leave", short: "HL", tone: "bg-indigo-500/15 text-indigo-600 border-indigo-500/30" },
   holiday: { label: "Holiday", short: "—", tone: "bg-slate-400/15 text-slate-500 border-slate-400/30" },
   holiday_work: { label: "Worked on holiday", short: "W", tone: "bg-violet-500/15 text-violet-600 border-violet-500/30" },
   comp_off: { label: "Comp Off", short: "C", tone: "bg-teal-500/15 text-teal-600 border-teal-500/30" },
@@ -196,9 +205,12 @@ export interface AttendanceSummary {
   half: number;
   absent: number;
   leave: number;
+  /** Half-day leave days (HL), paid or not (2026-10-12). */
+  halfLeave: number;
   holiday: number;
-  /** working-day presence credit: full = 1, half = 0.5 */
+  /** working-day presence credit: full = 1, half (and the worked half of a half-day leave) = the half-day factor */
   presentDays: number;
+  /** Paid leave still available — in days, so it can be 1½ once a half-day leave is taken. */
   leavesLeft: number;
   /** Holidays worked (W) — each one comp-off credit for the period. */
   holidayWork: number;
@@ -225,6 +237,7 @@ export function summarize(days: ResolvedDay[], config?: Partial<PayrollConfig>):
     half: t.half,
     absent: t.absent,
     leave: t.leave,
+    halfLeave: t.halfLeave,
     holiday: t.holiday,
     presentDays: t.presentDays,
     leavesLeft: t.leavesLeft,

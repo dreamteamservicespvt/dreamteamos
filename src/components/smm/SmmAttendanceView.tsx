@@ -37,7 +37,7 @@ import { useUsersByIds } from "@/hooks/useUsersByIds";
 import { useToday } from "@/hooks/useToday";
 import {
   NO_TEAM_EDITS, TODAY_GROUP_OF, TODAY_GROUP_ORDER, applyTeamEdits, callable, canEditSmmTeam, leaveAskedOn,
-  handlesHeading, smmTeamFromMonths, todayCounts, todayStatusOf,
+  halfDayLeaveAskedOn, handlesHeading, smmTeamFromMonths, todayCounts, todayStatusOf,
   type SmmTeamEdits, type SmmTeamPerson, type TodayGroup, type TodayKind, type TodayStatus,
 } from "@/utils/smmAttendance";
 import { getCallUrl, getWhatsAppUrl } from "@/utils/phone";
@@ -53,6 +53,9 @@ const KIND: Record<TodayKind, { icon: LucideIcon; tone: string; ring: string }> 
   not_in: { icon: Clock, tone: "border-orange-500/40 bg-orange-500/10 text-orange-800 dark:text-orange-300", ring: "ring-orange-500/70" },
   leave: { icon: Plane, tone: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300", ring: "ring-sky-500/60" },
   leave_asked: { icon: Plane, tone: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300", ring: "ring-sky-500/60" },
+  // Half-day leave (2026-10-12) — the indigo of its attendance mark (HL) everywhere else.
+  half_leave: { icon: Plane, tone: "border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300", ring: "ring-indigo-500/60" },
+  half_leave_asked: { icon: Plane, tone: "border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300", ring: "ring-indigo-500/60" },
   absent: { icon: XCircle, tone: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300", ring: "ring-rose-500/60" },
   holiday: { icon: PartyPopper, tone: "border-border bg-muted/50 text-slate-700 dark:text-slate-300", ring: "ring-border" },
   no_checkin: { icon: HelpCircle, tone: "border-border bg-muted/50 text-slate-700 dark:text-slate-300", ring: "ring-border" },
@@ -70,6 +73,8 @@ function statusWords(s: TodayStatus, role?: string): string {
     case "not_in": return "Not checked in";
     case "leave": return "On leave";
     case "leave_asked": return "Asked for leave — not approved yet";
+    case "half_leave": return "Half-day leave";
+    case "half_leave_asked": return "Asked for a half-day leave — not approved yet";
     case "absent": return "Absent";
     case "holiday": return "Day off";
     case "no_checkin": return `${role ? getRoleLabel(role as AppUser["role"]) : "This role"} — doesn't check in`;
@@ -78,7 +83,7 @@ function statusWords(s: TodayStatus, role?: string): string {
 
 const GROUP_TEXT: Record<TodayGroup, { title: string; hint: string; kind: TodayKind }> = {
   call: { title: "Not checked in yet — call them", hint: "No check-in today. Tap Call or WhatsApp to ask if they are coming.", kind: "not_in" },
-  away: { title: "Not coming today — no need to call", hint: "On leave, asked for leave, or marked absent.", kind: "absent" },
+  away: { title: "Not coming today — no need to call", hint: "On leave (a full or a half day), asked for leave, or marked absent.", kind: "absent" },
   present: { title: "Present", hint: "Checked in today.", kind: "present" },
   unknown: { title: "No check-in record", hint: "Team leaders don't check in, so the app cannot tell if they are here.", kind: "no_checkin" },
   off: { title: "Day off", hint: "Today is a holiday.", kind: "holiday" },
@@ -185,6 +190,8 @@ export default function SmmAttendanceView({ campaigns, user }: {
   const [marks, setMarks] = useState<Map<string, AttendanceStatus>>(new Map());
   const [holidays, setHolidays] = useState<Map<string, Holiday>>(new Map());
   const [leaveAsked, setLeaveAsked] = useState<Set<string>>(new Set());
+  /** Of those, the people whose request for today is only a half day (2026-10-12). */
+  const [halfLeaveAsked, setHalfLeaveAsked] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
 
   useEffect(() => watchSmmTeamEdits(setEdits), []);
@@ -193,7 +200,10 @@ export default function SmmAttendanceView({ campaigns, user }: {
       watchCheckinsOnDay(today, setCheckins),
       watchOverridesInRange(today, today, setMarks),
       watchHolidayRecordsInRange(today, today, setHolidays),
-      watchPendingLeaveRequests((requests) => setLeaveAsked(leaveAskedOn(requests, today))),
+      watchPendingLeaveRequests((requests) => {
+        setLeaveAsked(leaveAskedOn(requests, today));
+        setHalfLeaveAsked(halfDayLeaveAskedOn(requests, today));
+      }),
     ];
     return () => unsubs.forEach((u) => u());
   }, [today]);
@@ -222,11 +232,12 @@ export default function SmmAttendanceView({ campaigns, user }: {
         checkin: checkins.get(p.uid),
         dayOff,
         leaveAsked: leaveAsked.has(p.uid),
+        leaveAskedHalf: halfLeaveAsked.has(p.uid),
       });
       out.push({ ...p, name: u.name || p.name, user: u, status });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
-  }, [team, users, marks, checkins, leaveAsked, today, dayOff]);
+  }, [team, users, marks, checkins, leaveAsked, halfLeaveAsked, today, dayOff]);
 
   const counts = todayCounts(rows.map((r) => r.status.kind));
   const byGroup = (g: TodayGroup) => rows.filter((r) => TODAY_GROUP_OF[r.status.kind] === g);

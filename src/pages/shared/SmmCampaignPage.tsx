@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft, ArrowRight, BellRing, CalendarRange, Check, IndianRupee, Loader2, Megaphone,
+  ArrowLeft, ArrowRight, BellRing, CalendarRange, Check, Eye, IndianRupee, Loader2, Megaphone,
   MessageSquare, MoveRight, Pencil, Phone, RefreshCcw, Settings2, Trash2, Users, X, XCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -33,7 +33,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { formatCurrency } from "@/utils/formatters";
 import { getWhatsAppUrl } from "@/utils/phone";
 import {
-  canDeleteSmmCampaign, canEditCampaign, isPosted, isoDay,
+  canDeleteSmmCampaign, canEditCampaign, isPosted, isViewOnlySmmLead, isoDay,
 } from "@/utils/smmPlan";
 import {
   NO_SALE_NOTE, SMM_SEATS, canAdminRenewSmm, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, hasTeam,
@@ -151,6 +151,8 @@ export default function SmmCampaignPage() {
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
   const today = isoDay(new Date());
+  // Work this month (posts, approvals, ads, money, messages): admins, its salesperson and the people on it.
+  // The Social Media Team Lead sees every month but works only the ones she is on (2026-10-12).
   const canEdit = campaign ? canEditCampaign(campaign, user) : false;
   const canSetUp = canSetUpSmm(user);
   const canDelete = canDeleteSmmCampaign(user);
@@ -410,7 +412,9 @@ export default function SmmCampaignPage() {
             {/* A sold month's room is its order's. A no-sale month's team shares a room on the month's
                 own id, opened by its first job — so it exists once the month has people on it. A month
                 started directly before every month had a sale has none to link to. */}
-            {(campaign.orderId || (isNoSaleMonth(campaign) && !campaign.history && hasTeam(campaign.team))) && (
+            {/* The client's own chat page — typing there talks to the client, so not for the view-only Team
+                Lead on a month somebody else works (2026-10-12; every other viewer can work the month). */}
+            {canEdit && (campaign.orderId || (isNoSaleMonth(campaign) && !campaign.history && hasTeam(campaign.team))) && (
               <a href={orderChatLink(campaign.orderId || campaign.id)} target="_blank" rel="noreferrer" data-test="smm-page-chat"
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent">
                 <MessageSquare size={13} /> Their chat
@@ -499,6 +503,22 @@ export default function SmmCampaignPage() {
           </div>
         )}
       </div>
+
+      {/*
+        ── The Social Media Team Lead on a month somebody else works (owner, 2026-10-12) ──────────────
+        She sees every month and every person's work, and changes none of it here; the months she is on
+        open with a member's full tools (and her own job just below). Said once, at the top, so a quiet
+        page reads as "view only" rather than "broken".
+      */}
+      {!canEdit && isViewOnlySmmLead(user) && (
+        <div data-test="smm-page-view-only" className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 p-3 text-xs text-foreground">
+          <Eye size={15} className="mt-px shrink-0 text-muted-foreground" />
+          <p className="min-w-0">
+            <b>View only.</b> As the Social Media Team Lead you can see this month and everyone's work on it, but only
+            the people on it and the admins can change it. The months you are on open with your full tools.
+          </p>
+        </div>
+      )}
 
       {/* ── A tech member's own job on this month — opened from here, not from My Work ───────── */}
       <SmmMyJobPanel campaign={campaign} user={user} />
@@ -603,7 +623,7 @@ export default function SmmCampaignPage() {
           onMessage={(text) => setMessage({ text, kind: "extra_work" })} />
       )}
       {tab === "report" && (
-        <SmmReportPanel campaign={campaign} user={user} onMessage={(text, kind) => setMessage({ text, kind })}
+        <SmmReportPanel campaign={campaign} user={user} canEdit={canEdit} onMessage={(text, kind) => setMessage({ text, kind })}
           onOpen={(i: SmmContentItem) => setOpenItem(i.id)} />
       )}
 

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { LOWER_THIRD_SYSTEM_PROMPT } from "@/services/prompts/lowerThird";
 import {
-  POSTER_SYSTEM_PROMPT, MAIN_FRAME_SYSTEM_PROMPT, getBrandMark,
+  MAIN_FRAME_SYSTEM_PROMPT, getBrandMark,
   buildBrandMarkDirective,
 } from "@/services/prompts";
+import { posterFormatLine } from "@/utils/posterAdType";
 
 /**
  * "No logo" has to mean no logo everywhere.
@@ -107,40 +108,19 @@ describe("LOWER_THIRD_SYSTEM_PROMPT", () => {
   });
 });
 
-describe("POSTER_SYSTEM_PROMPT", () => {
-  const withLogo = POSTER_SYSTEM_PROMPT("commercial", "", false, "");
-  const noLogo = POSTER_SYSTEM_PROMPT("commercial", "", true, NAME);
+// The poster prompt is assembled in code since 2026-10-12 (utils/posterAdType): its brand mark is the Format line.
+describe("the poster prompt's Format line", () => {
+  const withLogo = posterFormatLine({ posterSize: "9:16", hasLogo: true });
+  const noLogo = posterFormatLine({ posterSize: "9:16", hasLogo: false, nameBoardText: NAME });
 
   it("asks for the attached logo when one exists", () => {
     expect(withLogo).toMatch(ASKS_FOR_A_LOGO);
-    expect(withLogo).toMatch(/top centre/);
   });
 
-  it("never asks for a logo in no-logo mode", () => {
+  it("never mentions a logo in no-logo mode, and sets the business name as the wordmark", () => {
     expect(noLogo).not.toMatch(ASKS_FOR_A_LOGO);
-  });
-
-  it("puts the business-name wordmark at the top centre instead", () => {
-    expect(noLogo).toMatch(/WORDMARK/);
-    expect(noLogo).toMatch(/top centre/);
-    expect(noLogo).toContain(NAME);
-  });
-
-  it("draws its colours from the brand palette rather than a logo that does not exist", () => {
-    expect(withLogo).toMatch(/derived from the logo \/ brand/);
-    expect(noLogo).toMatch(/derived from the business's own brand palette/);
-  });
-
-  it("forbids inventing a stand-in emblem", () => {
-    expect(noLogo).toMatch(/never invent an emblem, icon, monogram, or symbol/i);
-    expect(noLogo).toMatch(/THIS BUSINESS HAS NO BRAND IMAGE FILE/);
-  });
-
-  it("keeps the festival theming and the design-quality rules", () => {
-    const festival = POSTER_SYSTEM_PROMPT("festival", "Diwali", true, NAME);
-    expect(festival).toMatch(/Diwali/);
-    expect(festival).toMatch(/GRAPHIC-DESIGN QUALITY/);
-    expect(festival).not.toMatch(ASKS_FOR_A_LOGO);
+    expect(noLogo).not.toMatch(/logo/i);
+    expect(noLogo).toContain(`"${NAME}" as a clean wordmark`);
   });
 });
 

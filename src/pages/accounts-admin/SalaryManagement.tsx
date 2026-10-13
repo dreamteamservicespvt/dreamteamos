@@ -12,7 +12,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
-import { deductionsFor, payPeriodLabel, salaryMonthDue } from "@/utils/payrollEngine";
+import { deductionsFor, formatDayCount, payPeriodLabel, salaryMonthDue } from "@/utils/payrollEngine";
 import {
   isLinePaid, priceMemberForPeriod, watchPayrollLines, type PeriodPay,
 } from "@/services/payrollRun";
@@ -486,7 +486,7 @@ export default function SalaryManagement() {
                       <p>
                         From attendance: {formatCurrency(quote.salaryPayable)} salary
                         {deductionsFor(quote.computation).rows.length > 0 &&
-                          ` (${deductionsFor(quote.computation).rows.map((r) => `${r.days} ${r.label.toLowerCase()}`).join(", ")} deducted)`}
+                          ` (${deductionsFor(quote.computation).rows.map((r) => `${formatDayCount(r.days)} ${r.label.toLowerCase()}`).join(", ")} deducted)`}
                         {quote.incentive > 0 && ` + ${formatCurrency(quote.incentive)} incentive`}
                         {" = "}<strong className="text-foreground">{formatCurrency(quote.amount)}</strong>
                       </p>

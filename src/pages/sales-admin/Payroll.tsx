@@ -14,7 +14,7 @@ import { isBankComplete, isBankVerified, payoutMethodOf, payoutSummary, verifyEm
 import { isLinePaid, markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
 import { downloadPayslip } from "@/utils/payslipPdf";
 import { useSalesMemberPay, type SalesPayRow } from "@/hooks/useSalesMemberPay";
-import { currentPayMonth, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import { currentPayMonth, formatDayCount, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import { isActiveUser } from "@/utils/roleHelpers";
 import { applyCompOff } from "@/services/techAttendance";
 import CompOffPanel from "@/components/payroll/CompOffPanel";
@@ -405,7 +405,9 @@ export default function SalesPayroll() {
                         </p>
                         <Row label={`Monthly salary · ${row.computation.workingDays} working days`} value={formatCurrency(row.computation.monthlySalary)} />
                         {row.salaryDeduction > 0 && (
-                          <Row label={`Attendance deductions (${row.computation.absentDays}A · ${row.computation.halfDays}H · ${row.computation.unpaidLeaveDays}LWP)`}
+                          // LWP can be ½ and a half-day leave past the allowance costs like an H (2026-10-12).
+                          <Row label={`Attendance deductions (${row.computation.absentDays}A · ${row.computation.halfDays}H · ${formatDayCount(row.computation.unpaidLeaveDays)}LWP${
+                            row.computation.unpaidHalfLeaveDays ? ` · ${row.computation.unpaidHalfLeaveDays}HL unpaid` : ""})`}
                             value={`−${formatCurrency(row.salaryDeduction)}`} negative />
                         )}
                         <Row label={`Incentives · ${row.rate}% of ${formatCurrency(row.salesBase)}${row.incentiveWithheld ? " · withheld, under 75% of target" : ""}`}

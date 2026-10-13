@@ -10,10 +10,11 @@ import {
  */
 
 describe("parsePosterSize", () => {
-  it("defaults to 4:5 at 1080×1350", () => {
-    expect(DEFAULT_POSTER_SIZE).toBe("4:5");
+  // The owner, 2026-10-12: "poster ratio 9:16" (it was 4:5).
+  it("defaults to 9:16 at 1080×1920", () => {
+    expect(DEFAULT_POSTER_SIZE).toBe("9:16");
     const s = parsePosterSize(undefined);
-    expect(s).toMatchObject({ kind: "preset", ratio: "4:5", width: 1080, height: 1350, orientation: "portrait" });
+    expect(s).toMatchObject({ kind: "preset", ratio: "9:16", width: 1080, height: 1920, orientation: "portrait" });
   });
 
   it("reads all four presets with the shorter side at 1080", () => {
@@ -40,11 +41,11 @@ describe("parsePosterSize", () => {
     expect(parsePosterSize("1200X1800px")).toMatchObject({ kind: "pixels", ratio: "2:3", value: "1200x1800" });
   });
 
-  it("refuses sizes an image model cannot use, and falls back to 4:5", () => {
+  it("refuses sizes an image model cannot use, and falls back to the 9:16 default", () => {
     for (const bad of ["", "abc", "0:5", "5:0", "101:5", "50x50", "20000x1000", "4:5:6"]) {
       expect(tryParsePosterSize(bad)).toBeNull();
       expect(isValidPosterSize(bad)).toBe(false);
-      expect(parsePosterSize(bad).value).toBe("4:5");
+      expect(parsePosterSize(bad).value).toBe("9:16");
     }
   });
 });

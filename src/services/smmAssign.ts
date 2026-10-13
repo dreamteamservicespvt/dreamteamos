@@ -23,7 +23,7 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { createWorkAssignment, nextWorkUniqueId } from "@/services/workAssign";
 import { fetchOrder } from "@/services/orders";
-import { fetchCampaign, setCampaignTeam } from "@/services/smm";
+import { assertMayManageMonths, fetchCampaign, setCampaignTeam } from "@/services/smm";
 import { clipsPerVideoOf, isNoSaleMonth, jobsByMember, tracksFromTeam, videoDuration } from "@/utils/smmPackage";
 import type { ActivityActor } from "@/services/activityLog";
 import type { AppUser, OrderTrack, WorkAssignment } from "@/types";
@@ -156,6 +156,9 @@ export async function assignSmmMonth(params: {
 }): Promise<SmmAssignResult> {
   const { campaignId, assigner, actor } = params;
   const result: SmmAssignResult = { created: [], updated: [], withdrawn: [], keptStarted: [], skippedInactive: [] };
+  // Jobs are created and withdrawn BEFORE the month's team is written, so the view-only Social Media
+  // Team Lead is stopped here, not only by setCampaignTeam's own guard (2026-10-12).
+  assertMayManageMonths();
 
   const campaign = await fetchCampaign(campaignId);
   if (!campaign) throw new Error("This month no longer exists.");

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { format, parse } from "date-fns";
-import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import { currentPayMonth, deductionsFor, formatDays, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import {
   AlertCircle, Banknote, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight,
   Clock, Download, IndianRupee, ShieldCheck, TrendingUp, Wallet,
@@ -310,7 +310,8 @@ function DeductLine({ label, days, amount }: { label: string; days: number; amou
   return (
     <div className="flex items-center justify-between">
       <span className="text-muted-foreground">
-        {label} <span className="text-[11px]">({days} {days === 1 ? "day" : "days"})</span>
+        {/* "half a day" for a ½ — unpaid leave can end in a half since half-day leave (2026-10-12). */}
+        {label} <span className="text-[11px]">({formatDays(days)})</span>
       </span>
       <span className="font-mono tabular-nums text-destructive">−{formatCurrency(amount)}</span>
     </div>

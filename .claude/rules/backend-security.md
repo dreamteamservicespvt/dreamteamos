@@ -120,7 +120,11 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
 - **Firestore rules:** the intended model is in `docs/firestore-rules.md`. It was recorded
   **not published** on 2026-08-03, with unauthenticated reads of `employee_profiles` (PAN, Aadhaar,
   salary) returning 200 at the time. Current live state is **[NOT CONFIRMED]**. The doc includes a
-  curl check that should return 403 for each sensitive collection once published.
+  curl check that should return 403 for each sensitive collection once published. **2026-10-12:**
+  `smm_campaigns` got its first own rule (kept out of the catch-all) — the view-only Social Media Team Lead
+  updates only months she is on and creates / deletes none; the same check runs in the browser before every
+  month write (`services/smm.assertMayChangeMonth` / `assertMayManageMonths`, reading the signed-in user from
+  the auth store), so the screens, the services and the rule agree (`smm.md` §9.9).
 - **Secrets in source (values not reproduced here):** Firebase web config (public by design) in
   `services/firebase.ts` and duplicated in `services/secondaryAuth.ts`; a **Gemini API key** in
   `services/gemini.ts` (dead code); **Metered.ca TURN username/credential** in
@@ -230,9 +234,8 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
    completed `onboarding_invites`.
 5. **Deleting a member leaves their Firebase Auth account** (only Firestore docs are deleted), so
    the email cannot be reused and the auth record lingers.
-6. **One TypeScript error:** `src/components/chat/VideoCallManager.tsx(823)` — `Plugins` does not
-   exist on `CapacitorGlobal` (both `tsconfig.check.json` and `tsconfig.app.json`). Build is
-   unaffected (Vite does not typecheck).
+6. ~~One TypeScript error~~ — FIXED in `5ca75b0` (2026-10-12): `VideoCallManager.tsx` no longer reads `Plugins` off
+   `CapacitorGlobal`; `npx tsc -p tsconfig.check.json --noEmit` reports 0 errors.
 7. **Lint debt:** `npx eslint .` reports 599 problems (527 errors, 72 warnings; 498 are
    `no-explicit-any`). Lint is not part of the build.
 8. **Unscoped whole-collection listeners** (read-quota risk) remain in main-admin,

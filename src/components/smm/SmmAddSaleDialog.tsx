@@ -16,9 +16,10 @@
  *   • A client the company was serving BEFORE sales were recorded in the app gets "Add a month that
  *     had no sale" (2026-10-03): the salesperson who looks after them, then the month set up by hand.
  *     It shows in the salesperson's login with its dates and counts in nobody's revenue or commission;
- *     their Renew makes the next month a sale (services/smmSetup.addNoSaleMonth). Since 2026-10-05 the
- *     Social Media Team Lead may add one too, a past month keeps the names of who did its work (no job
- *     cards), and an earlier month added after a later one joins the client's run.
+ *     their Renew makes the next month a sale (services/smmSetup.addNoSaleMonth). Since 2026-10-05 a
+ *     past month keeps the names of who did its work (no job cards), and an earlier month added after a
+ *     later one joins the client's run. (The Social Media Team Lead could add one from 2026-10-05 until
+ *     2026-10-12, when the owner made her view-only — the dialog is the three admins' again.)
  *   • Every MONTH on the number is listed too (2026-10-05), with Open month — the sales list only knew
  *     months with a sale behind it, so a number whose month had no sale looked empty, and "already has
  *     a month on these dates" pointed at a month nobody could find. That refusal now links to the month.
@@ -457,9 +458,10 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
               </button>
             )}
             {/*
-              The Social Media Team Lead (2026-10-05) may add a month that had no sale but not record a sale
-              — that carries money and commission. Said here, so a fresh number never leaves them looking at
-              "No social media sale has been recorded" with nothing to press (the owner's screenshot).
+              Anybody who may look a number up here but not record a sale (that carries money and commission)
+              is told who does — so a fresh number never leaves them looking at "No social media sale has been
+              recorded" with nothing to press (the owner's screenshot, 2026-10-05, from the Social Media Team
+              Lead, who has not opened this dialog since she became view-only on 2026-10-12).
             */}
             {records && allowNewSale && !canRecord && (
               <p data-test="smm-add-sale-new-who" className="rounded-lg border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">

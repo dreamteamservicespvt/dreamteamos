@@ -15,7 +15,7 @@ import { isBankComplete, isBankVerified, payoutMethodOf, payoutSummary, verifyEm
 import { setEmployeeId } from "@/services/employment";
 import { isLinePaid, markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
 import { downloadPayslip } from "@/utils/payslipPdf";
-import { currentPayMonth, deductionsFor, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import { currentPayMonth, deductionsFor, formatDays, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
 import { useTechProductivity } from "@/hooks/useTechProductivity";
 import { formatRatio, ratioBand, RATIO_BAND_STYLE, RATIO_TARGET, RATIO_LIMIT } from "@/utils/techProductivity";
 import { isActiveUser } from "@/utils/roleHelpers";
@@ -247,7 +247,10 @@ export default function Payroll() {
 
   const handleExport = () => {
     const headers = [
-      "Employee", "Monthly Salary", "Absent", "Half Days", "Unpaid Leave", "Deductions", "Net Payable",
+      "Employee", "Monthly Salary", "Absent", "Half Days", "Unpaid Leave",
+      // Half-day leave (2026-10-12): inside the allowance it costs nothing; past it, what a half day costs.
+      "Half-day Leave (paid)", "Half-day Leave (unpaid)",
+      "Deductions", "Net Payable",
       // The productivity half. Exported alongside the cost because the comparison is the point —
       // a spreadsheet of salaries with no output beside them is what this replaces.
       "Videos Delivered", "Work Value", "Pay-to-Work %",
@@ -261,7 +264,10 @@ export default function Payroll() {
         const prod = productivity[r.member.uid];
         return [
           r.member.name, r.computation.monthlySalary, r.computation.absentDays, r.computation.halfDays,
-          r.computation.unpaidLeaveDays, Math.round(total), Math.round(netOf(r)),
+          // Days, as a spreadsheet wants them — unpaid leave can be 0.5.
+          r.computation.unpaidLeaveDays,
+          r.computation.paidHalfLeaveDays ?? 0, r.computation.unpaidHalfLeaveDays ?? 0,
+          Math.round(total), Math.round(netOf(r)),
           prod?.videos ?? 0, Math.round(prod?.workValue ?? 0),
           // Blank rather than 0 when nothing was delivered: 0% is the best possible score, and a
           // spreadsheet cannot show a tooltip explaining that it means the opposite.
@@ -497,7 +503,7 @@ export default function Payroll() {
                         </div>
                         {dedRows.map(d => (
                           <div key={d.label} className="mt-1.5 flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">{d.label} ({d.days} {d.days === 1 ? "day" : "days"})</span>
+                            <span className="text-muted-foreground">{d.label} ({formatDays(d.days)})</span>
                             <span className="font-mono tabular-nums text-destructive">−{formatCurrency(d.amount)}</span>
                           </div>
                         ))}

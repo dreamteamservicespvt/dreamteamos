@@ -20,10 +20,10 @@ afterEach(cleanup);
 
 const FACTS: RunFacts = {
   mode: "video", clipCount: 4, aspectRatio: "9:16", hasLogo: true, nameBoard: false,
-  onLocation: false, locationPhotos: 0, castLabel: "", conceptCount: 3,
+  onLocation: false, locationPhotos: 0, castLabel: "",
 };
 const PROFILE: RunProfile = {
-  mode: "video", clipCount: 4, fileCount: 2, locationPhotos: 0, characterPack: false, customScript: false, conceptCount: 3,
+  mode: "video", clipCount: 4, fileCount: 2, locationPhotos: 0, characterPack: false, customScript: false,
 };
 
 describe("the first asset", () => {
@@ -77,9 +77,9 @@ describe("the member's tasks", () => {
     expect(tasks.find((t) => t.id === "logo")!.title).toBe("Attach the client logo in the tab");
   });
 
-  it("sends a poster run to Gemini, one tab per concept", () => {
-    const tasks = buildMissionTasks({ ...FACTS, mode: "poster", conceptCount: 5 });
-    expect(tasks[0]).toMatchObject({ kind: "tabs", tabs: 5, href: GEMINI_URL });
+  it("sends a poster run to ONE Gemini tab — one prompt per run since 2026-10-12", () => {
+    const tasks = buildMissionTasks({ ...FACTS, mode: "poster" });
+    expect(tasks[0]).toMatchObject({ kind: "tabs", tabs: 1, href: GEMINI_URL, title: "Open a Gemini tab" });
     expect(tasks.some((t) => t.href === FLOW_URL)).toBe(false);
   });
 
@@ -100,7 +100,7 @@ describe("the member's tasks", () => {
 
   it("summarises the run in one line", () => {
     expect(runSummary({ ...FACTS, castLabel: "Motu Patlu", onLocation: true })).toBe("4 clips · 9:16 · Motu Patlu · shot on location");
-    expect(runSummary({ ...FACTS, mode: "poster", conceptCount: 1 })).toBe("1 poster concept");
+    expect(runSummary({ ...FACTS, mode: "poster" })).toBe("1 poster prompt");
   });
 });
 

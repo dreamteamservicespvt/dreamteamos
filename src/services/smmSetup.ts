@@ -29,8 +29,8 @@ import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { adminAssignNumber } from "@/services/numberLock";
 import { fetchOrder, orderDocId, restoreOrders, upsertOrderForSale } from "@/services/orders";
 import {
-  buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign, fileFollowedHistoryMonths,
-  monthPromise, saveMonthSetup, setCampaignTeam, setMonthCommitments, setMonthPlatforms,
+  assertMayManageMonths, buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign,
+  fileFollowedHistoryMonths, monthPromise, saveMonthSetup, setCampaignTeam, setMonthCommitments, setMonthPlatforms,
 } from "@/services/smm";
 import { assignSmmMonth, fetchMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
 import { dayToDate, isoDay } from "@/utils/smmPlan";
@@ -261,6 +261,7 @@ export interface MonthSetupInput {
  * there was nothing to change.
  */
 export async function renameMonth(campaignId: string, name: string): Promise<boolean> {
+  assertMayManageMonths(); // the view-only Social Media Team Lead (2026-10-12)
   const next = name.trim().replace(/\s+/g, " ");
   if (!next) throw new Error("Give the month a name.");
   const before = await fetchCampaign(campaignId);
@@ -315,6 +316,8 @@ export async function applyMonthSetup(
   actor: SetupActor,
   opts: { existingAssignments?: WorkAssignment[] } = {},
 ): Promise<MonthSetupResult> {
+  // Before the first write: setup renames, recounts and hands out jobs (2026-10-12, the view-only lead).
+  assertMayManageMonths();
   if (setup.businessName?.trim()) await renameMonth(campaignId, setup.businessName);
   if (setup.commitments) await setMonthCommitments(campaignId, setup.commitments);
   // After the counts, so rows added for a higher count move to the new accounts with the rest.
@@ -421,6 +424,7 @@ export function historySetupProblem(setup: MonthSetupInput, today: string): stri
  * that (see `historyTeam`).
  */
 export async function applyHistorySetup(campaignId: string, setup: MonthSetupInput, actor: SetupActor): Promise<void> {
+  assertMayManageMonths();
   const problem = historySetupProblem(setup, isoDay(new Date()));
   if (problem) throw new Error(problem);
   if (setup.businessName?.trim()) await renameMonth(campaignId, setup.businessName);
@@ -487,6 +491,7 @@ export async function setupSaleMonth(params: {
   actor: SetupActor;
   existingAssignments?: WorkAssignment[];
 }): Promise<MonthSetupResult> {
+  assertMayManageMonths();
   const { leadId, itemIndex, setup, actor } = params;
   const leadSnap = await getDoc(doc(db, "leads", leadId));
   if (!leadSnap.exists()) throw new Error("That sale's lead no longer exists.");
@@ -874,6 +879,8 @@ export function noSaleSetupProblem(input: Pick<NoSaleMonthInput, "phone" | "sell
  * refused — new business is a sale.
  */
 export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSetupResult> {
+  // The Social Media Team Lead added these from 2026-10-05 until the owner made her view-only (2026-10-12).
+  assertMayManageMonths();
   const { seller, packageKey, platforms, setup, actor } = params;
   const today = isoDay(new Date());
   const phone = normalizePhone(params.phone);

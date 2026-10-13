@@ -49,13 +49,20 @@ tech admin). Filters like `u.createdBy === teamAdminUid` recur across pages.
   `AppLayout` redirects any other path to `/tech/create`. Excluded from team lists, attendance,
   payroll and reports. Their `ai_generations` are visible to the tech admin (`AdsHistoryModal`).
   Set by tech admin in My Team.
-- `smmLeader: true` — shown as **Social Media Team Lead** (2026-10-01): sees every SMM campaign, may
-  set up, assign and **delete** months (`utils/smmPlan.isSmmOverseer`, `canDeleteSmmCampaign`), since
-  2026-10-05 **add a month that had no sale** (`canAddNoSaleMonth` — but never record a sale,
-  `canRecordSmmSaleForSeller`), is notified when a month is sold (`smm_new_month`), and since 2026-10-08 sees
-  **Social Media → Attendance** — TODAY's attendance of the Social Media team for her daily meeting (who to
-  call, who is not coming, who is in), view only for the days, and may correct who is on the team with **Edit
-  team** (`utils/smmAttendance.canSeeSmmAttendance` / `canEditSmmTeam`; no new route). Keeps their normal role. Appointed by the tech admin
+- `smmLeader: true` — shown as **Social Media Team Lead** (2026-10-01). **A hybrid role since 2026-10-12
+  (owner):** SEES every SMM month and everyone's work on it (`utils/smmPlan.isSmmOverseer`) but is **view-only**
+  on a month somebody else works, and on a month she is personally on (a seat / `watchers`) has exactly a
+  member's working rights — one answer, `smmPlan.canEditCampaign`; `isViewOnlySmmLead` = the flag on a role that
+  is not an SMM admin (a Tech Team Leader or admin with the flag keeps their role's full rights). She sets up,
+  assigns, renames, moves pieces in and deletes NO month (she could set up / assign / delete 2026-10-01 → 10-12)
+  and adds no month that had no sale (`canAddNoSaleMonth`, hers 2026-10-05 → 10-12); she never records a sale
+  (`canRecordSmmSaleForSeller`). Enforced in the screens, in the services (`services/smm.assertMayChangeMonth` /
+  `assertMayManageMonths`, reading the signed-in user) and in the `smm_campaigns` Firestore rule (once
+  published) — see `smm.md` §9.9 "The Team Lead, view-only". Is notified when a month is sold (`smm_new_month`,
+  informational since 2026-10-12), and since 2026-10-08 sees **Social Media → Attendance** — TODAY's attendance
+  of the Social Media team for her daily meeting (who to call, who is not coming, who is in), view only for the
+  days, and may correct who is on the team with **Edit team** (`utils/smmAttendance.canSeeSmmAttendance` /
+  `canEditSmmTeam`; kept by the owner on 2026-10-12; no new route). Keeps their normal role. Appointed by the tech admin
   or main admin in the Team Lead panel at the top of `/smm` (`SmmTeamLeadPanel`, `canAppointSmmLead`)
   or the megaphone toggle in My Team; both go through `services/smm.setSmmTeamLead` (notifies them).
 - **Invoice Builder switch** (2026-10-08) — not a per-user flag: ONE company-wide setting,
@@ -91,8 +98,10 @@ legacy users without the field active.
    no `orderChat` claim), `isAdmin` (main/tech/sales admin), `isManager` (+ team leader). Special
    rules cover `employee_profiles`, `public_badges`, `member_credentials`, `hr_documents`,
    `company_settings`, `hr_counters`, `onboarding_invites`, `cinematic_projects`, `order_chats`
-   (+messages), `calls`, the AI-account collections, and (2026-10-08) `invoices`, `invoice_counters`,
-   `invoice_numbers`, `invoice_settings` (`canUseInvoices`, `invoiceAdmin`; kept out of the catch-all).
+   (+messages), `calls`, the AI-account collections, (2026-10-08) `invoices`, `invoice_counters`,
+   `invoice_numbers`, `invoice_settings` (`canUseInvoices`, `invoiceAdmin`; kept out of the catch-all), and
+   (2026-10-12) `smm_campaigns` (`isViewOnlySmmLead`: the Social Media Team Lead updates only months she is on and
+   creates / deletes none; every other role as under the catch-all).
    Everything else falls to a catch-all: **any staff may read and write**.
    Publication status: **[NOT CONFIRMED]**. It was verified as *not published* on 2026-08-03.
 
@@ -127,17 +136,17 @@ legacy users without the field active.
 | Assign bulk video slots | ✅ | ✅ | ✅ | | | | |
 | Tick bulk slot done | ✅ | ✅ | ✅ | own slot | | | |
 | Edit order progress counters (non-derived) | ✅ | ✅ | ✅ | track holder | | | |
-| See all SMM months | ✅ | ✅ | ✅ | smmLeader | ✅ | | |
+| See all SMM months | ✅ | ✅ | ✅ | smmLeader (view only on others' months, 2026-10-12) | ✅ | | |
 | Add SMM sale for a salesperson (`canRecordSmmSaleForSeller`) | ✅ | ✅ | ✅ | | | | |
-| Add an SMM month that had no sale — not counted (`canAddNoSaleMonth`) | ✅ | ✅ | ✅ | smmLeader (2026-10-05) | | sees it, renews it | |
-| Set up / assign / edit an SMM month (`canSetUpSmm`) | ✅ | ✅ | ✅ | smmLeader | | | |
+| Add an SMM month that had no sale — not counted (`canAddNoSaleMonth`) | ✅ | ✅ | ✅ | (smmLeader 2026-10-05 → 10-12 only) | | sees it, renews it | |
+| Set up / assign / edit an SMM month (`canSetUpSmm`) | ✅ | ✅ | ✅ | (smmLeader until 2026-10-12) | | | |
 | Renew an SMM month — as a sale (`canRenewSmm`) | | | | | | ✅ own month | |
 | Social Media → Money: company renewals in ₹ (`canSeeSmmMoney`, 2026-10-05) | ✅ | ✅ | | | ✅ | own card only | |
 | Social Media → Attendance: today's board of the Social Media team (days view only) + Edit team (`canSeeSmmAttendance` / `canEditSmmTeam`, 2026-10-08) | ✅ | ✅ | smmLeader | smmLeader | | | |
 | 11 AM / 5 PM "update your posts" popup (`SmmStatusCheckPopup`, 2026-10-05) | | if on a month's team | if on a month's team | if on a month's team | | | |
-| Delete an SMM month | ✅ | ✅ | ✅ (2026-10-03) | smmLeader | | | |
+| Delete an SMM month | ✅ | ✅ | ✅ (2026-10-03) | (smmLeader until 2026-10-12) | | | |
 | Appoint / remove the Social Media Team Lead | ✅ | ✅ | | | | | |
-| Edit an SMM month | overseer | overseer | overseer | if watcher | overseer | if seller/watcher | |
+| Work an SMM month — posts, approvals, ads, money, client messages (`canEditCampaign`; also in the services and the `smm_campaigns` rule since 2026-10-12) | ✅ | ✅ | ✅ | if on the month (watcher / seat) — the Team Lead too, view-only elsewhere | ✅ | if seller/watcher | |
 | Manage client profiles | ✅ | | | | ✅ | | |
 | Import/backfill clients | ✅ | ✅ | | | | | |
 | Issue HR documents / delete from register | ✅ | ✅ | send agreements, no delete | | ✅ | | |

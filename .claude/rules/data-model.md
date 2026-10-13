@@ -57,8 +57,11 @@ type, bodyText, `signatories[]`, status `issued`/`signed`/`declined`, view/downl
 (card-face only) · `onboarding_invites/{10-char id}` (terms, frozen letters, signatures, access
 code, generated password after completion) · `member_credentials/{uid}` (**readable passwords**)
 · `daily_checkins` · `attendance/{memberId}_{date}` (`status` full / half / absent / leave / holiday, and since
-2026-10-10 `holiday_work` (W) / `comp_off` (C) — comp-off, `people.md` §9.13) · `holidays/{date}` · `salesCheckins` ·
-`leave_requests` · `salary_packages` · `payroll_config/default` · `employee_bank/{uid}` ·
+2026-10-10 `holiday_work` (W) / `comp_off` (C) — comp-off, `people.md` §9.13; since 2026-10-12 `half_leave` (HL, half-day
+leave inside the allowance)) · `holidays/{date}` · `salesCheckins` ·
+`leave_requests` (2026-10-12: `duration` `full_day` / `half_day` — absent = full day; a half day has `toDate = fromDate`;
+`kind` deprecated, no longer written; `leaveDates` / `absentDates` read with `duration`: a half day's date is in
+`leaveDates` when written HL, in `absentDates` when written H) · `salary_packages` · `payroll_config/default` · `employee_bank/{uid}` ·
 `payroll_runs/{month}` (typed and read, but **nothing in the app writes it**) · `payroll_lines/{month}_{memberId}`
 (the payment record — `paymentStatus`, `netSalary` = amount paid, frozen `computation`; 2026-10-09: `memberRole`, and
 `incentive {salesBase, rate, amount, withheld}` on a sales payment; `monthlySalary` = the computation's) ·
@@ -106,7 +109,7 @@ orders 0..1─* invoices                    via invoice.sourceOrderId ("Fill fro
 - **SMM item:** `planned`, `in_progress`, `awaiting_approval`, `changes_requested`, `approved`,
   `scheduled`\*, `posted`\* (\*approval required).
 - **Onboarding invite:** `sent`, `offer_accepted`, `completed`, `declined`, `revoked`.
-- **Leave:** `pending`, `approved`, `rejected`, `cancelled`. **Check-in:** `checked_in`,
+- **Leave:** `pending`, `approved`, `rejected`, `cancelled` (duration `full_day` / `half_day`, 2026-10-12). **Check-in:** `checked_in`,
   `pending_approval`, `approved`, `rejected`.
 - **Invoice.status** (2026-10-08): `draft` (no number; autosaves; deletable) → `issued` (numbered by
   `generateInvoice`; still editable, keeps its number, `revision` +1) → `paid` / `cancelled` (and back to

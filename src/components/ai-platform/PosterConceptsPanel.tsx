@@ -1,10 +1,11 @@
 /**
- * Poster Creation output — the concepts, each ready to run in an image generator.
+ * Poster Creation output — the poster prompt, ready to run in an image generator.
  *
- * One card per concept: what the idea is, why it suits this client, the exact words on the poster,
- * and the prompt with a copy button. A refine box per card rewrites just that concept. The logo
- * reminder sits at the top because every prompt refers to "the attached logo" — a prompt run
- * without the logo attached produces a poster with an invented one.
+ * Since 2026-10-12 (owner) a run makes ONE prompt in ONE conceptual ad type: its card shows the ad type,
+ * one line on why it fits, the prompt with Copy prompt, and a Refine box (utils/posterAdType,
+ * geminiService.refinePosterConcept). A generation saved before then holds one to six concepts with a
+ * headline and a negative prompt; those cards render exactly as they did. The logo reminder sits at the
+ * top because the prompt says "the attached logo" — run without the logo, it gets an invented one.
  */
 import React, { useState } from 'react';
 import { Check, Copy, ExternalLink, Loader2, Paperclip, Wand2, Lightbulb, Type as TypeIcon } from 'lucide-react';
@@ -17,6 +18,14 @@ import { BRAND_GRADIENT } from './brand';
 
 /** Where the member runs the prompts — Gemini's image model takes an attached logo. */
 export const POSTER_GENERATOR_URL = 'https://gemini.google.com/app';
+
+/** How the ad type was chosen, in the member's words (a 2026-10-12 poster). */
+const CHOSEN_BY_WORDS: Record<NonNullable<PosterConcept['chosenBy']>, string> = {
+  analysis: '✨ Best fit for this business',
+  fixed: 'Style set for this poster',
+  kept: 'Ad type kept',
+  rule: 'Chosen by the app (the AI did not answer)',
+};
 
 interface PosterConceptsPanelProps {
   concepts: PosterConcept[];
@@ -43,6 +52,8 @@ export default function PosterConceptsPanel({
   const card = isDark ? 'bg-[rgba(7,17,38,0.62)] border-white/[0.07] shadow-black/10' : 'bg-white border-slate-200 shadow-slate-200/50';
   const muted = isDark ? 'text-slate-400' : 'text-slate-500';
   const strong = isDark ? 'text-slate-100' : 'text-slate-800';
+  /** A 2026-10-12 run: one prompt in one ad type. Older saves hold concepts and keep their old view. */
+  const single = concepts.length === 1 && !!concepts[0].adTypeName;
 
   return (
     <div className="space-y-4" data-test="poster-concepts">
@@ -50,13 +61,14 @@ export default function PosterConceptsPanel({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className={cn('text-sm font-bold uppercase tracking-wide', strong)}>
-              Poster concepts ({concepts.length})
+              {single ? 'Poster prompt' : `Poster concepts (${concepts.length})`}
             </h3>
             <p className={cn('mt-0.5 text-xs', muted)}>
-              {posterSizeLabel(posterSize)}{occasion ? ` · 🎊 ${occasion}` : ''} · pick one, copy its prompt, run it in the image generator.
+              {posterSizeLabel(posterSize)}{occasion ? ` · 🎊 ${occasion}` : ''} · {single ? 'copy the prompt and run it in the image generator.' : 'pick one, copy its prompt, run it in the image generator.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {!single && (
             <button
               type="button"
               data-test="poster-copy-all"
@@ -67,6 +79,7 @@ export default function PosterConceptsPanel({
               {copied === 'all' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
               {copied === 'all' ? 'Copied all' : 'Copy all'}
             </button>
+            )}
             <a
               href={POSTER_GENERATOR_URL}
               target="_blank"
@@ -81,7 +94,7 @@ export default function PosterConceptsPanel({
           <p className={cn('mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed',
             isDark ? 'border-amber-700/50 bg-amber-950/30 text-amber-200' : 'border-amber-300 bg-amber-50 text-amber-800')}>
             <Paperclip className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>Attach the client's <b>logo</b> with every prompt. The prompts say "the attached logo" and never describe it, so the generator uses the real one.</span>
+            <span>Attach the client's <b>logo</b> with {single ? 'the prompt' : 'every prompt'}. {single ? 'It says "the attached logo" and never describes it' : 'The prompts say "the attached logo" and never describe it'}, so the generator uses the real one.</span>
           </p>
         )}
       </div>
@@ -95,17 +108,28 @@ export default function PosterConceptsPanel({
               isDark ? 'border-white/[0.07] bg-[rgba(7,17,38,0.72)]' : 'border-slate-200 bg-slate-50')}>
               <div className={cn('absolute bottom-0 left-0 top-0 w-1', BRAND_GRADIENT)} />
               <div className="min-w-0 pl-1.5">
-                <p className={cn('text-[10px] font-semibold uppercase tracking-wider', muted)}>Concept {i + 1}</p>
-                <h4 className={cn('truncate text-sm font-bold', strong)}>{c.title}</h4>
+                <p className={cn('text-[10px] font-semibold uppercase tracking-wider', muted)}>{c.adTypeName ? 'Ad type' : `Concept ${i + 1}`}</p>
+                {/* Wraps rather than cuts: "Animal-based Visual Metaphor Ads" is the type's whole name. */}
+                <h4 data-test={c.adTypeName ? 'poster-ad-type' : undefined} className={cn('text-sm font-bold', c.adTypeName ? 'break-words' : 'truncate', strong)}>
+                  {c.adTypeName || c.title}
+                </h4>
               </div>
               <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium',
                 isDark ? 'bg-violet-900/40 text-violet-300' : 'bg-violet-100 text-violet-700')}>
-                {posterStyleLabel(c.style)}
+                {c.adTypeName ? (c.chosenBy ? CHOSEN_BY_WORDS[c.chosenBy] : posterStyleLabel(c.style)) : posterStyleLabel(c.style)}
               </span>
             </div>
 
             <div className="space-y-3 p-4">
-              {c.idea && (
+              {c.adTypeName ? (
+                // Why this type, one line — and the benefit the poster is about.
+                (c.reason || c.benefit) && (
+                  <p data-test="poster-reason" className={cn('flex items-start gap-2 text-sm', strong)}>
+                    <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                    <span className="min-w-0">{c.reason}{c.benefit ? <span className={cn('block text-xs', muted)}>Main benefit: {c.benefit}</span> : null}</span>
+                  </p>
+                )
+              ) : c.idea && (
                 <p className={cn('flex items-start gap-2 text-sm', strong)}>
                   <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                   <span>{c.idea}{c.whyItWorks ? <span className={cn('block text-xs', muted)}>{c.whyItWorks}</span> : null}</span>
@@ -158,7 +182,9 @@ export default function PosterConceptsPanel({
                       onRefine(i, refineText[i].trim());
                     }
                   }}
-                  placeholder="Change this concept — e.g. use a lotus instead, warmer colours, bigger logo"
+                  placeholder={c.adTypeName
+                    ? 'Change this prompt — e.g. mention the Diwali offer, leave out the address, make it a shadow ad'
+                    : 'Change this concept — e.g. use a lotus instead, warmer colours, bigger logo'}
                   className={cn('min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2',
                     isDark ? 'border-white/10 bg-[#0B1020] text-slate-200 placeholder-slate-500 focus:ring-blue-800' : 'border-slate-300 bg-white text-slate-700 placeholder-slate-400 focus:ring-blue-200')}
                 />
@@ -166,7 +192,7 @@ export default function PosterConceptsPanel({
                   type="button"
                   disabled={refining || !(refineText[i] || '').trim()}
                   onClick={() => onRefine(i, (refineText[i] || '').trim())}
-                  className="ag-btn ag-btn--primary ag-btn--sm h-9 w-full text-xs"
+                  className="ag-btn ag-btn--primary ag-btn--sm h-9 w-full text-xs sm:w-auto sm:shrink-0"
                 >
                   {refining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
                   {refining ? 'Refining…' : 'Refine'}

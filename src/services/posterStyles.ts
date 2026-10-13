@@ -4,9 +4,14 @@
  * There is no fine-tuning here and there should not be: the image and text models the team uses
  * already know how to draw. What they do not know is the TEAM'S taste — the eight families of
  * conceptual advertising the team studies and sells, and how a festival is folded into a client's
- * business. That knowledge lives in this file as data, and the concept prompt
- * (services/prompts/posterConcept) is built from it. Adding a style is a data edit here; nothing
- * else changes.
+ * business. That knowledge lives in this file as data.
+ *
+ * ── Since 2026-10-12 (owner) ─────────────────────────────────────────────────────────────────
+ * A poster prompt is ONE ad type in the owner's three sentences (utils/posterAdType), so the prompt
+ * no longer carries these guides and references. This file still gives the picker its options and
+ * labels (`posterStyleOptions`, `posterStyleLabel`, shown on jobs and in the WhatsApp brief), and its
+ * ids ARE the ad types' ids — a job's `posterStyle` is the type the analysis must use. A new style
+ * needs an entry in POSTER_AD_TYPES too (its name, when it fits, its fallback keywords).
  *
  * Every style carries:
  *  - the MECHANISM — the transferable rule that makes the reference ads work. This is the part
@@ -437,7 +442,7 @@ export function posterStyleLabel(id?: string | null): string {
 /** Options for a picker, best fit first. */
 export function posterStyleOptions(): { id: string; label: string; emoji: string; short: string; keyword: string }[] {
   return [
-    { id: AUTO_POSTER_STYLE, label: "Best fit", emoji: "✨", short: "The AI reads the business and picks the strongest style for each concept", keyword: "The right idea for this client" },
+    { id: AUTO_POSTER_STYLE, label: "Best fit", emoji: "✨", short: "The AI reads the business and picks the ONE style that fits it best", keyword: "The right idea for this client" },
     ...POSTER_STYLES.map(({ id, label, emoji, short, keyword }) => ({ id, label, emoji, short, keyword })),
   ];
 }

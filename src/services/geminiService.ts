@@ -8,7 +8,6 @@ import {
   MAIN_FRAME_SYSTEM_PROMPT,
   MULTI_FRAME_SYSTEM_PROMPT,
 
-  POSTER_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
   VOICEOVER_REPAIR_SYSTEM_PROMPT,
   SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT,
@@ -105,11 +104,14 @@ import { CAST_WARDROBE_SYSTEM_PROMPT, castWardrobeRequest, type CastWardrobeInpu
 import { inventedAddressIssue, missingAddressIssue, spokenAddressOf } from "@/utils/spokenAddress";
 import { addressRuleBlock } from "./prompts/address";
 import {
-  POSTER_CONCEPT_SYSTEM_PROMPT, POSTER_CONCEPT_USER_PROMPT, POSTER_CONCEPT_REFINE_SYSTEM_PROMPT,
+  POSTER_ANALYSIS_SYSTEM_PROMPT, POSTER_ANALYSIS_USER_PROMPT, POSTER_REFINE_ANALYSIS_SYSTEM_PROMPT,
+  POSTER_REFINE_ANALYSIS_USER_PROMPT,
 } from "./prompts/posterConcept";
-import { getPosterStyle, AUTO_POSTER_STYLE } from "./posterStyles";
 import { DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
-import { finalizePosterConcepts, normalizePosterConcept, parsePosterConcepts } from "@/utils/posterConcepts";
+import {
+  assembleConceptPoster, conceptFromPoster, parsePosterAnalysis, posterAdTypeById, posterAdTypeName,
+  readConceptPosterPrompt, refineAnalysis, type PosterAnalysis,
+} from "@/utils/posterAdType";
 import {
   parseDialogueClips, readDialogueScript, validateDialogueClips, formatDialogueScript, applyNameSpellings,
   castIntegrityIssues, castScriptProblems, dialogueLabelsIn,
@@ -776,24 +778,6 @@ const labelDesignInputs = (formData: AdFormData, sceneContext: SceneContext | nu
 };
 
 /**
- * How the contact numbers go on a poster — every verified one (up to three), laid out for its count,
- * or none at all. The poster used to show "at most two", so a client with three numbers lost one.
- */
-const posterContactRule = (contacts: { display: string; whatsapp: boolean }[]): string => {
-  const list = contacts.map(c => `${c.display}${c.whatsapp ? ' (WhatsApp — give it a WhatsApp icon)' : ''}`).join('  |  ');
-  switch (contacts.length) {
-    case 0:
-      return 'NO CONTACT NUMBER was given — the poster has NO contact line, NO phone icon and NO label for one. Never write, invent or suggest a number.';
-    case 1:
-      return `CONTACT NUMBER — exactly ONE, shown once as a single prominent contact line with a phone icon: ${list}. Digit for digit; never alter, complete or add a number.`;
-    case 2:
-      return `CONTACT NUMBERS — exactly TWO, both shown, evenly balanced side by side (or stacked) in ONE contact block: ${list}. Digit for digit; never alter, complete, merge or add a number.`;
-    default:
-      return `CONTACT NUMBERS — exactly THREE, all shown, as three compact, equally sized numbers in ONE tidy row or stack: ${list}. Digit for digit; never alter, complete, merge or add a number.`;
-  }
-};
-
-/**
  * The VIDEO BOTTOM LABEL prompt — assembled in code, with no model call (prompts/lowerThird).
  *
  * Its numbers and address are the VERIFIED ones (utils/businessFacts): the pills are drawn for exactly
@@ -857,39 +841,140 @@ export const buildVideoBottomLabel = (params: {
   ].join('\n');
 };
 
-/**
- * The video kit's poster prompt (deliverable 3), from the verified facts.
- *
- * One model call, asked again once if it comes back empty — an empty poster row used to vanish from
- * the kit while the status said Completed. Whatever comes back is scrubbed of any number the business
- * never gave. Exported so a missing poster can be written on its own.
- */
-export const writeVideoPosterPrompt = async (formData: AdFormData, businessInfo: any): Promise<string> => {
-  const systemInstruction = buildRatioDirective(formData)
-    + buildNameBoardDirective(formData, businessInfo, 'layout')
-    + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
+// ── The poster: ONE conceptual ad type, analysed by Gemini, assembled in code (owner, 2026-10-12) ──
+/*
+  Both poster systems work one way now (utils/posterAdType, services/prompts/posterConcept): one Gemini call
+  ANALYSES the business and names one of the eight ad types (or writes for the type the job / member fixed),
+  with a short summary of the business; the prompt itself — the owner's three sentences and a Format line — is
+  assembled in code, with the VERIFIED numbers and address put in by code. It replaced Poster Creation's one to
+  six long art-directed concepts and the video kit's separate 150–220-word poster prompt.
+*/
+
+/** The video kit's poster is always a 9:16 vertical poster (owner, 2026-10-12: "poster ratio 9:16"). */
+export const VIDEO_POSTER_SIZE = '9:16';
+
+/** The verified numbers (one to three, as the member gave them) and address, for a poster's Business Information. */
+const posterFactsOf = (businessInfo: unknown) => {
   const facts = factsFromProfile(businessInfo);
-  const contacts = facts.phones.slice(0, MAX_LABEL_CONTACTS);
-  const addressRule = facts.address
-    ? `ADDRESS — an address IS provided, so it MUST appear in the poster, on ONE clean line, exactly as given: ${facts.address}`
-    : `NO ADDRESS was given — the poster has NO address line, NO location pin and NO label for one. Never write or invent an address, street, area or city.`;
-  const userPrompt = `Write the poster design prompt for:
-  BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
-  AD TYPE: ${formData.adType}
-  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
-  ${posterContactRule(contacts)}
-  ${addressRule}
-  Write the short, clean, plain-English poster prompt now.`;
+  return {
+    facts,
+    phones: facts.phones.slice(0, MAX_LABEL_CONTACTS).map((p) => ({ display: p.display, whatsapp: p.whatsapp })),
+    address: facts.address,
+  };
+};
+
+/** The name a poster is for: the no-logo name the member typed, else the business's own. */
+const posterBusinessName = (formData: AdFormData, businessInfo: unknown): string =>
+  (formData.noLogo && formData.logoNameText?.trim()) || extractBusinessNameFromInfo(businessInfo) || '';
+
+/**
+ * One analysis call: JSON at a low temperature — the owner asked for the type to be chosen, never drawn at
+ * random. Null when the reply cannot be read; a call that fails throws.
+ */
+const askPosterAnalysis = async (systemInstruction: string, userPrompt: string): Promise<PosterAnalysis | null> => {
+  const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    config: { systemInstruction, responseMimeType: 'application/json', temperature: 0.2 },
+  }), { effort: 'standard' });
+  return parsePosterAnalysis(response.text || '');
+};
+
+/** An answer worth using: it named a type or wrote a summary. "{}" or broken JSON is not. */
+const usablePosterAnalysis = (a: PosterAnalysis | null): a is PosterAnalysis => !!a && (!!a.adType || !!a.businessInformation);
+
+/**
+ * The first analysis, asked at most twice. It never throws: with nothing usable from the model the poster gets
+ * the code's type (`fallbackPosterAdType`) and summary (`fallbackPosterSummary`) — a poster row used to go
+ * Missing when the model came back empty twice.
+ */
+const analysePosterBusiness = async (input: {
+  fixedTypeId: string | null;
+  businessInfo: unknown;
+  businessName: string;
+  clientBrief?: string;
+  occasion?: string;
+}): Promise<PosterAnalysis | null> => {
+  const systemInstruction = POSTER_ANALYSIS_SYSTEM_PROMPT({ fixedType: posterAdTypeById(input.fixedTypeId) });
+  const userPrompt = POSTER_ANALYSIS_USER_PROMPT({
+    businessInfo: input.businessInfo, businessName: input.businessName, clientBrief: input.clientBrief, occasion: input.occasion,
+  });
   for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-      model,
-      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-      config: { systemInstruction },
-    }), { effort: 'fast' });
-    const text = stripUnverifiedNumbers((response.text || '').trim(), verifiedKeys(facts));
-    if (text.length > 40) return text;
+    try {
+      const analysis = await askPosterAnalysis(systemInstruction, userPrompt);
+      if (usablePosterAnalysis(analysis)) return analysis;
+    } catch (err) {
+      console.warn('[poster] the analysis did not answer:', err);
+      // Nothing can answer right now — asking again would only wait out the same limit.
+      if (err instanceof GeminiUnavailableError) break;
+    }
   }
-  throw new Error('The poster prompt came back empty. Press Generate on the poster row to write it again.');
+  return null;
+};
+
+/**
+ * The video kit's poster prompt (deliverable 3, "3. Poster Design") — the same analysis and assembly as Poster
+ * Creation: the campaign purpose is the ad type (a festival's name for a festival ad), the canvas always 9:16
+ * vertical, the logo or the name as a wordmark as the form says, the words in English. It cannot fail on the
+ * model (see analysePosterBusiness); whatever is printed is scrubbed of any number the business never gave.
+ * Exported so a missing poster can be written on its own.
+ */
+export const writeVideoPosterPrompt = async (
+  formData: AdFormData,
+  businessInfo: any,
+  /** Whether a logo FILE is attached — without one the business name is the wordmark, ticked or not. */
+  opts: { hasLogoFile?: boolean } = {},
+): Promise<string> => {
+  const occasion = formData.adType === 'festival' ? (formData.festivalName || '').trim() : '';
+  const businessName = posterBusinessName(formData, businessInfo);
+  const { facts, phones, address } = posterFactsOf(businessInfo);
+  const analysis = await analysePosterBusiness({
+    fixedTypeId: null, businessInfo, businessName, clientBrief: formData.textInstructions, occasion,
+  });
+  const poster = assembleConceptPoster({
+    analysis, businessInfo, businessName, brief: formData.textInstructions, occasion, phones, address,
+    posterSize: VIDEO_POSTER_SIZE,
+    hasLogo: !formData.noLogo && opts.hasLogoFile !== false,
+    nameBoardText: formData.logoNameText?.trim() || businessName,
+    textLanguage: 'English',
+  });
+  return stripUnverifiedNumbers(poster.prompt, verifiedKeys(facts));
+};
+
+/**
+ * A change asked of the video kit's poster row: the refine analysis, then the same assembly. The type changes
+ * only when the request asks for another (`refineAnalysis`); the logo / no-logo choice is the one the prompt
+ * was made with (its Format line), since the row has no logo question of its own.
+ */
+const refineVideoPosterPrompt = async (
+  currentContent: string,
+  instruction: string,
+  formData: AdFormData,
+  businessInfo: any,
+): Promise<string> => {
+  const current = readConceptPosterPrompt(currentContent);
+  const currentTypeId = current?.adTypeId ?? null;
+  const occasion = formData.adType === 'festival' ? (formData.festivalName || '').trim() : '';
+  const businessName = posterBusinessName(formData, businessInfo);
+  const { facts, phones, address } = posterFactsOf(businessInfo);
+  const raw = await askPosterAnalysis(
+    POSTER_REFINE_ANALYSIS_SYSTEM_PROMPT({ currentType: posterAdTypeById(currentTypeId), fixedType: null }),
+    POSTER_REFINE_ANALYSIS_USER_PROMPT({
+      businessInfo, businessName, clientBrief: formData.textInstructions, occasion,
+      currentPrompt: currentContent, currentBusinessInformation: current?.businessInformation, instruction,
+    }),
+  );
+  if (!usablePosterAnalysis(raw)) throw new Error('The change could not be applied — the poster prompt is unchanged. Please try again.');
+  const kept = refineAnalysis(raw, { instruction, currentTypeId });
+  const analysis = kept && { ...kept, businessInformation: kept.businessInformation || current?.businessInformation || '' };
+  const poster = assembleConceptPoster({
+    analysis, currentTypeId, businessInfo, businessName, brief: formData.textInstructions, occasion, phones, address,
+    posterSize: VIDEO_POSTER_SIZE,
+    hasLogo: current ? /attached logo/i.test(current.format) : !formData.noLogo,
+    nameBoardText: formData.logoNameText?.trim() || businessName,
+    textLanguage: 'English',
+  });
+  return stripUnverifiedNumbers(poster.prompt, verifiedKeys(facts));
 };
 
 const buildLanguageDirective = (formData: AdFormData): string => {
@@ -990,6 +1075,9 @@ export const refineSection = async (
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
+
+  // The poster row is never edited as free text: its prompt is assembled in code (2026-10-12).
+  if (sectionType === 'poster') return refineVideoPosterPrompt(currentContent, additionalInstructions, formData, businessInfo);
 
   let systemPrompt: string;
   let userPrompt: string;
@@ -1096,26 +1184,6 @@ IMPORTANT:
 - Make sure the output is a clean, copy-paste ready prompt`;
       break;
 
-    case 'poster':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + buildRatioDirective(formData)
-        + buildNameBoardDirective(formData, businessInfo, 'layout')
-        + POSTER_SYSTEM_PROMPT(formData.adType, formData.festivalName, formData.noLogo || false, resolveNameBoardText(formData, businessInfo));
-      userPrompt = `You previously generated this Poster design prompt:
-
----CURRENT PROMPT---
-${currentContent}
----END CURRENT PROMPT---
-
-The user wants the following changes/additions:
-"${additionalInstructions}"
-
-IMPORTANT:
-- Apply ONLY the requested changes
-- Keep it a SHORT, clean, plain-English poster prompt (NOT JSON, no code block)
-- Keep only real business details, no fake data, minimal poster text, no technical units like px/pt/hex
-- Output ONLY the refined plain-text prompt, no explanations`;
-      break;
-
     default:
       throw new Error(`Unknown section type: ${sectionType}`);
   }
@@ -1135,7 +1203,7 @@ IMPORTANT:
   const refined = response.text || currentContent;
 
   // A refine is a model rewrite like any other: a number it adds that the business never gave goes.
-  if (sectionType === 'header' || sectionType === 'poster') {
+  if (sectionType === 'header') {
     return stripUnverifiedNumbers(refined, verifiedKeys(factsFromProfile(businessInfo)));
   }
   // A Real Owner Face frame keeps its face lock through a refine — the model may drop a stamp it was
@@ -1901,19 +1969,19 @@ export const extractBusinessOnly = async (
   };
 };
 
-// --- Poster Creation: concept posters from the team's style library ---
-
-/** How many concepts a poster run writes when nobody says otherwise. */
-export const DEFAULT_POSTER_CONCEPT_COUNT = 3;
+// --- Poster Creation: ONE prompt in ONE conceptual ad type (owner, 2026-10-12) ---
 
 /**
- * Concept posters for a business: extract who they are, then write N distinct concepts in the
- * chosen style (or the best-fitting styles), each with a copy-paste image prompt.
- *
- * The logo and the product/premises photos are attached to the concept call as well as the
- * extraction: the art director can only build a metaphor out of "the client's real product" if it
- * can see the product. The logo is attached so it can judge the palette, and the prompt forbids it
- * from describing the logo — see services/prompts/posterConcept.
+ * @deprecated A poster run writes ONE prompt since 2026-10-12 ("do not use multiple types"). Kept so an
+ * older import still compiles; nothing reads it.
+ */
+export const DEFAULT_POSTER_CONCEPT_COUNT = 1;
+
+/**
+ * Poster Creation: extract who the business is (as before), then ONE analysis — the type (the job's or the
+ * member's fixed style, else the analysis's choice for "✨ Best fit") and the business information — and the
+ * prompt assembled in code at the poster's size. Returned as `posterConcepts: [one]`, the shape a saved
+ * generation already has.
  */
 export const generatePosterConcepts = async (
   formData: AdFormData,
@@ -1923,80 +1991,36 @@ export const generatePosterConcepts = async (
   const extracted = await extractBusinessOnly(formData, files, (step, progress) => onProgress(step, Math.min(45, progress * 0.45)));
   const businessInfo = extracted.businessInfo;
 
-  const posterSize = formData.posterSize || DEFAULT_POSTER_SIZE;
-  const styleId = formData.posterStyle || AUTO_POSTER_STYLE;
-  const style = getPosterStyle(styleId);
+  // A fixed style is used as it is; "auto" (Best fit) or nothing lets the analysis choose.
+  const fixedTypeId = posterAdTypeById(formData.posterStyle)?.id ?? null;
   const occasion = (formData.posterOccasion || '').trim();
-  const conceptCount = Math.max(1, Math.min(6, formData.posterConceptCount || DEFAULT_POSTER_CONCEPT_COUNT));
-  const businessName = (formData.noLogo && formData.logoNameText?.trim()) || extractBusinessNameFromInfo(businessInfo);
-  // Verified numbers only (utils/businessFacts) — one, two or three, exactly as the member gave them.
-  const verified = factsFromProfile(businessInfo);
-  const contacts = verified.phones.slice(0, MAX_LABEL_CONTACTS).map(p => p.display);
-  const address = verified.address;
+  const businessName = posterBusinessName(formData, businessInfo);
+  const { phones, address } = posterFactsOf(businessInfo);
 
-  onProgress(`Designing ${conceptCount} poster concept${conceptCount === 1 ? '' : 's'}${style ? ` — ${style.label}` : ''}...`, 55);
-
-  const imageParts: Array<{ inlineData: { mimeType: string; data: string } } | { text: string }> = [];
-  if (files.logo) {
-    imageParts.push({ inlineData: { mimeType: files.logo.type, data: await fileToBase64(files.logo) } });
-    imageParts.push({ text: `This is the client's logo — for your eyes only. In the prompts call it "the attached logo" and never describe it.` });
-  }
-  for (const [i, f] of (files.productImages || []).slice(0, 4).entries()) {
-    imageParts.push({ inlineData: { mimeType: f.type, data: await fileToBase64(f) } });
-    imageParts.push({ text: `Product photo ${i + 1} — a real product this business sells. Build metaphors from what you see.` });
-  }
-  for (const [i, f] of (files.storeImage || []).slice(0, 3).entries()) {
-    imageParts.push({ inlineData: { mimeType: f.type, data: await fileToBase64(f) } });
-    imageParts.push({ text: `Premises photo ${i + 1} — the client's real shop/office.` });
-  }
-
-  const systemInstruction = POSTER_CONCEPT_SYSTEM_PROMPT({
-    posterSize,
-    style,
-    occasion,
-    conceptCount,
+  onProgress(fixedTypeId
+    ? `Writing the poster prompt — ${posterAdTypeName(fixedTypeId)}...`
+    : 'Choosing the one ad type that fits this business...', 55);
+  const analysis = await analysePosterBusiness({
+    fixedTypeId, businessInfo, businessName, clientBrief: formData.textInstructions, occasion,
+  });
+  const poster = assembleConceptPoster({
+    analysis, fixedTypeId, businessInfo, businessName, brief: formData.textInstructions, occasion, phones, address,
+    posterSize: formData.posterSize || DEFAULT_POSTER_SIZE,
+    // "No logo" ticked, or no logo file: the business name is the wordmark.
+    hasLogo: !!files.logo && !formData.noLogo,
+    nameBoardText: formData.logoNameText?.trim() || businessName,
     textLanguage: formData.posterTextLanguage || 'English',
-    hasLogo: !!files.logo,
-    nameBoardText: formData.noLogo ? (formData.logoNameText || businessName) : undefined,
-  });
-  const userPrompt = POSTER_CONCEPT_USER_PROMPT({
-    businessInfo,
-    businessName,
-    contacts,
-    address,
-    clientBrief: formData.textInstructions,
-    occasion,
-    conceptCount,
   });
 
-  const runOnce = async (extraNote = '') => {
-    const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-      model,
-      contents: [{ role: 'user', parts: [...imageParts, { text: userPrompt + extraNote }] }],
-      config: { systemInstruction, responseMimeType: 'application/json', temperature: 0.95 },
-    }), { effort: 'standard' });
-    return parsePosterConcepts(response.text || '', styleId);
-  };
-
-  let concepts = await runOnce();
-  // A short reply is retried once, asking for exactly the missing number rather than starting over.
-  if (concepts.length < conceptCount) {
-    onProgress('Filling in the remaining concepts...', 80);
-    const more = await runOnce(`\n\nYou returned ${concepts.length}. Return ${conceptCount} complete, different concepts this time.`).catch(() => []);
-    if (more.length > concepts.length) concepts = more;
-  }
-  if (concepts.length === 0) {
-    throw new Error('The poster concepts could not be read. Please try again.');
-  }
-
-  onProgress('Poster concepts ready.', 100);
-  return {
-    ...extracted,
-    posterConcepts: finalizePosterConcepts(concepts, { posterSize, contacts, maxCount: conceptCount }),
-  };
+  onProgress('Poster prompt ready.', 100);
+  return { ...extracted, posterConcepts: [conceptFromPoster(poster)] };
 };
 
-/** Rewrites one concept to the team's request, keeping the canvas, style and truth rules. */
+/**
+ * A change to a Poster Creation prompt: the refine analysis, then the same assembly. The type changes only when
+ * the request asks for another one, and never when the job or the member fixed it; the business information
+ * changes only where asked. Throws when the model gives nothing usable — the panel then says it is unchanged.
+ */
 export const refinePosterConcept = async (
   concept: PosterConcept,
   instruction: string,
@@ -2004,29 +2028,30 @@ export const refinePosterConcept = async (
   businessInfo: unknown,
   hasLogo: boolean,
 ): Promise<PosterConcept> => {
-  const posterSize = formData.posterSize || DEFAULT_POSTER_SIZE;
-  const style = getPosterStyle(formData.posterStyle);
-  const contacts = factsFromProfile(businessInfo).phones.slice(0, MAX_LABEL_CONTACTS).map(p => p.display);
-  const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-    model,
-    contents: [{ role: 'user', parts: [{ text: [
-      `CURRENT CONCEPT:\n${JSON.stringify(concept, null, 2)}`,
-      `REQUESTED CHANGE:\n${instruction}`,
-      `REAL PHONE NUMBERS (the only ones allowed): ${contacts.join(' , ') || 'none'}`,
-      `BUSINESS INFORMATION:\n${JSON.stringify(businessInfo ?? {}, null, 2)}`,
-    ].join('\n\n') }] }],
-    config: {
-      systemInstruction: POSTER_CONCEPT_REFINE_SYSTEM_PROMPT({
-        posterSize, style, occasion: formData.posterOccasion, textLanguage: formData.posterTextLanguage, hasLogo,
-      }),
-      responseMimeType: 'application/json',
-    },
-  }), { effort: 'standard' });
-  const [parsed] = parsePosterConcepts(response.text || '', concept.style);
-  const next = parsed ?? normalizePosterConcept(concept, concept.style);
-  if (!next) return concept;
-  const [final] = finalizePosterConcepts([next], { posterSize, contacts });
-  return final;
+  const fixedTypeId = posterAdTypeById(formData.posterStyle)?.id ?? null;
+  const currentTypeId = posterAdTypeById(concept.style)?.id ?? null;
+  const occasion = (formData.posterOccasion || '').trim();
+  const businessName = posterBusinessName(formData, businessInfo);
+  const { phones, address } = posterFactsOf(businessInfo);
+  const raw = await askPosterAnalysis(
+    POSTER_REFINE_ANALYSIS_SYSTEM_PROMPT({ currentType: posterAdTypeById(currentTypeId), fixedType: posterAdTypeById(fixedTypeId) }),
+    POSTER_REFINE_ANALYSIS_USER_PROMPT({
+      businessInfo, businessName, clientBrief: formData.textInstructions, occasion,
+      currentPrompt: concept.imagePrompt, currentBusinessInformation: concept.businessInformation, instruction,
+    }),
+  );
+  if (!usablePosterAnalysis(raw)) throw new Error('The change could not be applied — the poster prompt is unchanged. Please try again.');
+  const kept = refineAnalysis(raw, { instruction, currentTypeId, fixedTypeId });
+  const analysis = kept && { ...kept, businessInformation: kept.businessInformation || concept.businessInformation || '' };
+  const poster = assembleConceptPoster({
+    analysis, fixedTypeId, currentTypeId, currentReason: concept.reason, businessInfo, businessName,
+    brief: formData.textInstructions, occasion, phones, address,
+    posterSize: formData.posterSize || DEFAULT_POSTER_SIZE,
+    hasLogo: hasLogo && !formData.noLogo,
+    nameBoardText: formData.logoNameText?.trim() || businessName,
+    textLanguage: formData.posterTextLanguage || 'English',
+  });
+  return conceptFromPoster(poster);
 };
 
 export interface GenerationOptions {
@@ -2629,7 +2654,7 @@ export const generateAdAssets = async (
   */
   const posterPromise = (async (): Promise<string> => {
     try {
-      const posterPrompt = await writeVideoPosterPrompt(formData, businessInfo);
+      const posterPrompt = await writeVideoPosterPrompt(formData, businessInfo, { hasLogoFile: !!files.logo });
       emitPartial({ posterPrompt });
       return posterPrompt;
     } catch (err) {
@@ -4462,49 +4487,6 @@ export const regenerateVeoForClips = async (
   const { count, clips, lines, plates } = veoClipsFromScript(voiceOverScript, formData, mainFramePrompts, indexes);
   const prompts = await writeVeoPrompts(formData, count, clips, lines, sceneContext, plates);
   return clips.map((c, k) => ({ index: c.index, prompt: prompts[k] }));
-};
-
-// --- Poster Design Prompt (On-Demand, User-Triggered, Separate Section) ---
-export const generatePosterPrompt = async (
-  businessInfo: any,
-  adType: string,
-  festivalName: string,
-  posterInstructions: string
-): Promise<string> => {
-  if (API_KEYS.length === 0) {
-    throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
-  }
-
-  const posterSystemPrompt = POSTER_SYSTEM_PROMPT(adType, festivalName);
-  // The verified facts only — see utils/businessFacts and writeVideoPosterPrompt.
-  const posterFacts = factsFromProfile(businessInfo);
-  const contactRuleText = posterContactRule(posterFacts.phones.slice(0, MAX_LABEL_CONTACTS));
-  const posterAddress = posterFacts.address;
-  const posterAddressRule = posterAddress
-    ? `ADDRESS — an address IS provided, so it MUST appear in the poster, on ONE clean line, exactly as given: ${posterAddress}`
-    : `NO ADDRESS provided — do NOT show or invent any address.`;
-  const posterUserPrompt = `Write the poster design prompt for:
-  BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
-  AD TYPE: ${adType}
-  ${adType === 'festival' ? `FESTIVAL: ${festivalName}` : ''}
-  ${posterInstructions ? `\nUSER POSTER INSTRUCTIONS (IMPORTANT — follow these closely):\n${posterInstructions}` : ''}
-  ${contactRuleText}
-  ${posterAddressRule}
-  Write the short, clean, plain-English poster prompt now.`;
-
-  const posterResponse = await callWithFallback(async (ai, model) => {
-    return await ai.models.generateContent({
-      model,
-      contents: [
-        { role: 'user', parts: [{ text: posterUserPrompt }] }
-      ],
-      config: {
-        systemInstruction: posterSystemPrompt
-      }
-    });
-  }, { effort: 'fast' });
-
-  return stripUnverifiedNumbers((posterResponse.text || "").trim(), verifiedKeys(posterFacts));
 };
 
 // --- Stock Image Prompts (On-Demand, User-Triggered) ---

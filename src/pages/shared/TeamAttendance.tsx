@@ -43,7 +43,8 @@ const shiftMonth = (month: string, delta: number): string => {
   return format(d, "yyyy-MM");
 };
 
-const STATUS_ORDER: AttendanceStatus[] = ["full", "half", "absent", "leave", "holiday"];
+/** Every mark an admin can set by hand, in the editor's order — Half-day leave (HL) since 2026-10-12. */
+const STATUS_ORDER: AttendanceStatus[] = ["full", "half", "absent", "leave", "half_leave", "holiday"];
 
 export default function TeamAttendance() {
   const user = useAuthStore((s) => s.user);
@@ -102,9 +103,14 @@ export default function TeamAttendance() {
   }, [period.start, period.end]);
 
   /**
-   * Sales runs the same grid as tech, with one difference: sales attendance is whole days only.
-   * A sales member's day isn't split across jobs the way a tech member's is, so a half day has
+   * Sales runs the same grid as tech, with one difference: a sales admin does not mark a plain Half Day by hand.
+   * A sales member's day isn't split across jobs the way a tech member's is, so a hand-marked half day has
    * nothing to mean — offering it would only invite inconsistent marking.
+   *
+   * Half-day LEAVE is different (owner, 2026-10-12): it is the member's own request, for both teams, so both editors
+   * offer "Half-day leave" (HL). And when a sales member's half-day request is approved past the allowance, the
+   * approval itself writes a plain Half Day (H) — so the sales grid and its legend show H and HL like the tech one;
+   * only the hand-marking option for H stays hidden.
    */
   const isSalesSide = user?.role === "sales_admin";
   const managedRole = isSalesSide ? "sales_member" : "tech_member";
@@ -196,7 +202,7 @@ export default function TeamAttendance() {
 
   /** Build the prefilled WhatsApp message and move from the confirmation popup into the WhatsApp step. */
   const proceedToWhatsApp = (member: AppUser, date: string, status: AttendanceStatus) => {
-    const needsReason = status === "half" || status === "absent" || status === "leave";
+    const needsReason = status === "half" || status === "absent" || status === "leave" || status === "half_leave";
     setConfirmStep(null);
     setWaStep({
       member,
@@ -256,7 +262,7 @@ export default function TeamAttendance() {
           </h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">
             Auto-marked from daily check-ins — Full Day on check-in, Absent otherwise. Click any cell to override.
-            {isSalesSide && " Sales attendance is whole days only."}
+            {isSalesSide && " Sales days are marked whole — a half day comes only from a half-day leave."}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -292,9 +298,10 @@ export default function TeamAttendance() {
         <LeaveApprovalsPanel visibleMemberIds={visibleMemberIds} />
       </div>
 
-      {/* Legend + announced holidays */}
+      {/* Legend + announced holidays. Every mark the grid can show — on the sales side too, where H is not offered
+          for hand-marking but an approved half-day leave past the allowance writes one (see `statusOptions`). */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {[...statusOptions, "holiday_work" as const, "comp_off" as const].map((s) => (
+        {[...STATUS_ORDER, "holiday_work" as const, "comp_off" as const].map((s) => (
           <span key={s} className={cn("text-[11px] px-2 py-0.5 rounded-full border", ATTENDANCE_META[s].tone)}>
             {ATTENDANCE_META[s].short} · {ATTENDANCE_META[s].label}
           </span>
@@ -417,7 +424,7 @@ export default function TeamAttendance() {
               className="w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className={cn("px-5 pt-6 pb-5 text-center bg-gradient-to-b", ATTENDANCE_META[confirmStep.status].tone.includes("emerald") ? "from-emerald-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("amber") ? "from-amber-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("rose") ? "from-rose-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("sky") ? "from-sky-500/15 to-transparent" : "from-slate-400/15 to-transparent")}>
+              <div className={cn("px-5 pt-6 pb-5 text-center bg-gradient-to-b", ATTENDANCE_META[confirmStep.status].tone.includes("emerald") ? "from-emerald-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("amber") ? "from-amber-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("rose") ? "from-rose-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("sky") ? "from-sky-500/15 to-transparent" : ATTENDANCE_META[confirmStep.status].tone.includes("indigo") ? "from-indigo-500/15 to-transparent" : "from-slate-400/15 to-transparent")}>
                 <motion.div
                   initial={{ scale: 0, rotate: -20 }}
                   animate={{ scale: 1, rotate: 0 }}

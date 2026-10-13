@@ -595,11 +595,18 @@ export function isSmmAdmin(user: { role?: string } | null | undefined): boolean 
 }
 
 /**
- * Whether this person may change the plan: an admin, the seller, or an assigned member.
+ * Whether this person may WORK on this month — change its plan, posts, approvals, ads, money and
+ * messages: an SMM admin by role (`isSmmAdmin`), the month's salesperson, or somebody on the month
+ * (`isAssignedToSmm`). The ONE answer the month page, its panels and the service guard
+ * (services/smm `assertMayChangeMonth`) all ask.
  *
- * SMM Team Lead has view-only access to the overall Social Media team/work and cannot edit
- * other members' setups or progress. When an SMM client is personally assigned to the Team Lead,
- * they get the same working/editing permissions as an SMM Team Member for that assigned client only.
+ * ── The Social Media Team Lead is a hybrid (owner, 2026-10-12) ──────────────────────────────────
+ * The lead (`smmLeader` on a tech member) SEES every month — `isSmmOverseer` — but sight is not a
+ * right to change: on a month somebody else works she is view-only (no edit, delete or management of
+ * that person's work). On a month she is personally on (a seat, so `watchers`) she has exactly what
+ * any member on it has — and this function gives it to her for the same reason it gives it to them.
+ * Her flag adds nothing here on purpose: before 2026-10-12 `isSmmOverseer` answered this question, so
+ * the lead could edit every month in the company.
  */
 export function canEditCampaign(
   campaign: Pick<SmmCampaign, "watchers" | "soldBy" | "team">,
@@ -619,6 +626,20 @@ export function isSmmOverseer(user: { role?: string; smmLeader?: boolean } | nul
 }
 
 /**
+ * The Social Media Team Lead whose role does not already run Social Media (owner, 2026-10-12): she
+ * sees every month and every person's work, and works only the months she is on — `canEditCampaign`.
+ * A Tech Team Leader or an admin with the flag keeps their role's full rights (`isSmmAdmin`), so the
+ * flag never takes anything away from a role that had it.
+ */
+export function isViewOnlySmmLead(user: { role?: string; smmLeader?: boolean } | null | undefined): boolean {
+  return !!user?.smmLeader && !isSmmAdmin(user);
+}
+
+/** What a view-only lead is told when she reaches for a month somebody else works — the UI and the service guard. */
+export const SMM_VIEW_ONLY_MESSAGE =
+  "View only — as the Social Media Team Lead you can see this month, but only the people on it (and the admins) can change it.";
+
+/**
  * Who sees Social Media → Money, the company's renewals and their rupees (2026-10-05, owner: "only for
  * the tech admin and the sales admin") — and the main admin, who sees everything.
  */
@@ -627,8 +648,10 @@ export function canSeeSmmMoney(user: { role?: string } | null | undefined): bool
 }
 
 /**
- * Who may delete a month outright: the main admin, the tech admin, and the tech team leader.
- * Team Lead has view-only access to overall team work and cannot delete months.
+ * Who may delete a month outright: the main admin, the tech admin, and the tech team leader (added
+ * 2026-10-03 — the owner's call, since the team leader creates and sets months up too). Narrower than
+ * `isSmmOverseer` on purpose — deleting throws away a month's plan, ads and money trail. The Social Media
+ * Team Lead could delete until 2026-10-12, when the owner made her view-only (`isViewOnlySmmLead`).
  */
 export function canDeleteSmmCampaign(user: { role?: string; smmLeader?: boolean } | null | undefined): boolean {
   if (!user) return false;

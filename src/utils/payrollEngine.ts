@@ -23,6 +23,7 @@ import {
  *   workingDays  = days in period − Sundays     (Sundays counted for real, 4 or 5)
  *   dailySalary  = monthlySalary ÷ workingDays
  *   dayCredit    = 1 (full) · 0.5 (half) · 1 (paid leave) · 0 (absent / unpaid leave)
+ *                  half-day leave → 1 inside the allowance, the half-day factor past it (2026-10-12)
  *                  holiday → 1, since declared holidays are paid (policy.holidaysPaid)
  *   earnings     = Σ dayCredit × dailySalary  + adjustments
  *
@@ -165,6 +166,30 @@ function shortDay(date: string): string {
   return `${pad(d)} ${SHORT_MONTHS[m - 1] ?? ""}`.trim();
 }
 
+/**
+ * A count of days as people say it — "½", "1½", "2" — for a chip, a tile or a total.
+ *
+ * ── Why (2026-10-12) ──────────────────────────────────────────────────────────────────────────
+ * Half-day leave made halves real: the leave used, the leave left and the unpaid leave can each be 1½ days now.
+ * Printed raw they read "1.5", which looks like a calculation rather than a number of days off. Whole numbers come
+ * out exactly as before. The payslip PDF prints decimals instead ("1.5") — its standard font may not carry "½".
+ */
+export function formatDayCount(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  if (n < 0) return String(n);
+  const whole = Math.floor(n + 1e-9);
+  const rest = n - whole;
+  if (rest < 1e-9) return String(whole);
+  if (Math.abs(rest - 0.5) < 1e-9) return whole === 0 ? "½" : `${whole}½`;
+  return String(Math.round(n * 100) / 100);
+}
+
+/** A count of days in a sentence: "half a day", "1 day", "1½ days", "2 days". */
+export function formatDays(n: number): string {
+  if (Math.abs(n - 0.5) < 1e-9) return "half a day";
+  return `${formatDayCount(n)} ${n === 1 ? "day" : "days"}`;
+}
+
 /** Every `yyyy-MM-dd` in a period, in order. */
 export function periodDates(period: PayPeriod): string[] {
   const out: string[] = [];
@@ -224,6 +249,9 @@ export function dayCreditFactor(status: AttendanceStatus, config: PayrollConfig)
     case "holiday": return config.holidaysPaid ? 1 : 0;
     // "leave" is resolved into paid/unpaid by the quota pass before it reaches here.
     case "leave": return 1;
+    // So is half-day leave: inside the allowance a full day (the half worked + the half on paid leave); past it, the
+    // half-day factor — see tallyAttendance.
+    case "half_leave": return 1;
     // Holiday work is paid as the holiday it is; its reward is the comp-off credit, not this day.
     case "holiday_work": return config.holidaysPaid ? 1 : 0;
     // A comp-off day is paid in full — when a credit covers it (see tallyAttendance).
@@ -256,6 +284,13 @@ export function dayCreditFactor(status: AttendanceStatus, config: PayrollConfig)
  * holds. A `comp_off` day (C) is paid in full out of those credits — never one of the paid leaves — in
  * date order; a C beyond the credits is unpaid. Credits belong to the period they were earned in
  * ("same cycle only"): this tally only ever sees one period, so nothing carries over.
+ *
+ * ── Half-day leave (owner, 2026-10-12) ─────────────────────────────────────────────────────────
+ * The allowance is spent in HALF-DAY units, in date order, across Leave (L — a whole day of it) and Half-day
+ * leave (HL — half a day of it). An HL inside the allowance pays a full day: the half worked plus the half on paid
+ * leave, whatever the policy's half-day factor. Past the allowance it pays the half worked only — the factor, so it
+ * costs exactly what a Half Day (H) costs. An L the allowance covers only half of (half a day was left) is half paid
+ * leave and half leave without pay. With no HL on the record every count is what it always was.
  */
 export interface AttendanceTally {
   full: number;
@@ -263,16 +298,26 @@ export interface AttendanceTally {
   absent: number;
   /** Every working day marked Leave, paid or not — what the grid's "L" counts. */
   leave: number;
+  /** Leave (L) days the allowance pays — 1 each, ½ for the day it ran out halfway through. */
   paidLeave: number;
+  /** Leave (L) days past the allowance — 1 each, ½ for that same day. */
   unpaidLeave: number;
+  /** Every working day marked Half-day leave (HL), paid or not — what the grid's "HL" counts. */
+  halfLeave: number;
+  /** HL days whose leave half the allowance covers — a full day's pay each. */
+  halfLeavePaid: number;
+  /** HL days past the allowance — paid like a half day. */
+  halfLeaveUnpaid: number;
+  /** The allowance used, in days: `paidLeave` + ½ for each HL it covers. */
+  allowanceUsed: number;
   holiday: number;
   /** Working days with no status yet: today before the check-in, or a day still to come. */
   pending: number;
-  /** Presence credit: full = 1, half = the configured half-day factor. */
+  /** Presence credit: full = 1, half (and the worked half of an HL) = the configured half-day factor. */
   presentDays: number;
-  /** Paid leave still available in the period. */
+  /** Paid leave still available in the period, in days (may end in a half). */
   leavesLeft: number;
-  /** Which leave days were paid — the earliest `paidLeaveQuota` of them, in date order. */
+  /** Which leave days (L or HL) the allowance paid any of — the earliest ones, in date order. */
   paidLeaveDates: Set<string>;
   /** Holidays worked (W), Sundays included — one comp-off credit each. */
   holidayWork: number;
@@ -300,19 +345,31 @@ export function tallyAttendance(days: ResolvedDay[], config?: Partial<PayrollCon
   }
 
   /**
-   * Leave is granted in date order: the first `paidLeaveQuota` leave days are paid, everything
-   * after is leave without pay. Sorting matters — leave on the 3rd and the 25th must have the 3rd
-   * paid, not whichever row happened to load first.
+   * Leave is granted in date order, in half-day units: the allowance pays the earliest leave first — a Leave day
+   * takes a whole day of it, a Half-day leave half a day — and everything after is leave without pay. Sorting
+   * matters — leave on the 3rd and the 25th must have the 3rd paid, not whichever row happened to load first.
+   * With whole days only this is exactly the old rule: the first `paidLeaveQuota` leave days are paid.
    */
-  const leaveDates = [...byDate].filter(([, s]) => s === "leave").map(([date]) => date).sort();
-  const paidLeaveDates = new Set(leaveDates.slice(0, Math.max(0, cfg.paidLeaveQuota)));
+  const leaveDays = [...byDate]
+    .filter(([, s]) => s === "leave" || s === "half_leave")
+    .sort(([a], [b]) => a.localeCompare(b));
+  let allowanceLeft = floorToHalfDay(cfg.paidLeaveQuota);
+  /** What the allowance pays of each leave day: 1, ½ or 0 for a Leave; ½ or 0 for a Half-day leave. */
+  const leavePaid = new Map<string, number>();
+  for (const [date, status] of leaveDays) {
+    const paid = Math.min(status === "half_leave" ? 0.5 : 1, allowanceLeft);
+    allowanceLeft -= paid;
+    leavePaid.set(date, paid);
+  }
+  const paidLeaveDates = new Set([...leavePaid].filter(([, paid]) => paid > 0).map(([date]) => date));
 
   // Comp-off days are covered by the period's credits in date order, like leave by its allowance.
   const compOffDates = [...byDate].filter(([, s]) => s === "comp_off").map(([date]) => date).sort();
   const coveredCompOff = new Set(compOffDates.slice(0, holidayWorkDates.length));
 
   const t: AttendanceTally = {
-    full: 0, half: 0, absent: 0, leave: 0, paidLeave: 0, unpaidLeave: 0, holiday: 0, pending: 0,
+    full: 0, half: 0, absent: 0, leave: 0, paidLeave: 0, unpaidLeave: 0,
+    halfLeave: 0, halfLeavePaid: 0, halfLeaveUnpaid: 0, allowanceUsed: 0, holiday: 0, pending: 0,
     presentDays: 0, leavesLeft: 0, paidLeaveDates,
     holidayWork: holidayWorkDates.length, holidayWorkDates, compOff: 0, compOffUnpaid: 0, compOffLeft: 0,
   };
@@ -324,9 +381,17 @@ export function tallyAttendance(days: ResolvedDay[], config?: Partial<PayrollCon
       case "holiday": t.holiday += 1; break;
       // Worked on an announced weekday holiday: still that holiday for pay (the credit is counted above).
       case "holiday_work": t.holiday += 1; break;
-      case "leave":
+      case "leave": {
         t.leave += 1;
-        if (paidLeaveDates.has(date)) t.paidLeave += 1; else t.unpaidLeave += 1;
+        // 1 inside the allowance, 0 past it — or ½ and ½ on the day it ran out halfway through.
+        const paid = leavePaid.get(date) ?? 0;
+        t.paidLeave += paid;
+        t.unpaidLeave += 1 - paid;
+        break;
+      }
+      case "half_leave":
+        t.halfLeave += 1;
+        if ((leavePaid.get(date) ?? 0) > 0) t.halfLeavePaid += 1; else t.halfLeaveUnpaid += 1;
         break;
       case "comp_off":
         if (coveredCompOff.has(date)) t.compOff += 1; else t.compOffUnpaid += 1;
@@ -334,10 +399,19 @@ export function tallyAttendance(days: ResolvedDay[], config?: Partial<PayrollCon
       default: t.pending += 1;
     }
   }
-  t.presentDays = t.full + t.half * cfg.halfDayFactor;
-  t.leavesLeft = Math.max(0, cfg.paidLeaveQuota - t.paidLeave);
+  t.presentDays = t.full + (t.half + t.halfLeave) * cfg.halfDayFactor;
+  t.allowanceUsed = t.paidLeave + t.halfLeavePaid * 0.5;
+  t.leavesLeft = Math.max(0, cfg.paidLeaveQuota - t.allowanceUsed);
   t.compOffLeft = Math.max(0, t.holidayWork - t.compOff);
   return t;
+}
+
+/**
+ * The allowance in whole half days — 2 stays 2, a policy of 2.3 counts as 2. Half-day leave (2026-10-12) spends it
+ * half a day at a time, so a fraction smaller than a half could never be spent and would only leave odd remainders.
+ */
+function floorToHalfDay(n: number): number {
+  return Math.max(0, Math.floor(n * 2 + 1e-9) / 2);
 }
 
 /**
@@ -407,8 +481,12 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
   const paidLeaveDays = tally.paidLeave, unpaidLeaveDays = tally.unpaidLeave;
   const absentDays = tally.absent, holidayDays = tally.holiday, pendingDays = tally.pending;
   const compOffDays = tally.compOff, compOffUnpaidDays = tally.compOffUnpaid;
+  const paidHalfLeaveDays = tally.halfLeavePaid, unpaidHalfLeaveDays = tally.halfLeaveUnpaid;
   const earnedDays = fullDays + halfDays * config.halfDayFactor + paidLeaveDays
-    + (config.holidaysPaid ? holidayDays : 0) + compOffDays;
+    + (config.holidaysPaid ? holidayDays : 0) + compOffDays
+    // Half-day leave (2026-10-12): inside the allowance a full day — the half worked plus the half on paid leave —
+    // whatever the half-day factor; past it the half worked only, exactly a Half Day.
+    + paidHalfLeaveDays + unpaidHalfLeaveDays * config.halfDayFactor;
 
   // Working days that have happened, and of those the ones still unresolved (today before the
   // check-in) — the attendance % is measured over the resolved ones.
@@ -444,7 +522,10 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
     : 0;
 
   const lines = buildLines(
-    { fullDays, halfDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, compOffDays, compOffUnpaidDays },
+    {
+      fullDays, halfDays, paidLeaveDays, unpaidLeaveDays, absentDays, holidayDays, compOffDays, compOffUnpaidDays,
+      paidHalfLeaveDays, unpaidHalfLeaveDays,
+    },
     dailySalary,
     config,
     adjustments,
@@ -477,7 +558,10 @@ export function computeSalary(input: ComputeSalaryInput): SalaryComputation {
     projectedDeduction,
     attendancePercent,
     paidLeaveQuota: config.paidLeaveQuota,
-    paidLeavesRemaining: Math.max(0, config.paidLeaveQuota - paidLeaveDays),
+    // The allowance left after full-day AND half-day leave (½ each) — the tally's own figure.
+    paidLeavesRemaining: tally.leavesLeft,
+    paidHalfLeaveDays,
+    unpaidHalfLeaveDays,
     holidayWorkDays: tally.holidayWork,
     holidayWorkDates: tally.holidayWorkDates,
     compOffDays,
@@ -494,6 +578,7 @@ function buildLines(
     fullDays: number; halfDays: number; paidLeaveDays: number;
     unpaidLeaveDays: number; absentDays: number; holidayDays: number;
     compOffDays: number; compOffUnpaidDays: number;
+    paidHalfLeaveDays: number; unpaidHalfLeaveDays: number;
   },
   dailySalary: number,
   config: PayrollConfig,
@@ -515,6 +600,11 @@ function buildLines(
   if (counts.halfDays) lines.push(line("half", "Half Days", counts.halfDays, config.halfDayFactor));
   if (counts.paidLeaveDays) lines.push(line("paid_leave", "Paid Leave", counts.paidLeaveDays, 1));
   if (counts.unpaidLeaveDays) lines.push(line("unpaid_leave", "Leave Without Pay", counts.unpaidLeaveDays, 0));
+  // Half-day leave (2026-10-12): a full day's pay inside the allowance; past it, the half worked — the half-day factor.
+  if (counts.paidHalfLeaveDays) lines.push(line("half_leave", "Half-day Leave (paid)", counts.paidHalfLeaveDays, 1));
+  if (counts.unpaidHalfLeaveDays) {
+    lines.push(line("half_leave_unpaid", "Half-day Leave Without Pay", counts.unpaidHalfLeaveDays, config.halfDayFactor));
+  }
   if (counts.absentDays) lines.push(line("absent", "Absent", counts.absentDays, 0));
   if (counts.holidayDays) {
     lines.push(line("holiday", config.holidaysPaid ? "Holidays (paid)" : "Holidays (unpaid)",
@@ -572,8 +662,9 @@ export function nextPayDay(from: Date, payDayOfMonth = DEFAULT_PAYROLL_CONFIG.pa
 
 export interface DeductionRow {
   /** Stable identity, so a UI can phrase the row without string-matching its label. */
-  key: "absent" | "half" | "unpaid_leave" | "unpaid_holiday" | "comp_off_unpaid";
+  key: "absent" | "half" | "unpaid_leave" | "half_leave_unpaid" | "unpaid_holiday" | "comp_off_unpaid";
   label: string;
+  /** Days behind the row — may end in a half for unpaid leave (2026-10-12): show it with `formatDays`. */
   days: number;
   amount: number;
 }
@@ -588,11 +679,20 @@ export function deductionsFor(c: SalaryComputation): { rows: DeductionRow[]; tot
   // A half day earns its factor, so it costs the remainder. Read the factor back off the line
   // the engine produced rather than assuming 0.5, so a policy change flows through automatically.
   const halfFactor = c.lines.find(l => l.key === "half")?.factor ?? 0.5;
+  // A half-day leave past the allowance earns the half worked (its own line's factor), so it costs the rest —
+  // exactly what a half day costs (2026-10-12). Inside the allowance it costs nothing.
+  const halfLeaveFactor = c.lines.find(l => l.key === "half_leave_unpaid")?.factor ?? halfFactor;
+  const unpaidHalfLeave = c.unpaidHalfLeaveDays ?? 0; // absent on computations frozen before half-day leave
 
   const rows: DeductionRow[] = [
     { key: "absent", label: "Absent", days: c.absentDays, amount: c.absentDays * rate },
     { key: "half", label: "Half days", days: c.halfDays, amount: c.halfDays * rate * (1 - halfFactor) },
+    // Whole days, or ½ for a day of leave the allowance ran out halfway through.
     { key: "unpaid_leave", label: "Unpaid leave", days: c.unpaidLeaveDays, amount: c.unpaidLeaveDays * rate },
+    {
+      key: "half_leave_unpaid", label: "Half-day leave without pay", days: unpaidHalfLeave,
+      amount: unpaidHalfLeave * rate * (1 - halfLeaveFactor),
+    },
     // A Comp Off day no holiday-work credit covers (absent on computations frozen before comp-off existed).
     { key: "comp_off_unpaid", label: "Comp off without credit", days: c.compOffUnpaidDays ?? 0, amount: (c.compOffUnpaidDays ?? 0) * rate },
   ];
@@ -616,6 +716,16 @@ export function deductionsFor(c: SalaryComputation): { rows: DeductionRow[]; tot
  */
 export function netPayable(c: SalaryComputation): number {
   return Math.max(0, c.monthlySalary - deductionsFor(c).total + (c.adjustmentTotal || 0));
+}
+
+/**
+ * The paid-leave allowance a period has used, in days: full-day leave the allowance paid (1 each, ½ for the day it
+ * ran out halfway through) plus ½ for each half-day leave it covers (2026-10-12). It is what "1½ of 2 paid leaves
+ * used" counts — `paidLeaveDays` on its own is only the full days. A computation frozen before half-day leave has
+ * no `paidHalfLeaveDays`, so it reads its full days as before.
+ */
+export function paidLeaveUsed(c: Pick<SalaryComputation, "paidLeaveDays" | "paidHalfLeaveDays">): number {
+  return c.paidLeaveDays + 0.5 * (c.paidHalfLeaveDays ?? 0);
 }
 
 /**

@@ -63,7 +63,8 @@ export default function SmmStageBar({ status, approved, busy, disabled, onPick }
                   ? "border-success/40 bg-success/10 text-success"
                   : locked
                     ? "border-border/60 bg-muted/40 text-muted-foreground/60"
-                    : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                    // `enabled:` — a view-only post (the Team Lead on someone else's month) must not light up on hover.
+                    : "border-border text-muted-foreground enabled:hover:bg-accent enabled:hover:text-foreground"
             }`}
           >
             {/* The connector, so four boxes read as one road rather than four choices. */}

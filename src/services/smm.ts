@@ -24,9 +24,11 @@ import {
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import {
-  blankItem, buildInitialItems, canEditCampaign, canPublish, cycleFromStart, dayToDate, derivedProgressCounts, extraWorkTitle, extraWorkTypeInfo,
-  isoDay, isPosted, newItemId, normaliseDuration, smmWatchers, targetsFromCommitments,
+  SMM_VIEW_ONLY_MESSAGE, blankItem, buildInitialItems, canEditCampaign, canPublish, cycleFromStart, dayToDate, derivedProgressCounts,
+  extraWorkTitle, extraWorkTypeInfo, isoDay, isPosted, isViewOnlySmmLead, newItemId, normaliseDuration, smmWatchers,
+  targetsFromCommitments,
 } from "@/utils/smmPlan";
+import { useAuthStore } from "@/store/authStore";
 import {
   cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, historyFiling, historyMonthsFollowed, isMonthLocked, isOnHold,
   itemsForAccounts, monthCycle, monthLabel, normaliseClipsPerVideo, renewalStartDate, saleDay, videosLine,
@@ -378,6 +380,7 @@ export async function createRenewalMonth(params: {
   startDate?: string;
   endDate?: string;
 }): Promise<{ newCampaignId: string }> {
+  assertMayManageMonths();
   const prev = await fetchCampaign(params.previousCampaignId);
   if (!prev || prev.status === "deleted" || prev.status === "removed") {
     throw new Error("This month no longer exists.");
@@ -561,8 +564,11 @@ async function renewalSaleWithdrawn(nextId: string, next: SmmCampaign | null): P
  */
 export async function healRenewalLinksOnOpen(list: SmmCampaign[]): Promise<number> {
   const alive = new Set(list.filter((c) => !isGoneMonth(c)).map((c) => c.id));
+  // Only months the viewer may change: the view-only Social Media Team Lead's board holds every month,
+  // and a repair is still a write (2026-10-12). Everybody else's list is theirs to repair, as before.
+  const mine = list.filter(mayChangeMonth);
   let healed = 0;
-  for (const { monthId, nextId } of renewalLinksToCheck(list, alive)) {
+  for (const { monthId, nextId } of renewalLinksToCheck(mine, alive)) {
     const key = `${monthId}>${nextId}`;
     if (checkedRenewalLinks.has(key)) continue;
     checkedRenewalLinks.add(key);
@@ -694,6 +700,60 @@ export async function fetchCampaign(id: string): Promise<SmmCampaign | null> {
   return snap.exists() ? fromSnap(snap as CampaignSnap) : null;
 }
 
+/* ── Who may write: the view-only Social Media Team Lead (2026-10-12) ────────────────────────── */
+
+/** A write the signed-in Social Media Team Lead may not make — said in a sentence the screen can show. */
+export class SmmViewOnlyError extends Error {
+  constructor(message: string = SMM_VIEW_ONLY_MESSAGE) {
+    super(message);
+    this.name = "SmmViewOnlyError";
+  }
+}
+
+/**
+ * The signed-in person when they are the view-only Social Media Team Lead (`isViewOnlySmmLead`), else
+ * null — and null for every other role, so nothing below changes anything for anybody else.
+ *
+ * ── Why the services ask who is signed in ───────────────────────────────────────────────────────
+ * The owner made the lead view-only on every month she is not on (2026-10-12: "at both UI and backend /
+ * security level"). The screens hide what she may not press, but a screen is the thing most likely to
+ * change in a hurry (see setItemStatus), and before this only one write — a post's stage — asked at
+ * all. So every write to a month asks here too: `mutateCampaign` against the month AS THE DATABASE
+ * HOLDS IT inside its transaction (a screen that missed her being put on or taken off cannot decide
+ * it), and the few writers that go round it (delete, undo, a new month, setup, assigning, moving
+ * pieces, renaming). It is the same question as the Firestore rule in docs/firestore-rules.md — the
+ * real boundary once published — and reads the person the same way the rule reads `request.auth`:
+ * the live `users/{uid}` document useAuth keeps in the auth store. Nobody signed in (a script, a
+ * test) has nothing to check.
+ */
+function signedInViewOnlyLead() {
+  const user = useAuthStore.getState().user;
+  return user && isViewOnlySmmLead(user) ? user : null;
+}
+
+/** Whether the signed-in person may change this month — the sweeps use it to leave alone what they may not touch. */
+export function mayChangeMonth(month: Pick<SmmCampaign, "watchers" | "soldBy" | "team">): boolean {
+  const lead = signedInViewOnlyLead();
+  return !lead || canEditCampaign(month, lead);
+}
+
+/** Throws `SmmViewOnlyError` when the signed-in lead reaches for a month somebody else works. */
+export function assertMayChangeMonth(month: Pick<SmmCampaign, "watchers" | "soldBy" | "team">): void {
+  if (!mayChangeMonth(month)) throw new SmmViewOnlyError();
+}
+
+/**
+ * Throws `SmmViewOnlyError` for the signed-in lead on any MANAGING write — adding, deleting or
+ * restoring a month, setting one up, putting people on it, renaming it, moving its pieces — even on a
+ * month she is on: a member on a month does none of these either, and each one hands out or takes
+ * away other people's work.
+ */
+export function assertMayManageMonths(): void {
+  if (signedInViewOnlyLead()) {
+    throw new SmmViewOnlyError("View only — the Social Media Team Lead can't add, set up, assign or delete months. The tech admin or a team leader does that.");
+  }
+}
+
 /* ── The one way in ─────────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -701,7 +761,8 @@ export async function fetchCampaign(id: string): Promise<SmmCampaign | null> {
  *
  * `apply` receives the campaign as it is in the database at this instant, not as the screen last
  * saw it, which is what makes two people editing two different posts safe. Returning `null` aborts
- * without a write, so a no-op (ticking a box that is already ticked) costs nothing.
+ * without a write, so a no-op (ticking a box that is already ticked) costs nothing. The view-only
+ * Social Media Team Lead is refused here on a month she is not on (2026-10-12, `assertMayChangeMonth`).
  */
 async function mutateCampaign(
   id: string,
@@ -712,6 +773,7 @@ async function mutateCampaign(
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("This campaign no longer exists.");
     const current = { ...(snap.data() as SmmCampaign), id: snap.id };
+    assertMayChangeMonth(current);
     const patch = apply(current);
     if (!patch) return null;
     tx.update(ref, { ...clean(patch), updatedAt: serverTimestamp() });
@@ -798,12 +860,8 @@ export async function setItemStatus(
     const item = c.items.find((i) => i.id === itemId);
     if (!item) return null;
     if (item.status === status) return null;
-
-    const userRole = (actor as { role?: string }).role;
-    const isLead = (actor as { smmLeader?: boolean }).smmLeader;
-    if (isLead && userRole === "tech_member" && !canEditCampaign(c, actor as any)) {
-      throw new Error("You have view-only access to this campaign and cannot update its progress.");
-    }
+    // The view-only Social Media Team Lead on a month she is not on is refused by mutateCampaign itself
+    // (2026-10-12), for this write and every other one.
 
     if (POSTABLE_STATUSES.includes(status) && !canPublish(item, c)) {
       throw new Error("The client has not approved this yet. Record their approval first.");
@@ -991,6 +1049,7 @@ export async function addApprovalChase(
  * nobody on them inherit the new seat holder.
  */
 export async function setCampaignTeam(campaignId: string, team: SmmTeam): Promise<void> {
+  assertMayManageMonths();
   await mutateCampaign(campaignId, (c) => ({
     team,
     watchers: smmWatchers(team, c.soldBy),
@@ -1212,6 +1271,7 @@ async function notifySellerOfExtraWork(campaign: SmmCampaign, item: SmmContentIt
 /* ── Cycle, renewal, closing the month ──────────────────────────────────────────────────────── */
 
 export async function setCycle(campaignId: string, startDate: string, days: number): Promise<void> {
+  assertMayManageMonths();
   await mutateCampaign(campaignId, () => ({ cycle: cycleFromStart(startDate, days) }));
 }
 
@@ -1230,6 +1290,7 @@ export async function saveMonthSetup(
     setupByUid: string;
   },
 ): Promise<SmmCampaign | null> {
+  assertMayManageMonths();
   const today = isoDay(new Date());
   return mutateCampaign(campaignId, (c) => {
     if (isMonthLocked(c, today) && c.setupAt) {
@@ -1253,6 +1314,7 @@ export async function setCommitments(
   commitments: Record<SmmContentKind, number>,
   platforms?: SmmPlatform[],
 ): Promise<void> {
+  assertMayManageMonths();
   await mutateCampaign(campaignId, () => ({ commitments, ...(platforms ? { platforms } : {}) }));
 }
 
@@ -1274,6 +1336,7 @@ export async function setMonthCommitments(
   campaignId: string,
   commitments: Record<SmmContentKind, number>,
 ): Promise<void> {
+  assertMayManageMonths();
   await mutateCampaign(campaignId, (c) => {
     const next: Record<SmmContentKind, number> = {
       poster: Math.max(0, Math.floor(commitments.poster || 0)),
@@ -1319,6 +1382,7 @@ export async function setMonthCommitments(
  * never copies them back (`ensureCampaignForOrder` does not touch `platforms`).
  */
 export async function setMonthPlatforms(campaignId: string, platforms: SmmPlatform[]): Promise<void> {
+  assertMayManageMonths();
   const next = cleanPlatforms(platforms);
   if (next.length === 0) throw new Error("Tick at least one account the month covers.");
   await mutateCampaign(campaignId, (c) => {
@@ -1372,6 +1436,8 @@ export async function setCampaignStatus(campaignId: string, status: SmmCampaign[
 export async function closeEndedMonthsOnOpen(campaigns: SmmCampaign[], today: string): Promise<number> {
   let closed = 0;
   for (const c of campaigns) {
+    // The view-only Social Media Team Lead files only her own months (2026-10-12); the admins file the rest.
+    if (!mayChangeMonth(c)) continue;
     const status = closingStatus(c, today);
     if (!status) continue;
     try {
@@ -1394,6 +1460,7 @@ export async function closeEndedMonthsOnOpen(campaigns: SmmCampaign[], today: st
 export async function fileFollowedHistoryMonths(months: SmmCampaign[], today: string): Promise<number> {
   let filed = 0;
   for (const c of historyMonthsFollowed(months, today)) {
+    if (!mayChangeMonth(c)) continue; // the view-only Social Media Team Lead (2026-10-12)
     try {
       const after = await mutateCampaign(c.id, (cur) => (cur.history && isOnHold(cur, today) ? { status: "completed" } : null));
       if (after) filed += 1;
@@ -1428,7 +1495,9 @@ export function __resetHistoryHoldCheckForTests(): void {
  * opens. Never throws.
  */
 export async function holdUnrenewedHistoryOnOpen(by: { uid: string; name: string }): Promise<number> {
-  if (historyHoldChecked) return 0;
+  // A company-wide job that writes other people's months — never from the view-only Social Media Team
+  // Lead's browser (2026-10-12); the first admin to open the board does it.
+  if (historyHoldChecked || signedInViewOnlyLead()) return 0;
   historyHoldChecked = true;
   try {
     if ((await getDoc(HISTORY_HOLD_DOC())).exists()) return 0;
@@ -1544,6 +1613,7 @@ export async function moveUnpostedToMonth(
   itemIds: string[],
   actor: SmmActor,
 ): Promise<number> {
+  assertMayManageMonths();
   const fromRef = campaignRef(fromId);
   const toRef = campaignRef(toId);
   const moved = await runTransaction(db, async (tx) => {
@@ -1641,6 +1711,7 @@ export async function notifyRenewalsDueOnOpen(
  * `ensureCampaignForOrder` never revives (unlike `removed`, which follows its order back).
  */
 export async function deleteCampaign(campaign: Pick<SmmCampaign, "id" | "orderId">, actor: SmmActor): Promise<void> {
+  assertMayManageMonths();
   // A deleted renewal month leaves the month before it renewed (2026-10-05): its sale stands, so the
   // client did renew. Only the sale being withdrawn un-renews it (`unlinkRenewal`).
   if (!campaign.orderId) {
@@ -1663,6 +1734,7 @@ export async function deleteCampaign(campaign: Pick<SmmCampaign, "id" | "orderId
  * back whole. Either way the plan, ads, money and team are what they were.
  */
 export async function undoDeleteCampaign(before: SmmCampaign): Promise<void> {
+  assertMayManageMonths();
   if (before.orderId) {
     await updateDoc(campaignRef(before.id), {
       status: before.status === "deleted" ? "active" : before.status,
@@ -1679,9 +1751,10 @@ export async function undoDeleteCampaign(before: SmmCampaign): Promise<void> {
 /* ── The Social Media Team Lead ─────────────────────────────────────────────────────────────── */
 
 /**
- * The people running the whole social-media side (`users.smmLeader`, 2026-10-01 naming: "Social
- * Media Team Lead"). A tech member keeps their own role and screens and gains every month in the
- * company — seeing, assigning, starting and deleting them. Live, and one equality filter.
+ * The Social Media Team Lead(s) (`users.smmLeader`, 2026-10-01 naming). A tech member keeps their own
+ * role and screens and SEES every month in the company; since 2026-10-12 (owner) they work only the
+ * months they are on, like any member — view-only on the rest (`isViewOnlySmmLead`). Live, and one
+ * equality filter.
  */
 export function watchSmmTeamLeads(cb: (leads: { uid: string; name: string; role?: string }[]) => void): () => void {
   return onSnapshot(
@@ -1703,15 +1776,17 @@ export async function setSmmTeamLead(member: { uid: string; name: string }, lead
     type: "smm_lead",
     title: lead ? "You are the Social Media Team Lead" : "Social Media Team Lead role removed",
     message: lead
-      ? `${actor.name || "Your admin"} made you the Social Media Team Lead: you now see, assign and manage every social media month.`
+      ? `${actor.name || "Your admin"} made you the Social Media Team Lead: you now see every social media month and everyone's work on it (view only), and you work on the months you are on, like any member.`
       : `${actor.name || "Your admin"} removed your Social Media Team Lead role. You keep the months you are on.`,
     link: "/smm",
   }).catch(() => { /* the role is changed either way */ });
 }
 
 /**
- * Tell the Social Media Team Lead(s) a new month has been sold, so it gets a team the same day.
- * Never throws: a sale must not fail because a bell could not ring.
+ * Tell the Social Media Team Lead(s) a new month has been sold. Since 2026-10-12 the lead no longer puts
+ * the team on it (view-only — the tech admin and the team leaders do, told by their own "new order"
+ * bell), so the bell says only that it is on the board. Never throws: a sale must not fail because a
+ * bell could not ring.
  */
 async function notifySmmLeadsOfNewMonth(campaignId: string, businessName: string, soldByName: string): Promise<void> {
   try {
@@ -1722,7 +1797,7 @@ async function notifySmmLeadsOfNewMonth(campaignId: string, businessName: string
         userId: d.id,
         type: "smm_new_month",
         title: "New social media month",
-        message: `${businessName} — sold by ${soldByName}. Put a team on it.`,
+        message: `${businessName} — sold by ${soldByName}. It is on the Social Media board.`,
         link: `/smm/${campaignId}`,
         dedupeKey: `smm_new_${campaignId}_${d.id}`,
       }).catch(() => undefined);

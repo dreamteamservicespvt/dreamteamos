@@ -30,12 +30,17 @@ import SmmCalendar from "@/components/smm/SmmCalendar";
 import type { SmmCampaign, SmmContentItem } from "@/types/smm";
 import type { AppUser } from "@/types";
 
-export default function SmmReportPanel({ campaign, user, onMessage, onOpen }: {
+export default function SmmReportPanel({ campaign, user, onMessage, onOpen, canEdit = true }: {
   campaign: SmmCampaign;
   user: Pick<AppUser, "uid" | "name" | "role">;
   onMessage: (text: string, kind: "monthly_report" | "renewal") => void;
   /** Opens one of the month's posts from its calendar. */
   onOpen?: (item: SmmContentItem) => void;
+  /**
+   * Whether the viewer works this month (smmPlan.canEditCampaign). The view-only Social Media Team Lead
+   * reads the whole report but does not send it to the client on a month somebody else works (2026-10-12).
+   */
+  canEdit?: boolean;
 }) {
   const { toast } = useToast();
   const today = isoDay(new Date());
@@ -137,13 +142,15 @@ export default function SmmReportPanel({ campaign, user, onMessage, onOpen }: {
         </section>
       )}
 
-      <button
-        data-test="smm-send-monthly"
-        onClick={() => onMessage(monthlyReportMessage(campaign), "monthly_report")}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto"
-      >
-        <Send size={15} /> Send the monthly report
-      </button>
+      {canEdit && (
+        <button
+          data-test="smm-send-monthly"
+          onClick={() => onMessage(monthlyReportMessage(campaign), "monthly_report")}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto"
+        >
+          <Send size={15} /> Send the monthly report
+        </button>
+      )}
 
       {/* ── Renewal ──────────────────────────────────────────────────────────────────────── */}
       <section className="rounded-2xl border border-border bg-card p-4">

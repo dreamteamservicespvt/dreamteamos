@@ -734,9 +734,10 @@ export function canRecordSmmSaleForSeller(user: Viewer): boolean {
 }
 
 /**
- * Set a month up — dates, video length, page links, team — and change any of it later.
- * SMM Team Lead has view-only access to the overall Social Media team/work and cannot edit
- * other members' setups or progress.
+ * Set a month up — dates, video length, page links, team — and change any of it later: the tech admin,
+ * the team leaders and the main admin. The Social Media Team Lead could until 2026-10-12, when the
+ * owner made her view-only on the months others work (smmPlan.isViewOnlySmmLead); on a month she is on
+ * she works like any member, and a member does not set months up either.
  */
 export function canSetUpSmm(user: Viewer): boolean {
   if (!user) return false;
@@ -852,20 +853,18 @@ export function cyclesOverlap(a: SmmCycle, b: SmmCycle): boolean {
 }
 
 /**
- * Add a no-sale month: the tech admin, team leader or main admin — and, since 2026-10-05, the Social
- * Media Team Lead.
+ * Add a no-sale month: the tech admin, team leader or main admin.
  *
- * ── Why the Team Lead now may ──────────────────────────────────────────────────────────────────
- * The lead is the one listing an old client's earlier months and the work done in them, and "Add SMM
- * sale" is on their board; with this kept to the three admins, a lead who looked a number up got "No
- * social media sale has been recorded" and nothing to press (owner, 2026-10-05). A no-sale month has
- * no money in it — amount 0, nobody's revenue or commission — and its clash rules (noSaleMonthClash)
- * still stop it from standing in for a recorded sale or a renewal. Recording a NEW sale, which does
- * carry money and commission, stays with the admins (`canRecordSmmSaleForSeller`).
+ * ── Why the Social Media Team Lead no longer may (owner, 2026-10-12) ───────────────────────────
+ * From 2026-10-05 the lead could, because she was listing an old client's earlier months and their
+ * work. On 2026-10-12 the owner made her view-only on every month she is not on — "no ability to edit,
+ * delete, or manage other members' work" — and asked, chose to take this away too: adding a month
+ * creates a client month and hands its work to the people named on it. A no-sale month has no money in
+ * it — amount 0, nobody's revenue or commission — and its clash rules (noSaleMonthClash) stop it from
+ * standing in for a recorded sale or a renewal; recording a NEW sale stays with the same three admins
+ * (`canRecordSmmSaleForSeller`).
  */
 export function canAddNoSaleMonth(user: Viewer): boolean {
-  if (!user) return false;
-  if (user.smmLeader) return true;
   return canRecordSmmSaleForSeller(user);
 }
 
