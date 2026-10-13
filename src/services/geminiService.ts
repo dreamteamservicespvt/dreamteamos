@@ -76,7 +76,8 @@ const hasWhatsAppNumber = (businessInfo: any): boolean => contactNumbersOf(busin
  */
 const contactKeysOf = (businessInfo: unknown): string[] => contactNumbersOf(businessInfo).map(p => p.key);
 import {
-  contactNumbersOf, factsFromProfile, sanitizeBusinessProfile, stripUnverifiedNumbers, verifyBusinessFacts, type BusinessFacts,
+  contactNumbersOf, digitsOf, factsFromProfile, phoneKey, sanitizeBusinessProfile, stripUnverifiedNumbers, verifyBusinessFacts,
+  type BusinessFacts,
 } from "@/utils/businessFacts";
 import { SCRIPT_QA_SYSTEM_PROMPT } from "./prompts/scriptQa";
 import {
@@ -112,8 +113,9 @@ import {
 } from "./prompts/posterConcept";
 import { DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
 import {
-  assembleConceptPoster, conceptFromPoster, parsePosterAnalysis, posterAdTypeById, posterAdTypeName,
-  readConceptPosterPrompt, refineAnalysis, type PosterAnalysis,
+  assembleConceptPoster, conceptFromPoster, formatLanguageOf, parsePosterAnalysis, parsePosterRefineAnswer, posterAdTypeById,
+  posterAdTypeName, printedPosterContacts, readConceptPosterPrompt, refineConceptPoster, usablePosterRefine,
+  type ConceptPoster, type PosterAnalysis,
 } from "@/utils/posterAdType";
 import {
   parseDialogueClips, readDialogueScript, validateDialogueClips, formatDialogueScript, applyNameSpellings,
@@ -872,14 +874,17 @@ const posterBusinessName = (formData: AdFormData, businessInfo: unknown): string
  * One analysis call: JSON at a low temperature — the owner asked for the type to be chosen, never drawn at
  * random. Null when the reply cannot be read; a call that fails throws.
  */
-const askPosterAnalysis = async (systemInstruction: string, userPrompt: string): Promise<PosterAnalysis | null> => {
+const askPosterJson = async (systemInstruction: string, userPrompt: string): Promise<string> => {
   const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
     model,
     contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
     config: { systemInstruction, responseMimeType: 'application/json', temperature: 0.2 },
   }), { effort: 'standard' });
-  return parsePosterAnalysis(response.text || '');
+  return response.text || '';
 };
+
+const askPosterAnalysis = async (systemInstruction: string, userPrompt: string): Promise<PosterAnalysis | null> =>
+  parsePosterAnalysis(await askPosterJson(systemInstruction, userPrompt));
 
 /** An answer worth using: it named a type or wrote a summary. "{}" or broken JSON is not. */
 const usablePosterAnalysis = (a: PosterAnalysis | null): a is PosterAnalysis => !!a && (!!a.adType || !!a.businessInformation);
@@ -943,39 +948,97 @@ export const writeVideoPosterPrompt = async (
 };
 
 /**
- * A change asked of the video kit's poster row: the refine analysis, then the same assembly. The type changes
- * only when the request asks for another (`refineAnalysis`); the logo / no-logo choice is the one the prompt
- * was made with (its Format line), since the row has no logo question of its own.
+ * One poster refine — Poster Creation's and the video row's (2026-10-13). The refine analysis sees the prompt as
+ * it stands, its Changes line, which verified numbers and address it prints, and the request; its answer is
+ * decided and assembled in code (`refineConceptPoster`): the type only when asked, the business information,
+ * the Changes line, the contacts (only from the verified list) and the language of the words. Throws when the
+ * model gives nothing usable — the screen then says it is unchanged.
  */
-const refineVideoPosterPrompt = async (
+const refinePoster = async (input: {
+  currentPrompt: string;
+  /** A stored concept's Business Information — used when the prompt cannot be read back. */
+  currentBusinessInformation?: string;
+  currentReason?: string;
+  currentBenefit?: string;
+  currentTypeId: string | null;
+  fixedTypeId: string | null;
+  instruction: string;
+  formData: AdFormData;
+  businessInfo: unknown;
+  occasion: string;
+  posterSize: string;
+  hasLogo: boolean;
+  /** The language when the prompt cannot say (the form's, or English for the video row). */
+  textLanguage: string;
+}): Promise<{ poster: ConceptPoster; notApplied: string[]; keys: string[] }> => {
+  const { formData, businessInfo, instruction } = input;
+  const current = readConceptPosterPrompt(input.currentPrompt);
+  const businessName = posterBusinessName(formData, businessInfo);
+  const { keys, phones, address } = posterFactsOf(businessInfo);
+  const printed = printedPosterContacts({ verified: phones, address, currentBusinessInformation: current ? current.businessInformation : null });
+  const printedKeys = new Set(printed.phones.map((p) => phoneKey(digitsOf(p.display))));
+  const raw = await askPosterJson(
+    POSTER_REFINE_ANALYSIS_SYSTEM_PROMPT({
+      currentType: posterAdTypeById(input.currentTypeId), fixedType: posterAdTypeById(input.fixedTypeId),
+      hasLogo: input.hasLogo, hasAddress: !!address,
+      textLanguage: formatLanguageOf(current?.format) || input.textLanguage,
+    }),
+    POSTER_REFINE_ANALYSIS_USER_PROMPT({
+      businessInfo, businessName, clientBrief: formData.textInstructions, occasion: input.occasion,
+      currentPrompt: input.currentPrompt,
+      currentBusinessInformation: current?.businessInformation ?? input.currentBusinessInformation,
+      currentChanges: current?.changes,
+      contacts: phones.map((p) => ({ ...p, printed: printedKeys.has(phoneKey(digitsOf(p.display))) })),
+      address: { text: address, printed: !!printed.address },
+      instruction,
+    }),
+  );
+  const answer = parsePosterRefineAnswer(raw);
+  if (!usablePosterRefine(answer)) throw new Error('The change could not be applied — the poster prompt is unchanged. Please try again.');
+  const { poster, notApplied } = refineConceptPoster({
+    answer, instruction, current,
+    currentBusinessInformation: input.currentBusinessInformation,
+    currentTypeId: input.currentTypeId, currentReason: input.currentReason, currentBenefit: input.currentBenefit,
+    fixedTypeId: input.fixedTypeId,
+    verifiedPhones: phones, verifiedAddress: address,
+    businessInfo, businessName, brief: formData.textInstructions, occasion: input.occasion,
+    posterSize: input.posterSize,
+    hasLogo: input.hasLogo,
+    nameBoardText: formData.logoNameText?.trim() || businessName,
+    textLanguage: input.textLanguage,
+  });
+  return { poster, notApplied, keys };
+};
+
+/** A poster refine's result for the screen: the new prompt and what part of the request it could not apply. */
+export interface PosterRefineResult {
+  prompt: string;
+  notApplied: string[];
+}
+
+/**
+ * A change asked of the video kit's poster row: the shared refine. The logo / no-logo choice is the one the
+ * prompt was made with (its Format line), since the row has no logo question of its own; the canvas is always
+ * the video kit's 9:16 and the words English unless a refine asked for another language.
+ */
+export const refineVideoPoster = async (
   currentContent: string,
   instruction: string,
   formData: AdFormData,
   businessInfo: any,
-): Promise<string> => {
+): Promise<PosterRefineResult> => {
   const current = readConceptPosterPrompt(currentContent);
-  const currentTypeId = current?.adTypeId ?? null;
-  const occasion = formData.adType === 'festival' ? (formData.festivalName || '').trim() : '';
-  const businessName = posterBusinessName(formData, businessInfo);
-  const { keys, phones, address } = posterFactsOf(businessInfo);
-  const raw = await askPosterAnalysis(
-    POSTER_REFINE_ANALYSIS_SYSTEM_PROMPT({ currentType: posterAdTypeById(currentTypeId), fixedType: null }),
-    POSTER_REFINE_ANALYSIS_USER_PROMPT({
-      businessInfo, businessName, clientBrief: formData.textInstructions, occasion,
-      currentPrompt: currentContent, currentBusinessInformation: current?.businessInformation, instruction,
-    }),
-  );
-  if (!usablePosterAnalysis(raw)) throw new Error('The change could not be applied — the poster prompt is unchanged. Please try again.');
-  const kept = refineAnalysis(raw, { instruction, currentTypeId });
-  const analysis = kept && { ...kept, businessInformation: kept.businessInformation || current?.businessInformation || '' };
-  const poster = assembleConceptPoster({
-    analysis, currentTypeId, businessInfo, businessName, brief: formData.textInstructions, occasion, phones, address,
+  const { poster, notApplied, keys } = await refinePoster({
+    currentPrompt: currentContent,
+    currentTypeId: current?.adTypeId ?? null,
+    fixedTypeId: null,
+    instruction, formData, businessInfo,
+    occasion: formData.adType === 'festival' ? (formData.festivalName || '').trim() : '',
     posterSize: VIDEO_POSTER_SIZE,
     hasLogo: current ? /attached logo/i.test(current.format) : !formData.noLogo,
-    nameBoardText: formData.logoNameText?.trim() || businessName,
     textLanguage: 'English',
   });
-  return stripUnverifiedNumbers(poster.prompt, keys);
+  return { prompt: stripUnverifiedNumbers(poster.prompt, keys), notApplied };
 };
 
 const buildLanguageDirective = (formData: AdFormData): string => {
@@ -1077,8 +1140,9 @@ export const refineSection = async (
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
 
-  // The poster row is never edited as free text: its prompt is assembled in code (2026-10-12).
-  if (sectionType === 'poster') return refineVideoPosterPrompt(currentContent, additionalInstructions, formData, businessInfo);
+  // The poster row is never edited as free text: its prompt is assembled in code (2026-10-12). The studio calls
+  // refineVideoPoster itself, to tell the member what could not be applied.
+  if (sectionType === 'poster') return (await refineVideoPoster(currentContent, additionalInstructions, formData, businessInfo)).prompt;
 
   let systemPrompt: string;
   let userPrompt: string;
@@ -2021,9 +2085,13 @@ export const generatePosterConcepts = async (
 };
 
 /**
- * A change to a Poster Creation prompt: the refine analysis, then the same assembly. The type changes only when
- * the request asks for another one, and never when the job or the member fixed it; the business information
- * changes only where asked. Throws when the model gives nothing usable — the panel then says it is unchanged.
+ * A change to a Poster Creation prompt: the shared refine (`refinePoster`). The type changes only when the request
+ * asks for another one, and never when the job or the member fixed it. Throws when the model gives nothing usable
+ * — the panel then says it is unchanged.
+ *
+ * The logo: the prompt's own Format line, or a logo attached now — a kit reopened from Saved has no files, and
+ * reading `hasLogo` alone turned "Use the attached logo" into the wordmark on its first refine (2026-10-13).
+ * "No logo" ticked still wins.
  */
 export const refinePosterConcept = async (
   concept: PosterConcept,
@@ -2031,31 +2099,22 @@ export const refinePosterConcept = async (
   formData: AdFormData,
   businessInfo: unknown,
   hasLogo: boolean,
-): Promise<PosterConcept> => {
-  const fixedTypeId = posterAdTypeById(formData.posterStyle)?.id ?? null;
-  const currentTypeId = posterAdTypeById(concept.style)?.id ?? null;
-  const occasion = (formData.posterOccasion || '').trim();
-  const businessName = posterBusinessName(formData, businessInfo);
-  const { phones, address } = posterFactsOf(businessInfo);
-  const raw = await askPosterAnalysis(
-    POSTER_REFINE_ANALYSIS_SYSTEM_PROMPT({ currentType: posterAdTypeById(currentTypeId), fixedType: posterAdTypeById(fixedTypeId) }),
-    POSTER_REFINE_ANALYSIS_USER_PROMPT({
-      businessInfo, businessName, clientBrief: formData.textInstructions, occasion,
-      currentPrompt: concept.imagePrompt, currentBusinessInformation: concept.businessInformation, instruction,
-    }),
-  );
-  if (!usablePosterAnalysis(raw)) throw new Error('The change could not be applied — the poster prompt is unchanged. Please try again.');
-  const kept = refineAnalysis(raw, { instruction, currentTypeId, fixedTypeId });
-  const analysis = kept && { ...kept, businessInformation: kept.businessInformation || concept.businessInformation || '' };
-  const poster = assembleConceptPoster({
-    analysis, fixedTypeId, currentTypeId, currentReason: concept.reason, businessInfo, businessName,
-    brief: formData.textInstructions, occasion, phones, address,
+): Promise<{ concept: PosterConcept; notApplied: string[] }> => {
+  const current = readConceptPosterPrompt(concept.imagePrompt);
+  const { poster, notApplied } = await refinePoster({
+    currentPrompt: concept.imagePrompt,
+    currentBusinessInformation: concept.businessInformation,
+    currentReason: concept.reason,
+    currentBenefit: concept.benefit,
+    currentTypeId: posterAdTypeById(concept.style)?.id ?? null,
+    fixedTypeId: posterAdTypeById(formData.posterStyle)?.id ?? null,
+    instruction, formData, businessInfo,
+    occasion: (formData.posterOccasion || '').trim(),
     posterSize: formData.posterSize || DEFAULT_POSTER_SIZE,
-    hasLogo: hasLogo && !formData.noLogo,
-    nameBoardText: formData.logoNameText?.trim() || businessName,
+    hasLogo: (hasLogo || (!!current && /attached logo/i.test(current.format))) && !formData.noLogo,
     textLanguage: formData.posterTextLanguage || 'English',
   });
-  return conceptFromPoster(poster);
+  return { concept: conceptFromPoster(poster), notApplied };
 };
 
 export interface GenerationOptions {

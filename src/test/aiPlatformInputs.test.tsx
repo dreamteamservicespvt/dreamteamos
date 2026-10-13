@@ -25,7 +25,7 @@ vi.mock("@/store/authStore", () => {
   return { useAuthStore: (select: (s: any) => unknown) => select(state) };
 });
 vi.mock("@/services/geminiService", () => ({
-  generateAdAssets: vi.fn(), generatePosterConcepts: vi.fn(), refinePosterConcept: vi.fn(), DEFAULT_POSTER_CONCEPT_COUNT: 3,
+  generateAdAssets: vi.fn(), generatePosterConcepts: vi.fn(), refinePosterConcept: vi.fn(), refineVideoPoster: vi.fn(), DEFAULT_POSTER_CONCEPT_COUNT: 3,
   generateStockImagePrompts: vi.fn(), refineStockImagePrompt: vi.fn(), generateOverlayTexts: vi.fn(),
   refineOverlayImagePrompt: vi.fn(), refineSection: vi.fn(), refineVoiceOver: vi.fn(), refineVeoPrompts: vi.fn(),
   regenerateVeoForClips: vi.fn(), extractBusinessNameFromInfo: () => "",

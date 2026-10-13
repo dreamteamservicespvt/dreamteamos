@@ -25,7 +25,7 @@ import { CHATGPT_URL, GEMINI_URL } from './generation/mission';
 import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender, packSpeakers, withCustomCharacter } from '@/services/characterPacks';
 import { attireLabel, attireOptionLabel, attireOptionsFor, castLabelFor, resolveModelSpec } from '@/utils/adRequirement';
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
-import { generateAdAssets, generatePosterConcepts, refinePosterConcept, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
+import { generateAdAssets, generatePosterConcepts, refinePosterConcept, refineVideoPoster, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
 import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
 import { finalScriptTemplate } from '@/utils/finalScript';
 import { adSpecFromSaved, formForKit, savedSettingsOf } from '@/utils/adSpec';
@@ -80,6 +80,25 @@ const cleanPromptForClipboard = (content: string) => {
     .replace(/\n?```$/gim, '')
     .trim();
 };
+
+/**
+ * What a poster refine tells the member (2026-10-13) — Poster Creation and the video row alike. Before, a request
+ * the refine could not carry came back as the same prompt, silently (Poster Creation) or as "could not be applied
+ * without breaking the script's format" (the video row) — "poster refine is not working".
+ */
+const posterRefineUnchangedAlert = (notApplied: string[]) => ({
+  title: "Nothing changed",
+  description: notApplied.length
+    ? `${notApplied.join(' ')} The poster prompt is as it was.`
+    : 'The poster prompt is as it was. Say what to change on the poster — for example: use red and gold colours, add the headline "Diwali Offer", leave out the address, make the words Telugu, make it a shadow ad — and refine again.',
+  confirmText: "OK",
+});
+
+const posterRefinePartlyAlert = (notApplied: string[]) => ({
+  title: "Refined — one part was not applied",
+  description: notApplied.join(' '),
+  confirmText: "OK",
+});
 
 const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   assignment, assignmentId, onBusinessNameExtracted, onClose, onComplete, completing = false
@@ -708,7 +727,18 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         case 'voiceOver': currentContent = outputs.voiceOverScript; break;
         case 'veo': currentContent = outputs.veoPrompts.join('\n###SEGMENT###\n'); break;
       }
-      const refinedContent = await refineSection(section, currentContent, additionalInstructions, kitForm(), outputs.businessInfo);
+      // The poster row's refine also says what part of the request it could not apply (2026-10-13).
+      let posterNotApplied: string[] = [];
+      let refinedContent: string;
+      if (section === 'poster') {
+        const poster = await refineVideoPoster(currentContent, additionalInstructions, kitForm(), outputs.businessInfo);
+        refinedContent = poster.prompt;
+        posterNotApplied = poster.notApplied;
+        // Done before its message opens — the row's button no longer reads "Refining…" behind it.
+        setRefiningSection(null);
+      } else {
+        refinedContent = await refineSection(section, currentContent, additionalInstructions, kitForm(), outputs.businessInfo);
+      }
       /**
        * A refine that could not be applied hands back exactly what it was given (see
        * refineSection: a special-category reply that has lost its two-character format is
@@ -716,7 +746,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
        * script and leaving the member to wonder whether their instruction was too vague.
        */
       if (refinedContent.trim() === currentContent.trim()) {
-        await showAlert({
+        await showAlert(section === 'poster' ? posterRefineUnchangedAlert(posterNotApplied) : {
           title: "Nothing changed",
           description: "That refinement could not be applied without breaking the script's format, so the original has been kept. Try wording the change more specifically and refine again.",
           confirmText: "OK",
@@ -740,6 +770,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
           default: return prev;
         }
       });
+      if (posterNotApplied.length) await showAlert(posterRefinePartlyAlert(posterNotApplied));
 
     } catch (error: any) {
       // Silently swallowed until now: the spinner stopped, the content did not move, and nobody
@@ -1084,13 +1115,21 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (!outputs || !concept || !instruction.trim()) return;
     setRefiningConcept(index);
     try {
-      const next = await refinePosterConcept(concept, instruction, formData, outputs.businessInfo, !!files.logo);
+      const { concept: next, notApplied } = await refinePosterConcept(concept, instruction, formData, outputs.businessInfo, !!files.logo);
+      // The refine is over before its message opens — the button behind it no longer reads "Refining…".
+      setRefiningConcept(null);
+      // The same prompt back used to be drawn again in silence — the owner read it as "refine is not working".
+      if (next.imagePrompt.trim() === concept.imagePrompt.trim()) {
+        await showAlert(posterRefineUnchangedAlert(notApplied));
+        return;
+      }
       setOutputs(prev => {
         if (!prev?.posterConcepts) return prev;
         const list = [...prev.posterConcepts];
         list[index] = next;
         return { ...prev, posterConcepts: list };
       });
+      if (notApplied.length) await showAlert(posterRefinePartlyAlert(notApplied));
     } catch (error: any) {
       await showAlert({
         title: "Refinement failed",

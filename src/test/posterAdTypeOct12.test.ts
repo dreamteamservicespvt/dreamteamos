@@ -283,10 +283,10 @@ describe("Poster Creation, end to end", () => {
     analysisReply = JSON.stringify({ adType: "animal_metaphor", reason: "Tough as a rhino.", businessInformation: "Sai Mobiles sells smartphones" });
     const [first] = (await gemini.generatePosterConcepts(form(), files(), () => {})).posterConcepts!;
     refineReply = JSON.stringify({ adType: "shadow_metaphor", reason: "Shadows.", businessInformation: "Sai Mobiles sells smartphones, with a Diwali exchange offer" });
-    const kept = await gemini.refinePosterConcept(first, "add the Diwali exchange offer", form(), extracted, true);
+    const { concept: kept } = await gemini.refinePosterConcept(first, "add the Diwali exchange offer", form(), extracted, true);
     expect(kept).toMatchObject({ style: "animal_metaphor", chosenBy: "kept", reason: "Tough as a rhino." });
     expect(kept.imagePrompt).toContain("with a Diwali exchange offer");
-    const changed = await gemini.refinePosterConcept(first, "make it a shadow ad", form(), extracted, true);
+    const { concept: changed } = await gemini.refinePosterConcept(first, "make it a shadow ad", form(), extracted, true);
     expect(changed).toMatchObject({ style: "shadow_metaphor", chosenBy: "analysis" });
     refineReply = "not json";
     await expect(gemini.refinePosterConcept(first, "anything", form(), extracted, true)).rejects.toThrow(/unchanged/);

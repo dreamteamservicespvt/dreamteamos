@@ -537,10 +537,34 @@ out, ≤ 60 words; the name put in front when missing; the occasion added when m
 list (a number in the business name, the occasion or the wordmark) — Poster Creation had no final scrub before 2026-10-13.
 `posterPromptProblems` / `isConceptPosterPrompt` check the exact shape (one type named once, no "..", ≤ 200 words).
 Stored as `posterConcepts: [one]` (`conceptFromPoster`: `adTypeName`, `reason`, `benefit`, `businessInformation`,
-`format`, `chosenBy` fixed / analysis / kept / rule, and the old fields filled from them). `refinePosterConcept` (and the
-video row's `refineSection('poster')` → `refineVideoPosterPrompt`): the refine analysis (`POSTER_REFINE_ANALYSIS_*`) then the
-same assembly — the type changes only when the request asks for another (`refineAnalysis` / `instructionAsksForTypeChange`),
-never a fixed one; a kept type keeps its reason; an unusable answer throws "unchanged". `PosterConceptsPanel`: "Poster
+`format`, `chosenBy` fixed / analysis / kept / rule, `changes` (2026-10-13), and the old fields filled from them).
+**Refine (rebuilt 2026-10-13 — the owner: "poster refine prompt is not working").** Until then a refine could change only
+the type and the business summary, which may not describe a picture, and code put everything else back (the verified
+contacts and address, the form's language) — so a design request, "leave out the address" (the Refine box's own example)
+and "words in Telugu" came back as the same prompt, silently in Poster Creation and as "…without breaking the script's
+format" in the video row. Now `refinePosterConcept` → `{ concept, notApplied }` and the video row's `refineVideoPoster`
+→ `{ prompt, notApplied }` (`refineSection('poster')` returns its `.prompt`) share one core (`geminiService.refinePoster`):
+the refine analysis (`POSTER_REFINE_ANALYSIS_*`, shown the prompt, its Changes line, each verified number / the address
+marked "printed now" or "left out", and the language now) answers JSON with `adType`, `reason`, `benefit`,
+`businessInformation`, `changes`, `numbers`, `address`, `textLanguage`, `notApplied` (`parsePosterRefineAnswer`;
+`usablePosterRefine`), decided and assembled in code by `utils/posterAdType.refineConceptPoster`: the type only when asked
+(`refineAnalysis`), never a fixed one; **the design requests in ONE "Changes:" line** between the three sentences and the
+Format line (the owner's choice; `conceptPosterPrompt({ …, changes })`, read back by `readConceptPosterPrompt`; the model
+returns the WHOLE line — earlier changes kept unless undone; `cleanPosterChanges`: no phone number at all (the Contact
+segment is the only place one is printed), no labelled contact / email / website / address / type name, ≤ 50 words
+(`MAX_CHANGES_WORDS`), a capital first letter, and without a logo file "the logo" → "the business name"; a sentence that only
+repeats the Format line is dropped, `withoutFormatRepeats` — seen live); **the contacts** as the prompt prints them now
+(`printedPosterContacts`), changed only when the request is about them (`instructionTouchesContacts`) and only within the
+verified list (`refinedPosterContacts`; a typed number that is not verified, or an address the business has none of, gives
+a note — the owner: removing allowed, adding never); the Format line's count follows; **the language** of the words is the
+request's when it names one, else the prompt's own (`refinedTextLanguage`, `formatLanguageOf`) — a later refine keeps it;
+the size stays the form's (Poster Creation) or 9:16 (video row). The logo on a Poster Creation refine: the prompt's own
+Format line OR a logo attached now, unless "No logo" is ticked — a kit reopened from Saved has no files, and the old
+`!!files.logo` flipped it to the wordmark. The studio says what happened (`posterRefineUnchangedAlert` "Nothing changed" with
+the notes, or `posterRefinePartlyAlert` "Refined — one part was not applied"), with the Refine button already reset; an
+answer that is only a note (`{"notApplied": …}`) counts — the prompt stays and the member reads why; what the answer leaves
+out (reason, main benefit) is the card's as it was (`currentBenefit`); an unusable answer throws "unchanged". The
+prompt-length guard allows the Changes line on top of its 200 words. `PosterConceptsPanel`: "Poster
 prompt", the ad type, how it was chosen, why + main benefit, Copy prompt, Refine, Open image generator; a generation saved
 before shows its old concepts as it did. The mission guide opens ONE Gemini tab; `generationEta` plans one analysis
 (`poster.concepts`, 8 s, no fill-in pass). Removed: the old concept prompt and its readers (`utils/posterConcepts` keeps only
@@ -641,6 +665,12 @@ attribution (`Clip.voScript` is one string).
   style, which is kept. The prompt is the owner's three sentences word for word plus one Format line (size, logo, text
   language); its business information keeps the business's real facts and only its verified contact numbers and
   address. A poster run writes one prompt. Posters are 9:16 unless a size is chosen; the video kit's poster is always 9:16.
+- **AI ads — poster refine (owner, 2026-10-13):** a refine applies what the member asks. Design requests (colours,
+  background, what to show, a headline, the logo's size or place) go in one short "Changes:" line after the owner's three
+  sentences, which never change, and stay there through later refines until undone. A refine may leave out — or bring
+  back — a verified number or the address, and change the language of the words; it never adds a number or an address the
+  business did not give, and never changes the poster's size (that is the Poster Size setting). When nothing, or not all,
+  of a request could be applied, the member is told what and where to change it.
 - **AI ads — Gemini availability (owner, 2026-10-10: "sometimes prompts are not generating"):** a generation never
   fails because Google retired a model, because one model is busy or used up for the day while another can answer,
   or because some keys are dead; it uses the best model that can answer at that moment and goes back to the
@@ -778,9 +808,15 @@ attribution (`Clip.voScript` is one string).
 - Header prompts in no-logo mode may still reference a logo container (noted 2026-07, [NOT CONFIRMED] current). The
   poster's no longer can: its Format line never names a logo without one (2026-10-12).
 - Poster prompts (2026-10-12): the type is the model's judgment (or the keyword rubric when it does not answer); a
-  business the rubric's word lists do not know gets Product Benefit. The Format line comes from the form, so a refine
-  cannot change the size or the text language ("make the words Telugu" is not applied — change it on the form and
-  Generate). Old saved kits keep their long poster prompts until regenerated. Checked by unit tests and the pipeline on a
+  business the rubric's word lists do not know gets Product Benefit. A refine cannot change the size (the Poster Size
+  setting; the member is told). Since 2026-10-13 a refine reads the text language from the prompt, so changing the form's
+  text language after Generate no longer reaches a refine — Generate again, or ask for it in the refine. Old saved kits keep their long poster prompts until regenerated.
+- Poster refine (2026-10-13): what goes where (design → Changes line, facts → business information, contacts, language) is
+  the model's reading of the request, checked by code only where it can be (numbers, address, type, logo word, Format
+  repeats). A contact change needs a contact word in the request (`CONTACT_CHANGE_WORDS`: English plus a few Telugu /
+  Hindi words) — "drop the second one" without one is not applied. Live on gemini-2.5-flash (a 9-refine chain + the video
+  row) every step landed in the right field, kept the earlier changes and printed each number once; no image has been made
+  from a prompt with a Changes line yet. Checked by unit tests and the pipeline on a
   faked Gemini (`posterAdTypeOct12`, `adPipelineEndToEnd`) and the panel / studio in a real browser (1440 / 390 px) — no
   live Gemini analysis was run and no poster image has been made from the new prompts yet.
 

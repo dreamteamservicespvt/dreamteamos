@@ -134,6 +134,8 @@ export interface PosterConcept {
   benefit?: string;
   /** The prompt's Business Information slot: the summary plus the verified contacts and address. */
   businessInformation?: string;
+  /** The "Changes:" line a refine wrote — the team's design requests (2026-10-13); "" or absent when never refined. */
+  changes?: string;
   /** The Format line's text (size · logo · text language). */
   format?: string;
   /** How the type was chosen: fixed by the job / member, by the analysis, kept on a refine, or by the code's rule. */

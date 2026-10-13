@@ -9,6 +9,40 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-13 (evening): poster refine works — a "Changes:" line, contacts and language, and it says what it could not
+  do** (`ai-ads.md` §17.2 Poster Creation "Refine", §24, §25; `data-model.md` `posterConcepts.changes`). The owner: "poster
+  refine prompt is not working." Cause: since the 2026-10-12 rebuild a refine could change only the ad type and the
+  business summary — and the summary may not describe a picture — while code put everything else back (the verified
+  numbers and address, the form's language). So "red and gold colours", a headline, "make the logo bigger", "leave out
+  the address" (the Refine box's own example) and "words in Telugu" all came back as the same prompt: silently in Poster
+  Creation, and in the video row as "could not be applied without breaking the script's format". Also: a Poster Creation
+  kit reopened from Saved (no files) turned "Use the attached logo" into the wordmark on its first refine (`!!files.logo`).
+  Asked (AskUserQuestion), the owner chose: design requests in ONE "Changes:" line between the three sentences and the
+  Format line; removing a verified number / the address on request is allowed, adding one never. Fix: the refine
+  analysis answers `changes` (the whole line, earlier changes kept), `numbers`, `address`, `textLanguage`, `notApplied`
+  besides the four fields, shown the prompt's Changes line and each verified contact "printed now" / "left out";
+  `utils/posterAdType.refineConceptPoster` decides and assembles it (`cleanPosterChanges`, `printedPosterContacts`,
+  `refinedPosterContacts` — a contact change only on a contact word, only within the verified list — `refinedTextLanguage`,
+  `withoutFormatRepeats`); one core `geminiService.refinePoster` for `refinePosterConcept` (→ `{ concept, notApplied }`)
+  and the new `refineVideoPoster` (→ `{ prompt, notApplied }`; `refineSection('poster')` returns its prompt); the logo is
+  the prompt's own Format line or a logo attached now, unless "No logo"; the studio shows "Nothing changed" (with the
+  notes) or "Refined — one part was not applied". A poster nobody refined is byte-for-byte as before.
+  Files: `utils/posterAdType.ts`, `services/prompts/posterConcept.ts`, `services/geminiService.ts`, `types/aiPlatform.ts`,
+  `components/ai-platform/AIPlatformApp.tsx`, `PosterConceptsPanel.tsx` (placeholder); tests `posterRefineOct13.test.ts`
+  (new: the line's shape and read-back, the scrub, contacts, language, the answer reader, the assembly, Poster Creation's
+  three-refine chain, the reopened logo, a colour request that cannot drop a number, the video row),
+  `posterAdTypeOct12.test.ts` (new return shape), the two studio tests' Gemini mocks. Live on gemini-2.5-flash: a
+  9-refine chain (colours + headline → leave out the address → Telugu words → remove the WhatsApp number → square (not
+  applied, said so) → white instead of red → shadow ad → an unverified number (not printed, said once) → address back)
+  and the video row (design change + "landscape" not applied) — every step in the right field, earlier changes kept, each
+  number once, the shape valid; it showed the model copying the Format line's wordmark sentence into the Changes line and
+  repeating the app's number note, both fixed in code. The studio in a real browser (real `AIPlatformApp`, panel and
+  `GeneratedCard` on memoryFirestore, a faked Gemini, 1440 / 390 px): the Changes line, "leave out the address", one
+  number left out, Telugu words, a saved kit reopened without its logo file, the video row; it found that an answer with
+  ONLY a note ("make it square") read as "Refinement failed" (`usablePosterRefine` now counts `notApplied`), that the
+  card's main benefit vanished on a partial answer (now kept, `currentBenefit`) and that "Refining…" stayed behind the
+  new messages (reset first) — all fixed and re-checked. Build, typecheck (0) and the full suite pass.
+
 - **2026-10-13: "Create next renewal" only for the main admin and the tech admin** (`smm.md` §9.9 "Locked months and
   Create next renewal", §24, §25; `roles-routes.md` §8). The owner: "Create next renewal — don't show this to the team
   lead, show this only to the admin and the sales person." The button (added 2026-10-12 in `5ca75b0`, on the client

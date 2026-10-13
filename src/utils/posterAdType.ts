@@ -25,12 +25,16 @@
  *     put back — one to three numbers exactly as the member gave them, the address only when there is one.
  *  4. When the analysis gives nothing usable — no reply, broken JSON, an id outside the eight — the type
  *     comes from a keyword rubric over the business (fallbackPosterAdType): deterministic, never random.
+ *  5. A REFINE (owner, 2026-10-13: "poster refine prompt is not working") may also add a "Changes:" line —
+ *     the team's design requests — leave out (or bring back) a verified number or the address, and change
+ *     the language of the words. See refineConceptPoster.
  *
- * Pure: no React, no Firestore, no model. Every rule here is unit-tested (src/test/posterAdTypeOct12).
+ * Pure: no React, no Firestore, no model. Every rule here is unit-tested (src/test/posterAdTypeOct12,
+ * src/test/posterRefineOct13).
  */
 import type { PosterConcept } from "@/types/aiPlatform";
 import { parsePosterSize } from "./posterSpec";
-import { digitsOf, MAX_CONTACT_NUMBERS, phoneKey, stripUnverifiedNumbers } from "./businessFacts";
+import { digitsOf, findPhoneNumbers, MAX_CONTACT_NUMBERS, phoneKey, stripUnverifiedNumbers } from "./businessFacts";
 import { themeTextOf } from "./castSheet";
 
 export interface PosterAdType {
@@ -366,11 +370,17 @@ export function cleanPosterSummary(text: string, opts: { address?: string } = {}
   t = t.replace(LABELLED_CONTACT, "$1").replace(EMAIL, "").replace(WEB_ADDRESS, "").replace(DANGLING_CALL, "");
   const address = (opts.address || "").trim();
   if (address.length >= 6) t = t.replace(new RegExp(escapeRegExp(address), "gi"), "");
+  return withoutEnding(capWords(tidyPunctuation(withoutTypeNames(t)), MAX_SUMMARY_WORDS));
+}
+
+/** Every ad-type name taken out ("in a Shadow Metaphor Ads style") — the prompt names its one type once, in its first sentence. */
+function withoutTypeNames(text: string): string {
+  let t = text;
   for (const type of POSTER_AD_TYPES) {
     const core = escapeRegExp(type.name.replace(/\s+Ads$/i, "")).replace(/[-\s]+/g, "[\\s-]+");
     t = t.replace(new RegExp(`\\b(?:(?:in|as|using)\\s+(?:an?|the)\\s+)?${core}(?:\\s+ads?)?(?:\\s+style)?\\b`, "gi"), "");
   }
-  return withoutEnding(capWords(tidyPunctuation(t), MAX_SUMMARY_WORDS));
+  return t;
 }
 
 export interface PosterContact {
@@ -442,29 +452,41 @@ export const POSTER_PROMPT_CLOSE = "Create one strong visual concept/metaphor th
 /**
  * The prompt the member copies: the owner's three sentences exactly, a blank line, then the Format line.
  * Assembled here and only here — a model never writes it, so it can never come back longer, in another
- * order, with two types or with a double full stop.
+ * order, with two types or with a double full stop. A refined poster may carry one "Changes:" line between
+ * them (refineConceptPoster); a poster nobody refined has none, so it reads exactly as the owner wrote it.
  */
-export function conceptPosterPrompt(input: { adTypeName: string; businessInformation: string; format: string }): string {
+export function conceptPosterPrompt(input: { adTypeName: string; businessInformation: string; format: string; changes?: string }): string {
   const type = withoutEnding(input.adTypeName);
   const info = withoutEnding(input.businessInformation.replace(/\s+/g, " "));
+  const changes = withoutEnding((input.changes || "").replace(/\s+/g, " "));
   const format = `${input.format.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "")}.`;
-  return `${POSTER_PROMPT_LEAD} ${type}. Business Information: ${info}. ${POSTER_PROMPT_CLOSE}\n\nFormat: ${format}`;
+  return `${POSTER_PROMPT_LEAD} ${type}. Business Information: ${info}. ${POSTER_PROMPT_CLOSE}${changes ? `\n\nChanges: ${changes}.` : ""}\n\nFormat: ${format}`;
 }
 
-const PROMPT_SHAPE = /^Create a minimalist and creative ad in (.+?)\. Business Information: ([\s\S]+?)\. Create one strong visual concept\/metaphor that communicates the main product\/service benefit\.\n\nFormat: (.+)$/;
+const PROMPT_SHAPE = /^Create a minimalist and creative ad in (.+?)\. Business Information: ([\s\S]+?)\. Create one strong visual concept\/metaphor that communicates the main product\/service benefit\.(?:\n\nChanges: (.+))?\n\nFormat: (.+)$/;
+
+export interface ConceptPosterParts {
+  adTypeId: string;
+  adTypeName: string;
+  businessInformation: string;
+  /** The Changes line without its closing full stop; "" when the poster carries none. */
+  changes: string;
+  format: string;
+}
 
 /** A prompt this system wrote, read back into its parts — null for anything else (an older long prompt). */
-export function readConceptPosterPrompt(text: string): { adTypeId: string; adTypeName: string; businessInformation: string; format: string } | null {
+export function readConceptPosterPrompt(text: string): ConceptPosterParts | null {
   const m = PROMPT_SHAPE.exec((text || "").trim());
   if (!m) return null;
   const type = POSTER_AD_TYPES.find((t) => t.name === m[1]);
   if (!type) return null;
-  return { adTypeId: type.id, adTypeName: type.name, businessInformation: m[2], format: m[3] };
+  return { adTypeId: type.id, adTypeName: type.name, businessInformation: m[2], changes: withoutEnding(m[3] || ""), format: m[4] };
 }
 
 /**
  * Longer than this is no longer "very short". A summary at its cap plus the name, the occasion, three
  * numbers and a long address stays under it; it is a guard against a broken assembly, not a style rule.
+ * A refined poster may add its Changes line (at most MAX_CHANGES_WORDS, plus its label) on top.
  */
 const MAX_PROMPT_WORDS = 200;
 
@@ -477,14 +499,16 @@ export function posterPromptProblems(text: string): string[] {
   else {
     if (!POSTER_AD_TYPES.some((type) => type.name === m[1])) problems.push(`"${m[1]}" is not one of the eight ad types`);
     if (!withoutEnding(m[2])) problems.push("the business information is empty");
-    if (!/\.$/.test(m[3].trim()) || m[3].includes("\n")) problems.push("the Format line is not one finished line");
+    if (m[3] !== undefined && !(withoutEnding(m[3]) && /\.$/.test(m[3].trim()))) problems.push("the Changes line is not one finished line");
+    if (!/\.$/.test(m[4].trim()) || m[4].includes("\n")) problems.push("the Format line is not one finished line");
   }
   const named = POSTER_AD_TYPES.reduce((n, type) => n + (t.split(type.name).length - 1), 0);
   if (named !== 1) problems.push(`it names ${named} ad types — exactly one is allowed`);
   if (/\.\s*\./.test(t)) problems.push("it has a double full stop");
   if (/[ \t]+$/m.test(t)) problems.push("a line ends in spaces");
   const words = t.split(/\s+/).filter(Boolean).length;
-  if (words > MAX_PROMPT_WORDS) problems.push(`it is ${words} words long — at most ${MAX_PROMPT_WORDS}`);
+  const limit = MAX_PROMPT_WORDS + (m?.[3] ? MAX_CHANGES_WORDS + 1 : 0);
+  if (words > limit) problems.push(`it is ${words} words long — at most ${limit}`);
   return problems;
 }
 
@@ -502,8 +526,8 @@ export interface PosterAnalysis {
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
-/** The analysis's JSON — in a code fence, with a sentence around it, or as a bare object. Null when unreadable. */
-export function parsePosterAnalysis(text: string): PosterAnalysis | null {
+/** A JSON object in a code fence, with a sentence around it, or bare — null when there is none. */
+function readJsonObject(text: string): Record<string, unknown> | null {
   const cleaned = (text || "").replace(/^```(?:json)?\s*/gim, "").replace(/```\s*$/gim, "").trim();
   let json: unknown = null;
   try {
@@ -516,15 +540,75 @@ export function parsePosterAnalysis(text: string): PosterAnalysis | null {
     }
   }
   if (Array.isArray(json)) json = json[0];
-  if (!json || typeof json !== "object") return null;
-  const r = json as Record<string, unknown>;
+  return json && typeof json === "object" ? (json as Record<string, unknown>) : null;
+}
+
+const analysisOf = (r: Record<string, unknown>): PosterAnalysis => ({
+  adType: resolvePosterAdTypeId(r.adType ?? r.ad_type ?? r.type ?? r.style ?? r.adTypeName),
+  reason: str(r.reason) || str(r.why),
+  benefit: str(r.benefit) || str(r.mainBenefit) || str(r.main_benefit),
+  businessInformation: str(r.businessInformation) || str(r.business_information) || str(r.businessInfo) || str(r.summary),
+});
+
+/** The analysis's JSON — in a code fence, with a sentence around it, or as a bare object. Null when unreadable. */
+export function parsePosterAnalysis(text: string): PosterAnalysis | null {
+  const r = readJsonObject(text);
+  return r ? analysisOf(r) : null;
+}
+
+/**
+ * A refine's answer (2026-10-13): the analysis's four fields, plus what the refine may change besides them.
+ * A field the answer leaves out is null / "" and means "as the poster has it now".
+ */
+export interface PosterRefineAnswer extends PosterAnalysis {
+  /** The whole Changes line as it should now read ("" = no design requests); null = the line stays as it is. */
+  changes: string | null;
+  /** The verified numbers to print after the change, as the model copied them; null = as now. */
+  numbers: string[] | null;
+  /** Print the verified address (true) or leave it out (false); null = as now. */
+  address: boolean | null;
+  /** The language of the words on the poster, only when the request asks for another; "" = as now. */
+  textLanguage: string;
+  /** What part of the request could not be applied, in a sentence; "" when everything was. */
+  notApplied: string;
+}
+
+const boolOf = (v: unknown): boolean | null => {
+  if (typeof v === "boolean") return v;
+  if (typeof v !== "string") return null;
+  if (/^\s*(?:true|yes)\s*$/i.test(v)) return true;
+  return /^\s*(?:false|no)\s*$/i.test(v) ? false : null;
+};
+
+/** A refine's JSON — read like the analysis's. Null when unreadable. */
+export function parsePosterRefineAnswer(text: string): PosterRefineAnswer | null {
+  const r = readJsonObject(text);
+  if (!r) return null;
+  const changes = typeof r.changes === "string"
+    ? r.changes.trim()
+    : Array.isArray(r.changes) ? r.changes.filter((c): c is string => typeof c === "string").join(". ") : null;
+  const rawNumbers = r.numbers ?? r.contactNumbers ?? r.phones;
+  const numbers = Array.isArray(rawNumbers)
+    ? rawNumbers.map((n) => (typeof n === "number" ? String(n) : typeof n === "string" ? n.trim() : "")).filter(Boolean)
+    : null;
   return {
-    adType: resolvePosterAdTypeId(r.adType ?? r.ad_type ?? r.type ?? r.style ?? r.adTypeName),
-    reason: str(r.reason) || str(r.why),
-    benefit: str(r.benefit) || str(r.mainBenefit) || str(r.main_benefit),
-    businessInformation: str(r.businessInformation) || str(r.business_information) || str(r.businessInfo) || str(r.summary),
+    ...analysisOf(r),
+    changes,
+    numbers,
+    address: boolOf(r.address ?? r.printAddress),
+    textLanguage: str(r.textLanguage) || str(r.language),
+    notApplied: str(r.notApplied) || str(r.not_applied),
   };
 }
+
+/**
+ * An answer worth using: it gave at least one field a refine reads. "{}" or broken JSON is not. A note alone
+ * ({"notApplied": "The size comes from the Poster Size setting"}) is: the prompt stays and the member is told
+ * why — it used to read as "Refinement failed" (the browser check, 2026-10-13).
+ */
+export const usablePosterRefine = (a: PosterRefineAnswer | null): a is PosterRefineAnswer =>
+  !!a && (!!a.adType || !!a.businessInformation || a.changes !== null || a.numbers !== null || a.address !== null
+    || !!a.textLanguage || !!a.notApplied);
 
 // ── when the analysis does not answer ──────────────────────────────────────────────────────────
 
@@ -632,6 +716,8 @@ export interface ConceptPoster {
   reason: string;
   benefit: string;
   businessInformation: string;
+  /** The Changes line a refine wrote (2026-10-13); "" for a poster nobody refined. */
+  changes: string;
   format: string;
   prompt: string;
   chosenBy: PosterTypeChoice;
@@ -655,6 +741,8 @@ export interface ConceptPosterInput extends PosterFormatInput {
   occasionLine?: string;
   phones?: PosterContact[];
   address?: string;
+  /** A refine's Changes line (cleanPosterChanges); absent or "" for a new poster. */
+  changes?: string;
 }
 
 const sentence = (text: string) => {
@@ -732,16 +820,261 @@ export function assembleConceptPoster(input: ConceptPosterInput): ConceptPoster 
     address: input.address,
   }), allowed);
   const format = stripUnverifiedNumbers(posterFormatLine({ ...input, contactCount: phones.length }), allowed);
+  // The Contact segment is the one place a number is printed: a Changes line carries none, verified or not
+  // (a number written twice is how an image tool draws it twice — the 2026-10-13 footer bug).
+  const changes = withoutFormatRepeats(
+    withoutEnding(tidyPunctuation(stripUnverifiedNumbers((input.changes || "").replace(/\s+/g, " ").trim(), []))),
+    format,
+  );
   return {
     adType: type.id,
     adTypeName: type.name,
     reason,
     benefit,
     businessInformation,
+    changes,
     format,
-    prompt: conceptPosterPrompt({ adTypeName: type.name, businessInformation, format }),
+    prompt: conceptPosterPrompt({ adTypeName: type.name, businessInformation, format, changes }),
     chosenBy,
   };
+}
+
+// ── a refine (2026-10-13) ──────────────────────────────────────────────────────────────────────
+
+/*
+  ── Why (the owner, 2026-10-13: "poster refine prompt is not working") ──
+  Until then a refine could change two things only: the ad type, and the business summary — which may not
+  describe a picture. Everything else was put back by code: the verified numbers and the address, the
+  language from the form. So "use red and gold colours", "add the headline …", "make the logo bigger",
+  "leave out the address" (the Refine box's own example) and "words in Telugu" all came back as the same
+  prompt — silently in Poster Creation, and in the video row as "could not be applied without breaking the
+  script's format". The owner's answers: the design requests go in ONE short "Changes:" line between the
+  three sentences and the Format line (the three sentences stay word for word); a refine may leave out — or
+  bring back — a verified number or the address, but never add one the business did not give.
+*/
+
+/** The longest a Changes line may be: short instructions to the designer, not a second art-directed prompt. */
+export const MAX_CHANGES_WORDS = 50;
+
+/** "the logo", "our brand logo", "logos" — said of a poster that has no logo file. */
+const LOGO_WORD = /\b(?:(?:the|a|an|our|your|their|its)\s+)?(?:brand\s+|company\s+|business\s+)?logos?\b/gi;
+
+/**
+ * The model's Changes line, made safe to print: one line, no phone number (the Contact segment is the only
+ * place one is printed), no labelled contact, email, website or the address, no ad-type name, at most
+ * MAX_CHANGES_WORDS words, no sentence end of its own. Without a logo file the business name is the
+ * wordmark, so "the logo" becomes "the business name" — naming a logo is how an image tool invents one.
+ */
+export function cleanPosterChanges(text: string, opts: { hasLogo: boolean; address?: string }): string {
+  let t = (text || "")
+    .replace(/```[a-z]*|```/gi, "")
+    .replace(/^\s*changes?\s*[:\u{FF1A}]\s*/iu, "")
+    // A list the model wrote ("- Use red\n- Add …", "1. …") becomes sentences.
+    .replace(/^\s*(?:[-•*]|\d+[.)])\s+/, "")
+    .replace(/\s*[\r\n]+\s*(?:[-•*]|\d+[.)])?\s*/g, ". ");
+  t = stripUnverifiedNumbers(t, []);
+  t = t.replace(LABELLED_CONTACT, "$1").replace(EMAIL, "").replace(WEB_ADDRESS, "");
+  const address = (opts.address || "").trim();
+  if (address.length >= 6) t = t.replace(new RegExp(escapeRegExp(address), "gi"), "");
+  t = withoutTypeNames(t);
+  if (!opts.hasLogo) t = t.replace(LOGO_WORD, "the business name");
+  const line = withoutEnding(capWords(tidyPunctuation(t), MAX_CHANGES_WORDS));
+  // An instruction, as a sentence: the model wrote "deep blue background …" live.
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
+/**
+ * The Changes line without a sentence the Format line already says. Live (2026-10-13) the model added 'Show the
+ * business name "Sri Sai Mobiles" as a clean wordmark.' to the line on a colour request — the same instruction
+ * twice. A sentence goes when every telling word of it is in the Format line; a real change always adds a word
+ * of its own ("red", "headline", "Telugu").
+ */
+function withoutFormatRepeats(changes: string, format: string): string {
+  if (!changes) return changes;
+  // Marks kept inside a word: a Telugu headline ("దీపావళి ఆఫర్") is whole words, never fragments, so it always counts.
+  const tokens = (text: string) => text.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
+  const formatWords = new Set(tokens(format));
+  const kept = changes
+    .split(/(?<=[.!?])\s+(?=["\u{201C}\p{Lu}])/u)
+    .filter((s) => {
+      const telling = tokens(s).filter((w) => w.length >= 3 || /[^\u{0}-\u{7F}]/u.test(w));
+      return telling.length === 0 || !telling.every((w) => formatWords.has(w));
+    });
+  return withoutEnding(kept.join(" "));
+}
+
+/**
+ * Words that ask about the poster's contact details. Only such a request may leave a number or the address
+ * out, or bring one back: a model asked to "make the colours warmer" has been known to drop facts too.
+ */
+const CONTACT_CHANGE_WORDS = /\b(?:numbers?|phones?|mobiles?|contacts?|whats\s*app|calls?|landlines?|address(?:es)?|location)\b|నంబర్|నెంబర్|ఫోన్|అడ్రస్|చిరునామా|नंबर|फ़ोन|फोन/iu;
+
+/** True when a refine request is about the poster's numbers or address (see CONTACT_CHANGE_WORDS). */
+export const instructionTouchesContacts = (instruction: string): boolean => CONTACT_CHANGE_WORDS.test(instruction || "");
+
+const keyOfNumber = (display: string) => phoneKey(digitsOf(display));
+
+/** The contact details a poster prints as it stands — read from the Business Information it carries. */
+export function printedPosterContacts(input: {
+  /** The business's verified numbers (one to three) and address. */
+  verified: PosterContact[];
+  address: string;
+  /** The prompt's Business Information now; null when the prompt is not one this system wrote (everything is printed). */
+  currentBusinessInformation: string | null;
+}): { phones: PosterContact[]; address: string } {
+  const verified = uniquePosterContacts(input.verified);
+  const address = (input.address || "").trim();
+  if (input.currentBusinessInformation == null) return { phones: verified, address };
+  const printed = new Set(findPhoneNumbers(input.currentBusinessInformation).map((n) => n.key));
+  return {
+    phones: verified.filter((p) => printed.has(keyOfNumber(p.display))),
+    address: address && /(?:^|[.;]\s+)Address:\s/.test(input.currentBusinessInformation) ? address : "",
+  };
+}
+
+/**
+ * The contact details after a refine: as the prompt prints them now, unless the request is about them —
+ * then the model's choice, taken only from the verified list (a number or address the business never gave
+ * is never added; the member is told where to add it).
+ */
+export function refinedPosterContacts(input: {
+  verified: PosterContact[];
+  address: string;
+  currentBusinessInformation: string | null;
+  answer: Pick<PosterRefineAnswer, "numbers" | "address"> | null;
+  instruction: string;
+}): { phones: PosterContact[]; address: string; notes: string[] } {
+  const verified = uniquePosterContacts(input.verified);
+  const address = (input.address || "").trim();
+  let { phones, address: printedAddress } = printedPosterContacts(input);
+  const notes: string[] = [];
+  if (input.answer && instructionTouchesContacts(input.instruction)) {
+    if (input.answer.numbers) {
+      const wanted = new Set(input.answer.numbers.map(keyOfNumber));
+      phones = verified.filter((p) => wanted.has(keyOfNumber(p.display)));
+    }
+    if (input.answer.address !== null) printedAddress = input.answer.address ? address : "";
+    if (input.answer.address === true && !address) {
+      notes.push('This business has no verified address to print — type it as "Address: …" in BUSINESS CONTENT and press Generate.');
+    }
+  }
+  const known = new Set(verified.map((p) => keyOfNumber(p.display)));
+  const unknown = findPhoneNumbers(input.instruction || "").filter((n) => !known.has(n.key)).map((n) => n.display);
+  if (unknown.length) {
+    const one = unknown.length === 1;
+    notes.push(`${unknown.join(", ")} ${one ? "is" : "are"} not one of this business's verified numbers, so the poster does not print ${one ? "it" : "them"} — add ${one ? "it" : "them"} to BUSINESS CONTENT and press Generate.`);
+  }
+  return { phones, address: printedAddress, notes };
+}
+
+/** "Words on the poster in Telugu." → "Telugu"; "" when the line says no language. */
+export const formatLanguageOf = (format?: string | null): string => /Words on the poster in ([^.]+)\./.exec(format || "")?.[1]?.trim() || "";
+
+/** A language name as the model wrote it, kept only when it reads as one ("Telugu", "English and Telugu"). */
+function cleanLanguageName(value: string): string {
+  // \p{M} too: a Telugu or Hindi name's vowel signs are marks, not letters.
+  const t = (value || "").replace(/[^\p{L}\p{M}\s,&/+-]/gu, " ").replace(/\s+/g, " ").trim();
+  return t && t.split(" ").length <= 5 ? t : "";
+}
+
+/** The request names that language, or asks about the language / script of the words. */
+function instructionAsksForLanguage(instruction: string, language: string): boolean {
+  const i = instruction || "";
+  if (/\b(?:languages?|script|lipi)\b/i.test(i) || /తెలుగు|हिंदी|हिन्दी|தமிழ்|ಕನ್ನಡ|മലയാളം/u.test(i)) return true;
+  return language.split(/[\s,&/+-]+/).filter((w) => w.length >= 4).some((w) => new RegExp(`\\b${escapeRegExp(w)}`, "i").test(i));
+}
+
+/**
+ * The language of the words after a refine: the request's, when it asks for another; else the one the prompt
+ * already says (a later refine about colours keeps it); else the form's.
+ */
+export function refinedTextLanguage(input: { currentFormat: string | null; asked: string; instruction: string; fallback: string }): string {
+  const current = formatLanguageOf(input.currentFormat) || (input.fallback || "").trim() || "English";
+  const asked = cleanLanguageName(input.asked);
+  if (!asked || asked.toLowerCase() === current.toLowerCase()) return current;
+  return instructionAsksForLanguage(input.instruction, asked) ? asked : current;
+}
+
+/** A note from the model that says nothing ("None", "All applied") is no note. */
+const NOTHING_TO_REPORT = /^(?:not\s*applicable|n\/?a|none|nil|null|nothing\b.*|everything\b.*applied.*|all\b.*applied.*|-+)$/i;
+
+export interface PosterRefineInput extends PosterFormatInput {
+  answer: PosterRefineAnswer;
+  instruction: string;
+  /** The prompt as it stands, read back (readConceptPosterPrompt) — null for an older prompt. */
+  current: ConceptPosterParts | null;
+  /** Its Business Information when the prompt cannot be read back (a stored concept carries it). */
+  currentBusinessInformation?: string;
+  currentTypeId?: string | null;
+  currentReason?: string;
+  /** The main benefit the card shows now — kept when the answer names none (a refine often answers one field). */
+  currentBenefit?: string;
+  fixedTypeId?: string | null;
+  /** The business's VERIFIED numbers and address — what a poster may print, at most. */
+  verifiedPhones?: PosterContact[];
+  verifiedAddress?: string;
+  businessInfo?: unknown;
+  businessName?: string;
+  brief?: string;
+  occasion?: string;
+  occasionLine?: string;
+}
+
+/**
+ * A refine, decided and assembled: the type (changed only when asked, never a fixed one), the business
+ * information (the answer's, else the current one), the Changes line (the answer's whole line, else the
+ * current one), the contact details (as printed now, unless the request is about them) and the language of
+ * the words (the request's, else the prompt's) — then the same assembly as a new poster. `notApplied` is
+ * what the member is told could not be done.
+ */
+export function refineConceptPoster(input: PosterRefineInput): { poster: ConceptPoster; notApplied: string[] } {
+  const { answer, instruction, current } = input;
+  const kept = refineAnalysis(answer, { instruction, currentTypeId: input.currentTypeId, fixedTypeId: input.fixedTypeId });
+  const currentInfo = current?.businessInformation ?? input.currentBusinessInformation ?? "";
+  // A refine usually answers only what changed: what it leaves out is the card's as it was — the type's reason
+  // (the same type named again without one is the type kept) and the main benefit.
+  const sameTypeNoReason = !!kept?.adType && kept.adType === input.currentTypeId && !kept.reason;
+  const analysis = kept && {
+    ...kept,
+    adType: sameTypeNoReason ? null : kept.adType,
+    benefit: kept.benefit || input.currentBenefit || "",
+    businessInformation: kept.businessInformation || currentInfo,
+  };
+  const contacts = refinedPosterContacts({
+    verified: input.verifiedPhones || [],
+    address: input.verifiedAddress || "",
+    currentBusinessInformation: current ? current.businessInformation : null,
+    answer,
+    instruction,
+  });
+  const textLanguage = refinedTextLanguage({
+    currentFormat: current?.format ?? null, asked: answer.textLanguage, instruction, fallback: input.textLanguage || "English",
+  });
+  const changes = cleanPosterChanges(answer.changes ?? current?.changes ?? "", { hasLogo: input.hasLogo, address: input.verifiedAddress });
+  const poster = assembleConceptPoster({
+    analysis,
+    fixedTypeId: input.fixedTypeId,
+    currentTypeId: input.currentTypeId,
+    currentReason: input.currentReason,
+    businessInfo: input.businessInfo,
+    businessName: input.businessName,
+    brief: input.brief,
+    occasion: input.occasion,
+    occasionLine: input.occasionLine,
+    phones: contacts.phones,
+    address: contacts.address,
+    posterSize: input.posterSize,
+    hasLogo: input.hasLogo,
+    nameBoardText: input.nameBoardText,
+    textLanguage,
+    changes,
+  });
+  const modelNote = modelLine(answer.notApplied, 45);
+  // The app's own contact note is exact (which number, where to add it); a model note about the same thing
+  // only repeats it — seen live on "add 94401 23456 as another contact number".
+  const repeatsContactNote = contacts.notes.length > 0 && instructionTouchesContacts(modelNote);
+  const notApplied = [NOTHING_TO_REPORT.test(modelNote) || repeatsContactNote ? "" : sentence(modelNote), ...contacts.notes].filter(Boolean);
+  return { poster, notApplied };
 }
 
 /**
@@ -762,6 +1095,7 @@ export function conceptFromPoster(poster: ConceptPoster): PosterConcept {
     reason: poster.reason,
     benefit: poster.benefit,
     businessInformation: poster.businessInformation,
+    changes: poster.changes,
     format: poster.format,
     chosenBy: poster.chosenBy,
   };
