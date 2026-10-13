@@ -501,10 +501,36 @@ export function sanitizeBusinessProfile(profile: unknown, facts: BusinessFacts, 
   };
 }
 
+/** Where a removed number stood while the text around it is tidied: a private-use character no text holds. */
+const GONE = "\u{E000}";
+/** A text that is nothing but contact labels and punctuation once its numbers are gone. */
+const BARE_CONTACT_LABEL = /^[\s,.;:|/&\-–—]*(?:(?:call(?:\s+(?:us|now|today))?|ph|phone|mobile|mob|cell|contact(?:\s+us)?|whats\s*app(?:\s+us)?|tel|dial|or|and|📞|☎️?|📱)[\s,.;:|/&\-–—]*)*$/iu;
+
+// The pieces a removed number's surroundings are recognised by (regex source, composed below).
+/** What joins two numbers: a comma, slash, dash, "&", "|", "·", "or", "and". */
+const JOIN = String.raw`[ \t]*(?:[-–—,/&|·•]|\bor\b|\band\b)[ \t]*`;
+/** The words that introduce a number: "Call us on", "WhatsApp:", "📞". */
+const LABELS = String.raw`(?:(?:call(?:\s+(?:us|now|today))?|whats\s*app(?:\s+us)?|dial|ph|phone|mobile|mob|cell|tel|contact(?:\s+(?:us|no\.?|number))?|reach\s+us|📞|☎️?|📱)(?:\s+(?:on|at))?[ \t]*[:\-–]?[ \t]*)+`;
+/** A kept number, just before or after: seven or more digit-like characters. */
+const KEPT = String.raw`\d[\d \t\-().]{5,}\d`;
+const GONE_MARK = String.raw`\u{E000}`;
+/** A whole sentence about removed numbers only: "Call X or Y, WhatsApp Z." — it goes, full stop and all. */
+const GONE_SENTENCE = new RegExp(String.raw`(^|[.!?][ \t]+)${LABELS}${GONE_MARK}(?:${JOIN}(?:${LABELS})?${GONE_MARK})*[ \t]*(?:[.!;]|$)`, "gimu");
+/** Removed numbers joined to each other: one gap. */
+const GONE_RUN = new RegExp(String.raw`${GONE_MARK}(?:${JOIN}${GONE_MARK})+`, "gu");
+/** A kept number, then what joined it to a removed one: "98480 12345 / X" → "98480 12345". */
+const KEPT_JOIN_GONE = new RegExp(String.raw`(?<=${KEPT}\)?)${JOIN}(?:${LABELS})?${GONE_MARK}`, "giu");
+/** A removed number, then what joined it to a kept one: "X or 98480 12345" → "98480 12345". */
+const GONE_JOIN_KEPT = new RegExp(String.raw`${GONE_MARK}${JOIN}(?=[+(]?${KEPT})`, "gu");
+/** What joined a removed number at the end of a sentence or line: "Rs 1,499 or X." → "Rs 1,499.", "Order now · X". */
+const JOIN_GONE_AT_END = new RegExp(String.raw`${JOIN}(?:${LABELS})?${GONE_MARK}(?=[ \t]*(?:[.!;]|$))`, "gimu");
+/** A removed number opening a line, and what joined it to the rest: "X · Order now." → "Order now.". */
+const GONE_JOIN_AT_START = new RegExp(String.raw`^[ \t]*${GONE_MARK}${JOIN}`, "gmu");
+
 /**
  * Removes every phone-like number (8–15 digits) that is not one of the verified ones, with the
- * "Call:" / "📞" it leaves hanging. Shorter digit runs — pincodes, door numbers, years, prices, pixel
- * sizes — are never touched.
+ * "Call:" / "📞" it leaves hanging and the "or" / "," / "/" that joined it to another number. Shorter
+ * digit runs — pincodes, door numbers, years, prices, pixel sizes — are never touched.
  */
 export function stripUnverifiedNumbers(text: string, allowedKeys: string[]): string {
   if (!text) return text;
@@ -519,11 +545,20 @@ export function stripUnverifiedNumbers(text: string, allowedKeys: string[]): str
       if (!isPhoneLike(display)) return kept;
       if (allowed.has(phoneKey(digitsOf(display)))) return kept;
       changed = true;
-      return kept.replace(part, "");
+      return kept.replace(part, GONE);
     }, match);
   });
   if (!changed) return text;
-  return out
+  const result = out
+    // A removed number takes its surroundings with it — "Call X or Y, WhatsApp Z." with all three removed
+    // left "Call or, WhatsApp." on the poster (seen in the browser check, 2026-10-13).
+    .replace(GONE_SENTENCE, "$1")
+    .replace(GONE_RUN, GONE)
+    .replace(KEPT_JOIN_GONE, "")
+    .replace(GONE_JOIN_KEPT, "")
+    .replace(JOIN_GONE_AT_END, "")
+    .replace(GONE_JOIN_AT_START, "")
+    .replace(/\u{E000}/gu, "")
     // The dash or slash that joined a removed number to a kept one ("0884-2345678-" → "0884-2345678").
     .replace(/(\d)[ \t]*[-–/][ \t]*(?=[\n,;|]|$)/gm, "$1")
     // The label a removed number leaves behind, when nothing follows it on its line.
@@ -533,6 +568,8 @@ export function stripUnverifiedNumbers(text: string, allowedKeys: string[]): str
     .replace(/[ \t]+([,.;])/g, "$1")
     .replace(/(?:[ \t]*[|,/][ \t]*){2,}/g, " | ")
     .trim();
+  // Nothing left but the label ("Call", "📞 WhatsApp:") — an overlay that was only an unverified number.
+  return BARE_CONTACT_LABEL.test(result) ? "" : result;
 }
 
 /** The verified numbers' keys, for stripUnverifiedNumbers. */

@@ -144,6 +144,11 @@ cached; small images and anything the browser cannot redraw go as they are).
    **`contactNumbersOf(profile)` is the one list** the label, both posters, the overlays, the frames and every refine
    print. `contactNumberProblems(text, list)` is the check (every number of the list exactly once, no other number).
    The voice note writes a spoken phone number in digits, only the digits said (`prompts/voiceNote`).
+   `stripUnverifiedNumbers` now marks each removed number (a private-use character, `GONE`) and takes its surroundings
+   with it: a sentence that was only about removed numbers goes whole ("Call X or Y, WhatsApp Z." — the poster showed
+   "Call or." after the scrub, found by the browser check), the "or" / "," / "/" / "·" joining a removed number to a kept
+   one or ending a sentence goes, and a text left with only a label ("Call", "📞 WhatsApp:") becomes "" (an overlay
+   that was only an unverified number is dropped). Pincodes, prices and years are never touched.
 2. Decide the core message (`prompts/coreMessage.ts`).
 3. Write the voice-over (`VOICEOVER_SYSTEM_PROMPT`, language-aware, 18–20 words per clip; a
    two-speaker clip is **15–17**, 7–9 per line, `dialogueFormat.wordBudgetFor`). Mechanical repair
@@ -854,7 +859,8 @@ attribution (`Clip.voScript` is one string).
   script that passes, up to ~6 on one that is rewritten twice (more quota and latency; not measured).
 - Contact numbers (2026-10-13): checked by `contactNumbersOct13.test.ts` (18 scenarios × the label, the video poster,
   Poster Creation end to end, the label refine, the overlays and a frame refine on a fake Gemini that keeps adding,
-  repeating and dropping numbers). An earlier saved kit keeps its label and poster text until it is regenerated (a
+  repeating and dropping numbers) and in a real browser on the studio itself (Poster Creation with 0–3 numbers,
+  duplicates and ids; a saved kit's label and poster rows). An earlier saved kit keeps its label and poster text until it is regenerated (a
   label refine updates the old WhatsApp sentence); a profile saved before 2026-09-25 (no `contactNumbers`) now gives
   only its well-formed numbers.
 - Verified facts drop a number the extraction put under a non-contact key or read from a product

@@ -58,7 +58,20 @@ Design intent lives in `docs/superpowers/specs/`.
   either way, one number written three ways, six copies of three, a fourth, ids / accounts / prices / UPI, a card read,
   a card misread, the member's own format — each through the list, the label, the video poster, Poster Creation end to
   end, a label refine that repeats / invents / drops, the overlays and a frame refine on a fake Gemini), and
-  `lowerThird`, `posterAdTypeOct12` updated for the new wording. No image was generated from the new prompts.
+  `lowerThird`, `posterAdTypeOct12` updated for the new wording.
+  **Real browser** (background agent; the REAL `AIPlatformApp` on the in-memory Firestore with a fake `@google/genai`,
+  headless Chrome over CDP, 1440 and 390 px, harness in the scratchpad): Poster Creation for 0 / 1 / 2 / 3 numbers,
+  six copies of three and ids / account / price — every prompt carried exactly the list, each once, with the matching
+  phone rule (and the same with the fake extraction "reading" the order id and other spellings); a saved kit's VIDEO
+  BOTTOM LABEL and Poster rows (Missing → Generate) printed "CONTACT 1 = 98480 12345", "CONTACT 2 = 91603 45678
+  (WhatsApp)", "EXACTLY 2 NUMBERS …" and "one of the TWO pills, not an extra one"; no console errors, no overflow at
+  390 px. It found two more, both fixed the same day: the poster's Business Information kept "Call or." after the scrub
+  removed both numbers of the model's "Call X or Y" (older than this task — `stripUnverifiedNumbers` now takes a removed
+  number's joiners and a sentence that was only about removed numbers with it, and a text left with only a label
+  becomes ""), and the one-number label read "one of the ONE pill" (now "It is the ONE pill"; final check "Is there
+  exactly ONE contact pill"; value line "the number written once"); a re-run of the browser check passed all of it.
+  The first round went out in the owner's commit `66c4cea` (pushed, with a parallel session's SMM work); these
+  follow-ups are in the working tree. No image was generated from the new prompts.
 
 - **2026-10-12 → 13: three items — the Social Media Team Lead view-only, Half Day leave, the poster prompts** (sessions
   dts-os-d1, then dts-os-e1 from `HANDOFF.md`; `smm.md`, `roles-routes.md`, `backend-security.md` §14, `people.md`,

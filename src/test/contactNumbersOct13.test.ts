@@ -176,9 +176,12 @@ describe("contactNumberProblems — the check every printed copy is held to", ()
 describe("the footer (Video Bottom Label) and the poster's Format line, by count", () => {
   it("draws a WhatsApp number in its own green pill — one of the N, never an extra", () => {
     const one = LOWER_THIRD_SYSTEM_PROMPT({ businessType: "food", adType: "commercial", contactCount: 1, hasAddress: false, hasWhatsApp: true });
-    expect(one).toContain("It is one of the ONE pill, not an extra one: never draw that number twice.");
+    expect(one).toContain("It is the ONE pill, not an extra one: never draw that number twice.");
     expect(one).not.toContain("beside the call pill");
-    expect(one).toContain("Are there exactly ONE contact pill, each number written once");
+    expect(one).toContain("Is there exactly ONE contact pill, its number written once");
+    const two = LOWER_THIRD_SYSTEM_PROMPT({ businessType: "food", adType: "commercial", contactCount: 2, hasAddress: false, hasWhatsApp: true });
+    expect(two).toContain("It is one of the TWO pills, not an extra one");
+    expect(two).toContain("Are there exactly TWO contact pills, each number written once");
     const none = LOWER_THIRD_SYSTEM_PROMPT({ businessType: "food", adType: "commercial", contactCount: 0, hasAddress: false });
     expect(none).toContain("Is there no phone number anywhere on the label?");
   });
@@ -188,6 +191,10 @@ describe("the footer (Video Bottom Label) and the poster's Format line, by count
       "CONTACT 1 = 98480 12345 (WhatsApp)",
       "CONTACT 2 = 91603 45678",
       "EXACTLY 2 NUMBERS — draw 2 contact pills, each number written once, no more and no fewer.",
+    ]);
+    expect(labelContactLines([{ display: "98480 12345", whatsapp: true }])).toEqual([
+      "CONTACT 1 = 98480 12345 (WhatsApp)",
+      "EXACTLY 1 NUMBER — draw 1 contact pill, the number written once, no more and no fewer.",
     ]);
     expect(labelContactLines([])).toEqual([]);
   });
@@ -223,6 +230,23 @@ describe("the footer (Video Bottom Label) and the poster's Format line, by count
   it("scrubs a number out of a run without leaving it behind or changing the kept one", () => {
     expect(stripUnverifiedNumbers("Call 98480  12345   99887-76655 now", ["9848012345"])).toBe("Call 98480 12345 now");
     expect(stripUnverifiedNumbers("Ph: 0884-2345678-9866012345", ["8842345678"])).toBe("Ph: 0884-2345678");
+  });
+
+  it("takes the 'or' / ',' / '·' that joined a removed number with it — never 'Call or.'", () => {
+    expect(stripUnverifiedNumbers("Pure ghee sweets. Call 98765 43210 or 98480 12345.", ["9848012345"])).toBe("Pure ghee sweets. Call 98480 12345.");
+    expect(stripUnverifiedNumbers("Call 98480 12345 / 98765 43210 now", ["9848012345"])).toBe("Call 98480 12345 now");
+    expect(stripUnverifiedNumbers("Pure ghee sweets. Call 98765 43210 or 90000 11111.", [])).toBe("Pure ghee sweets.");
+    expect(stripUnverifiedNumbers("Pure ghee sweets. Call 98765 43210 or 98480 12345, WhatsApp 90000 11111. Open daily.", []))
+      .toBe("Pure ghee sweets. Open daily.");
+    expect(stripUnverifiedNumbers("Call 98480 12345, WhatsApp 90000 11111.", ["9848012345"])).toBe("Call 98480 12345.");
+    expect(stripUnverifiedNumbers("Order now · 81430 12345", [])).toBe("Order now");
+    expect(stripUnverifiedNumbers("90000 11111 · Order now.", [])).toBe("Order now.");
+    // An overlay that was only a number and its label has nothing left to show.
+    expect(stripUnverifiedNumbers("Call 90000 11111", [])).toBe("");
+    expect(stripUnverifiedNumbers("📞 WhatsApp: 90000 11111", [])).toBe("");
+    // Pincodes, prices and years around it stay exactly as written.
+    expect(stripUnverifiedNumbers("Main Road, Kakinada 533001. Rs 1,499 or 90000 11111. Since 1998.", []))
+      .toBe("Main Road, Kakinada 533001. Rs 1,499. Since 1998.");
   });
 
   it("has the voice note write a spoken number in digits — only the digits said", () => {
@@ -301,6 +325,9 @@ describe("every deliverable prints exactly the list", () => {
       expect(videoPoster).toContain(posterPhoneRule(n));
       if (n) expect(videoPoster).toContain(`Contact: ${s.expected.join(", ")}`);
       else expect(videoPoster).not.toContain("Contact:");
+      // The model's own contact sentence is gone whole — no "Call or." left behind (browser check, 2026-10-13).
+      expect(videoPoster).toContain(`Business Information: Sri Sai Sweets, Kakinada — pure ghee sweets. ${n ? "Contact:" : "Create one"}`);
+      expect(videoPoster).not.toMatch(/\bCall\b|\bor\s*[.,]|WhatsApp\s*[.,]/);
 
       // Poster Creation, from the member's text and the model's extraction, end to end.
       extracted = { businessName: "Sri Sai Sweets", businessType: "sweet shop", ...(s.profile ?? {}) };
@@ -308,6 +335,7 @@ describe("every deliverable prints exactly the list", () => {
       const posterPrompt = created.posterConcepts![0].imagePrompt;
       expect(contactNumberProblems(posterPrompt, list)).toEqual([]);
       expect(posterPrompt).toContain(posterPhoneRule(n));
+      expect(posterPrompt).not.toMatch(/\bCall\b|\bor\s*[.,]|WhatsApp\s*[.,]/);
       // …and it was made from the same list the label printed.
       expect(contactNumbersOf(created.businessInfo).map(shown)).toEqual(s.expected);
 

@@ -134,8 +134,8 @@ const COUNT_WORDS = ["NO", "ONE", "TWO", "THREE"];
  * two-number label came back with three pills (owner, 2026-10-13: "duplicate numbers").
  */
 function whatsappSentence(count: number): string {
-  const all = COUNT_WORDS[count] ?? String(count);
-  return `  - The number marked (WhatsApp) is drawn in its OWN pill — that pill is WhatsApp green with the WhatsApp icon in place of the phone icon. It is one of the ${all} pill${count === 1 ? "" : "s"}, not an extra one: never draw that number twice.`;
+  const which = count === 1 ? "the ONE pill" : `one of the ${COUNT_WORDS[count] ?? count} pills`;
+  return `  - The number marked (WhatsApp) is drawn in its OWN pill — that pill is WhatsApp green with the WhatsApp icon in place of the phone icon. It is ${which}, not an extra one: never draw that number twice.`;
 }
 
 /** What the WhatsApp sentence said before 2026-10-13 — a saved label still holds it until it is rebuilt or refined. */
@@ -190,7 +190,9 @@ export function labelContactLines(contacts: LabelContact[]): string[] {
   if (n === 0) return [];
   return [
     ...unique.map((c, i) => `CONTACT ${i + 1} = ${c.display}${c.whatsapp ? " (WhatsApp)" : ""}`),
-    `EXACTLY ${n} NUMBER${n === 1 ? "" : "S"} — draw ${n} contact pill${n === 1 ? "" : "s"}, each number written once, no more and no fewer.`,
+    n === 1
+      ? "EXACTLY 1 NUMBER — draw 1 contact pill, the number written once, no more and no fewer."
+      : `EXACTLY ${n} NUMBERS — draw ${n} contact pills, each number written once, no more and no fewer.`,
   ];
 }
 
@@ -316,7 +318,9 @@ NEVER place: a slogan, a tagline, a promise, feature icons or feature words (pri
 4. ${noLogo ? "Is the business name written exactly once, with no invented emblem, circle or monogram anywhere?" : "Is the logo untouched, and the business name written exactly once?"}
 5. Is there any slogan, feature word, service, offer or extra sentence anywhere? If so, delete it and redraw.
 6. Is the address on ONE line${hasAddress ? "" : " — or, as here, absent entirely, with no empty bar"}?
-7. ${contactCount > 0
-    ? `Are there exactly ${COUNT_WORDS[contactCount] ?? contactCount} contact pill${contactCount === 1 ? "" : "s"}, each number written once, digit for digit as listed below, and no other phone number anywhere?`
-    : "Is there no phone number anywhere on the label?"}`;
+7. ${contactCount === 1
+    ? "Is there exactly ONE contact pill, its number written once, digit for digit as listed below, and no other phone number anywhere?"
+    : contactCount > 1
+      ? `Are there exactly ${COUNT_WORDS[contactCount] ?? contactCount} contact pills, each number written once, digit for digit as listed below, and no other phone number anywhere?`
+      : "Is there no phone number anywhere on the label?"}`;
 }
