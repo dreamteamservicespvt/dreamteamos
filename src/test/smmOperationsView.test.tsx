@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -94,12 +94,13 @@ describe("SMM Operations UI — atomic interactions", () => {
       ],
     });
     renderView([c]);
+    const queue = within(screen.getByRole("heading", { name: "Needs attention" }).closest("section")!);
     fireEvent.click(screen.getByRole("button", { name: "Overdue work: 1" }));
     expect(screen.getByRole("button", { name: "Filter Overdue: 1" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Late poster")).toBeInTheDocument();
-    expect(screen.queryByText("Future video")).not.toBeInTheDocument();
+    expect(queue.getByText("Late poster")).toBeInTheDocument();
+    expect(queue.queryByText("Future video")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Filter All work: 1" }));
-    expect(screen.getByText("Future video")).toBeInTheDocument();
+    expect(queue.getByText("Future video")).toBeInTheDocument();
   });
 
   it("search narrows both action queue and client campaigns", () => {
@@ -107,10 +108,12 @@ describe("SMM Operations UI — atomic interactions", () => {
     const two = campaign("Balaji Homes", { id: "balaji-homes", items: [item("poster", { title: "Balaji poster", uploadDate: addDays(today, -1) })] });
     renderView([one, two]);
     fireEvent.change(screen.getByRole("textbox", { name: "Search clients and deliverables" }), { target: { value: "Balaji" } });
-    expect(screen.getByText("Balaji poster")).toBeInTheDocument();
-    expect(screen.queryByText("Sreerasthu poster")).not.toBeInTheDocument();
-    expect(screen.getByText("Balaji Homes")).toBeInTheDocument();
-    expect(screen.queryByText("Sreerasthu Silvers")).not.toBeInTheDocument();
+    const queue = within(screen.getByRole("heading", { name: "Needs attention" }).closest("section")!);
+    const clientList = within(screen.getByRole("heading", { name: "Client campaigns" }).closest("section")!);
+    expect(queue.getByText("Balaji poster")).toBeInTheDocument();
+    expect(queue.queryByText("Sreerasthu poster")).not.toBeInTheDocument();
+    expect(clientList.getByText("Balaji Homes")).toBeInTheDocument();
+    expect(clientList.queryByText("Sreerasthu Silvers")).not.toBeInTheDocument();
   });
 
   it("opens existing setup and classic-view actions without changing campaign records", () => {
