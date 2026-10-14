@@ -6,6 +6,8 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-14: consolidate repository-wide DTS-OS system navigation** (`.claude/rules/architecture.md`, `CLAUDE.md`). The owner asked for durable system knowledge to be retained for future work. Inspected the recursive `main` tree at `dc4313e67f6a93852df46d6941213a13e992c6e1` (1,019 tracked files; 858 under `src/`; 234 test/spec files), the core development protocol, module guides, app entry/routes, roles/access guide, data model, Firestore rules document, notifications, SMM, sales, payroll, invoice and AI-account entry points. Added a cross-module navigation section to the existing architecture context and linked it from the core context, following `CLAUDE.md` §29.21 rather than maintaining a separate parallel context document. No application code or production configuration changed; this was a source/documentation inspection, not a full runtime, deployed-rules, or pixel-by-pixel browser audit.
+
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 

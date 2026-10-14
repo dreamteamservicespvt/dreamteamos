@@ -419,3 +419,43 @@ and push; PWA self-update; Android shell.
 **PARTIALLY IMPLEMENTED 🟡:**
 - Native Android camera capture uses the web file input (`@capacitor/camera` not installed).
 - Error/loading handling is inconsistent across older pages (plain `console.error`).
+
+
+## Repository-wide system navigation (checked 2026-10-14)
+
+This section is the cross-module index for DTS-OS. It supplements, but never replaces, the module-specific guides listed in `CLAUDE.md`. The tree snapshot inspected for this pass was `main` at `dc4313e67f6a93852df46d6941213a13e992c6e1`; documentation-only commits may follow it. Re-check the current branch and source before acting.
+
+### Repository shape and runtime
+
+At the inspected snapshot the repository had 1,019 tracked files: 858 under `src/`, 234 test/spec files under `src/test/`, 3 Vercel API functions under `api/`, a Capacitor Android shell under `android/`, documentation under `docs/`, Claude Code context/rules under `.claude/`, and a legacy-looking standalone `aiadsdts/` tree. Existing AI-MEMORY documentation says `src/` is the live app and `aiadsdts/` is an unreferenced standalone copy; verify imports/build references before ever editing the latter for a live feature.
+
+Entry: `src/main.tsx` → `src/App.tsx` → lazy-loaded routes. `src/components/layout/AppLayout.tsx` provides the authenticated shell, sidebar/topbar, notifications and role gates. Frontend is React 18 + TypeScript + Vite + React Router + Tailwind/shadcn/Radix; state uses Zustand; server state is principally Firestore listeners/reads; Firebase Auth and Firestore back the app; Vercel serverless functions use Firebase Admin. Gemini generates scripts/prompts; final image/video work is generally done in external tools. Cloudinary handles media uploads; FCM/PWA service worker and Capacitor supply push/mobile capabilities.
+
+Commands: `npm run build`, `npm run lint`, `npx vitest run`, `npx tsc -p tsconfig.check.json --noEmit`. `vite dev` does not serve `/api/*`; use `vercel dev` or explicitly documented DEV fallbacks. The unit/UI tests use Vitest + jsdom/Testing Library and `src/test/memoryFirestore.ts` for Firestore-like testing; it is not proof of production Firebase configuration.
+
+### Cross-module entry points
+
+- **Identity/routes/access:** `src/types/index.ts`, `src/utils/roleHelpers.ts`, `src/App.tsx`, `src/components/layout/AppLayout.tsx`; detailed matrix in `.claude/rules/roles-routes.md`.
+- **Data contracts:** `src/types/*`, hooks in `src/hooks/*`, service writes in `src/services/*`; collection/field inventory in `.claude/rules/data-model.md`.
+- **Leads and sales:** `src/components/sales/SaleForm.tsx`, `src/services/sales.ts`, `src/services/numberLock.ts`, `src/utils/saleIdentity.ts`; one stable `saleId`, transactional sale/order writes. See `sales.md`.
+- **Orders / production assignment:** `src/services/orders.ts`, `workAssign.ts`, `workReassign.ts`, `workVerify.ts`, `workDrive.ts`; work pages under `src/pages/tech-admin/`, `tech-team-leader/`, `tech-member/`. Some tech-admin/team-leader pages are near-duplicates; check whether both require matching changes. See `orders-work.md`.
+- **AI Ads / prompts:** `src/components/ai-platform/`, `src/services/geminiService.ts`, `src/services/prompts.ts`, `src/services/prompts/`, `src/utils/adPipeline.ts`, `adSpec.ts`, `businessFacts.ts`, cast/voice/scene/QA helpers; generated kits persist in `ai_generations`. Separate Cinematic Ads pipeline lives in `src/components/cinematic-ads/`, `src/services/cinematicAdsService.ts`, `cinematicProjects.ts`, and `src/types/cinematicAds.ts`. See `ai-ads.md`.
+- **Social Media Management:** `src/pages/shared/SocialMedia.tsx`, `SmmCampaignPage.tsx`, `src/components/smm/`, `src/services/smm.ts`, `smmSetup.ts`, `smmAssign.ts`, `src/utils/smmPlan.ts`, `smmPackage.ts`, `smmGlance.ts`, `smmReminders.ts`; `smm_campaigns` is the month/content source of truth and order progress is derived. Reminder calculations are not themselves a background scheduler. See `smm.md`.
+- **Attendance / payroll / leave:** `src/services/techAttendance.ts`, `salesCheckin.ts`, `leave.ts`, `payroll.ts`, `payrollRun.ts`; pure calculation rules in `src/utils/payrollEngine.ts`; attendance UI under `src/components/attendance/` and `src/pages/shared/TeamAttendance.tsx`. Do not create a second salary/attendance formula. See `people.md`.
+- **Invoices:** `src/pages/shared/Invoices.tsx`, `InvoiceBuilder.tsx`, `src/components/invoice/`, `src/services/invoices.ts`, `src/utils/invoiceMath.ts`, `invoiceDraft.ts`, `invoiceNumber.ts`, `invoiceLayout.ts`, `invoicePdf.ts`. UI, stored totals and PDF must share the same calculation engine. See `invoices.md`.
+- **AI accounts / credits:** `src/services/aiAccounts.ts`, `src/utils/flowCredits.ts`, `src/hooks/useAiAccounts.ts`, `src/pages/shared/AiAccounts.tsx`, `src/pages/tech-member/MyAiAccounts.tsx`; password material has separate secret collections. See `ai-accounts.md`.
+- **Client and team communications:** `src/components/order-chat/`, `src/services/orderChat.ts`, `orderChatGuest.ts`, `api/order-chat.ts`; team chat/meetings/calls under `src/components/chat/` and shared pages. See `chat.md`.
+- **HR, onboarding and documents:** `src/services/hr.ts`, `hrDocuments.ts`, `agreements.ts`, `onboarding.ts`, `api/onboarding.ts`; public candidate onboarding and ID verification have separate restricted data surfaces. See `people.md` and `backend-security.md`.
+- **Notifications:** `src/services/notifications.ts`, `src/services/fcm.ts`, `src/hooks/useNotifications.ts`, `src/utils/notificationRouting.ts`, `src/components/layout/UpdatePopup.tsx`, `api/send-notification.ts`, `public/firebase-messaging-sw.js`. Always check recipient-role routing, deterministic dedupe keys and server authentication when changing alerts. See `backend-security.md`.
+
+### Non-negotiable investigation points
+
+1. Confirm current branch/commit and whether the relevant changes are already in the working tree, committed, or deployed.
+2. Read the affected module rule(s), plus `data-model.md` and `roles-routes.md` when data/permissions are involved. Treat the source code as truth; repair stale context docs in the same task.
+3. Follow UI input → validation → service → database writes/listener → derived calculation → every UI role/view. Prefer existing shared services and pure tested utilities over parallel logic.
+4. Transactions/idempotency are important for contended writes and notifications. Derived totals/progress should have one authoritative calculation.
+5. Route/UI permissions do not guarantee security: inspect Firestore rules and server-side auth, and verify deployed rules separately. Repository documentation marks production Firestore rule publication as not confirmed; do not assume committed rules are live.
+6. Existing security notes identify `api/send-notification.ts` as a historically unauthenticated endpoint; verify current code before using it as a trusted server event interface. Existing architecture docs also state no general-purpose background worker/scheduler; on-open reminders are not continuous monitoring.
+7. For “pixel-perfect” UI claims, render and compare the actual page at representative viewport sizes; inspect responsive, loading, error, empty, offline, long-content and role-specific states. Do not claim browser verification if only static code was read.
+8. Complete focused tests, build and typecheck. UI changes must be exercised in a real browser where available. State clearly what depended on live Firebase, Gemini, FCM, or deployment and could not be tested.
+

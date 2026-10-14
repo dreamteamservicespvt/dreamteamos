@@ -4,8 +4,10 @@
 > Code loads automatically when you read or edit a matching file. The history lives in
 > `docs/DEVELOPMENT-HISTORY.md`. Together the three are the project context: in the rules below,
 > "CLAUDE.md" or "this file" means all three. The section numbers §1–§34 never change, and the Context
-> map below says where each section lives. The **source code wins** over the context; when they
-> disagree, fix the context in the same task.
+> map below says where each section lives. For cross-module orientation, read the repository-wide
+> system-navigation section in `.claude/rules/architecture.md`, then read the relevant module guide(s)
+> and verify details against current code. The **source code wins** over the context; when they disagree,
+> fix the context in the same task.
 >
 > **Quick start:** at start-up the hook `.claude/hooks/session-start.cjs` prints the repo state and
 > **`HANDOFF.md`** (an unfinished task; continue it first). **Every development request follows §30
@@ -25,7 +27,7 @@
 | File | Sections (original numbers) | Loads automatically when you read or edit |
 |---|---|---|
 | `CLAUDE.md` (this core) | §1 identity, §28 conventions, §29 rules, §30 change protocol, §32 state, §33 AI context, §34 session protocol | every session, always |
-| `.claude/rules/architecture.md` | §2–§6 (purpose, overview, stack, architecture, structure), §9 intro, §9.17, §9.20, §11 frontend, §19 search/filters/analytics, §22 components, §23 data flows, the §25 "implemented" summary | app shell and layout, `App.tsx`, build/config files, UI kit, dashboards, PWA / Android |
+| `.claude/rules/architecture.md` | §2–§6 (purpose, overview, stack, architecture, structure), §9 intro, §9.17, §9.20, §11 frontend, §19 search/filters/analytics, §22 components, §23 data flows, §25 status, repository-wide system navigation | app shell and layout, `App.tsx`, build/config files, UI kit, dashboards, PWA / Android |
 | `.claude/rules/backend-security.md` | §9.1 auth, §9.19, §12 backend & API, §14 auth & security, §18 notifications, §20 integrations, §21 env vars, §26 confirmed issues, security risks | `api/**`, Firebase / notifications / FCM / upload services, login, `docs/firestore-rules*.md` |
 | `.claude/rules/data-model.md` | §13 database (every collection, field, relationship, status) | `src/types/**`, `src/services/**`, `src/hooks/**`, `docs/firestore-rules*.md` |
 | `.claude/rules/roles-routes.md` | §7 roles, §8 permissions, §9.2 team management module, §10 pages & routes, §15 team management | `App.tsx`, `roleHelpers`, layout, team / member pages, onboarding |
@@ -214,8 +216,9 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-13)
+## 32. CURRENT PROJECT STATE (as of 2026-10-14)
 
+<<<<<<< HEAD
 - 2026-10-13 (late night), **in the working tree (not committed)**: the bell's follow-ups — **toasts at the bottom on
   phones**, a smaller badge, **dismiss one row** (X / swipe, Undo) and **mark as unread**, a **daily 90-day clean-up** of
   `notifications`, and the bell's index in **`firestore.indexes.json`** (+ `firebase.json`, `.firebaserc`)
@@ -224,6 +227,9 @@ errors:** done means every listed item is fully resolved with no build, console 
   on every notification, not the 50 loaded. Clear all is one `notification_state/{uid}` point with Undo, and the
   once-a-day reminders are written once (`sendNotification({ once })`), so they never come back
   (`backend-security.md` §18, `data-model.md`; new rule in `docs/firestore-rules.md`).
+=======
+- 2026-10-14, **documentation in `main`** — cross-module DTS-OS navigation consolidated into the repository-wide system-navigation section in `.claude/rules/architecture.md`; `CLAUDE.md` points to it. This indexes the existing module guides, key service/data flows, repository layout, verification steps and security caveats; it is not a claim of a full runtime or pixel-level audit.
+>>>>>>> 8d3a0255cf0f07d8f8c27255e76455b23fd67d92
 - 2026-10-13 (evening), **in the working tree (not committed)** — **poster refine works**: design requests go in one
   "Changes:" line (the three sentences untouched), a refine can leave out / bring back a verified number or the address and
   change the words' language, and the studio says when nothing or not all was applied (`ai-ads.md` §17.2, §24).
