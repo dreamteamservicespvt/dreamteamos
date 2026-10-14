@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/components/smm/SmmOperationsView.tsx"
+      - "src/components/smm/smm-operations.css"
       - "src/pages/shared/SocialMedia.tsx"
       - "src/test/smmOperationsView.test.tsx"
       - "src/test/smmAddSaleUi.test.tsx"
@@ -19,7 +20,7 @@ on:
       - "tsconfig.smm-ui.json"
       - ".github/workflows/smm-ui-checks.yml"
   push:
-    branches: [feat/smm-operations-ui-refinement]
+    branches: [main, "feat/smm-*"]
     paths:
       - "src/components/smm/SmmOperationsView.tsx"
       - "src/pages/shared/SocialMedia.tsx"

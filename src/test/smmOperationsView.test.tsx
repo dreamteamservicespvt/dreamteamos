@@ -78,11 +78,14 @@ describe("SMM Operations UI — atomic interactions", () => {
     renderView([c]);
 
     expect(screen.getByRole("heading", { name: "Social media" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Social media overview metrics" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Portfolio analysis" })).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Package deliverables marked posted" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Overdue work: 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Client response: 1" })).toBeInTheDocument();
     expect(screen.getByText("Urgent festival extra")).toBeInTheDocument();
     expect(screen.getAllByText("Extra work").length).toBeGreaterThan(0);
-    expect(screen.getByText("Real videos")).toBeInTheDocument();
+    expect(screen.getAllByText("Real videos").length).toBeGreaterThan(0);
     expect(screen.getByText(/separate from package/)).toBeInTheDocument();
   });
 
@@ -111,7 +114,7 @@ describe("SMM Operations UI — atomic interactions", () => {
     renderView([one, two]);
     fireEvent.change(screen.getByRole("textbox", { name: "Search clients and deliverables" }), { target: { value: "Balaji" } });
     const queue = within(screen.getByRole("heading", { name: "Needs attention" }).closest("section")!);
-    const clientList = within(screen.getByRole("heading", { name: "Client campaigns" }).closest("section")!);
+    const clientList = within(screen.getByRole("heading", { name: "Campaigns, at a glance" }).closest("section")!);
     expect(queue.getByText("Balaji poster")).toBeInTheDocument();
     expect(queue.queryByText("Sreerasthu poster")).not.toBeInTheDocument();
     expect(clientList.getByText("Balaji Homes")).toBeInTheDocument();
