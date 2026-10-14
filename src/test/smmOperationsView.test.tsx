@@ -100,7 +100,9 @@ describe("SMM Operations UI — atomic interactions", () => {
     expect(queue.getByText("Late poster")).toBeInTheDocument();
     expect(queue.queryByText("Future video")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Filter All work: 1" }));
-    expect(queue.getByText("Future video")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter All work: 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(queue.getByText("Late poster")).toBeInTheDocument();
+    expect(queue.queryByText("Future video")).not.toBeInTheDocument();
   });
 
   it("search narrows both action queue and client campaigns", () => {
