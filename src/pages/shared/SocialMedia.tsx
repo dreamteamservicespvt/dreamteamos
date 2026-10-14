@@ -46,6 +46,7 @@ import SmmMoneyView from "@/components/smm/money/SmmMoneyView";
 import SmmAttendanceView from "@/components/smm/SmmAttendanceView";
 import { canSeeSmmAttendance } from "@/utils/smmAttendance";
 import SmmDashboard, { type SmmBoardFilter } from "@/components/smm/SmmDashboard";
+import SmmOperationsView from "@/components/smm/SmmOperationsView";
 import { SmmSetupDialog } from "@/components/smm/SmmSetupForm";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
 import type { SmmCampaign } from "@/types/smm";
@@ -93,7 +94,8 @@ export default function SocialMedia() {
   // Attendance (2026-10-08): the Social Media Team Lead's view of their team's days — and the tech / main admin.
   const canAttendance = canSeeSmmAttendance(user);
   // A link may name the view, or a client for the calendar (`?view=calendar&client=`); else the last one used.
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const modernUI = params.get("ui") === "modern";
   const [picked, setView] = useState<View>(() => {
     const asked = params.get("view") as View | null;
     if (asked && VIEWS.includes(asked)) return asked;
@@ -284,6 +286,29 @@ export default function SocialMedia() {
     done: "No finished months yet.",
   };
 
+  if (modernUI) {
+    const returnToClassic = () => { const next = new URLSearchParams(params); next.delete("ui"); setParams(next); };
+    return (
+      <>
+        <SmmOperationsView
+          campaigns={live}
+          loading={loading}
+          canSetUp={canSetUp}
+          onAddSale={canSetUp ? () => setAdding(true) : undefined}
+          onSetUp={canSetUp ? setSettingUp : undefined}
+          onClassicUI={returnToClassic}
+        />
+        {adding && user && (
+          <SmmAddSaleDialog user={user} onClose={() => setAdding(false)}
+            onCreated={(id) => { setAdding(false); navigate(`/smm/${id}`); }} />
+        )}
+        {settingUp && user && (
+          <SmmSetupDialog campaign={settingUp} user={user} onClose={() => setSettingUp(null)} />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -297,12 +322,18 @@ export default function SocialMedia() {
               : "Every monthly client — how much is done, whether it is on track, and what is next."}
           </p>
         </div>
-        {canSetUp && (
-          <button data-test="smm-add-sale-open" onClick={() => setAdding(true)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
-            <Plus size={15} /> Add SMM sale
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" data-test="smm-open-modern" onClick={() => { const next = new URLSearchParams(params); next.set("ui", "modern"); setParams(next); }}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+            <LayoutGrid size={15} /> Try New UI
           </button>
-        )}
+          {canSetUp && (
+            <button data-test="smm-add-sale-open" onClick={() => setAdding(true)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+              <Plus size={15} /> Add SMM sale
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Who runs the whole side — appointed here by the tech admin (SmmTeamLeadPanel). */}
