@@ -83,7 +83,7 @@ describe("SMM Operations UI — atomic interactions", () => {
     expect(screen.getByText("Urgent festival extra")).toBeInTheDocument();
     expect(screen.getAllByText("Extra work").length).toBeGreaterThan(0);
     expect(screen.getByText("Real videos")).toBeInTheDocument();
-    expect(screen.getByText(/excluded from package total/)).toBeInTheDocument();
+    expect(screen.getByText(/separate from package/)).toBeInTheDocument();
   });
 
   it("filters the action queue by overdue work and can return to all work", () => {
