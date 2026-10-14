@@ -7,6 +7,7 @@ on:
       - "src/components/smm/SmmOperationsView.tsx"
       - "src/pages/shared/SocialMedia.tsx"
       - "src/test/smmOperationsView.test.tsx"
+      - "src/test/smmAddSaleUi.test.tsx"
       - "src/utils/smmGlance.ts"
       - "src/utils/smmPlan.ts"
       - "src/utils/smmPackage.ts"
@@ -52,7 +53,7 @@ jobs:
       - name: SMM UI TypeScript check
         run: npx tsc -p tsconfig.smm-ui.json --noEmit
       - name: Atomic SMM UI tests
-        run: npx vitest run src/test/smmOperationsView.test.tsx
+        run: npx vitest run src/test/smmOperationsView.test.tsx src/test/smmAddSaleUi.test.tsx
       - name: Full test suite
         run: npm test -- --reporter=dot
       - name: Production build
