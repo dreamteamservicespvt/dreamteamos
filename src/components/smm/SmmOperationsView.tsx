@@ -31,9 +31,9 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All work" },
   { key: "overdue", label: "Overdue" },
   { key: "due", label: "Due soon" },
-  { key: "waiting", label: "Waiting on client" },
+  { key: "waiting", label: "Client response" },
   { key: "risk", label: "At risk" },
-  { key: "setup", label: "Needs planning" },
+  { key: "setup", label: "Planning" },
 ];
 
 const STATUS_STYLE: Record<string, string> = {
@@ -61,7 +61,7 @@ const CATEGORY_STYLE: Record<ActionCategory, string> = {
 const CATEGORY_LABEL: Record<ActionCategory, string> = {
   overdue: "Overdue",
   due: "Due soon",
-  waiting: "Waiting on client",
+  waiting: "Client response",
   changes: "Changes requested",
   planning: "Needs scheduling",
   setup: "Needs setup",
@@ -127,7 +127,7 @@ function buildActions(campaigns: SmmCampaign[], today: string): ActionRow[] {
     if (needsSetup(campaign, today)) {
       rows.push({
         id: campaign.id + ":setup", campaign, glance, category: "setup", rank: 0,
-        sortDate: campaign.cycle.endDate, title: "Set up this campaign",
+        sortDate: campaign.cycle.endDate, title: "Campaign needs setup",
         reason: "Assign the team and plan deliverables before production starts.",
         dueLabel: "Setup required", owner: "Campaign owner",
       });
@@ -239,8 +239,18 @@ export default function SmmOperationsView({ campaigns, loading, canSetUp, onAddS
     let overdue = 0;
     let dueSoon = 0;
     let waiting = 0;
+    let committed = 0;
+    let posted = 0;
+    let activeCampaigns = 0;
+
     for (const campaign of campaigns) {
       if (campaign.status !== "active" || campaign.history) continue;
+      activeCampaigns += 1;
+      for (const kind of SMM_CONTENT_KINDS) {
+        const promised = Math.max(0, Number(campaign.commitments?.[kind.key] || 0));
+        committed += promised;
+        posted += Math.min(promised, (campaign.items || []).filter((item) => item.kind === kind.key && !item.extra && isPosted(item)).length);
+      }
       for (const item of campaign.items || []) {
         if (isPosted(item)) continue;
         if (isOverdue(item, today)) overdue += 1;
@@ -248,13 +258,16 @@ export default function SmmOperationsView({ campaigns, loading, canSetUp, onAddS
           const delta = daysUntilDue(item, today);
           if (delta !== null && delta <= 3) dueSoon += 1;
         }
-        if (item.approval?.state === "waiting" || item.approval?.state === "changes") waiting += 1;
+        if (item.approval?.state === "waiting" || item.approval?.state === "changes" || item.status === "changes_requested") waiting += 1;
       }
     }
     return {
       overdue,
       dueSoon,
       waiting,
+      committed,
+      posted,
+      activeCampaigns,
       risk: glances.filter(({ campaign, glance }) => campaign.status === "active" && !campaign.history &&
         (glance.status === "off_track" || glance.status === "at_risk")).length,
       setup: campaigns.filter((campaign) => campaign.status === "active" && !campaign.history && needsSetup(campaign, today)).length,
@@ -270,7 +283,7 @@ export default function SmmOperationsView({ campaigns, loading, canSetUp, onAddS
   const visibleActions = actions.filter((row) => rowMatchesFilter(row, filter, today) && campaignMatches(row.campaign));
   const visibleCampaigns = glances.filter(({ campaign, glance }) => {
     if (!campaignMatches(campaign)) return false;
-    if (filter === "overdue") return (campaign.items || []).some((item) => isOverdue(item, today));
+    if (filter === "overdue") return (campaign.items || []).some((item) => !isPosted(item) && isOverdue(item, today));
     if (filter === "due") return (campaign.items || []).some((item) => {
       if (isPosted(item)) return false;
       const delta = daysUntilDue(item, today);
@@ -284,152 +297,168 @@ export default function SmmOperationsView({ campaigns, loading, canSetUp, onAddS
     return true;
   });
 
-  const countFor = (key: Filter): number => {
-    if (key === "overdue") return stats.overdue;
-    if (key === "due") return stats.dueSoon;
-    if (key === "waiting") return stats.waiting;
-    if (key === "risk") return stats.risk;
-    if (key === "setup") return stats.setup;
-    return actions.filter((row) => campaignMatches(row.campaign)).length;
-  };
+  const countFor = (key: Filter): number => actions
+    .filter((row) => campaignMatches(row.campaign) && rowMatchesFilter(row, key, today)).length;
+  const deliveryPercent = stats.committed > 0 ? Math.min(100, Math.round(stats.posted / stats.committed * 100)) : 0;
 
   return (
-    <div data-test="smm-operations-view" className="mx-auto w-full max-w-[1440px] space-y-5 pb-5">
-      <header className="flex flex-col gap-4 border-b border-border/80 pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <div data-test="smm-operations-view" className="mx-auto w-full max-w-[1480px] space-y-6 pb-6">
+      <header className="flex flex-col gap-4 border-b border-border/70 pb-5 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
-          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            Operations <span className="text-border">/</span> Social media
+            SMM <span className="text-border">/</span> Operations
           </div>
-          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-foreground sm:text-[32px]">Social media</h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
-            A clear view of client commitments, what needs attention, and what comes next.
-          </p>
+          <h1 className="text-[28px] font-semibold leading-tight tracking-tight text-foreground sm:text-[34px]">Social media</h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">A focused view of delivery, blockers and the next action.</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button type="button" data-test="smm-classic-ui" onClick={onClassicUI}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card px-3.5 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card px-3.5 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <LayoutGrid size={15} /> Classic view
           </button>
           {canSetUp && onAddSale && (
             <button type="button" data-test="smm-add-sale" onClick={onAddSale}
-              className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+              className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
               <Plus size={16} /> Add SMM sale
             </button>
           )}
         </div>
       </header>
 
-      <section aria-label="Today at a glance" className="overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Today at a glance</span>
-          <span className="text-xs text-muted-foreground">{safeDateLabel(today)}</span>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(300px,0.8fr)]">
+        <div className="overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Delivery pulse</span>
+            <span className="text-xs text-muted-foreground">{stats.activeCampaigns} active campaigns</span>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
+            <StatButton label="Overdue work" value={stats.overdue} caption="Past promised date" Icon={AlertTriangle} tone="red" active={filter === "overdue"} onClick={() => setFilter(filter === "overdue" ? "all" : "overdue")} />
+            <StatButton label="Due in 3 days" value={stats.dueSoon} caption="Deadline approaching" Icon={Clock3} tone="amber" active={filter === "due"} onClick={() => setFilter(filter === "due" ? "all" : "due")} />
+            <StatButton label="Client response" value={stats.waiting} caption="Approval or changes" Icon={MessageCircle} tone="blue" active={filter === "waiting"} onClick={() => setFilter(filter === "waiting" ? "all" : "waiting")} />
+            <StatButton label="Campaigns at risk" value={stats.risk} caption="Behind the plan" Icon={CircleAlert} tone="amber" active={filter === "risk"} onClick={() => setFilter(filter === "risk" ? "all" : "risk")} />
+          </div>
         </div>
-        <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
-          <StatButton label="Overdue work" value={stats.overdue} caption="Past its promised date" Icon={AlertTriangle} tone="red" active={filter === "overdue"} onClick={() => setFilter(filter === "overdue" ? "all" : "overdue")} />
-          <StatButton label="Due in 3 days" value={stats.dueSoon} caption="Still time to prevent a miss" Icon={Clock3} tone="amber" active={filter === "due"} onClick={() => setFilter(filter === "due" ? "all" : "due")} />
-          <StatButton label="Client response" value={stats.waiting} caption="Approval or changes needed" Icon={MessageCircle} tone="blue" active={filter === "waiting"} onClick={() => setFilter(filter === "waiting" ? "all" : "waiting")} />
-          <StatButton label="Campaigns at risk" value={stats.risk} caption="Behind the delivery plan" Icon={CircleAlert} tone="amber" active={filter === "risk"} onClick={() => setFilter(filter === "risk" ? "all" : "risk")} />
-        </div>
-      </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold tracking-tight text-foreground">Needs attention</h2>
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">{visibleActions.length}</span>
+        <aside className="flex min-w-0 flex-col justify-between rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-foreground">Monthly delivery</h2>
+              <span className="text-xs tabular-nums text-muted-foreground">{deliveryPercent}% recorded</span>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Prioritized by deadline and the next action required.</p>
+            <div className="mt-3 flex items-end gap-2">
+              <span className="text-3xl font-semibold tracking-tight text-foreground tabular-nums">{stats.posted}</span>
+              <span className="pb-1 text-sm text-muted-foreground">of {stats.committed} package deliverables marked posted</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Package deliverables marked posted" aria-valuemin={0} aria-valuemax={100} aria-valuenow={deliveryPercent}>
+              <div className="h-full rounded-full bg-emerald-600 transition-[width] duration-500" style={{ width: deliveryPercent + "%" }} />
+            </div>
           </div>
-          <label className="relative block w-full sm:max-w-[280px]">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search clients and deliverables"
-              placeholder="Search clients or deliverables"
-              className="h-9 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/80 focus:border-primary focus:ring-2 focus:ring-primary/10" />
-          </label>
-        </div>
-        <div role="group" aria-label="Filter work" className="flex gap-1.5 overflow-x-auto border-b border-border px-3 py-2.5 sm:px-4">
-          {FILTERS.map(({ key, label }) => (
-            <button type="button" key={key} onClick={() => setFilter(key)} aria-pressed={filter === key} aria-label={"Filter " + label + ": " + countFor(key)}
-              className={"inline-flex min-h-8 shrink-0 items-center rounded-lg px-3 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
-                (filter === key ? "bg-foreground text-background shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
-              {label}
-              <span className={"ml-2 rounded-md px-1.5 py-0.5 text-[10px] tabular-nums " + (filter === key ? "bg-background/15" : "bg-muted")}>{countFor(key)}</span>
-            </button>
-          ))}
-        </div>
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 px-4 py-14 text-sm text-muted-foreground"><Loader2 size={17} className="animate-spin" /> Loading your campaigns…</div>
-        ) : visibleActions.length === 0 ? (
-          <div className="flex flex-col items-center px-5 py-10 text-center">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><CheckCircle2 size={19} /></span>
-            <p className="mt-3 text-sm font-semibold text-foreground">Nothing needs attention here</p>
-            <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
-              {search ? "Try a different search or clear the current filter." : "This view is based on existing dates, statuses and campaign setup. New blockers appear here when they are recorded."}
-            </p>
-            {(filter !== "all" || search) && <button type="button" onClick={() => { setFilter("all"); setSearch(""); }} className="mt-3 text-xs font-semibold text-primary hover:underline">Clear filters</button>}
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+            <p className="text-[11px] leading-5 text-muted-foreground">Package work only; additional work is tracked separately.</p>
+            <Link to="/smm?view=insights" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+              View insights <ArrowRight size={13} />
+            </Link>
           </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {visibleActions.slice(0, 6).map((row) => {
-              const Icon = row.category === "overdue" ? AlertTriangle
-                : row.category === "waiting" ? MessageCircle
-                : row.category === "changes" ? ImageIcon
-                : row.category === "planning" || row.category === "setup" ? CalendarClock
-                : row.category === "risk" ? CircleAlert : Clock3;
-              return (
-                <article key={row.id} className="group grid grid-cols-[3px_minmax(0,1fr)] sm:grid-cols-[3px_minmax(0,1fr)_auto]">
-                  <span className={"my-3 rounded-full " + (row.category === "overdue" ? "bg-red-500" : row.category === "waiting" || row.category === "changes" ? "bg-sky-500" : row.category === "due" || row.category === "risk" ? "bg-amber-500" : "bg-border")} />
-                  <div className="flex min-w-0 flex-col gap-2 px-3 py-3.5 sm:flex-row sm:items-center sm:gap-4 sm:px-4">
-                    <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground sm:flex"><Icon size={17} /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-foreground">{row.title}</span>
-                        <span className={"inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold " + CATEGORY_STYLE[row.category]}>{CATEGORY_LABEL[row.category]}</span>
-                        {row.item?.extra && <span className="inline-flex rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Extra work</span>}
-                      </div>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{row.campaign.businessName || row.campaign.clientName} <span className="mx-1 text-border">·</span> {row.reason}</p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                        <span>{row.owner}</span>
-                        <span className={row.category === "overdue" ? "font-semibold text-red-700 dark:text-red-300" : ""}>{row.dueLabel}</span>
+        </aside>
+      </div>
+
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(440px,0.95fr)]">
+        <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold tracking-tight text-foreground">Needs attention</h2>
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">{visibleActions.length}</span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Only items that need a decision or action appear here.</p>
+              </div>
+              <span className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[10px] font-medium text-muted-foreground">Live records</span>
+            </div>
+            <label className="relative block w-full">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search clients and deliverables"
+                placeholder="Search client, content or package"
+                className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/80 focus:border-primary focus:ring-2 focus:ring-primary/10" />
+            </label>
+            <div role="group" aria-label="Filter work" className="flex gap-1 overflow-x-auto rounded-xl bg-muted/65 p-1">
+              {FILTERS.map(({ key, label }) => (
+                <button type="button" key={key} onClick={() => setFilter(key)} aria-pressed={filter === key} aria-label={"Filter " + (key === "all" ? "All work" : key === "waiting" ? "Waiting on client" : key === "setup" ? "Needs setup" : label) + ": " + countFor(key)}
+                  className={"inline-flex min-h-8 shrink-0 items-center rounded-lg px-2.5 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
+                    (filter === key ? "bg-background text-foreground shadow-sm ring-1 ring-border/70" : "text-muted-foreground hover:text-foreground")}>
+                  {label}
+                  <span className={"ml-1.5 rounded-md px-1 py-0.5 text-[10px] tabular-nums " + (filter === key ? "bg-muted" : "opacity-70")}>{countFor(key)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 px-4 py-14 text-sm text-muted-foreground"><Loader2 size={17} className="animate-spin" /> Loading campaigns…</div>
+          ) : visibleActions.length === 0 ? (
+            <div className="flex flex-col items-center px-5 py-10 text-center">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><CheckCircle2 size={19} /></span>
+              <p className="mt-3 text-sm font-semibold text-foreground">Nothing needs attention here</p>
+              <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{search ? "Try a different search or clear the current filter." : "This queue uses current dates, statuses and recorded approvals."}</p>
+              {(filter !== "all" || search) && <button type="button" onClick={() => { setFilter("all"); setSearch(""); }} className="mt-3 text-xs font-semibold text-primary hover:underline">Clear filters</button>}
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {visibleActions.slice(0, 6).map((row) => {
+                const Icon = row.category === "overdue" ? AlertTriangle
+                  : row.category === "waiting" ? MessageCircle
+                  : row.category === "changes" ? ImageIcon
+                  : row.category === "planning" || row.category === "setup" ? CalendarClock
+                  : row.category === "risk" ? CircleAlert : Clock3;
+                const critical = row.category === "overdue";
+                return (
+                  <article key={row.id} className="grid grid-cols-[3px_minmax(0,1fr)]">
+                    <span className={"my-3 rounded-full " + (critical ? "bg-red-500" : row.category === "waiting" || row.category === "changes" ? "bg-sky-500" : row.category === "due" || row.category === "risk" ? "bg-amber-500" : "bg-border")} />
+                    <div className="flex min-w-0 items-start gap-3 px-3 py-3.5 sm:px-4">
+                      <span className={"mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl " + (critical ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" : "bg-muted/70 text-muted-foreground")}><Icon size={16} /></span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold leading-5 text-foreground">{row.title}</span>
+                          <span className={"inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold " + CATEGORY_STYLE[row.category]}>{CATEGORY_LABEL[row.category]}</span>
+                          {row.item?.extra && <span className="inline-flex rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Extra work</span>}
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{row.campaign.businessName || row.campaign.clientName} <span className="mx-1 text-border">·</span> {row.reason}</p>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                          <span className="truncate text-[11px] text-muted-foreground">{row.owner}</span>
+                          <span className={"text-[11px] font-semibold " + (critical ? "text-red-700 dark:text-red-300" : "text-muted-foreground")}>{row.dueLabel}</span>
+                        </div>
+                        {row.category === "setup" && canSetUp && onSetUp ? (
+                          <button type="button" onClick={() => onSetUp(row.campaign)} className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:brightness-95">
+                            Set up campaign <ArrowRight size={13} />
+                          </button>
+                        ) : (
+                          <Link to={"/smm/" + row.campaign.id} className="mt-2 inline-flex h-7 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold text-foreground transition hover:bg-muted">
+                            Open work <ArrowRight size={13} />
+                          </Link>
+                        )}
                       </div>
                     </div>
-                    {row.category === "setup" && canSetUp && onSetUp ? (
-                      <button type="button" onClick={() => onSetUp(row.campaign)} className="ml-3 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:brightness-95 sm:ml-0">
-                        Set up <ArrowRight size={13} />
-                      </button>
-                    ) : (
-                      <Link to={"/smm/" + row.campaign.id} className="ml-3 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg px-2.5 text-xs font-semibold text-foreground transition hover:bg-muted sm:ml-0 sm:self-center">
-                        Open work <ArrowRight size={13} />
-                      </Link>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-            {visibleActions.length > 6 && <div className="px-5 py-3 text-center text-xs text-muted-foreground">Showing 6 of {visibleActions.length} actions. Use the filters or search to narrow the list.</div>}
-          </div>
-        )}
-      </section>
-
-      <section className="overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
-          <div>
-            <h2 className="text-base font-semibold tracking-tight text-foreground">Client campaigns</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Promised work, actual posting progress, and the next due item.</p>
-          </div>
-          <span className="shrink-0 rounded-lg bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{visibleCampaigns.length} client{visibleCampaigns.length === 1 ? "" : "s"}</span>
-        </div>
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-muted-foreground"><Loader2 size={17} className="animate-spin" /> Loading campaigns…</div>
-        ) : visibleCampaigns.length === 0 ? (
-          <div className="px-5 py-9 text-center text-sm text-muted-foreground">No clients match this view.</div>
-        ) : (
-          <>
-            <div className="hidden grid-cols-[minmax(160px,1.2fr)_minmax(190px,1.4fr)_135px_minmax(125px,1fr)_76px] gap-4 bg-muted/30 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground lg:grid">
-              <span>Client</span><span>Package fulfilment</span><span>Health</span><span>Next due</span><span />
+                  </article>
+                );
+              })}
+              {visibleActions.length > 6 && <div className="px-5 py-3 text-center text-xs text-muted-foreground">Showing 6 of {visibleActions.length} actions. Use filters or search to narrow the list.</div>}
             </div>
+          )}
+        </section>
+
+        <section className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight text-foreground">Client campaigns</h2>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">What was promised, what is posted and what comes next.</p>
+            </div>
+            <span className="shrink-0 rounded-lg bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">{visibleCampaigns.length}</span>
+          </div>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-muted-foreground"><Loader2 size={17} className="animate-spin" /> Loading campaigns…</div>
+          ) : visibleCampaigns.length === 0 ? (
+            <div className="px-5 py-9 text-center text-sm text-muted-foreground">No clients match this view.</div>
+          ) : (
             <div className="divide-y divide-border">
               {visibleCampaigns.map(({ campaign, glance }) => {
                 const next = (campaign.items || [])
@@ -438,62 +467,64 @@ export default function SmmOperationsView({ campaigns, loading, canSetUp, onAddS
                 const extraCount = (campaign.items || []).filter((item) => item.extra).length;
                 const setup = needsSetup(campaign, today);
                 const kinds = SMM_CONTENT_KINDS.filter((kind) => Number(campaign.commitments?.[kind.key] || 0) > 0);
+                const committed = kinds.reduce((sum, kind) => sum + Number(campaign.commitments?.[kind.key] || 0), 0);
+                const posted = kinds.reduce((sum, kind) => sum + Math.min(
+                  Number(campaign.commitments?.[kind.key] || 0),
+                  (campaign.items || []).filter((item) => item.kind === kind.key && !item.extra && isPosted(item)).length,
+                ), 0);
+                const progress = committed ? Math.round(posted / committed * 100) : 0;
                 return (
-                  <div key={campaign.id} className="grid grid-cols-1 gap-3 px-4 py-4 transition hover:bg-muted/20 lg:grid-cols-[minmax(160px,1.2fr)_minmax(190px,1.4fr)_135px_minmax(125px,1fr)_76px] lg:items-center lg:gap-4 lg:px-5">
-                    <div className="min-w-0">
-                      <Link to={"/smm/" + campaign.id} className="block truncate text-sm font-semibold text-foreground transition hover:text-primary">{campaign.businessName || campaign.clientName || "Unnamed client"}</Link>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{campaign.packageLabel || "Custom package"}</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">{safeDateLabel(campaign.cycle.startDate)} – {safeDateLabel(campaign.cycle.endDate)}</p>
-                      {extraCount > 0 && <p className="mt-1.5 text-[10px] font-medium text-violet-700 dark:text-violet-300">{extraCount} extra item{extraCount === 1 ? "" : "s"} · excluded from package total</p>}
-                    </div>
-                    <div className="space-y-2">
-                      {kinds.length === 0 ? <span className="text-xs text-muted-foreground">No package items recorded</span> : kinds.map((kind) => {
-                        const committed = Math.max(0, Number(campaign.commitments?.[kind.key] || 0));
-                        const posted = (campaign.items || []).filter((item) => item.kind === kind.key && !item.extra && isPosted(item)).length;
-                        const ratio = committed ? Math.min(1, posted / committed) : 0;
-                        const Icon = CONTENT_ICON[kind.key];
-                        const color = kind.key === "poster" ? "bg-violet-500" : kind.key === "real_video" ? "bg-emerald-600" : "bg-primary";
-                        return (
-                          <div key={kind.key} className="grid grid-cols-[92px_36px_minmax(42px,1fr)] items-center gap-2">
-                            <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground"><Icon size={12} />{kind.label}</span>
-                            <span className="text-right text-xs font-semibold tabular-nums text-foreground">{posted}<span className="text-muted-foreground">/{committed}</span></span>
-                            <span className="h-1.5 overflow-hidden rounded-full bg-muted"><span className={"block h-full rounded-full " + color} style={{ width: (ratio * 100) + "%" }} /></span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex items-start lg:block">
-                      <span className={"inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-semibold ring-1 ring-inset " + (STATUS_STYLE[glance.status] || STATUS_STYLE.not_started)}>
+                  <article key={campaign.id} className="px-4 py-4 transition hover:bg-muted/20 sm:px-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link to={"/smm/" + campaign.id} className="block truncate text-sm font-semibold text-foreground transition hover:text-primary">{campaign.businessName || campaign.clientName || "Unnamed client"}</Link>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">{campaign.packageLabel || "Custom package"} <span className="mx-1 text-border">·</span> {safeDateLabel(campaign.cycle.startDate)} – {safeDateLabel(campaign.cycle.endDate)}</p>
+                      </div>
+                      <span className={"inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-semibold ring-1 ring-inset " + (STATUS_STYLE[glance.status] || STATUS_STYLE.not_started)}>
                         <span className={"h-1.5 w-1.5 rounded-full " + (glance.status === "off_track" ? "bg-red-500" : glance.status === "at_risk" ? "bg-amber-500" : glance.status === "on_track" || glance.status === "done" ? "bg-emerald-500" : "bg-current opacity-50")} />
                         {glance.label}
                       </span>
-                      <p className="mt-1.5 text-xs leading-4 text-muted-foreground">{glance.reason}</p>
                     </div>
-                    <div className="min-w-0">
-                      {next ? (
-                        <>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-emerald-600 transition-[width] duration-500" style={{ width: progress + "%" }} /></div>
+                      <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">{posted}/{committed}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
+                      {kinds.map((kind) => {
+                        const promised = Math.max(0, Number(campaign.commitments?.[kind.key] || 0));
+                        const liveCount = (campaign.items || []).filter((item) => item.kind === kind.key && !item.extra && isPosted(item)).length;
+                        return <span key={kind.key} className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span className={"h-1.5 w-1.5 rounded-full " + (kind.key === "poster" ? "bg-violet-500" : kind.key === "real_video" ? "bg-emerald-600" : "bg-primary")} />
+                          {kind.label} <strong className="font-semibold text-foreground">{Math.min(promised, liveCount)}/{promised}</strong>
+                        </span>;
+                      })}
+                      {extraCount > 0 && <span className="text-[10px] font-semibold text-violet-700 dark:text-violet-300">{extraCount} extra · separate from package</span>}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/70 pt-2.5">
+                      <div className="min-w-0">
+                        {next ? <>
                           <p className="truncate text-xs font-semibold text-foreground">{next.title?.trim() || contentLabel(next.kind)}</p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">{safeDateLabel(next.uploadDate)} · {dueText(next, today)}</p>
-                        </>
-                      ) : <p className="text-xs text-muted-foreground">No dated items upcoming</p>}
-                    </div>
-                    <div className="flex items-center justify-start lg:justify-end">
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">{safeDateLabel(next.uploadDate)} · {dueText(next, today)}</p>
+                        </> : <p className="text-xs text-muted-foreground">No dated deliverables coming up</p>}
+                        {glance.reason && <p className="mt-1 truncate text-[10px] text-muted-foreground">{glance.reason}</p>}
+                      </div>
                       {setup && canSetUp && onSetUp ? (
-                        <button type="button" onClick={() => onSetUp(campaign)} className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:brightness-95">Set up</button>
+                        <button type="button" onClick={() => onSetUp(campaign)} className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:brightness-95">Set up</button>
                       ) : (
-                        <Link to={"/smm/" + campaign.id} className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-foreground transition hover:bg-muted">View <ArrowRight size={12} /></Link>
+                        <Link to={"/smm/" + campaign.id} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border px-3 text-xs font-semibold text-foreground transition hover:bg-muted">Open <ArrowRight size={12} /></Link>
                       )}
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </div>
-          </>
-        )}
-      </section>
+          )}
+        </section>
+      </div>
+
       <p className="flex items-start gap-2 px-1 text-[11px] leading-5 text-muted-foreground">
         <CalendarClock size={14} className="mt-0.5 shrink-0" />
-        This view uses existing campaign dates and status records. It does not independently verify live social posts.
+        Progress is based on existing campaign records. A “posted” status here is not independent platform verification.
       </p>
     </div>
   );
