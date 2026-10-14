@@ -4,7 +4,9 @@
 > Code loads automatically when you read or edit a matching file. The history lives in
 > `docs/DEVELOPMENT-HISTORY.md`. Together the three are the project context: in the rules below,
 > "CLAUDE.md" or "this file" means all three. The section numbers §1–§34 never change, and the Context
-> map below says where each section lives. The **source code wins** over the context; when they
+> map below says where each section lives. `docs/DTS-OS-SYSTEM-MAP.md` is the repository-wide
+> navigation map, checked against the source tree on 2026-10-14; read it for multi-module work, then
+> verify all relevant details against current code. The **source code wins** over the context; when they
 > disagree, fix the context in the same task.
 >
 > **Quick start:** at start-up the hook `.claude/hooks/session-start.cjs` prints the repo state and
@@ -25,6 +27,7 @@
 | File | Sections (original numbers) | Loads automatically when you read or edit |
 |---|---|---|
 | `CLAUDE.md` (this core) | §1 identity, §28 conventions, §29 rules, §30 change protocol, §32 state, §33 AI context, §34 session protocol | every session, always |
+| `docs/DTS-OS-SYSTEM-MAP.md` | Repository-wide module/data-flow navigation, key files, verification and security caveats | read for multi-module changes; validate against current source |
 | `.claude/rules/architecture.md` | §2–§6 (purpose, overview, stack, architecture, structure), §9 intro, §9.17, §9.20, §11 frontend, §19 search/filters/analytics, §22 components, §23 data flows, the §25 "implemented" summary | app shell and layout, `App.tsx`, build/config files, UI kit, dashboards, PWA / Android |
 | `.claude/rules/backend-security.md` | §9.1 auth, §9.19, §12 backend & API, §14 auth & security, §18 notifications, §20 integrations, §21 env vars, §26 confirmed issues, security risks | `api/**`, Firebase / notifications / FCM / upload services, login, `docs/firestore-rules*.md` |
 | `.claude/rules/data-model.md` | §13 database (every collection, field, relationship, status) | `src/types/**`, `src/services/**`, `src/hooks/**`, `docs/firestore-rules*.md` |
