@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
 import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import SmmOperationsView from "@/components/smm/SmmOperationsView";
