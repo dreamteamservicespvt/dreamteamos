@@ -24,6 +24,7 @@ runs in a transaction (`mutateCampaign`). The order's progress counters are **de
 plan (`syncOrderProgress`). Budget ledger with `direct`/`via_us` payment routes and two-leg proof.
 Due reminders appear in the check-in/check-out screens. Removing an order retires its month.
 **2026-10-14 — optional simplified operations UI.** `components/smm/SmmOperationsView.tsx` is an opt-in view at `/smm?ui=modern`; the existing Cards / Insights / Calendar / Money / Attendance interface remains the default and can be reopened via **Classic UI**. Entry is toggled from `pages/shared/SocialMedia.tsx`. The new view uses the same already-visible campaign records, `monthGlance`, `daysUntilDue`, `isOverdue`, posting status, commitments, and existing setup dialog; it adds no collection, scheduler, alert backend, or alternate progress calculation. This is a UI-only view, not proof that publication or completion is independently verified.
+The refined layout uses a compact delivery-pulse strip, a focused action queue, and a concise client-progress list; the summary, filters and progress figures derive from the same campaign records. No new tracker or status-writing path was added.
 **2026-10-01:** a month can be **deleted** (`deleteCampaign`, Delete button on the month's page): a
 direct month's document is deleted; a sold month becomes a `status: "deleted"` tombstone
 (`deletedAt`, `deletedByName`) that lists and the page treat as gone and that `ensureCampaignForOrder`
