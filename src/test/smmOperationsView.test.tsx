@@ -85,7 +85,7 @@ describe("SMM Operations UI — atomic interactions", () => {
     expect(screen.getByRole("button", { name: "Client response: 1" })).toBeInTheDocument();
     expect(screen.getByText("Urgent festival extra")).toBeInTheDocument();
     expect(screen.getAllByText("Extra work").length).toBeGreaterThan(0);
-    expect(screen.getByText("Real videos")).toBeInTheDocument();
+    expect(screen.getAllByText("Real videos").length).toBeGreaterThan(0);
     expect(screen.getByText(/separate from package/)).toBeInTheDocument();
   });
 
