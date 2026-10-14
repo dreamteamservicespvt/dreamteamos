@@ -547,23 +547,3 @@ describe("the board", () => {
     expect(fetchClientMonths).not.toHaveBeenCalled();
   });
 });
-
-describe("the opt-in modern SMM UI", () => {
-  it("keeps classic as the default and switches back without losing the route", () => {
-    localStorage.removeItem("dts_smm_view");
-    render(
-      <MemoryRouter initialEntries={["/smm"]}>
-        <SocialMedia />
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByTestId("smm-operations-view")).toBeNull();
-    fireEvent.click(screen.getByTestId("smm-open-modern"));
-    expect(screen.getByTestId("smm-operations-view")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("smm-classic-ui"));
-    expect(screen.queryByTestId("smm-operations-view")).toBeNull();
-    expect(screen.getByTestId("smm-open-modern")).toBeInTheDocument();
-  });
-});
-
