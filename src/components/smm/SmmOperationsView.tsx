@@ -185,7 +185,7 @@ function rowMatchesFilter(row: ActionRow, filter: Filter, today: string): boolea
     const delta = daysUntilDue(row.item, today);
     return delta !== null && delta >= 0 && delta <= 3;
   }
-  if (filter === "waiting") return row.item?.approval?.state === "waiting" || row.item?.approval?.state === "changes";
+  if (filter === "waiting") return row.item?.approval?.state === "waiting" || row.item?.approval?.state === "changes" || row.item?.status === "changes_requested";
   if (filter === "risk") return row.glance.status === "off_track" || row.glance.status === "at_risk";
   return row.category === "setup" || row.category === "planning";
 }
@@ -277,7 +277,7 @@ export default function SmmOperationsView({ campaigns, loading, canSetUp, onAddS
       return delta !== null && delta >= 0 && delta <= 3;
     });
     if (filter === "waiting") return (campaign.items || []).some((item) =>
-      !isPosted(item) && (item.approval?.state === "waiting" || item.approval?.state === "changes")
+      !isPosted(item) && (item.approval?.state === "waiting" || item.approval?.state === "changes" || item.status === "changes_requested")
     );
     if (filter === "risk") return glance.status === "off_track" || glance.status === "at_risk";
     if (filter === "setup") return needsSetup(campaign, today);

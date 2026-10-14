@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import SmmOperationsView from "@/components/smm/SmmOperationsView";
 import { addDays, blankItem, isoDay } from "@/utils/smmPlan";
@@ -55,7 +56,7 @@ function campaign(name: string, over: Partial<SmmCampaign> = {}): SmmCampaign {
   };
 }
 
-function renderView(campaigns: SmmCampaign[], props: Partial<React.ComponentProps<typeof SmmOperationsView>> = {}) {
+function renderView(campaigns: SmmCampaign[], props: Partial<ComponentProps<typeof SmmOperationsView>> = {}) {
   return render(
     <MemoryRouter>
       <SmmOperationsView campaigns={campaigns} loading={false} canSetUp={true} onClassicUI={vi.fn()} {...props} />
