@@ -96,7 +96,7 @@ describe("SMM Operations UI — atomic interactions", () => {
     expect(screen.getByRole("button", { name: "Filter Overdue: 1" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Late poster")).toBeInTheDocument();
     expect(screen.queryByText("Future video")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Filter All work: 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Filter All work: 1" }));
     expect(screen.getByText("Future video")).toBeInTheDocument();
   });
 
