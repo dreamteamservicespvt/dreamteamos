@@ -1,0 +1,61 @@
+name: SMM UI verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/components/smm/SmmOperationsView.tsx"
+      - "src/pages/shared/SocialMedia.tsx"
+      - "src/test/smmOperationsView.test.tsx"
+      - "src/test/smmAddSaleUi.test.tsx"
+      - "src/utils/smmGlance.ts"
+      - "src/utils/smmPlan.ts"
+      - "src/utils/smmPackage.ts"
+      - "src/types/smm.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "vitest.config.ts"
+      - "tsconfig.smm-ui.json"
+      - ".github/workflows/smm-ui-checks.yml"
+  push:
+    branches: [feat/smm-operations-ui-refinement]
+    paths:
+      - "src/components/smm/SmmOperationsView.tsx"
+      - "src/pages/shared/SocialMedia.tsx"
+      - "src/test/smmOperationsView.test.tsx"
+      - "src/utils/smmGlance.ts"
+      - "src/utils/smmPlan.ts"
+      - "src/utils/smmPackage.ts"
+      - "src/types/smm.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "vitest.config.ts"
+      - "tsconfig.smm-ui.json"
+      - ".github/workflows/smm-ui-checks.yml"
+
+jobs:
+  verify:
+    name: SMM UI typecheck, tests, and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: SMM UI TypeScript check
+        run: npx tsc -p tsconfig.smm-ui.json --noEmit
+      - name: Atomic SMM UI tests
+        run: npx vitest run src/test/smmOperationsView.test.tsx src/test/smmAddSaleUi.test.tsx
+      - name: Full test suite
+        run: npm test -- --reporter=dot
+      - name: Production build
+        if: always()
+        run: npm run build
