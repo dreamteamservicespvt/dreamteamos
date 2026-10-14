@@ -16,7 +16,6 @@ on:
       - "vite.config.ts"
       - "vitest.config.ts"
       - "tsconfig.smm-ui.json"
-      - "tsconfig.smm-ui.json"
       - ".github/workflows/smm-ui-checks.yml"
   push:
     branches: [feat/smm-operations-ui-refinement]
@@ -32,6 +31,7 @@ on:
       - "package-lock.json"
       - "vite.config.ts"
       - "vitest.config.ts"
+      - "tsconfig.smm-ui.json"
       - ".github/workflows/smm-ui-checks.yml"
 
 jobs:
