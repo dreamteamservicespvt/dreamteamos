@@ -318,7 +318,7 @@ export default function SmmOperationsView({ campaigns, loading, canSetUp, onAddS
         <header className="smm-glass-hero">
           <div className="smm-glass-hero__copy">
             <div className="smm-glass-eyebrow"><span className="smm-glass-live-dot" /> DREAM TEAM SERVICES <span className="smm-glass-eyebrow__slash">/</span> SOCIAL STUDIO</div>
-            <h1 className="smm-glass-hero__title">Social media<span className="smm-glass-title-period">.</span></h1>
+            <h1 className="smm-glass-hero__title">Social media<span className="smm-glass-title-period" aria-hidden="true">.</span></h1>
             <p className="smm-glass-hero__subtitle">Your campaign command centre. Clear priorities, visible progress, no guesswork.</p>
             <div className="smm-glass-hero__meta">
               <span className="smm-glass-date"><CalendarClock size={14} /> {dateLong}</span>
