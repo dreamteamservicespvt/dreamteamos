@@ -77,7 +77,10 @@ describe("SMM Operations UI — atomic interactions", () => {
     });
     renderView([c]);
 
-    expect(screen.getByRole("heading", { name: "Social media" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Social media." })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Social media overview metrics" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Portfolio analysis" })).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Package deliverables marked posted" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Overdue work: 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Client response: 1" })).toBeInTheDocument();
     expect(screen.getByText("Urgent festival extra")).toBeInTheDocument();

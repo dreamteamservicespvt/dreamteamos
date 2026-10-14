@@ -325,7 +325,7 @@ export default function SocialMedia() {
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" data-test="smm-open-modern" onClick={() => { const next = new URLSearchParams(params); next.set("ui", "modern"); setParams(next); }}
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">
-            <LayoutGrid size={15} /> Try New UI
+            <LayoutGrid size={15} /> Preview Glass UI
           </button>
           {canSetUp && (
             <button data-test="smm-add-sale-open" onClick={() => setAdding(true)}
