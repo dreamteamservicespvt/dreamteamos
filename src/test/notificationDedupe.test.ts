@@ -132,6 +132,24 @@ describe("sendNotification", () => {
       expect(pushes).toBe(0);
     });
 
+    /**
+     * A once-a-day reminder (the day is in its key) re-sent itself on every app open more than ten
+     * minutes apart: a new phone alert each time, and the row back as unread right after "Mark all
+     * read" (owner, 2026-10-13). `once` = the key IS the occurrence.
+     */
+    it("never fires again for a `once` key that was delivered — at any age, whatever its words now say", async () => {
+      alreadySent("smm_due_x_admin1_2026-10-13", { createdAt: { toMillis: () => Date.now() - 5 * 60 * 60 * 1000 }, message: "3 of 8 posted" });
+      await sendNotification({ ...base, dedupeKey: "smm_due_x_admin1_2026-10-13", once: true });
+      expect(pushes).toBe(0);
+      expect(setDoc).not.toHaveBeenCalled();
+    });
+
+    it("still sends a `once` key the first time", async () => {
+      await sendNotification({ ...base, dedupeKey: "smm_due_x_admin1_2026-10-14", once: true });
+      expect(pushes).toBe(1);
+      expect(setDoc).toHaveBeenCalledTimes(1);
+    });
+
     it("sends rather than stays silent when the existence check fails", async () => {
       getDoc.mockRejectedValueOnce(new Error("offline"));
       await sendNotification({ ...base, dedupeKey: "k1" });

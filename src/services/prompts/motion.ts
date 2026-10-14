@@ -1480,6 +1480,74 @@ Negative prompt :-
 No text on the screen`;
 }
 
+/** One of the two real owners in a Real Owner Duo video prompt — who they are and where they stand. */
+export interface RealOwnerSeat {
+  kind: "man" | "woman";
+  side: "LEFT" | "RIGHT";
+}
+
+/**
+ * The Veo 3 prompt for TWO real people — the Real Owner Duo (2026-10-14, the owner's choice: "your
+ * template, for two").
+ *
+ * The single owner's template above, given to each owner in turn and named the way the video model sees
+ * them — by side and by kind ("the man on the LEFT"), never by a label it cannot see:
+ *
+ *     Two people stand side by side: the man on the LEFT and the woman on the RIGHT. Both stay in frame,
+ *     in their places, for the whole clip.
+ *
+ *     With a very sweet voice the man on the LEFT needs to say :-
+ *
+ *     {Owner 1's line}
+ *
+ *     Then, with a very sweet voice the woman on the RIGHT needs to say :-
+ *
+ *     {Owner 2's line}
+ *
+ *     with appropriate gestures — only the one speaking moves their lips; the other listens and reacts.
+ *
+ *     Negative prompt :-
+ *     No text on the screen, no third person, the two never swap places or voices
+ *
+ * Still no camera move, no walk and no keep sentence — every extra word about a real face is one more thing
+ * the video model may change. What a second person adds is only what two real people need: who says which
+ * line (by side, so the right mouth moves), that the listener does not speak, and that nobody joins them
+ * and they never trade places or voices. Each line is the clip's spoken words exactly; `spokenLinesIn` reads
+ * every one back, so a refine still cannot change them. A clip with one line (a member's own script may give
+ * a clip to one owner) says the other keeps their mouth closed.
+ */
+export function assembleRealPersonDuoVeoPrompt(input: {
+  seats: [RealOwnerSeat, RealOwnerSeat];
+  lines: { seat: number; line: string }[];
+}): string {
+  const [left, right] = input.seats;
+  const who = (s: RealOwnerSeat) => `the ${s.kind} on the ${s.side}`;
+  const people = left.kind === right.kind
+    ? `Two ${left.kind === "man" ? "men" : "women"} stand side by side: one on the LEFT and one on the RIGHT.`
+    : `Two people stand side by side: ${who(left)} and ${who(right)}.`;
+  const lines = input.lines.filter((l) => l.line.trim());
+  const said = lines.map((l, i) => {
+    const seat = input.seats[l.seat === 1 ? 1 : 0];
+    return `${i === 0 ? "With" : "Then, with"} a very sweet voice ${who(seat)} needs to say :-\n\n${l.line.replace(/\s+/g, " ").trim()}`;
+  });
+  const speakers = new Set(lines.map((l) => (l.seat === 1 ? 1 : 0)));
+  let turn = "with appropriate gestures — only the one speaking moves their lips; the other listens and reacts.";
+  if (speakers.size === 1) {
+    const speaking = input.seats[[...speakers][0]];
+    const listening = input.seats[[...speakers][0] === 0 ? 1 : 0];
+    const own = listening.kind === "man" ? "his" : "her";
+    turn = `with appropriate gestures — only ${who(speaking)} speaks; ${who(listening)} keeps ${own} mouth closed, listens and reacts.`;
+  }
+  return `${people} Both stay in frame, in their places, for the whole clip.
+
+${said.join("\n\n")}
+
+${turn}
+
+Negative prompt :-
+No text on the screen, no third person, the two never swap places or voices`;
+}
+
 /** The heading of the composition line code adds to a real person's frame prompt. */
 export const REAL_PERSON_COMPOSITION_HEADING = "COMPOSITION FOR THE VIDEO";
 
@@ -1490,9 +1558,28 @@ export const REAL_PERSON_COMPOSITION_HEADING = "COMPOSITION FOR THE VIDEO";
  * frame caught mid-step (the composition every other cast gets) would start a walk the prompt never asks
  * for, so the person is caught where they stand, mid-gesture, ready to speak. In the client's own photo
  * (a background plate) the photograph's framing is kept. Idempotent.
+ *
+ * Two real owners (`pair`, the Real Owner Duo, 2026-10-14) are composed the same way, together: side by
+ * side on their fixed sides, at one distance from the camera so neither is drawn larger, both faces clear
+ * and never overlapping — the two-shot their video holds for the whole clip.
  */
-export function withRealPersonComposition(prompt: string, options: { plate?: boolean } = {}): string {
+export function withRealPersonComposition(
+  prompt: string,
+  options: { plate?: boolean; pair?: [RealOwnerSeat, RealOwnerSeat] } = {},
+): string {
   if (!prompt.trim() || prompt.includes(REAL_PERSON_COMPOSITION_HEADING)) return prompt;
+  if (options.pair) {
+    const [left, right] = options.pair;
+    const framing = options.plate
+      ? "the photograph's own framing and camera angle, unchanged; both placed into it on the real floor"
+      : "a two-shot of both, head to knees, at eye level, both faces large and clear";
+    return `${prompt.trimEnd()}\n\n${REAL_PERSON_COMPOSITION_HEADING}: the two owners say this clip's lines to the camera in turn, `
+      + `with natural, appropriate gestures — ${framing}; the ${left.kind} standing on the LEFT and the ${right.kind} on the RIGHT, `
+      + `side by side at a natural conversational distance and at the SAME distance from the camera, both standing in place, `
+      + `turned slightly toward each other and open to the camera, relaxed, the speaker's hand caught mid-gesture at chest height, `
+      + `the other listening; feet planted; neither face hidden, cropped or overlapping the other; clear space around the arms; `
+      + `every object fully in view; never mid-step and never a stiff, posed stance.`;
+  }
   const framing = options.plate
     ? "the photograph's own framing and camera angle, unchanged; the person placed into it on the real floor"
     : "three-quarter body (head to knees) at eye level, the face large and clear";

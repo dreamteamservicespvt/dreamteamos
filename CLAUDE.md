@@ -216,6 +216,14 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-13)
 
+- 2026-10-13 (late night), **in the working tree (not committed)**: the bell's follow-ups — **toasts at the bottom on
+  phones**, a smaller badge, **dismiss one row** (X / swipe, Undo) and **mark as unread**, a **daily 90-day clean-up** of
+  `notifications`, and the bell's index in **`firestore.indexes.json`** (+ `firebase.json`, `.firebaserc`)
+  (`backend-security.md` §18, `data-model.md`).
+- 2026-10-13 (night), **in the working tree (not committed)**: the **bell's Mark all read and Clear all work**. They act
+  on every notification, not the 50 loaded. Clear all is one `notification_state/{uid}` point with Undo, and the
+  once-a-day reminders are written once (`sendNotification({ once })`), so they never come back
+  (`backend-security.md` §18, `data-model.md`; new rule in `docs/firestore-rules.md`).
 - 2026-10-13 (evening), **in the working tree (not committed)** — **poster refine works**: design requests go in one
   "Changes:" line (the three sentences untouched), a refine can leave out / bring back a verified number or the address and
   change the words' language, and the studio says when nothing or not all was applied (`ai-ads.md` §17.2, §24).
@@ -260,19 +268,24 @@ errors:** done means every listed item is fully resolved with no build, console 
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
 - `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈848 KB; lazy pages for
   AI Accounts, Invoices).
-- `npx vitest run` ✅ 234 files, 3642 tests, all pass, no unhandled errors (2026-10-13, after the poster refine fix; 3
-  studio / Cinematic UI tests timed out while a build and a browser harness ran alongside and pass re-run alone).
+- `npx vitest run` ✅ 236 files, 3685 tests, all pass (2026-10-13, after the bell's one-row dismiss; the 5
+  `aiPlatformKitIntegrity` timeouts under a parallel browser run passed re-run alone).
   Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (the VideoCallManager one was fixed in `5ca75b0`).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): poster refine (a Changes line, contacts, language, what was not
-  applied); one contact-number list for posters and the footer; SMM Team Lead
+- Most recent work (newest first; detail in §31): bottom toasts, one-row dismiss / unread, the 90-day clean-up, the
+  index file; the bell's Mark all read / Clear all; poster refine (a Changes line,
+  contacts, language, what was not applied); one contact-number list for posters and the footer; SMM Team Lead
   view-only, Half Day leave, one-type poster prompts (2026-10-13); Motu & Patlu walk only where needed; AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
   (AI Ads + Cinematic Ads) and Social Media → Attendance (2026-10-08, later); the Invoice Builder and Invoices →
   Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
   money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
   AI Accounts and Cinematic Ads work.
-- Open follow-ups the owner must act on: refine one poster ("red and gold colours, headline …", "leave out the
+- Open follow-ups the owner must act on: deploy the bell's index (`firebase login`, then
+  `firebase deploy --only firestore:indexes`, answering **No** to deleting other indexes) or check it in the console;
+  on a phone dismiss one notification by swiping, mark one unread, and watch a toast appear at the bottom;
+  in the live bell press Mark all read, then Clear all (and Undo), then reopen
+  the app on another device. Does it stay read / empty?; refine one poster ("red and gold colours, headline …", "leave out the
   address") and make its image in Gemini — does the image follow the Changes line?; make one label and one poster image from new prompts with 1 and 2 numbers
   (one a WhatsApp) — is each number printed once, and none invented on a no-number poster?;
   make one poster in Gemini from a new poster prompt (does the one ad type read?);
@@ -282,7 +295,7 @@ errors:** done means every listed item is fully resolved with no build, console 
   two open Cinematic Ads questions (a format changed mid-project resets nothing; a clip's animation prompt has no
   line-by-line speaker — `ai-ads.md` §17.4); replace the 11 dead Gemini keys in Vercel (2026-10-10: `API_KEY_1`, 12,
   18 invalid; 13, 16, 23–28 leaked — §26.3) with working ones from AI Accounts → API keys → Download .env;
-  publish `docs/firestore-rules.md` in the console (it also holds the Social Media Team Lead's view-only rule, protects the Flow / ChatGPT / Grok passwords and the
+  publish `docs/firestore-rules.md` in the console (it also holds the bell's `notification_state` rule and the Social Media Team Lead's view-only rule, protects the Flow / ChatGPT / Grok passwords and the
   invoices, their numbers and the team-leader switch); check the invoice defaults and make one real invoice + PDF;
   move secrets out of source; authenticate `/api/send-notification`; generate a few clips in Flow (Frames to Video)
   from the dynamic-pass prompts — a single presenter, a human duo, Motu & Patlu (watch Patlu's height), a client

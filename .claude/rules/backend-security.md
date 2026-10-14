@@ -133,10 +133,52 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
 
 ## 18. NOTIFICATIONS
 
-- **In-app:** `sendNotification({userId,type,title,message,link?,meta?,dedupeKey?})` writes
+- **In-app:** `sendNotification({userId,type,title,message,link?,meta?,dedupeKey?,once?})` writes
   `notifications`. A `dedupeKey` makes the doc id deterministic, and repeats within 10 minutes
-  (same text) are skipped entirely. `hooks/useNotifications.ts` powers the Topbar bell (mark
-  read, clear). `UpdatePopup` shows popup types (`utils/notificationRouting.isPopupNotification`:
+  (same text) are skipped entirely. **`once: true`** (2026-10-13) = the key names one occurrence (it
+  carries the day): written at most once, ever — never re-sent, whether read, cleared or not. Used by
+  the once-a-day reminders: birthdays, `smm_due`, `smm_renewal_due`, `smm_renewal_reminder`,
+  `drive_folder_missing`. Without it they re-sent on every app open more than 10 minutes apart (a new
+  phone alert each time, and the row back as unread after "Mark all read"). An event key without `once`
+  (`work_completed_<id>`, `work_deadline_*`) still comes back as new when it really happens again.
+- **The bell** (Topbar, `hooks/useNotifications.ts` → `services/notificationInbox.ts`, rules in
+  `utils/notificationInbox.ts`; owner, 2026-10-13, "Mark all read and Clear all are not working").
+  One listener on the newest 50 rows (`INBOX_WINDOW`; the panel shows 20) after the person's cleared
+  point, plus one on `notification_state/{uid}`. Without the composite index (userId, createdAt desc) it
+  falls back to the person's unordered rows, sorted in the browser; that listener is now torn down with
+  the first (it used to leak). **Mark all read** marks EVERY unread row up to the newest on screen: the
+  rows on screen first (the dots and badge go at once), then `where userId == && read == false` for
+  the rest. Before, only the ≤50 loaded rows were touched. **Clear all** writes ONE point,
+  `notification_state/{uid}.clearedUpTo` = the newest row on screen's `createdAt` (exact Timestamp).
+  Every row at or before it is hidden on every device, and marked read so `UpdatePopup` agrees. Rows are
+  **not deleted**: nothing else ever deleted them, so the old "delete the 50 loaded" let the next 50
+  slide in. The kept row is also what stops a `once` reminder from coming back. A toast offers **Undo**
+  for 6 s (the point goes back, the rows marked read are unread again). The bell stays open on Undo:
+  `[data-keeps-bell-open]` is exempt from the outside-click close, which otherwise hid the rows Undo
+  brought back. Undo shows NO "restored" toast (the rows coming back say it). A failure shows a destructive
+  toast; one action runs at a time (spinner, buttons disabled). Only a real arrival chimes — a new id NEWER
+  than every row seen this session, or a keyed row re-sent with a later time — never an Undo, a row turning
+  read / unread, or an older row the bell only now loads.
+- **One row at a time** (owner, 2026-10-13, later; `components/layout/NotificationRow.tsx`). Each row: tap to open
+  (as before), an **X** or a **sideways swipe** (framer-motion `drag="x"`: past a third of the row, at most 96px, or
+  a flick — `utils/notificationInbox.isDismissSwipe`; the swipe uncovers "Dismiss"; vertical scrolling still works)
+  dismisses it, and an **envelope** marks it unread (on a read row) or read without opening it (on an unread row).
+  **Dismiss** = `dismissed: true` + `read: true` on the row (`services/notificationInbox.dismissNotification`), hidden
+  on every device, NOT deleted (the kept row stops a `once` reminder coming back), with a 5 s Undo toast that
+  restores the row as it was. **Mark as unread** = `read: false` + `markedUnreadAt`; UpdatePopup skips a row with
+  `markedUnreadAt` (the person has seen it; the bell's dot is the reminder). Firestore cannot query "not dismissed"
+  (older rows lack the field), so when dismissed rows fill the loaded window and the panel shows fewer than 20,
+  the listener asks for 50 more, up to 200 (`nextInboxWindow`). Desktop panel 24rem (was 20rem) for the two 28px
+  buttons. The badge: 14px, text 9px, on the bell's top-right corner with a ring (it was 16px over the icon).
+- **The 90-day clean-up** (owner, 2026-10-13; `services/notificationCleanup.ts`). 30 s after the bell mounts, the
+  first app of the day (claimed in a transaction on `app_settings/notification_cleanup`; a device that looked
+  today skips, `localStorage`) deletes every `notifications` row older than 90 days, for everybody, oldest first,
+  in batches of 400, at most 2,000 a day (the rest on later days). Safe: every `once` key carries its day. Never
+  fatal. Needs the catch-all rule's `delete` on other people's rows — see `docs/firestore-rules.md`.
+- **Toasts** sit at the BOTTOM on every screen since 2026-10-13 (`components/ui/toast.tsx`; padded for the home
+  bar). Below 640px they used to sit at the top (z-100), over the top bar and the bell's buttons — a tap meant for
+  "Mark all read" landed on one. Sonner was already at the bottom.
+- **Popups:** `UpdatePopup` shows popup types (`utils/notificationRouting.isPopupNotification`:
   `work_assigned`, `work_editing`, `attendance_update`, and since 2026-10-08 `sale_edited`) to `POPUP_ROLES`
   (tech member, sales member, team leader, and — for `sale_edited` — the tech admin).
   `useNotificationTap` handles taps.
@@ -205,11 +247,28 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
   notification failures never block the main action; order, chat and campaign side-effects are
   "never fatal" to a sale.
 
+- **The bell (owner, 2026-10-13):** "Mark all read" marks every unread notification the person has
+  up to the newest one on screen, and "Clear all" empties the bell for good on every device (Undo for
+  6 s). Neither touches a notification that arrived after the newest one on screen. A once-a-day
+  reminder never comes back the same day once it has been read, cleared or dismissed. One row can be dismissed
+  (X or swipe, Undo 5 s) or marked unread; a row marked unread does not pop up again. Notifications older than
+  90 days are deleted, once a day, company-wide (2026-10-13, later).
+
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
 - Firestore security: rules written but publication [NOT CONFIRMED]; authorization mostly
   client-side.
+- The bell (2026-10-13): cleared and dismissed notifications are hidden, not deleted; what keeps the collection
+  small is the 90-day clean-up (2,000 rows a day at most, so a large first backlog takes several days). It runs only
+  when somebody opens the app and needs the catch-all rule's delete. The first "Mark all read" or "Clear all" of a
+  person with a long unread backlog reads and writes each unread row once. A person who dismisses more than ~180 of
+  their newest 200 rows one by one sees fewer than 20 until they Clear all (the window stops at 200). On a phone a
+  toast now sits at the bottom for its 5 s, over whatever is there (a chat's message box, a sticky Save bar); swipe
+  it right to close it. The bell's index is in `firestore.indexes.json`, but whether it exists live is
+  [NOT CONFIRMED] (the CLI here was not signed in). Checked by unit tests, the services on the in-memory Firestore,
+  the real Topbar and UpdatePopup in jsdom (`notificationInboxOct13`, `notificationRowsOct13`) and a browser
+  harness. Not checked against live Firebase, push, or the published rule for `notification_state`.
 
 **NOT IMPLEMENTED ❌** (referenced or planned, absent in code):
 - Server-side scheduler/cron; server-side authorization for most writes.

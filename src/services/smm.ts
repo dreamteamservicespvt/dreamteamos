@@ -1692,6 +1692,7 @@ export async function remindSellerToRenew(campaign: SmmCampaign, actor: SmmActor
     message: `${actor.name || "The tech side"} asks you to renew ${campaign.businessName || campaign.clientName}'s social media month (ends ${campaign.cycle.endDate}). Open it and press Renew.`,
     link: `/smm/${campaign.id}`,
     dedupeKey: `smm_renew_remind_${campaign.id}_${isoDay(new Date())}`,
+    once: true,
   });
 }
 
@@ -1716,6 +1717,7 @@ export async function notifyRenewalsDueOnOpen(
         : `${r.businessName} — the month has ended (${r.postedOfCommitted} posted). Renew it, or mark that they are not renewing.`,
       link: `/smm/${r.campaignId}`,
       dedupeKey: `smm_renewal_due_${r.campaignId}_${user.uid}_${today}`,
+      once: true,
     }).catch(() => { /* a missed bell must not stop the next one */ });
   }
 }
@@ -1926,6 +1928,7 @@ export async function notifySmmDueOnOpen(
       message: `${d.businessName} — ${dueLabel(d)}`,
       link: `/smm/${d.campaignId}`,
       dedupeKey: dueNotificationKey(d.item.id, user.uid, today),
+      once: true,
     }).catch(() => { /* a missed bell must not stop the next one */ });
   }
 }

@@ -2,10 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { getRoleLabel, getRoleColor, getProfileRoute, defaultRouteForUser } from "@/utils/roleHelpers";
-import { Bell, Menu, Check, Trash2 } from "lucide-react";
+import { Bell, Menu, Check, Trash2, Loader2 } from "lucide-react";
 import { formatTime } from "@/utils/formatters";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useNotifications } from "@/hooks/useNotifications";
+import { useNotifications, type AppNotification, type ClearReceipt } from "@/hooks/useNotifications";
+import { PANEL_ROWS } from "@/utils/notificationInbox";
+import NotificationRow from "@/components/layout/NotificationRow";
+import { toast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { AnimatePresence, motion } from "framer-motion";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -23,14 +27,121 @@ function looksLikeId(segment: string): boolean {
   return segment.length >= 20 && /^[A-Za-z0-9_-]+$/.test(segment) && /\d/.test(segment) && !/^[a-z]+(-[a-z]+)*$/.test(segment);
 }
 
+const UNDO_CLEAR_MS = 6000;
+
+/**
+ * "Cleared" with an Undo. Clear all takes effect at once (no "are you sure?" in the way); a press by
+ * mistake is put right from here. Lives outside the component so a page change does not drop it.
+ */
+function offerUndoClear(receipt: ClearReceipt, undo: (r: ClearReceipt) => Promise<void>) {
+  let done = false;
+  const handle = toast({
+    title: "Notifications cleared",
+    description: "New notifications will still appear in the bell.",
+    duration: UNDO_CLEAR_MS,
+    action: (
+      <ToastAction
+        altText="Undo clearing the notifications"
+        data-test="notif-undo-clear"
+        data-keeps-bell-open=""
+        onClick={async () => {
+          if (done) return;
+          done = true;
+          try {
+            await undo(receipt);
+            // No "restored" toast: the rows coming back into the open bell say it. (Until 2026-10-13 a
+            // phone's toasts sat at the top, over the bell's own buttons — one there made the next tap
+            // on "Mark all read" land on the toast. They sit at the bottom now; the rows still say it.)
+            handle.dismiss();
+          } catch {
+            toast({ title: "Could not restore your notifications", description: "Check your internet connection and try again.", variant: "destructive" });
+          }
+        }}
+      >
+        Undo
+      </ToastAction>
+    ),
+  });
+}
+
+const UNDO_DISMISS_MS = 5000;
+
+/** "Dismissed" with an Undo — a swipe can be a slip of the thumb. Outside the component, like the one above. */
+function offerUndoDismiss(n: AppNotification, undo: (n: AppNotification) => Promise<void>) {
+  let done = false;
+  const handle = toast({
+    title: "Notification dismissed",
+    duration: UNDO_DISMISS_MS,
+    action: (
+      <ToastAction
+        altText="Undo dismissing the notification"
+        data-test="notif-undo-dismiss"
+        data-keeps-bell-open=""
+        onClick={async () => {
+          if (done) return;
+          done = true;
+          try {
+            await undo(n);
+            handle.dismiss();
+          } catch {
+            toast({ title: "Could not bring the notification back", description: "Check your internet connection and try again.", variant: "destructive" });
+          }
+        }}
+      >
+        Undo
+      </ToastAction>
+    ),
+  });
+}
+
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
   const navigate = useNavigate();
   const [time, setTime] = useState(new Date());
   const isMobile = useIsMobile();
-  const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
+  const {
+    notifications, unreadCount, busy, markAsRead, markAsUnread, dismiss, undoDismiss, markAllAsRead, clearAll, undoClear,
+  } = useNotifications();
   const [showNotifs, setShowNotifs] = useState(false);
+
+  // One row (2026-10-13). Each changes the row at once; words only when it could not be saved.
+  const handleDismiss = (n: AppNotification) => {
+    offerUndoDismiss(n, undoDismiss);
+    dismiss(n).catch((err) => {
+      console.error("Failed to dismiss notification:", err);
+      toast({ title: "Could not dismiss the notification", description: "Check your internet connection and try again.", variant: "destructive" });
+    });
+  };
+  const handleToggleRead = (n: AppNotification) => {
+    if (!n.read) {
+      void markAsRead(n.id);
+      return;
+    }
+    markAsUnread(n.id).catch((err) => {
+      console.error("Failed to mark notification as unread:", err);
+      toast({ title: "Could not mark it as unread", description: "Check your internet connection and try again.", variant: "destructive" });
+    });
+  };
+
+  // Both change the list at once; they only need words when they could not be saved.
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllAsRead();
+    } catch (err) {
+      console.error("Failed to mark all as read:", err);
+      toast({ title: "Could not mark them as read", description: "Check your internet connection and try again.", variant: "destructive" });
+    }
+  };
+  const handleClearAll = async () => {
+    try {
+      const receipt = await clearAll();
+      if (receipt) offerUndoClear(receipt, undoClear);
+    } catch (err) {
+      console.error("Failed to clear notifications:", err);
+      toast({ title: "Could not clear your notifications", description: "Check your internet connection and try again.", variant: "destructive" });
+    }
+  };
   const notifRef = useRef<HTMLDivElement>(null);
   /* At component level, not inside the badge below — that block only renders when there is a user,
      and a hook called conditionally is a hook called in a different order next render. */
@@ -41,9 +152,10 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     return () => clearInterval(timer);
   }, []);
 
-  // Close on outside click
+  // Close on outside click — except the Undo of a clear, so the notifications it brings back are seen.
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.("[data-keeps-bell-open]")) return;
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifs(false);
     };
     document.addEventListener("mousedown", handler);
@@ -170,11 +282,20 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => setShowNotifs(!showNotifs)}
+            data-test="notif-bell"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
             className="relative w-8 h-8 md:w-9 md:h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
             <Bell size={16} />
+            {/* On the bell's top-right corner, not over it (owner, 2026-10-13): the old 16px badge at
+                top-1 right-1 covered most of the 16px icon on a phone. 14px, starting just right of
+                the bell's centre line, with a ring in the bar's colour to part it from the icon. */}
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 min-w-[16px] h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
+              <span
+                data-test="notif-badge"
+                aria-hidden
+                className="pointer-events-none absolute left-1/2 top-0.5 ml-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive px-[3px] text-[9px] font-semibold leading-none tabular-nums text-destructive-foreground ring-2 ring-card"
+              >
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
@@ -193,20 +314,37 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                   360px screen, because the bell is not at the edge — the profile block is to the
                   right of it. `fixed inset-x-2` gives the panel the screen instead of the bell,
                   which is the only anchor a phone actually has.
+
+                  24rem on a desktop (was 20rem) since 2026-10-13: each row now carries two 28px
+                  buttons, and the message kept the width it had.
                 */
-                className="fixed inset-x-2 top-14 z-50 flex max-h-[70dvh] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:max-h-96 sm:w-80"
+                className="fixed inset-x-2 top-14 z-50 flex max-h-[70dvh] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:max-h-96 sm:w-96"
               >
-                <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-border px-4 py-3">
+                {/* min-h = the row with its 28px buttons, so it does not jump when a clear removes them. */}
+                <div className="flex min-h-[53px] shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-border px-4 py-3">
                   <h3 className="font-display font-semibold text-foreground text-sm">Notifications</h3>
-                  <div className="flex items-center gap-2">
+                  {/* 28px tall: the 16px text links were hard to hit on a phone. */}
+                  <div className="flex items-center gap-1">
                     {unreadCount > 0 && (
-                      <button onClick={markAllAsRead} className="text-xs text-primary hover:underline flex items-center gap-1">
-                        <Check size={12} /> Mark all read
+                      <button
+                        type="button"
+                        onClick={handleMarkAllRead}
+                        disabled={busy !== null}
+                        data-test="notif-mark-all-read"
+                        className="flex min-h-[28px] items-center gap-1 rounded-md px-2 text-xs text-primary hover:bg-primary/10 disabled:opacity-60"
+                      >
+                        {busy === "read" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Mark all read
                       </button>
                     )}
                     {notifications.length > 0 && (
-                      <button onClick={clearAll} className="text-xs text-destructive hover:underline flex items-center gap-1">
-                        <Trash2 size={12} /> Clear all
+                      <button
+                        type="button"
+                        onClick={handleClearAll}
+                        disabled={busy !== null}
+                        data-test="notif-clear-all"
+                        className="flex min-h-[28px] items-center gap-1 rounded-md px-2 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-60"
+                      >
+                        {busy === "clear" ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Clear all
                       </button>
                     )}
                   </div>
@@ -218,31 +356,24 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                       <p className="text-xs text-muted-foreground">No notifications</p>
                     </div>
                   ) : (
-                    notifications.slice(0, 20).map((n) => (
-                      <button
-                        key={n.id}
-                        onClick={() => { 
-                          playClickSound();
-                          markAsRead(n.id); 
-                          navigate(n.link || getDefaultLink(n.type)); 
-                          setShowNotifs(false); 
-                        }}
-                        className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-accent/30 transition-colors ${!n.read ? "bg-primary/5" : ""}`}
-                      >
-                        <div className="flex items-start gap-2">
-                          {/* Capped and truncated: "order chat call" at shrink-0 was wide enough to
-                              push the message text past the edge of the panel on a phone. */}
-                          <span className={`mt-0.5 max-w-[7rem] shrink-0 truncate rounded-full px-1.5 py-0.5 text-[10px] ${getNotifColor(n.type)}`}>
-                            {n.type.replace(/_/g, " ")}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="break-words text-xs font-medium text-foreground">{n.title}</p>
-                            <p className="truncate text-[11px] text-muted-foreground">{n.message}</p>
-                          </div>
-                          {!n.read && <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1" />}
-                        </div>
-                      </button>
-                    ))
+                    // A dismissed row folds away; the rest slide up into its place.
+                    <AnimatePresence initial={false}>
+                      {notifications.slice(0, PANEL_ROWS).map((n) => (
+                        <NotificationRow
+                          key={n.id}
+                          n={n}
+                          chipClassName={getNotifColor(n.type)}
+                          onOpen={(row) => {
+                            playClickSound();
+                            markAsRead(row.id);
+                            navigate(row.link || getDefaultLink(row.type));
+                            setShowNotifs(false);
+                          }}
+                          onToggleRead={handleToggleRead}
+                          onDismiss={handleDismiss}
+                        />
+                      ))}
+                    </AnimatePresence>
                   )}
                 </div>
               </motion.div>

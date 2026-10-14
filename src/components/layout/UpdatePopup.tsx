@@ -30,6 +30,8 @@ interface PopupNotification {
   link?: string;
   meta?: { status?: AttendanceStatus; date?: string; changes?: string[]; uniqueId?: string | null };
   createdAt?: { seconds?: number };
+  /** The person marked it unread in the bell (2026-10-13) — seen already; the bell's dot is the reminder. */
+  markedUnreadAt?: unknown;
 }
 
 const DISMISS_KEY = "dts_update_popup_dismissed";
@@ -70,7 +72,7 @@ export default function UpdatePopup() {
     const dismissed = readDismissed();
     const cutoff = Date.now() / 1000 - 24 * 3600; // only recent updates pop up
     return unread
-      .filter((n) => isPopupNotification(n.type) && POPUP_TYPES[n.type] && !dismissed.has(n.id) && (n.createdAt?.seconds || 0) > cutoff)
+      .filter((n) => isPopupNotification(n.type) && POPUP_TYPES[n.type] && !dismissed.has(n.id) && !n.markedUnreadAt && (n.createdAt?.seconds || 0) > cutoff)
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))[0];
   }, [unread, dismissedTick]);
 

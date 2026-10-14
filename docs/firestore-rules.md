@@ -330,6 +330,20 @@ service cloud.firestore {
                    || (docId == 'defaults' && invoiceAdmin());
     }
 
+    // ── Where a person cleared their bell to (2026-10-13) ──────────────────────────────────────
+    // `notification_state/{uid}` = `{ clearedUpTo, clearedAt }`: "Clear all" hides every notification at
+    // or before that point (services/notificationInbox). Only the person's own browser reads or writes
+    // it. `notifications` itself stays under the catch-all: a sale, a sweep or the server writes rows
+    // for other people, and a salesperson deleting a sale deletes the tech side's "new order" bells.
+    // Since 2026-10-13 the person also writes `dismissed` / `dismissedAt` / `markedUnreadAt` on their own
+    // rows, and once a day the first app opened deletes EVERYBODY's rows older than 90 days
+    // (services/notificationCleanup, claimed in `app_settings/notification_cleanup`). A future
+    // `notifications` rule must keep that delete, e.g.
+    //   allow delete: if isStaff() && resource.data.createdAt < request.time - duration.value(90, 'd');
+    match /notification_state/{uid} {
+      allow read, write: if isStaff() && request.auth.uid == uid;
+    }
+
     // ── Everything else the app runs on ────────────────────────────────────────────────────────
     // Staff-only, which is what it always should have been. Nothing outside this file needs it.
     //
@@ -343,7 +357,7 @@ service cloud.firestore {
       allow read, write: if isStaff() && !(collection in [
         'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets', 'gemini_api_keys',
         'invoices', 'invoice_counters', 'invoice_numbers', 'invoice_settings',
-        'smm_campaigns'
+        'smm_campaigns', 'notification_state'
       ]);
     }
   }

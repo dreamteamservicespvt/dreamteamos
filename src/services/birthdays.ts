@@ -63,8 +63,10 @@ export async function notifyBirthdaysOnOpen(
         type: "birthday",
         title: celebrating.length === 1 ? "🎂 Birthday today" : "🎂 Birthdays today",
         message,
-        // One per teammate per birthday per day, however many people open the app.
+        // One per teammate per birthday per day, however many people open the app — `once`, or every
+        // teammate's open more than ten minutes after the last re-sent it to everyone.
         dedupeKey: `birthday_${key}_${day}_${member.uid}`,
+        once: true,
       });
     } catch (err) {
       console.error("[birthdays] could not notify a teammate:", err);

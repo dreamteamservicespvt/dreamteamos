@@ -38,6 +38,7 @@ export async function askAdminForDriveFolder(user: Pick<AppUser, "uid" | "name" 
     message: `${user.name || "A team member"} has finished work to upload but has no Drive folder set. Add their folder link in Drive Management.`,
     link: "/tech-admin/drive",
     dedupeKey: `drive_folder_missing_${user.uid}_${format(new Date(), "yyyy-MM-dd")}`,
+    once: true,
   });
   return true;
 }

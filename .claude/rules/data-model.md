@@ -17,8 +17,11 @@ paths:
 
 No schema files or migrations exist. Shapes are the TypeScript interfaces in `src/types/*`.
 Timestamps are typed `any` (Firestore `Timestamp`/`serverTimestamp()`); `Timestamp.now()` is used
-inside arrays. **Composite indexes are not in the repo** (no `firestore.indexes.json`). Any
-index a query needs lives only in the console [NOT CONFIRMED].
+inside arrays. **Composite indexes:** since 2026-10-13 `firestore.indexes.json` (root, with `firebase.json` pointing at
+it — indexes only, no rules, and `.firebaserc` → `dts-manager`) holds the bell's `notifications (userId ↑, createdAt ↓)`.
+It is the only one written down: every other composite index a query needs lives only in the console [NOT CONFIRMED],
+so a `firebase deploy --only firestore:indexes` asks whether to delete the console's others — answer **No** (or first
+add them: `firebase firestore:indexes > firestore.indexes.json` exports the live list).
 
 ### Core collections
 | Collection (doc id) | Type | Key fields / notes |
@@ -35,7 +38,8 @@ index a query needs lives only in the console [NOT CONFIRMED].
 | `smm_templates/{auto}` | `SmmTemplate` | saved client message wording (company-wide) |
 | `ai_generations/{auto}` | `SavedGeneration` | `userId`, outputs (`mainFramePrompts[]`, `headerPrompt` (the VIDEO BOTTOM LABEL), `posterPrompt`, `voiceOverScript`, `veoPrompts[]`, `stockImagePrompts`, `overlayTexts` (each with `imagePrompt` / `imageDesign`), `posterConcepts` (since 2026-10-13 a concept may carry `changes`, the refine's "Changes:" line — "" when never refined, absent on older docs; the prompt text itself holds it too), `coreMessage`, `sceneContext` (motive + per-clip background and staging/camera/angle/focus, and since 2026-10-10 an optional per-clip `walk` boolean — asked only for Motu & Patlu: the scene planner's judgment that the clip's words take them somewhere; absent = the line is read in code), `voiceBrief`, `scriptQa` (the voice-over's quality-gate score, pass and drafts)), **`spec`** (2026-10-08, `utils/adSpec.AdSpec`: the configuration the kit was made with — adType, festivalName, language, aspectRatio, gender, attireType, customAttire, characterPack, customCharacter, locationMode, noLogo, logoNameText, clipCount; absent on older docs), the settings (written from `spec` since 2026-10-08, not the live form) incl. `frameInstructions` and `customCharacter`, `creationMode`, `createdAt`/`updatedAt`. Generate = new doc (a version); Save and auto-save update it |
 | `cinematic_projects/{auto}` | `CinematicAdsProject` | `createdBy`, `name`, `currentStep`, `stepsCompleted`, brief, stories, boards, cast, clips, editing guide, deliverables, `delivered`, `updatedAt` (ms). `File` objects stripped |
-| `notifications/{auto or dedupeKey}` | — | `userId`, `type`, `title`, `message`, `read`, `link`, `meta`, `createdAt`. 2026-10-08: `order_new_<orderId>_<uid>` (one per recipient), `sale_edited_<saleId>_<editMs>_<uid>` with `meta { saleId, orderId, uniqueId, changes[] }` |
+| `notifications/{auto or dedupeKey}` | — | `userId`, `type`, `title`, `message`, `read`, `link`, `meta`, `createdAt`. 2026-10-08: `order_new_<orderId>_<uid>` (one per recipient), `sale_edited_<saleId>_<editMs>_<uid>` with `meta { saleId, orderId, uniqueId, changes[] }`. 2026-10-13: a row the person cleared stays (hidden by `notification_state`, marked read). The once-a-day keys (`birthday_*`, `smm_due_*`, `smm_renewal_due_*`, `smm_renew_remind_*`, `drive_folder_missing_*`) are written once (`once`). 2026-10-13 (later), optional: `dismissed` (true = the person dismissed this one row; hidden from their bell on every device, set with `read: true`; absent = shown) + `dismissedAt`; `markedUnreadAt` (the person marked it unread themselves — UpdatePopup does not pop it again). A re-sent keyed row is replaced whole, so both go. Rows older than 90 days are DELETED once a day, company-wide (`services/notificationCleanup`) |
+| `notification_state/{uid}` (2026-10-13) | — | where the person last cleared their bell to: `clearedUpTo` (the exact `createdAt` Timestamp of the newest notification on screen when they pressed Clear all — every row at or before it is hidden), `clearedAt` (server time). Absent = never cleared; Undo puts the previous point back (`deleteField` when there was none). Only the person reads / writes it (`docs/firestore-rules.md`) |
 | `fcmTokens/{token}` | — | `userId`, `token`, device id |
 | `activityLogs/{auto}` | `ActivityLogEntry` | actor, `action`, `details`, `adminId` (sales + tech feeds) |
 | `sessions/{auto}` | — | `userId`, `loginAt`, `logoutAt`, `duration` (minutes) |
@@ -72,6 +76,8 @@ leave inside the allowance)) · `holidays/{date}` · `salesCheckins` ·
 (+participants, signals) · `settings/salesConfig` (`activeFestival`) · `app_settings/ad_languages`,
 `app_settings/clients_backfill`, `app_settings/flow_accounts` (credit rates, monthly credits, validity, target),
 `app_settings/smm_history_hold` (2026-10-05: the one-time record that older history months were put back on hold),
+`app_settings/notification_cleanup` (2026-10-13: the last day the 90-day notification clean-up ran — `day`
+(`yyyy-MM-dd`, claimed in a transaction so one app a day runs it), `startedAt`, `byUid`, `doneAt`, `deleted`),
 `app_settings/smm_team` (2026-10-08: the Social Media Team Lead's corrections to her team on the Attendance board —
 `added[]` / `removed[]` uids, `updatedAt`, `updatedByUid`, `updatedByName`; written with arrayUnion / arrayRemove by
 `services/smmTeam`; absent = no corrections).

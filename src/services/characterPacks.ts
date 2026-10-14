@@ -59,6 +59,13 @@ export interface PackCharacter {
    */
   labelSpellings?: string[];
   /**
+   * Whether this person is a man or a woman — only where the entry cannot say it with one gender for the
+   * whole cast: the Real Owner Duo, whose two owners are each a real person from their own photograph
+   * (2026-10-14). It names the upload slot ("Owner 1 — Man"), the face lock and the voice of each side
+   * ("the man on the LEFT needs to say"), so a mixed pair is never voiced or locked as the other person.
+   */
+  gender?: "female" | "male";
+  /**
    * A single emoji that stands for this character in WhatsApp messages.
    *
    * Purely for legibility: a member skimming a wall of assignment messages on their phone needs
@@ -77,10 +84,12 @@ export interface PackCharacter {
  * Which shelf of the catalogue an entry sits on. Purely for grouping the picker — the generation
  * pipeline never branches on it, because every entry already carries its own direction.
  */
-export type CharacterFamily = "human" | "human_duo" | "kids" | "god" | "duo" | "solo" | "custom";
+export type CharacterFamily = "human" | "owner_duo" | "human_duo" | "kids" | "god" | "duo" | "solo" | "custom";
 
 export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
   human: "Human Model",
+  // The client's two owners, each from their own photograph — Male + Male, Female + Female, Male + Female (2026-10-14).
+  owner_duo: "Real Owner Face — Duo",
   // Two real people talking about the business — female duo, male duo, or a woman and a man.
   human_duo: "Human Duo",
   // Two real children — two girls, two boys, or a girl and a boy — photoreal, never drawn.
@@ -92,7 +101,7 @@ export const CHARACTER_FAMILY_LABELS: Record<CharacterFamily, string> = {
 };
 
 /** The order the families are offered in — commonest first, escape hatch last. */
-export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "human_duo", "kids", "god", "duo", "solo", "custom"];
+export const CHARACTER_FAMILY_ORDER: CharacterFamily[] = ["human", "owner_duo", "human_duo", "kids", "god", "duo", "solo", "custom"];
 
 export interface CharacterPack {
   id: string;
@@ -142,9 +151,10 @@ export interface CharacterPack {
   /**
    * The subject IS the client, built from a photograph they supplied.
    *
-   * Only the Real Owner Face entries. It changes what the uploaded images MEAN: on every other
-   * entry a client photo is a location reference, and here it is the face that must be reproduced
-   * identically in every single clip.
+   * Only the Real Owner Face entries — one owner, or the Real Owner Duo's two (2026-10-14). It changes
+   * what the uploaded images MEAN: on every other entry a client photo is a location reference, and here
+   * it is the face that must be reproduced identically in every single clip. A duo has one photograph per
+   * owner, and each photograph is the face of one side of the frame (`ownerPhotoSlots`).
    */
   usesClientFace?: boolean;
   /**
@@ -235,6 +245,10 @@ const HUMAN_PACK_GENDER: Record<string, CastGender> = {
   normal_male: "male",
   owner_face_female: "female",
   owner_face_male: "male",
+  // The Real Owner Duo (2026-10-14): two women, two men, or a man (left) and a woman (right).
+  owner_duo_female: "female",
+  owner_duo_male: "male",
+  owner_duo_mixed: "mixed",
   human_duo_female: "female",
   human_duo_male: "male",
   // A woman and a man: each is dressed for their own gender from one attire choice.
@@ -250,7 +264,56 @@ export type CastGender = "female" | "male" | "mixed";
 
 /** True for an entry that still puts a real person on screen — someone who can be dressed. */
 export function isHumanPack(pack?: CharacterPack | null): boolean {
-  return !!pack && (pack.family === "human" || pack.family === "human_duo" || pack.family === "kids");
+  return !!pack && (pack.family === "human" || pack.family === "owner_duo" || pack.family === "human_duo" || pack.family === "kids");
+}
+
+/** The Real Owner Duo entries — the client's two owners, each from their own photograph (2026-10-14). */
+export function isOwnerDuoPack(pack?: CharacterPack | null): boolean {
+  return !!pack && pack.family === "owner_duo";
+}
+
+/** One owner's photograph on a Real Owner Face job: whose face it is and where that person stands. */
+export interface OwnerPhotoSlot {
+  /** 0 = `FileStore.ownerImage`, 1 = `FileStore.secondOwnerImage`. */
+  index: number;
+  /** The script's label for this owner — "Owner 1" — or "Owner" on a single-owner ad. */
+  name: string;
+  gender: "female" | "male";
+  /** "man" / "woman" — how a frame, a video prompt and the upload slot name the person. */
+  kind: "man" | "woman";
+  /** Where they stand in every frame (the POSITION LOCK); a single owner is CENTRE. */
+  side: "LEFT" | "RIGHT" | "CENTRE";
+  /** How a prompt names the photograph — "owner photo 1"; a single owner's is "the owner image". */
+  photo: string;
+}
+
+/**
+ * The owner photographs a Real Owner Face job needs — one per owner, in speaking order — or [] for every
+ * other entry.
+ *
+ * ── Why one helper (2026-10-14) ──────────────────────────────────────────────────────────────────────
+ * A duo's two photographs must reach the same person everywhere: the upload slot the member fills, the
+ * request that shows them to the frame writer, the line telling the member what to attach, the face lock
+ * in every frame and the voice in every video prompt. Owner 1 is the first photograph, stands on the LEFT
+ * and speaks first; Owner 2 is the second, on the RIGHT. Each reads it here, so no step can pair the man's
+ * photograph with the woman's side.
+ */
+export function ownerPhotoSlots(pack?: CharacterPack | null): OwnerPhotoSlot[] {
+  if (!pack?.usesClientFace) return [];
+  const castGender = packCastGender(pack);
+  const genderOf = (c: PackCharacter): "female" | "male" =>
+    c.gender ?? (castGender === "male" ? "male" : "female");
+  if (pack.characters.length === 1) {
+    const gender = genderOf(pack.characters[0]);
+    return [{ index: 0, name: "Owner", gender, kind: gender === "male" ? "man" : "woman", side: "CENTRE", photo: "the owner image" }];
+  }
+  return pack.characters.slice(0, 2).map((c, i) => {
+    const gender = genderOf(c);
+    return {
+      index: i, name: c.name, gender, kind: gender === "male" ? "man" : "woman",
+      side: i === 0 ? "LEFT" : "RIGHT", photo: `owner photo ${i + 1}`,
+    };
+  });
 }
 
 /** The Kids entries — two real children. Dressed, cast and voiced as children everywhere. */
@@ -273,6 +336,7 @@ export function packAdKind(pack: CharacterPack): { script: string; ad: string } 
     case "duo": return { script: "two-character cartoon dialogue script", ad: "two-character cartoon ad" };
     case "solo": return { script: "single-character cartoon script", ad: "single-character cartoon ad" };
     case "god": return { script: "devotional presenter script", ad: "devotional ad presented by the deity" };
+    case "owner_duo": return { script: "two-person conversation script spoken by the business's two owners", ad: "photoreal ad fronted by the business's two real owners" };
     case "human_duo": return { script: "two-person conversation script", ad: "photoreal two-person ad with two real people" };
     case "kids": return { script: "two-child conversation script", ad: "photoreal ad with two real children" };
     case "human": return pack.usesClientFace
@@ -374,6 +438,11 @@ const KIND_ALIASES: Record<string, string[]> = {
   girl: ["woman", "lady", "female"],
   boy: ["man", "gentleman", "male"],
 };
+/** The same kinds for a character that states its own gender (the Real Owner Duo's man and woman, 2026-10-14). */
+const GENDER_ALIASES: Record<"female" | "male", string[]> = {
+  female: KIND_ALIASES.girl,
+  male: KIND_ALIASES.boy,
+};
 
 /**
  * The speaker list a script must follow, in speaking order — with every other label a script may put
@@ -387,13 +456,13 @@ const KIND_ALIASES: Record<string, string[]> = {
  */
 export function packSpeakers(pack: CharacterPack): { key: string; name: string; aliases: string[] }[] {
   const mixed = packCastGender(pack) === "mixed";
-  return pack.characters.map(({ key, name, labelSpellings, nativeNames }) => ({
+  return pack.characters.map(({ key, name, labelSpellings, nativeNames, gender }) => ({
     key,
     name,
     aliases: [
       ...(labelSpellings ?? []),
       ...Object.values(nativeNames ?? {}).flatMap((n) => [n.spelling, ...n.variants]),
-      ...(mixed ? KIND_ALIASES[key] ?? [] : []),
+      ...(mixed ? KIND_ALIASES[key] ?? (gender ? GENDER_ALIASES[gender] : []) : []),
     ].filter(Boolean),
   }));
 }

@@ -25,6 +25,15 @@ interface SendNotificationParams {
    * Build it from the event, never from the clock: `work_completed_<assignmentId>_<recipient>`.
    */
   dedupeKey?: string;
+  /**
+   * The key names ONE occurrence — it carries the day ("once a day" reminders: birthdays, posts due,
+   * renewals due) — so it is written at most once, ever: never re-sent, whether the person has read
+   * it, cleared it from the bell, or not looked yet. Without it a repeat counts as new once the
+   * ten-minute window below has passed, which made every "once a day" reminder fire on each app open
+   * more than ten minutes apart — re-pushed to the phone, and back as unread right after the person
+   * pressed "Mark all read" (owner, 2026-10-13). Needs `dedupeKey`.
+   */
+  once?: boolean;
 }
 
 /** Firestore ids cannot contain `/` and must be non-empty; keep keys boring and predictable. */
@@ -58,17 +67,22 @@ function tsToMs(value: unknown): number {
  * Whether this keyed notification was already delivered a moment ago.
  *
  * Same recipient, same words, written inside the window — that is a repeat of one event, not a new
- * one. A read failure answers "no": telling someone twice is a nuisance, but never telling them is
- * a job nobody hears about.
+ * one. A `once` key that exists at all has been delivered, at any age and whatever its words now say
+ * (a renewal's "3 of 8 posted" may have moved since this morning — still the same day's reminder).
+ * The row is still there after the person clears their bell (the bell hides it — utils/notificationInbox),
+ * so a clear does not bring it back either. A read failure answers "no": telling someone twice is a
+ * nuisance, but never telling them is a job nobody hears about.
  */
 async function alreadyDelivered(
   id: string,
   next: { userId: string; title: string; message: string },
+  once = false,
 ): Promise<boolean> {
   try {
     const snap = await getDoc(doc(db, "notifications", id));
     if (!snap.exists()) return false;
     const prev = snap.data() as { userId?: string; title?: string; message?: string; createdAt?: unknown };
+    if (once) return prev.userId === next.userId;
     if (prev.userId !== next.userId || prev.title !== next.title || prev.message !== next.message) return false;
     const writtenMs = tsToMs(prev.createdAt);
     // A row whose serverTimestamp hasn't resolved yet is a write from seconds ago — the burst case.
@@ -89,7 +103,7 @@ const API_BASE = isNative() ? "https://dreamteamos.vercel.app" : "";
  * Creates a Firestore notification document and triggers a web push notification.
  * The push call is fire-and-forget — it never blocks the main action.
  */
-export async function sendNotification({ userId, type, title, message, link, callDocId, meta, dedupeKey }: SendNotificationParams): Promise<void> {
+export async function sendNotification({ userId, type, title, message, link, callDocId, meta, dedupeKey, once }: SendNotificationParams): Promise<void> {
   // 1. Write the in-app notification to Firestore (this powers the existing bell + sound system)
   const payload = {
     userId,
@@ -106,7 +120,7 @@ export async function sendNotification({ userId, type, title, message, link, cal
     const id = safeDocId(dedupeKey);
     // Already told them, moments ago. Writing again would only re-alert their phone for something
     // they have already been alerted about, which is the whole complaint.
-    if (await alreadyDelivered(id, { userId, title, message })) return;
+    if (await alreadyDelivered(id, { userId, title, message }, once)) return;
     // Same event, same document — a repeat refreshes the row rather than stacking another one.
     await setDoc(doc(db, "notifications", id), payload);
   } else {

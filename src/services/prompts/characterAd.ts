@@ -1,4 +1,4 @@
-import { packAdKind, packNameSpellings, type CharacterPack } from "@/services/characterPacks";
+import { ownerPhotoSlots, packAdKind, packNameSpellings, type CharacterPack, type OwnerPhotoSlot } from "@/services/characterPacks";
 import {
   MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, wordBudgetFor,
 } from "@/utils/dialogueFormat";
@@ -63,7 +63,27 @@ export const characterCastBlock = (pack: CharacterPack, wardrobe?: string, castS
     completed the look with a forehead mark. Code also stamps this into every finished prompt
     (utils/frameBrand.withOwnerFaceLock), because this block never reaches the image tool.
   */
-  const identity = pack.usesClientFace
+  /*
+    The Real Owner Duo (2026-10-14): two real faces, one per photograph — each tied to the side its person
+    stands on, because an image model given two reference photos blends them, swaps them or uses one face
+    twice. The labels "Owner 1" / "Owner 2" mean nothing to the image tool, so every prompt names each person
+    by side, kind and photograph.
+  */
+  const owners = pack.usesClientFace && pack.characters.length > 1 ? ownerPhotoSlots(pack) : [];
+  const ownerName = (s: OwnerPhotoSlot) => `the ${s.kind} on the ${s.side} (the person in the attached ${s.photo})`;
+  const identity = owners.length > 1
+    ? `THE CLIENT'S TWO REAL OWNERS, built from the TWO photographs supplied with this job — one photograph per person:
+${owners.map((s) => `• ${s.name} = the ${s.kind} in ${s.photo} — ${s.kind === "man" ? "he" : "she"} ALWAYS stands on the ${s.side}.`).join("\n")}
+Each photograph is the only source of that one person's face. Reproduce each exactly: the same bone structure, the
+same age, the same skin tone, the same hair, the same build — in EVERY clip, from every angle. Never blend the two
+faces, never put one person's face on the other side, never give both the same face, and never substitute a model who
+merely resembles either of them. If either owner's own family would not say "that is them", the frame is WRONG.
+Add NOTHING to either face or forehead that its photograph does not show: no bindi, tilak, kumkum, sindoor or vibhuti
+mark, no nose ring or new face jewellery, no added make-up, no new beard or moustache. A bare forehead stays bare; a
+mark a photograph shows stays exactly as it is. The outfits below change the CLOTHES only.
+In every prompt name them ONLY as ${owners.map((s) => `"${ownerName(s)}"`).join(" and ")} — never "${owners.map((s) => s.name).join('" or "')}" on
+their own (labels the image tool cannot see), and never describe either face in words.`
+    : pack.usesClientFace
     ? `${cast} IS THE CLIENT THEMSELF, built from the photograph supplied with this job.
 That photograph is the only source of this face. Reproduce it exactly: the same bone structure, the same
 age, the same skin tone, the same hair, the same build — in EVERY clip, from every angle.
@@ -104,7 +124,7 @@ They must be the same ${cast} in every clip.`;
    * asked for. When an attire was ordered it is stated after STAGING and said to override it, so
    * the choice the team made is the one on screen, identical in every clip.
    */
-  const wardrobeBlock = wardrobe && (pack.family === "human" || pack.family === "human_duo" || pack.family === "kids")
+  const wardrobeBlock = wardrobe && (pack.family === "human" || pack.family === "owner_duo" || pack.family === "human_duo" || pack.family === "kids")
     ? `\n\nWARDROBE (as ordered — this overrides any outfit STAGING offers): ${wardrobe}. The exact same outfit, colour and styling in every clip.`
     : "";
   /*
@@ -200,6 +220,35 @@ export const ownerWardrobeDirective = (
   if (!outfit) return "";
   const own = gender === "male" ? "his" : "her";
   return `${outfit} — the clothes only: ${own} face, forehead, hair and any jewellery stay exactly as in the owner's photograph, with nothing added`;
+};
+
+/**
+ * The ordered attire for the Real Owner Duo — each owner dressed for themselves by side, the CLOTHES only
+ * (2026-10-14).
+ *
+ * One attire choice dresses both, as on the Human Duo: a man and a woman each in their own version of it,
+ * two men or two women in the same style. Two owners in one style are told apart by colour — "never the
+ * same colour" — because two identical suits make the left and right person one silhouette, and the video
+ * then cannot keep who is who. No jewellery is added (the single owner's rule), and the faces stay their
+ * photographs'.
+ */
+export const ownerDuoWardrobeDirective = (
+  attireType: string | null | undefined,
+  customAttire: string | null | undefined,
+  owners: Pick<OwnerPhotoSlot, "kind" | "side" | "gender">[],
+): string => {
+  if (owners.length < 2) return "";
+  const keep = "the clothes only: both faces, foreheads, hair and any jewellery stay exactly as in their own photographs, with nothing added";
+  if (attireType === "custom") {
+    return customAttire?.trim()
+      ? `exactly this, for the two of them: ${customAttire.trim()} — ${keep}`
+      : `the outfits described in the client's brief — ${keep}`;
+  }
+  const outfits = owners.map((o) =>
+    wardrobeDirective(attireType, customAttire, o.gender).replace(/,\s*with tasteful traditional jewellery\s*$/i, ""));
+  if (outfits.some((o) => !o)) return "";
+  return `${owners.map((o, i) => `the ${o.kind} on the ${o.side} wears ${outfits[i]}`).join("; ")} — the two in clearly `
+    + `different main colours, never the same colour — ${keep}`;
 };
 
 /**
@@ -500,8 +549,14 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   /** True only when the ad is long enough to actually have a turn. */
   const festivalTurn = isFestival && hookClip > 1;
   const [first] = pack.characters;
-  /** A human entry's speaker names are roles ("Presenter", "Friend", "Host") — never spoken. */
-  const roleLabels = pack.family === "human" || pack.family === "human_duo" || pack.family === "kids";
+  /** A human entry's speaker names are roles ("Presenter", "Friend", "Host", "Owner 1") — never spoken. */
+  const roleLabels = pack.family === "human" || pack.family === "owner_duo" || pack.family === "human_duo" || pack.family === "kids";
+  /**
+   * The Real Owner Duo (2026-10-14): the two speakers ARE the business — its two real owners, standing in
+   * it — so they speak as "we" and "our shop". Every "two people visit a business" framing below was written
+   * for invented visitors; given to two owners it makes them talk about their own shop as "they".
+   */
+  const owners = pack.family === "owner_duo";
   /**
    * The second speaker, or the first again when there is only one.
    *
@@ -534,11 +589,53 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
       .join(String.fromCharCode(10));
   }).join(String.fromCharCode(10));
 
+  /**
+   * The worked example for the Real Owner Duo (2026-10-14) — the role-label example's shape, spoken as the
+   * business's own two owners ("our shop", "we stock"), because the visitors' example ("Do THEY have…")
+   * is the one a model copies most literally. Every clip stays inside the two-speaker budget (15–17).
+   */
+  const ownersWorkedExample = (): string => {
+    const named = place
+      ? `"We are Sharma Electronics in ${place} — everyone shops here."   (9 words)`
+      : `"We are Sharma Electronics — the whole town shops here."   (9 words)`;
+    const hook = `  ${first.name}:  "Why is our shop always so full?"            (7 words)\n  ${second.name}: ${named}`;
+    const proof = `  ${first.name}:  "We stock the latest washing machines too."   (7 words)\n  ${second.name}: "Every brand, every model, with free home delivery."   (8 words)`;
+    const proof2 = `  ${first.name}:  "Repairs cost a fortune at big showrooms."   (7 words)\n  ${second.name}: "Here, we give one full year of free service."   (9 words)`;
+    const close = `  ${first.name}:  "Everything your family needs is right here."   (7 words)\n  ${second.name}: "Come to Sharma Electronics today and see for yourself."   (9 words)`;
+    const named2 = `clip-2 (the TURN — the festival is over; the hook, then the business${place ? " and its town are" : " is"} named)`;
+    return isFestival
+      ? `clip-1 (the WISH — the business sends it, and nothing at all is sold)
+  ${first.name}:  "Our whole family is celebrating ${exampleOccasion} tonight!"   (7 words)
+  ${second.name}: "Happy ${exampleOccasion} to your family from Sharma Electronics!"   (8 words)
+
+${named2}
+${hook}
+
+clip-3 (proof — a real, specific offering)
+${proof}
+
+clip-4 (close — it ends, and it tells you what to do)
+${close}`
+      : `clip-1 (the hook — curiosity gap, then the business${place ? " and its town are" : " is"} named)
+${hook}
+
+clip-2 (proof — a real, specific offering)
+${proof}
+
+clip-3 (proof — a DIFFERENT one, never a repeat)
+${proof2}
+
+clip-4 (close — it ends, and it tells you what to do)
+${close}`;
+  };
+
   return `You are a WORLD-CLASS ${lang.toUpperCase()} AD SCRIPTWRITER writing a ${duration}-second
 ${isFestival ? `${occasionBare.toUpperCase()} GREETING advertisement` : "television commercial"} in which ${solo
   ? `${first.name} presents a real business straight to camera`
   : pack.family === "kids"
     ? "two real children visit a real business and talk to each other about it"
+    : owners
+    ? "the business's two real owners stand in their own business and talk about it, to each other and to the viewer"
     : roleLabels
       ? "two real people visit a real business and talk to each other about it"
       : "two well-known characters visit a real business and talk to each other about it"}.
@@ -556,7 +653,7 @@ ${solo
 It must sound like ${first.name} talking to the viewer — never a narrator reading an advertisement,
 and never a second voice answering, because there is nobody else in this ad.`
   : `Every clip is a tiny two-line exchange: a set-up and a pay-off. It must feel like a real
-conversation between friends — never two separate announcements stitched together. ${second.name}'s
+conversation between ${owners ? "the two partners who run this business" : "friends"} — never two separate announcements stitched together. ${second.name}'s
 line must actually ANSWER what ${first.name} just said.`}
 
 ${characterDirectionBlock(pack, "script")}
@@ -588,7 +685,9 @@ ${solo
   ? `THE SITUATION, AND IT NEVER CHANGES: ${first.name} has come to this client's business to show
 it to people. They are standing in the real premises, talking straight to the viewer about why it is
 worth coming to. Write it as that visit — never as an announcement read out over pictures.`
-  : `THE SITUATION, AND IT NEVER CHANGES: ${first.name} and ${second.name} have come to this client's business to show it to people. They are standing in the real premises, seeing the real thing, and telling the viewer why it is worth coming to. Write it as that visit — two friends who turned up at a good place and want everyone to know about it — never as a studio announcement, never as an advert read aloud, never as a comedy sketch with a tagline bolted on the end.`}
+  : owners
+    ? `THE SITUATION, AND IT NEVER CHANGES: ${first.name} and ${second.name} are the TWO REAL OWNERS of this business. They are standing in their own premises, among the real things they sell and do, and telling the viewer — in their own words, "we", "our shop", "come to us" — why it is worth coming to. Write it as the two owners speaking for the business they built together — never as visitors discovering it ("they have…", "this shop has…" about their own place), never as presenters reading copy, never as a comedy sketch with a tagline bolted on the end.`
+    : `THE SITUATION, AND IT NEVER CHANGES: ${first.name} and ${second.name} have come to this client's business to show it to people. They are standing in the real premises, seeing the real thing, and telling the viewer why it is worth coming to. Write it as that visit — two friends who turned up at a good place and want everyone to know about it — never as a studio announcement, never as an advert read aloud, never as a comedy sketch with a tagline bolted on the end.`}
 
 The characters are the DELIVERY, not the subject. This ad sells the business described in the
 BUSINESS INFORMATION you are given — it is not a general chat about advertising, marketing, offers
@@ -698,7 +797,7 @@ NEVER ${festivalTurn ? `write clip ${hookClip}` : "open"} with any of these. The
 ✗ A greeting — "Hello friends", "Namaste", "Hi everyone"${festivalTurn ? ` (clip 1's ${occasionBare} wish is the sole exception, and it is not repeated here)` : ""}
 ✗ An announcement — "Today we will tell you about…", "Let me introduce…"
 ✗ A welcome — "Welcome to…", "Come to…"
-✗ Anything a narrator would say. These two are TALKING TO EACH OTHER, never to a camera.
+✗ Anything a narrator would say. ${owners ? "These two are the OWNERS talking — to each other and to the viewer, never like a narrator." : "These two are TALKING TO EACH OTHER, never to a camera."}
 
 ===== EVERY LINE MUST BE COMPLETE, AND THE AD MUST FINISH =====
 
@@ -721,7 +820,7 @@ The scripts that fail do so in the same two ways — half-sentences, and an endi
 This is shown in English so the STRUCTURE is unmistakable. Write yours in ${lang}, about the real
 business you were given. Word counts are marked to show how a complete thought fits the budget.
 
-${isFestival ? (solo ? `clip-1 (the WISH — the business sends it, and nothing at all is sold)
+${owners ? ownersWorkedExample() : isFestival ? (solo ? `clip-1 (the WISH — the business sends it, and nothing at all is sold)
   ${first.name}: ${roleLabels
     ? `"Wishing you and your whole family a very happy ${exampleOccasion} from all of us here at Sharma Electronics."  (18 words)`
     : `"${first.name} here, wishing you and your whole family a very happy ${exampleOccasion} from all of us at Sharma Electronics."  (19 words)`}
@@ -932,8 +1031,8 @@ export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   const repairBudget = wordBudgetFor(pack.characters.length);
   const spellings = packNameSpellings(pack, language);
   const place = (placeName || "").trim();
-  /** A human entry's speaker names are roles ("Girl", "Host", "Presenter") — never spoken. See the writer. */
-  const roleLabels = pack.family === "human" || pack.family === "human_duo" || pack.family === "kids";
+  /** A human entry's speaker names are roles ("Girl", "Host", "Presenter", "Owner 1") — never spoken. See the writer. */
+  const roleLabels = pack.family === "human" || pack.family === "owner_duo" || pack.family === "human_duo" || pack.family === "kids";
   /*
     The cast, stated as the writer states it (2026-10-08). This contract used to call every entry a
     "cartoon two-character" script and ask for "EXACTLY 2 lines" a clip in Motu-and-Patlu terms whatever
@@ -953,7 +1052,7 @@ NON-NEGOTIABLE CONTRACT:
 • EXACTLY ${segmentCount} clips, each with ${solo ? `EXACTLY 1 line — ${first.name}'s` : `EXACTLY ${pack.characters.length} lines — one for each character, each labelled with its own speaker`}
 • ${solo
   ? `${first.name} carries every clip alone — never a second voice`
-  : `${first.name} speaks first in every clip, ${second.name} answers — never merge the two into one voice, never drop or swap a character, never move one character's words into the other's line`}
+  : `${first.name} speaks first in every clip, ${second.name} answers — never merge the two into one voice, never drop or swap a character, never move one character's words into the other's line${pack.family === "owner_duo" ? `. They are the business's two owners: every line stays in their own first person plural — "we", "our shop" — never "they" about their own business` : ""}`}
 • ${repairBudget.minClip}-${repairBudget.maxClip} spoken words per clip; ${solo ? `that single line carries the clip: ${repairBudget.minLine}-${repairBudget.maxLine} words` : `each line ${repairBudget.minLine}-${repairBudget.maxLine} words`}
 • Each line is one complete sentence ending in . ! or ?
 • Output format exactly: ${solo ? `\`<start>-<end>|${first.key}: <line>\`` : `\`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\``}
@@ -1199,6 +1298,12 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
    * can undo a positive instruction to include somebody.
    */
   const solo = pack.characters.length === 1;
+  /**
+   * The Real Owner Duo's two people, each named by side, kind and photograph (2026-10-14) — they stand in
+   * place, like the single owner, and the frame writer never describes their faces.
+   */
+  const ownerSlots = pack.usesClientFace && !solo ? ownerPhotoSlots(pack) : [];
+  const ownerRef = (i: number) => `the ${ownerSlots[i].kind} from ${ownerSlots[i].photo}`;
   const shots = shotsForClipCount(segmentCount);
   /**
    * Motu and Patlu walk only where a clip's words take them somewhere (CharacterPack.walksOnlyWhenNeeded,
@@ -1332,10 +1437,14 @@ ${solo
 • Stage them open to camera, addressing the viewer directly rather than anyone in the room.
 • They must be the focus, but the business must be unmistakable behind them.`
   : `• BOTH characters visible in every frame, clearly separated, neither hidden or cropped.
-• POSITION LOCK: ${castSheet ? "the CAST SHEET's LEFT person" : pack.characters[0].name} ALWAYS stands on the LEFT of the frame and ${castSheet ? "its RIGHT person" : pack.characters[1].name} ALWAYS on the
+• POSITION LOCK: ${castSheet ? "the CAST SHEET's LEFT person" : ownerSlots.length > 1 ? ownerRef(0) : pack.characters[0].name} ALWAYS stands on the LEFT of the frame and ${castSheet ? "its RIGHT person" : ownerSlots.length > 1 ? ownerRef(1) : pack.characters[1].name} ALWAYS on the
   RIGHT, in every single clip. Write it into every prompt. The video tells who is speaking by where they
   stand, so the two must never swap sides.
-• ${standsByDefault
+• ${ownerSlots.length > 1
+  ? `Stage them as the business's two owners mid-conversation, STANDING IN PLACE side by side — never mid-step,
+  never walking — angled slightly towards each other but open to camera, the one who is speaking caught
+  mid-gesture and the other listening. Both faces large, frontal and clear; neither face hidden by, or overlapping, the other.`
+  : standsByDefault
   ? `Stage them as a two-hander, mid-conversation and mid-gesture — standing side by side as each clip's 🎬 note says
   (mid-step only where the note walks), angled slightly towards each other but open to camera. The one who is speaking is
   the more animated of the two.`
@@ -1347,7 +1456,9 @@ ${solo
 • SCALE ANCHOR — write it into EVERY prompt, word for word: ${pack.scaleAnchor}` : ""}
 • Beyond that, say nothing about their build or body. ${pack.family === "duo"
   ? "They are the real characters — their proportions come with them. Describing the body only invites the generator to redraw them."
-  : "Their look is fixed by the cast sheet and by clip 1."}`}
+  : ownerSlots.length > 1
+    ? "Their faces, builds and heights come from their own photographs — describing either one only invites the generator to redraw them."
+    : "Their look is fixed by the cast sheet and by clip 1."}`}
 
 ===== THE SHOT PLAN — WRITE THESE ${segmentCount} PROMPTS =====
 
@@ -1359,7 +1470,9 @@ Write ${segmentCount} prompts separated by ###CLIP### on its own line, in clip o
 Each prompt is plain flowing English — no headings, no numbering, no bullet lists, no commentary,
 and no negative list. Follow the per-clip word budgets above. ${castSheet
   ? `Describe the ${solo ? "person" : "people"} ONLY in the CAST SHEET's words, never in new ones${hasLogo ? ", and never describe the attached logo" : ""}.`
-  : `Never describe what the characters look like${hasLogo ? ", and never describe the attached logo" : ""} — naming them is enough.`}
+  : ownerSlots.length > 1
+    ? `Never describe either owner's face or body${hasLogo ? ", and never describe the attached logo" : ""} — name each one as the CHARACTERS block says: ${ownerSlots.map((s, i) => `"${ownerRef(i)}" on the ${s.side}`).join(" and ")}.`
+    : `Never describe what the characters look like${hasLogo ? ", and never describe the attached logo" : ""} — naming them is enough.`}
 
 ${/*
   No performance direction here, deliberately.

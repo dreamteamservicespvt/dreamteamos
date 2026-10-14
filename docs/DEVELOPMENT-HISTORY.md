@@ -9,6 +9,71 @@
 Detailed per-session notes up to 2026-09-19 live in `docs/AI-MEMORY.md` (historical, read-only).
 Design intent lives in `docs/superpowers/specs/`.
 
+- **2026-10-13 (late night): the bell, one row at a time — plus bottom toasts, a smaller badge, a 90-day clean-up and
+  the index in the repo** (`backend-security.md` §18, §24, §25; `data-model.md` `notifications`,
+  `app_settings/notification_cleanup`, composite indexes; `architecture.md` §4, §6; `docs/firestore-rules.md`). The owner
+  approved five follow-ups from the night's report. (1) **Toasts at the bottom on phones** (`components/ui/toast.tsx`): the
+  shadcn viewport sat at the top below 640px (z-100) for each toast's 5 s, over the menu, the bell and the bell's buttons.
+  It is now at the bottom on every width, padded by `env(safe-area-inset-bottom)` (the page sets `viewport-fit=cover`),
+  and toasts slide in from the bottom. Sonner was already at the bottom. (2) **The badge**: 16px at `top-1 right-1` covered
+  most of the 16px bell. It is now 14px with 9px text, starts just right of the bell's centre at `top-0.5`, has a
+  `ring-card` and is `aria-hidden` (the button's label carries the count). In the browser it covers 18.75% of the icon's box.
+  (3) **One row** (`components/layout/NotificationRow.tsx`, new): the row is a container (open area + an envelope + an
+  X), because a button cannot hold buttons. The X or a sideways swipe (framer-motion `drag="x"`, direction-locked; vertical
+  stays a scroll) dismisses: `dismissed: true, dismissedAt, read: true` on the row. It is hidden on every device and not
+  deleted, because the kept row is what stops a `once` reminder coming back. A 5 s toast offers Undo, which restores the
+  row as it was. The swipe uncovers a red "Dismiss". A click after a drag is swallowed. `utils.isDismissSwipe` = past a third
+  of the row (at most 96px) or a 24px+ flick at 300 px/s. It was 500 px/s until the browser run measured firm short flicks
+  at 472–478 px/s: framer-motion samples velocity per frame. The envelope marks a read row unread
+  (`read: false, markedUnreadAt`) or an unread row read without opening it. UpdatePopup skips `markedUnreadAt` rows (the
+  person has seen it). Firestore cannot query "not dismissed" across older rows, so when dismissed rows fill the
+  loaded window and the panel has fewer than 20, the listener asks for 50 more, up to 200 (`nextInboxWindow`).
+  `freshArrivals` now treats an unseen id as an arrival only when it is newer than every row seen, so the older rows a
+  grown window (or a cache→server fill-in) loads do not chime. The desktop panel is 24rem (was 20rem). (4) **The 90-day
+  clean-up** (`services/notificationCleanup.ts`, new): there is no scheduler, so 30 s after the bell mounts, the first
+  app of the day claims the day in a transaction on `app_settings/notification_cleanup` (`localStorage` stops a device
+  asking twice). It deletes every `notifications` row older than 90 days, for everybody, oldest first, in batches of 400,
+  at most 2,000 a day, and is never fatal. It is safe because every `once` key carries its day. It needs the catch-all's
+  delete; `docs/firestore-rules.md` now names the rule a future `notifications` rule must keep. (5) **The index**:
+  `firestore.indexes.json` (notifications userId ↑ createdAt ↓), `firebase.json` (indexes only; rules stay pasted by hand)
+  and `.firebaserc` (dts-manager). Validated with firebase-tools' own spec validator. The live index could not be
+  confirmed: the CLI on this machine is not signed in. Files: `components/ui/toast.tsx`, `components/layout/Topbar.tsx`,
+  `NotificationRow.tsx`, `UpdatePopup.tsx`, `hooks/useNotifications.ts`, `services/notificationInbox.ts`,
+  `services/notificationCleanup.ts`, `utils/notificationInbox.ts`, `firestore.indexes.json`, `firebase.json`,
+  `.firebaserc`, `src/test/notificationRowsOct13.test.tsx` (new, 21 tests), the comment in `notificationInboxOct13`.
+  Tested: unit + in-memory-Firestore + real Topbar / UpdatePopup in jsdom. The real browser at 360 / 390 / 1440 checked
+  toast position, the badge, row fit (both buttons 28px, no overflow), X + Undo, the envelope, touch swipes (dismiss,
+  spring back, vertical scroll, tap still opens), the desktop mouse drag and the clean-up after 30 s, with 0 console
+  errors. Build, vitest (236 files, 3685 tests) and tsc (0) all pass.
+- **2026-10-13 (night): the bell's "Mark all read" and "Clear all" work** (`backend-security.md` §18, §24, §25;
+  `data-model.md` `notifications`, `notification_state`; `docs/firestore-rules.md`). The owner: "in the notification tab,
+  Mark all read or Clear all is not working — they are not clearing or deleting." Causes: (1) both acted on the ≤50 rows
+  the bell had loaded, and nothing had ever deleted a notification, so Clear all deleted 50 and the next 50 slid in. In
+  the no-index fallback the badge counted every unread row while Mark all read touched 50. (2) The once-a-day reminders
+  (birthdays, posts due, renewals due, the renewal nudge, the Drive-folder ask) were guarded only by the 10-minute
+  collapse window. So every app open more than 10 minutes apart re-sent them: a new phone alert, and the row back as
+  unread after Mark all read. On a birthday, every teammate's first open re-sent to the whole team. A cleared row was
+  written again from nothing. (3) Failures went to the console only. (4) The fallback listener was returned from
+  the error callback and never stopped. Fix: Clear all records ONE point per person (`notification_state/{uid}.clearedUpTo`
+  = the newest row on screen's exact `createdAt`), hides every row at or before it on every device, and marks them read
+  (UpdatePopup agrees), with Undo for 6 s. Mark all read marks every unread row up to the newest on screen: the rows on
+  screen first in one batch, so the UI changes at once, then `userId == && read == false` for the rest. Both are chunked
+  under 500 and survive a row deleted meanwhile. `sendNotification({ once: true })` writes a key at most once, ever,
+  and the five daily senders use it. The rows listener and the fallback stop together. Only a real arrival chimes (not
+  an Undo). The buttons get a spinner, a 28px tap target and a destructive toast on failure. Undo keeps the bell open:
+  in the browser run, a real click on it counted as a click outside the bell and closed it. Undo also shows no
+  "restored" toast: on a phone toasts sit at the top, and that one covered Mark all read for 5 s, so the next tap did
+  nothing. The header keeps its height when the buttons go. Rows are hidden, not
+  deleted: one write instead of thousands of deletes on the free-tier quota, and the kept row is what stops a daily
+  reminder from coming back. New collection `notification_state` gets its own rule (only the person), excluded from
+  the catch-all.
+  Files: `utils/notificationInbox.ts` (new), `services/notificationInbox.ts` (new), `hooks/useNotifications.ts`,
+  `components/layout/Topbar.tsx`, `services/notifications.ts`, `services/birthdays.ts`, `services/smm.ts`,
+  `services/workDrive.ts`, `docs/firestore-rules.md`. Tests: `notificationInboxOct13` (rules; the service on the
+  in-memory Firestore with 120 rows, a deleted row, the fallback; `once` against Mark all read and Clear all; the real
+  Topbar: badge, dots, Clear all, Undo, a new arrival chiming, a refused write), `notificationDedupe` (+2 `once`).
+  Browser harness: the real Topbar on the in-memory store, 1440 / 390 / 360 px, light and dark.
+
 - **2026-10-13 (evening): poster refine works — a "Changes:" line, contacts and language, and it says what it could not
   do** (`ai-ads.md` §17.2 Poster Creation "Refine", §24, §25; `data-model.md` `posterConcepts.changes`). The owner: "poster
   refine prompt is not working." Cause: since the 2026-10-12 rebuild a refine could change only the ad type and the

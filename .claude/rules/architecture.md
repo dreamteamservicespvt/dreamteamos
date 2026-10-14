@@ -126,7 +126,7 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
 | Client state | `zustand` 5 stores in `src/store/` |
 | Server state | Firestore realtime listeners (`onSnapshot`) and one-shot reads. `@tanstack/react-query` `QueryClientProvider` is mounted but **no `useQuery` exists** |
 | Forms | Hand-rolled `useState` forms with inline validation. `react-hook-form`, `zod` and `@hookform/resolvers` are installed but unused outside `components/ui/form.tsx` |
-| Toasts | shadcn `useToast` (≈100 files) and `sonner` (≈11 files) |
+| Toasts | shadcn `useToast` (≈100 files) and `sonner` (≈11 files); both at the bottom of the screen on every width (shadcn's moved from the top on phones, 2026-10-13) |
 | Charts | `recharts` |
 | Documents | `jspdf` + `html2canvas` (PDF export), native print, `docx` + `file-saver` (sales scripts .docx), `qrcode` (ID cards) |
 | Backend DB/auth | Firebase JS SDK 12 (Auth email/password + custom tokens, Firestore with persistent IndexedDB cache, Messaging) |
@@ -220,6 +220,8 @@ DTS-OS/
 ├── vite.config.ts             ← envPrefix, build id plugin, manualChunks, `@` alias
 ├── vitest.config.ts · tsconfig*.json · tailwind.config.ts · components.json · eslint.config.js
 ├── vercel.json                ← SPA rewrite + cache headers (sw, manifest, version.json no-cache)
+├── firestore.indexes.json     ← composite indexes (2026-10-13: the bell's); firebase.json points at it (indexes
+│                                only — the rules are pasted from docs/firestore-rules.md), .firebaserc → dts-manager
 └── capacitor.config.ts
 ```
 
