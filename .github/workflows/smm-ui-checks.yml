@@ -15,6 +15,8 @@ on:
       - "package-lock.json"
       - "vite.config.ts"
       - "vitest.config.ts"
+      - "tsconfig.smm-ui.json"
+      - "tsconfig.smm-ui.json"
       - ".github/workflows/smm-ui-checks.yml"
   push:
     branches: [feat/smm-operations-ui-refinement]
@@ -34,7 +36,7 @@ on:
 
 jobs:
   verify:
-    name: Typecheck, SMM UI tests, and production build
+    name: SMM UI typecheck, tests, and production build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -47,8 +49,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: TypeScript check
-        run: npx tsc -p tsconfig.check.json --noEmit
+      - name: SMM UI TypeScript check
+        run: npx tsc -p tsconfig.smm-ui.json --noEmit
       - name: Atomic SMM UI tests
         run: npx vitest run src/test/smmOperationsView.test.tsx
       - name: Full test suite

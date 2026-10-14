@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.check.json",
+  "include": [
+    "src/components/smm/SmmOperationsView.tsx",
+    "src/test/smmOperationsView.test.tsx"
+  ]
+}
