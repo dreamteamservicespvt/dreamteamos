@@ -56,4 +56,5 @@ jobs:
       - name: Full test suite
         run: npm test -- --reporter=dot
       - name: Production build
+        if: always()
         run: npm run build
