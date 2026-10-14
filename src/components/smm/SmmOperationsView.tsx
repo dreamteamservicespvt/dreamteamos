@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, CircleAlert,
   Clock3, Image as ImageIcon, LayoutGrid, Loader2, Megaphone, Search,
-  Sparkles, Video, Users, MessageCircle, ClipboardList,
+  Sparkles, Video, MessageCircle, ClipboardList,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { daysUntilDue, isOverdue, isPosted, isoDay } from "@/utils/smmPlan";
@@ -324,7 +324,7 @@ export default function SmmOperationsView({ campaigns, loading, canSetUp, onAddS
         <StatCard label="Overdue work" value={stats.overdue} note="Past the planned date" Icon={AlertTriangle} tone="red" onClick={() => setFilter("overdue")} />
         <StatCard label="Due in 3 days" value={stats.dueSoon} note="Prepare before the deadline" Icon={Clock3} tone="amber" onClick={() => setFilter("due")} />
         <StatCard label="Waiting on client" value={stats.waiting} note="Approval decision needed" Icon={MessageCircle} tone="blue" onClick={() => setFilter("waiting")} />
-        <StatCard label="Campaigns at risk" value={stats.risk} note="Behind plan or already late" Icon={CircleAlert} tone="green" onClick={() => setFilter("risk")} />
+        <StatCard label="Campaigns at risk" value={stats.risk} note="Behind plan or already late" Icon={CircleAlert} tone="amber" onClick={() => setFilter("risk")} />
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-border bg-card">
