@@ -16,7 +16,24 @@ export function workCountsOn(a: WorkAssignment): string | undefined {
   if (a.date) return a.date;
   const seconds = (a.assignedAt as { seconds?: number } | undefined)?.seconds;
   if (seconds) return format(new Date(seconds * 1000), "yyyy-MM-dd");
-  return a.assignedAtIso ? a.assignedAtIso.slice(0, 10) : undefined;
+  return localDayOfInstant(a.assignedAtIso);
+}
+
+/**
+ * The LOCAL `yyyy-MM-dd` day of an ISO instant such as `assignedAtIso` ("2026-06-30T20:11:06.000Z").
+ *
+ * ── Why not `iso.slice(0, 10)` ──
+ * `assignedAtIso` is written with `toISOString()`, i.e. in UTC. Its first ten characters are the UTC
+ * day, which is the day BEFORE in India for anything assigned between 00:00 and 05:30 IST — so an old
+ * job assigned at 01:41 IST on 1 July counted on 30 June, while `date` and `assignedAt` (both local)
+ * put the same job on 1 July. A bare `yyyy-MM-dd` is already a day and is returned as it is; anything
+ * unparseable gives undefined rather than a wrong day.
+ */
+export function localDayOfInstant(iso?: string | null): string | undefined {
+  if (!iso) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? format(new Date(ms), "yyyy-MM-dd") : undefined;
 }
 
 /**

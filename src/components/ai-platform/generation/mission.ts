@@ -59,7 +59,17 @@ export function buildMissionTasks(facts: RunFacts): MissionTask[] {
       tabs: n,
     },
     logoTask(facts, n, "tab"),
-    ...(facts.ownerFace
+    ...(facts.ownerFace && facts.ownerPhotos && facts.ownerPhotos.length > 1
+      ? [{
+          id: "owner",
+          kind: "check" as const,
+          title: n === 1 ? "Attach BOTH owner photos in the tab" : "Attach BOTH owner photos in every tab",
+          // The order is the point: each frame prompt says "owner photo 1 is the man on the LEFT" (2026-10-14).
+          detail: `This is a Real Owner Duo ad: every Main Frame prompt copies each owner's face from their own photo. `
+            + `Attach them with each prompt in this order — 1: ${facts.ownerPhotos[0]}, then 2: ${facts.ownerPhotos[1]}. `
+            + `A frame made with only one of them invents the other person.`,
+        }]
+      : facts.ownerFace
       ? [{
           id: "owner",
           kind: "check" as const,

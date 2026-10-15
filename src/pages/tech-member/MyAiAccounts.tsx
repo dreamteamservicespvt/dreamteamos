@@ -115,7 +115,8 @@ export default function MyAiAccounts() {
               )}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {[{ label: "Accounts", value: held.length }, { label: "Credits left", value: left, test: "my-left" }, { label: "Used", value: used }].map((c) => (
+              {/* "This cycle" = each account's own cycle from its opening day — not the calendar month (2026-10-15). */}
+              {[{ label: "Accounts", value: held.length }, { label: "Left this cycle", value: left, test: "my-left" }, { label: "Used this cycle", value: used }].map((c) => (
                 <div key={c.label} className="bg-card border border-border rounded-xl p-3 min-w-0 flex flex-col justify-center">
                   <p className="text-[11px] text-muted-foreground truncate">{c.label}</p>
                   <p className="font-display text-xl font-bold text-foreground" data-test={c.test}>{c.value}</p>
@@ -137,7 +138,8 @@ export default function MyAiAccounts() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-display text-base font-semibold text-foreground">Credits I recorded</h2>
               <div className="flex gap-2">
-                <input type="month" className={`${fieldClass} w-40`} value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+                <input type="month" className={`${fieldClass} w-40`} value={month} onChange={(e) => e.target.value && setMonth(e.target.value)}
+                  aria-label="Calendar month" title="The calendar month the clips were made in" />
                 <button className={buttonClass.ghost} onClick={() => setDialog({ kind: "usage" })} data-test="usage-record"><Plus className="h-4 w-4" /> Record credits</button>
               </div>
             </div>
@@ -154,7 +156,8 @@ export default function MyAiAccounts() {
       )}
 
       <FlowAccountDialog open={dialog?.kind === "add" || dialog?.kind === "edit"} onClose={() => setDialog(null)} actor={user} settings={settings}
-        account={dialog?.kind === "edit" ? dialog.account : null} accounts={accounts} />
+        // The LIVE account (2026-10-15) — see pages/shared/AiAccounts.
+        account={dialog?.kind === "edit" ? accounts.find((a) => a.id === dialog.account.id) || dialog.account : null} accounts={accounts} />
       <ApiKeyDialog
         open={!!keyAccount}
         onClose={() => setDialog(null)}

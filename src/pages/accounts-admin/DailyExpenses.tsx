@@ -7,6 +7,7 @@ import { Wallet, Plus, Trash2, Loader2, Download, Pencil, X, Check } from "lucid
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useToday } from "@/hooks/useToday";
 
 interface Expense {
   id: string;
@@ -32,7 +33,15 @@ export default function DailyExpenses() {
   const [showAdd, setShowAdd] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
 
-  const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
+  // ── Why the date is "today unless picked" ──
+  // It was `new Date().toISOString().slice(0, 10)` once, when the page opened: the UTC day (yesterday
+  // in India until 05:30 IST), and a page left open past midnight kept stamping new expenses with the
+  // day before. Now the default is the LOCAL day from `useToday` (turns over at midnight), and only a
+  // date the person picks is kept — cleared after each entry, so the next one starts on today again.
+  const today = useToday();
+  const [pickedDate, setPickedDate] = useState<string | null>(null);
+  const expDate = pickedDate ?? today;
+  const setExpDate = (value: string) => setPickedDate(value || null);
   const [expCategory, setExpCategory] = useState("Miscellaneous");
   const [customCategory, setCustomCategory] = useState("");
   const [expDesc, setExpDesc] = useState("");
@@ -88,7 +97,7 @@ export default function DailyExpenses() {
         category: finalCategory, description: expDesc.trim(), amount: expAmount,
         createdAt: { seconds: Date.now() / 1000 },
       }, ...prev]);
-      setExpDesc(""); setExpAmount(0); setCustomCategory(""); setShowAdd(false);
+      setExpDesc(""); setExpAmount(0); setCustomCategory(""); setPickedDate(null); setShowAdd(false);
       toast({ title: "Added", description: `${formatCurrency(expAmount)} expense recorded.` });
     } catch {
       toast({ title: "Error", description: "Failed to add.", variant: "destructive" });

@@ -188,7 +188,16 @@ function deliver(l: Listener) {
 }
 function notify() { for (const l of [...listeners]) if (listeners.has(l)) deliver(l); }
 
-export function onSnapshot(target: DocRef | Query | CollectionRef, next: (snap: never) => void, _error?: (err: Error) => void): () => void {
+export function onSnapshot(
+  target: DocRef | Query | CollectionRef,
+  nextOrOptions: ((snap: never) => void) | { includeMetadataChanges?: boolean },
+  errorOrNext?: ((err: Error) => void) | ((snap: never) => void),
+  maybeError?: (err: Error) => void,
+): () => void {
+  // The SDK also takes (target, options, next, error) — e.g. `{ includeMetadataChanges: true }` (2026-10-15).
+  const withOptions = typeof nextOrOptions !== "function";
+  const next = (withOptions ? errorOrNext : nextOrOptions) as (snap: never) => void;
+  const _error = (withOptions ? maybeError : errorOrNext) as ((err: Error) => void) | undefined;
   if (failing.has(target.path)) {
     queueMicrotask(() => _error?.(new Error("permission-denied (memoryFirestore.__failReads)")));
     return () => undefined;

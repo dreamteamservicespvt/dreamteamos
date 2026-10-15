@@ -26,7 +26,7 @@ import {
 import { orderChatIdOf } from "@/utils/orderChatId";
 import { saleIdOfOrderId } from "@/utils/saleIdentity";
 import { ORDER_TRACKS } from "@/types";
-import type { Order, OrderTrack, WorkAssignment } from "@/types";
+import type { Order, OrderTrack, PromiseDeadline, WorkAssignment } from "@/types";
 
 /** Sequential, readable work id (W001 / P002 / C003 / O004) — defined with the Orders pipeline. */
 export { nextWorkUniqueId } from "@/services/orders";
@@ -143,6 +143,16 @@ export interface CreateWorkAssignmentInput {
    * way a seller is in a sold month's. An order-backed job reads its seller off the order.
    */
   soldBy?: { uid: string; name: string } | null;
+  /**
+   * The deadline for work with NO order behind it (2026-10-15) — a social-media month with no order gives
+   * its jobs the month's own (services/smmAssign). A job linked to an order always copies the order's.
+   */
+  promise?: PromiseDeadline | null;
+  /**
+   * The job's day, `yyyy-MM-dd` — what the day filters read. Defaults to today; a social-media month that
+   * starts later dates its jobs on its first day (2026-10-15).
+   */
+  date?: string | null;
   /** Shown in the assignee's notification. */
   memberLink?: string;
   /** The assigner's display name, for the client chat this creates. */
@@ -169,6 +179,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     language, festival, requirementNotes, characterPack, customCharacter, realLocationProvided,
     businessInfo, businessAddress, posterSize, posterStyle, posterCount,
     order, tracks, smmCampaignId, roomId, soldBy, memberLink = "/tech/my-work", assignerName, techAdminUid, actor,
+    promise: ownPromise, date: ownDate,
   } = input;
   const poster = isPosterCategory(category);
 
@@ -226,7 +237,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
     status: "assigned",
     sessions: [],
     totalDurationSeconds: 0,
-    date: format(new Date(), "yyyy-MM-dd"),
+    date: ownDate && /^\d{4}-\d{2}-\d{2}$/.test(ownDate) ? ownDate : format(new Date(), "yyyy-MM-dd"),
     // A poster has no model, no attire and no video ratio — writing the form's defaults onto it
     // would brief a presenter who never appears.
     ...(!poster && modelSpec ? { modelGender: modelSpec.modelGender } : {}),
@@ -272,7 +283,7 @@ export async function createWorkAssignment(input: CreateWorkAssignmentInput): Pr
      * untouched. See utils/orderChatId.
      */
     ...(linkedOrder ? { chatId: linkedOrder.id } : sharedRoom ? { chatId: sharedRoom } : {}),
-    ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : {}),
+    ...(linkedOrder?.promise ? { promise: linkedOrder.promise } : !linkedOrder && ownPromise ? { promise: ownPromise } : {}),
     ...(tracks?.length ? { tracks } : {}),
     ...(smmCampaignId ? { smmCampaignId } : {}),
     };

@@ -146,9 +146,11 @@ describe("a calendar month's renewals", () => {
 
   it("speaks plainly", () => {
     expect(renewalOutcome(month("x", { status: "lapsed" }))).toBe("lost");
-    expect(renewalWhen(2)).toBe("Ends in 2 days");
-    expect(renewalWhen(0)).toBe("Last day today");
-    expect(renewalWhen(-3)).toBe("Ended 3 days ago");
+    // 2026-10-15: the end date is the renewal day — the same words as the card's renewal chip.
+    expect(renewalWhen(2)).toBe("Renewal in 2 days");
+    expect(renewalWhen(1)).toBe("Renewal tomorrow");
+    expect(renewalWhen(0)).toBe("Renewal is today");
+    expect(renewalWhen(-3)).toBe("Renewal was 3 days ago");
     expect(commissionOn(10000, 5)).toBe(500);
     expect(shiftMonthKey("2026-12", 1)).toBe("2027-01");
     expect(shiftMonthKey("2026-01", -1)).toBe("2025-12");

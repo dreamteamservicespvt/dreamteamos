@@ -7,6 +7,7 @@ import { uploadToCloudinary } from "@/services/cloudinary";
 import { Agreement, signAgreement, watchMemberAgreements } from "@/services/agreements";
 import AgreementView, { companySideOf } from "./AgreementView";
 import { usePrintDocument } from "@/hooks/usePrintDocument";
+import { usePopupClaim } from "@/hooks/usePopupClaim";
 import { useCompanyLogo } from "@/hooks/useCompanyLogo";
 import SignaturePad from "./SignaturePad";
 import { downloadAgreementPdf } from "@/utils/agreementPdf";
@@ -40,6 +41,9 @@ export default function MandatoryAgreementGate() {
     });
     return () => unsub();
   }, [user?.uid, user?.role]);
+
+  // Told to the popup coordinator, so a popup that waits its turn stays away while a letter waits to be signed.
+  usePopupClaim("agreement", !!user && MEMBER_ROLES.has(user.role) && (unsigned.length > 0 || !!justSigned));
 
   if (!user || !MEMBER_ROLES.has(user.role)) return null;
 

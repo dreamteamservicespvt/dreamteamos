@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addAdRun, removeAdRun, saveAdDayReport, setDayBudget, updateAdRun } from "@/services/smm";
 import { formatCurrency } from "@/utils/formatters";
 import { adRunDays, adTotals, budgetForDay, isoDay, itemsForRun, plannedSpend } from "@/utils/smmPlan";
+import { defaultAdRunStart } from "@/utils/smmPackage";
 import {
   SMM_CONTENT_KINDS,
   type SmmAdDayReport, type SmmAdRun, type SmmCampaign, type SmmContentKind,
@@ -309,7 +310,9 @@ function NewRunForm({ campaign, onDone }: { campaign: SmmCampaign; onDone: () =>
   const [name, setName] = useState("");
   const [kind, setKind] = useState<SmmContentKind | "all">("all");
   const [itemIds, setItemIds] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState(isoDay(new Date()));
+  // Inside the month by default (2026-10-15): today while it runs, else its first day — the report counts
+  // a run's days only on the month's own days (smmPlan `monthAdReports`).
+  const [startDate, setStartDate] = useState(() => defaultAdRunStart(campaign.cycle, isoDay(new Date())));
   const [days, setDays] = useState(7);
   const [dailyBudget, setDailyBudget] = useState(300);
   const [saving, setSaving] = useState(false);

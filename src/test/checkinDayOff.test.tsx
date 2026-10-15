@@ -23,6 +23,11 @@ vi.mock("firebase/firestore", () => ({
 }));
 vi.mock("@/services/firebase", () => ({ db: {} }));
 vi.mock("@/components/smm/SmmDueCard", () => ({ default: () => null }));
+// SMM Delivery Control (2026-10-15): Off here, so the old due card keeps its place exactly as before.
+vi.mock("@/components/smm/control/useSmmDeliverySettings", () => ({
+  useSmmDeliverySettings: () => ({ settings: { mode: "off", pilotUids: [] }, loaded: true, saved: true }),
+}));
+
 vi.mock("@/utils/attendance", () => ({
   getTodayWorkStats: () => ({ inProgress: 0, pending: 0, completedToday: 0 }),
   performCheckIn: vi.fn(),

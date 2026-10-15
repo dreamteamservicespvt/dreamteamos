@@ -1,3 +1,7 @@
+// The app's users are in India; the day rules below are checked on India time whatever the machine's
+// zone is (vitest runs each file in its own process, so this only affects this file).
+process.env.TZ = "Asia/Kolkata";
+
 import { describe, it, expect } from "vitest";
 import { format } from "date-fns";
 import { cycleForDate, CYCLE_START_DAY, DONE_STATUSES, workDayOf } from "@/utils/performanceCycle";
@@ -88,7 +92,11 @@ describe("workDayOf", () => {
   it("falls back through assignedAt then assignedAtIso for older records", () => {
     const assignedAt = { seconds: new Date(2026, 6, 15, 20, 11).getTime() / 1000 };
     expect(label(workDayOf(make({ assignedAt }))!)).toBe("2026-07-15");
-    expect(label(workDayOf(make({ assignedAtIso: "2026-07-15T20:11:06.000Z" }))!)).toBe("2026-07-15");
+    // assignedAtIso is a UTC instant: 20:11 UTC on 15 July is 01:41 IST on 16 JULY — the India day
+    // (this locked in the UTC day "2026-07-15" until 2026-10-15). An instant earlier in the UTC day
+    // stays on the same date.
+    expect(label(workDayOf(make({ assignedAtIso: "2026-07-15T20:11:06.000Z" }))!)).toBe("2026-07-16");
+    expect(label(workDayOf(make({ assignedAtIso: "2026-07-15T06:30:00.000Z" }))!)).toBe("2026-07-15");
   });
 
   it("returns null only when the record carries no assignment date at all", () => {

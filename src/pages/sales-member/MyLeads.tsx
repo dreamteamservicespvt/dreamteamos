@@ -19,8 +19,10 @@ import { useNow } from "@/hooks/useNow";
 import { format, subDays, startOfDay, parseISO } from "date-fns";
 import type { AppUser, Lead, LeadStatus, Order, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
 import {
-  collectedOf, newPayment, pendingOf, pendingSales, saleItemsOf, withPayment, type PendingSale,
+  collectedAtFor, collectedOf, collectedOnProblem, newPayment, pendingOf, pendingSales, saleItemsOf, withPayment, type PendingSale,
 } from "@/utils/salePayments";
+import { payPeriodLabel } from "@/utils/payrollEngine";
+import { periodOfDay } from "@/utils/salesPay";
 import { collectReadiness } from "@/utils/collectReadiness";
 import SaleSection from "@/components/sales/SaleSection";
 import SaleForm from "@/components/sales/SaleForm";
@@ -661,13 +663,22 @@ export default function MyLeads() {
       <PendingPaymentsPanel
         leads={leads}
         ordersById={ordersById}
-        onCollect={async (row, amount, note) => {
+        onCollect={async (row, amount, note, day) => {
           const current = saleItemsOf(row.lead)[row.index];
           if (!current) return;
+          /*
+            Dated the day the member says the money came (2026-10-15), not the moment of the click: a balance
+            collected on 9 Oct and typed in on 10 Oct belongs to September's pay period — revenue and incentive.
+          */
+          const problem = collectedOnProblem(day, { saleDay: row.soldOn, today: format(new Date(), "yyyy-MM-dd") });
+          if (problem) {
+            toast({ title: "Not recorded", description: problem, variant: "destructive" });
+            return;
+          }
           const payment = newPayment({
             amount,
             note: note || "Balance collected",
-            collectedAt: Timestamp.now(),
+            collectedAt: Timestamp.fromDate(collectedAtFor(day)),
             by: user ? { uid: user.uid, name: user.name } : null,
           });
           /*
@@ -993,7 +1004,7 @@ interface LeadCardProps {
 function PendingPaymentsPanel({ leads, ordersById, onCollect }: {
   leads: Lead[];
   ordersById: Map<string, Order>;
-  onCollect: (row: PendingSale, amount: number, note: string) => Promise<void>;
+  onCollect: (row: PendingSale, amount: number, note: string, day: string) => Promise<void>;
 }) {
   const [collecting, setCollecting] = useState<PendingSale | null>(null);
   /**
@@ -1111,7 +1122,7 @@ function PendingPaymentsPanel({ leads, ordersById, onCollect }: {
         <CollectPaymentModal
           row={collecting}
           onClose={() => setCollecting(null)}
-          onSave={async (amount, note) => { await onCollect(collecting, amount, note); setCollecting(null); }}
+          onSave={async (amount, note, day) => { await onCollect(collecting, amount, note, day); setCollecting(null); }}
         />
       )}
     </div>
@@ -1121,13 +1132,20 @@ function PendingPaymentsPanel({ leads, ordersById, onCollect }: {
 /** Recording money that has just been handed over. Defaults to the whole balance — the usual case. */
 function CollectPaymentModal({ row, onSave, onClose }: {
   row: PendingSale;
-  onSave: (amount: number, note: string) => Promise<void>;
+  onSave: (amount: number, note: string, day: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [amount, setAmount] = useState(row.pending);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const capped = Math.max(0, Math.min(amount, row.pending));
+  /*
+    The day the money was handed over (2026-10-15) — today unless the member says otherwise. It decides the
+    pay period the money counts in, so it cannot be before the sale was made or after today.
+  */
+  const today = format(new Date(), "yyyy-MM-dd");
+  const [day, setDay] = useState(today);
+  const dayProblem = collectedOnProblem(day, { saleDay: row.soldOn, today });
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 md:items-center md:p-4" onClick={onClose}>
@@ -1165,6 +1183,21 @@ function CollectPaymentModal({ row, onSave, onClose }: {
         </div>
 
         <div>
+          <label className="text-[11px] text-muted-foreground" htmlFor="collect-day">Collected on</label>
+          <input
+            id="collect-day"
+            type="date"
+            value={day}
+            min={row.soldOn || undefined}
+            max={today}
+            data-test="collect-day"
+            onChange={(e) => setDay(e.target.value)}
+            className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground outline-none focus:border-primary"
+          />
+          {dayProblem && <p className="mt-1 text-[11px] text-destructive" data-test="collect-day-problem">{dayProblem}</p>}
+        </div>
+
+        <div>
           <label className="text-[11px] text-muted-foreground">Note (optional)</label>
           <input
             type="text"
@@ -1177,7 +1210,11 @@ function CollectPaymentModal({ row, onSave, onClose }: {
 
         {/* Said out loud, because it is the point of recording it here rather than in a notebook. */}
         <p className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px] text-muted-foreground">
-          {formatCurrency(capped)} counts towards your revenue and incentives <b>today</b>.
+          {formatCurrency(capped)} counts towards your revenue and incentives{" "}
+          {day === today
+            ? <b>today</b>
+            : <>on <b>{/^\d{4}-\d{2}-\d{2}$/.test(day) ? format(parseISO(day), "dd MMM") : "—"}</b></>}
+          {!dayProblem && <> — in {payPeriodLabel(periodOfDay(day))}</>}.
         </p>
 
         <div className="flex gap-2">
@@ -1189,9 +1226,9 @@ function CollectPaymentModal({ row, onSave, onClose }: {
           </button>
           <button
             type="button"
-            disabled={saving || capped <= 0}
+            disabled={saving || capped <= 0 || !!dayProblem}
             data-test="collect-save"
-            onClick={async () => { setSaving(true); try { await onSave(capped, note); } finally { setSaving(false); } }}
+            onClick={async () => { setSaving(true); try { await onSave(capped, note, day); } finally { setSaving(false); } }}
             className="inline-flex h-10 flex-[1.4] items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}

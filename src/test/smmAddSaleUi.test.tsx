@@ -254,6 +254,10 @@ describe("Add SMM sale", () => {
     expect((screen.getByTestId("smm-setup-count-poster") as HTMLInputElement).value).toBe("6");
     expect(screen.getByTestId("smm-no-sale-platform-youtube").getAttribute("aria-pressed")).toBe("true");
     fireEvent.change(screen.getByTestId("smm-setup-name"), { target: { value: "Lakshmi Jewellers" } });
+    // Its first day is picked, never guessed (2026-10-15): the start opens EMPTY, not on today.
+    expect((screen.getByTestId("smm-setup-start") as HTMLInputElement).value).toBe("");
+    expect(screen.getByTestId("smm-no-sale-save").textContent).toMatch(/Pick the day the month started/);
+    expect(screen.getByTestId("smm-setup-range-missing").textContent).toMatch(/Pick the day the month started/);
 
     // A month that has not started is new business — a sale — and is refused here.
     const day = (n: number) => isoDay(new Date(Date.now() + n * 86_400_000));

@@ -13,6 +13,7 @@
  * directive to photo can be tested without a browser.
  */
 import { splitAttachmentDirective } from "./locationAssignment";
+import { OWNER_IMAGE_ATTACHMENT } from "./frameBrand";
 
 export interface PromptAttachment {
   /** The full human-facing line, e.g. "📎 ATTACH STORE/OFFICE IMAGE #2 — the billing counter". */
@@ -25,13 +26,39 @@ export interface PromptAttachment {
   url: string | null;
   /** The uploaded file's own name, so it can be matched in a file picker. */
   fileName: string | null;
+  /**
+   * The owner photos this prompt needs, in the order to attach them — "Owner photo 1 — the man, LEFT", then
+   * "Owner photo 2 — the woman, RIGHT" on a Real Owner Duo; one entry on a single Real Owner Face. Empty on
+   * every other ad. (2026-10-14: the reader knew only "IMAGE #n", so an owner frame was shown as "Nothing to
+   * attach" while its prompt asked for the owners' faces — and on a duo, for both, in order.)
+   */
+  ownerPhotos: string[];
+}
+
+/**
+ * The owner photos a directive asks for (utils/frameBrand writes them): the duo's "OWNER PHOTO 1 (the man,
+ * LEFT) and OWNER PHOTO 2 (the woman, RIGHT), in that order", or the single owner's OWNER IMAGE.
+ */
+function readOwnerPhotos(directive: string): string[] {
+  const duo = [...directive.matchAll(/OWNER PHOTO (\d+) \(the (man|woman), (LEFT|RIGHT|CENTRE)\)/g)]
+    .map((m) => `Owner photo ${m[1]} — the ${m[2]}, ${m[3]}`);
+  if (duo.length > 0) return duo;
+  return directive.includes(OWNER_IMAGE_ATTACHMENT) ? ["Owner image — the client's face photo"] : [];
+}
+
+/** How a toast or a tooltip says it: "owner photo 1, then owner photo 2" / "the owner image". */
+export function ownerPhotosInWords(ownerPhotos: string[]): string {
+  return ownerPhotos.length > 1
+    ? ownerPhotos.map((p) => p.split(" — ")[0].toLowerCase()).join(", then ")
+    : ownerPhotos.length === 1 ? "the owner image" : "";
 }
 
 /** `📎 ATTACH STORE/OFFICE IMAGE #2 — the billing counter` → number 2, zone "the billing counter". */
 function readDirective(directive: string): { photoNumber: number | null; zone: string | null } {
   const numbered = directive.match(/IMAGE #(\d+)/);
   if (!numbered) return { photoNumber: null, zone: null };
-  const zone = directive.split("—")[1]?.trim() || null;
+  // The owner's photo(s) are joined onto the same line with "  +  " (utils/frameBrand) — not part of the zone.
+  const zone = directive.split("—")[1]?.split(/\s+\+\s+/)[0]?.trim() || null;
   return { photoNumber: Number(numbered[1]), zone };
 }
 
@@ -62,6 +89,7 @@ export function buildPromptAttachments(
       zone,
       url: index >= 0 ? photoUrls[index] ?? null : null,
       fileName: index >= 0 ? fileNames[index] ?? null : null,
+      ownerPhotos: readOwnerPhotos(directive),
     };
   });
 }

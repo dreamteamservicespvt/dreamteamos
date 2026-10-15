@@ -23,6 +23,7 @@
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import admin from "firebase-admin";
+import { clientAnswerItems, piecesAwaitingClient } from "../src/utils/smmClientApproval.js";
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "{}");
@@ -554,6 +555,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })));
       }
 
+      return res.status(200).json({ success: true });
+    }
+
+    /**
+     * SMM Delivery Control, phase 7 (2026-10-15): the client approves a Social Media piece with one tap.
+     *
+     * For a Social Media month the chat id IS the month's id (a sold month's order id, or the month's own id for
+     * a month with no sale), so the guest's token — scoped to this one room — reaches exactly this one month and
+     * nothing else. `smm-approvals` lists what waits for their answer; `smm-answer` records it the way the team's
+     * `recordApproval` does (stage, approval, who) plus `approvalProof` (via the client chat), in a transaction,
+     * and tells the maker (changes) or the publisher (approved) and the salesperson. The rules are
+     * `utils/smmClientApproval` (pure, alias-free — `.js` because Vercel runs this file as Node ESM).
+     */
+    if (action === "smm-approvals" || action === "smm-answer") {
+      if (!(await isGuestOf(chatId, req.headers.authorization))) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+      const monthRef = adminDb.collection("smm_campaigns").doc(chatId);
+      if (action === "smm-approvals") {
+        const snap = await monthRef.get();
+        return res.status(200).json({ pieces: snap.exists ? piecesAwaitingClient(snap.data() as never) : [] });
+      }
+      const itemId = String(req.body.itemId || "");
+      const approved = req.body.approved === true;
+      const note = String(req.body.note || "").slice(0, 500);
+      const clientName = room.clientName || room.businessName || "The client";
+      let answered: { item: Record<string, unknown>; month: Record<string, unknown> } | null = null;
+      const problem = await adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(monthRef);
+        if (!snap.exists) return "This month is no longer available.";
+        const month = snap.data() as Record<string, unknown>;
+        const r = clientAnswerItems(month as never, itemId, {
+          approved, note, clientName, guestUid: guestUid(chatId), now: Date.now(), stamp: admin.firestore.Timestamp.now(),
+        });
+        if (r.problem || !r.items) return r.problem || "Not saved.";
+        tx.update(monthRef, { items: r.items, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        answered = { item: r.item as unknown as Record<string, unknown>, month };
+        return "";
+      });
+      if (problem) return res.status(409).json({ error: problem });
+      const done = answered as { item: Record<string, unknown>; month: Record<string, unknown> } | null;
+      if (done) {
+        const title = String(done.item.title || "").trim() || "a post";
+        const next = approved ? done.item.publisherUid : done.item.makerUid;
+        const audience = Array.from(new Set([next, done.month.soldBy].filter(Boolean) as string[]));
+        await Promise.all(audience.map((uid) => alertUser({
+          userId: uid,
+          type: approved ? "smm_approved" : "smm_changes",
+          title: approved ? "Client approved in their chat" : "Client asked for changes in their chat",
+          message: `${who} — ${title}${note ? `: ${note}` : ""}`,
+          link: `/smm/control/${chatId}`,
+        }).catch(() => undefined)));
+      }
       return res.status(200).json({ success: true });
     }
 

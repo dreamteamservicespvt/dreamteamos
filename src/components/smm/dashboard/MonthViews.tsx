@@ -24,7 +24,8 @@ export function MonthDelivery({ campaign, today, className = "" }: { campaign: S
   const due = (n: number) => (phase === "upcoming" ? 0 : phase === "ended" ? n : Math.floor(n * elapsed));
   const expected = due(f.committed);
   const daysLeft = daysLeftInCycle(campaign.cycle, today);
-  const platforms = postsByPlatform(campaign.items);
+  // Posts that went up on the month's own days, as `fulfilment` counts them (2026-10-15).
+  const platforms = postsByPlatform(campaign.items, campaign.cycle);
   const late = campaign.items.filter((i) => isOverdue(i, today)).length;
   const expectedPct = f.committed > 0 ? Math.min(100, (expected / f.committed) * 100) : 0;
 

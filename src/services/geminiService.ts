@@ -38,7 +38,7 @@ import { VOICE_NOTE_SYSTEM_PROMPT, voiceNoteUserPrompt } from "./prompts/voiceNo
 import { parseVoiceBrief, voiceBriefAsText, voiceBriefForProfile } from "@/utils/voiceBrief";
 import { audioMimeTypeOf } from "@/utils/fileHelpers";
 import { sameWords, splitScriptVerbatim, verbatimScriptText } from "@/utils/customScript";
-import { nameBoardInPlaceOfLogo, withOwnerFaceLock, withOwnerImageDirective } from "@/utils/frameBrand";
+import { nameBoardInPlaceOfLogo, withOwnerDuoFaceLock, withOwnerFaceLock, withOwnerImageDirective } from "@/utils/frameBrand";
 import { resolveModelSpec } from "@/utils/adRequirement";
 import type { AttireType, ModelGender } from "@/types/aiPlatform";
 import { parseClipPromptEdits, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
@@ -50,10 +50,13 @@ import {
   CHARACTER_MULTI_FRAME_SYSTEM_PROMPT,
   CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT,
   LOCATION_INDEX_SYSTEM_PROMPT,
+  castNoteFor,
+  contractRegisterFor,
   packPerformer,
   packVeoSubject,
   wardrobeDirective,
   ownerWardrobeDirective,
+  ownerDuoWardrobeDirective,
 } from "./prompts/characterAd";
 import {
   CORE_MESSAGE_SYSTEM_PROMPT, fallbackCoreMessageBrief, parseCoreMessageBrief, type CoreMessageBrief,
@@ -81,23 +84,28 @@ import {
 } from "@/utils/businessFacts";
 import { SCRIPT_QA_SYSTEM_PROMPT } from "./prompts/scriptQa";
 import {
-  isBetterDraft, parseScriptQa, qaDecision, qaInstructions, qaSummary, type ScriptQaReport, type ScriptQaSummary,
+  isBetterDraft, isPerfect, nextImprovement, parseScriptQa, qaInstructions, qaSummary, unscoredSummary, withMechanicalChecks,
+  SCRIPT_GATE_DEADLINE_MS, SCRIPT_IMPROVEMENT_PASSES, type DraftStanding, type ImprovementStop, type ScriptQaReport, type ScriptQaSummary,
 } from "@/utils/scriptQa";
 import {
-  assembleVeoPrompt, assembleRealPersonVeoPrompt, cameraShot, pairNamesOf, parseVeoDirections, planClipMotion, spokenLinesIn,
-  stagingPath, walkHint, withMotionComposition, withRealPersonComposition, withScaleAnchor, type ClipMotionPlan, type PairNames,
-  type VeoSpeech,
+  bandDistance, clipWordCountIssue, clipWordCounts, clipsAtPace, contractViolations, countSpokenWords, spokenWordsOf,
+} from "@/utils/scriptContract";
+import { TELUGU_SCREEN_CTA } from "./prompts/wordContract";
+import {
+  assembleVeoPrompt, assembleRealPersonDuoVeoPrompt, assembleRealPersonVeoPrompt, cameraShot, pairNamesOf, parseVeoDirections,
+  planClipMotion, spokenLinesIn, stagingPath, walkHint, withMotionComposition, withRealPersonComposition, withScaleAnchor,
+  type ClipMotionPlan, type PairNames, type RealOwnerSeat, type VeoSpeech,
 } from "./prompts/motion";
 import {
   VEO_REFINE_PLAN_SYSTEM_PROMPT, VEO_REFINE_SYSTEM_PROMPT, VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT, VOICEOVER_REFINE_PLAN_SYSTEM_PROMPT,
 } from "./prompts/refine";
 import {
-  changedClipIndexes, clipIndexesFromIssues, introducedIssues, isBetterRepair, issuesForClip, mergeClipEdits,
-  numberedWords, parseClipDialogueEdits, parseClipTextEdits, parseRefinePlan, repairDirection, wordBandDistance,
+  changedClipIndexes, clipIndexesFromIssues, editProblems, isBetterRepair, issuesForClip, mergeClipEdits,
+  numberedWords, parseClipDialogueEdits, parseClipTextEdits, parseRefinePlan, repairDirection,
 } from "@/utils/voiceOverRefine";
 import {
-  getCharacterPack, packSpeakers, packNameSpellings, isHumanPack, isKidsPack, packAdKind, packCastGender,
-  packModelGender, withCustomCharacter, type CharacterPack,
+  getCharacterPack, packSpeakers, packNameSpellings, isHumanPack, isKidsPack, isOwnerDuoPack, ownerPhotoFile, ownerPhotoSlots,
+  packAdKind, packCastGender, packModelGender, withCustomCharacter, type CharacterPack, type OwnerPhotoSlot,
 } from "./characterPacks";
 import {
   castNamesFromFrames, castPeopleFor, castSheetBlock, castSheetFor, castWardrobeLine, kidsWardrobeLine, themeTextOf, withCastSheet,
@@ -120,7 +128,7 @@ import {
 import {
   parseDialogueClips, readDialogueScript, validateDialogueClips, formatDialogueScript, applyNameSpellings,
   castIntegrityIssues, castScriptProblems, dialogueLabelsIn,
-  type DialogueClip, wordBudgetFor, countSpokenWords, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP,
+  type DialogueClip, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP,
 } from "@/utils/dialogueFormat";
 import { adSpecOf } from "@/utils/adSpec";
 import {
@@ -650,11 +658,23 @@ const packWardrobe = (pack: CharacterPack | null, formData: AdFormData, cast: Ca
       attireType: formData.attireType as AttireType,
       customAttire: formData.customAttire,
     }).attireType;
+    // The Real Owner Duo (2026-10-14): each owner dressed for themselves by side, the clothes only.
+    const owners = ownerPhotoSlots(pack);
+    if (owners.length > 1) return ownerDuoWardrobeDirective(attire, formData.customAttire, owners) || undefined;
     return ownerWardrobeDirective(attire, formData.customAttire, packCastGender(pack)) || undefined;
   }
   // The male & female duo is dressed per person from one choice — see wardrobeDirective.
   return wardrobeDirective(formData.attireType, formData.customAttire, packCastGender(pack), isKidsPack(pack)) || undefined;
 };
+
+/**
+ * The Real Owner Duo's two places (2026-10-14) — Owner 1 on the LEFT, Owner 2 on the RIGHT, each with their
+ * kind — for the frames' two-shot composition and the video prompt that names who speaks by side.
+ */
+const seatsOf = (slots: OwnerPhotoSlot[]): [RealOwnerSeat, RealOwnerSeat] => [
+  { kind: slots[0].kind, side: 'LEFT' },
+  { kind: slots[1].kind, side: 'RIGHT' },
+];
 
 /**
  * The special category for a run, with a Custom Character's description written into it.
@@ -681,7 +701,9 @@ const dialogueNameRules = (pack: CharacterPack, language: string) => {
     // A character who carries the ad alone is named "at most once, in clip 1" — the writer's own words.
     characterNames: isHumanPack(pack) ? [] : speakers.map(speaker => ({
       name: speaker.name,
-      tokens: [speaker.name, ...spellings.filter(s => s.name === speaker.name).map(s => s.spelling)],
+      // The name as it is SPOKEN counts too: every line is made speakable before it is checked, so "Ben 10"
+      // is on the page as "Ben ten" (2026-10-15 — the check used to look only for "Ben 10" and never found it).
+      tokens: [...new Set([speaker.name, speakableLine(speaker.name, language), ...spellings.filter(s => s.name === speaker.name).map(s => s.spelling)])],
       optional: speakers.length === 1,
     })),
     forbiddenNames: isHumanPack(pack)
@@ -1276,10 +1298,16 @@ IMPORTANT:
   if (sectionType === 'mainFrame') refined = stripUnverifiedNumbers(refined, contactKeysOf(businessInfo));
   // A Real Owner Face frame keeps its face lock through a refine — the model may drop a stamp it was
   // given (utils/frameBrand.withOwnerFaceLock, 2026-10-08). Each clip's prompt, between the separators.
+  // A Real Owner Duo frame keeps the duo's lock (each side ↔ its own photograph) and the line asking for
+  // both photographs in order (2026-10-14).
   if (sectionType === 'mainFrame' && pack?.usesClientFace) {
+    const owners = ownerPhotoSlots(pack);
+    const stamp = (frame: string) => owners.length > 1
+      ? withOwnerImageDirective(withOwnerDuoFaceLock(frame, owners), owners)
+      : withOwnerFaceLock(frame, packModelGender(pack));
     return refined
       .split(/(\s*###\s*CLIP\s*###\s*)/i)
-      .map((part, i) => (i % 2 === 0 && part.trim() ? withOwnerFaceLock(part.trim(), packModelGender(pack)) : part))
+      .map((part, i) => (i % 2 === 0 && part.trim() ? stamp(part.trim()) : part))
       .join('');
   }
   return refined;
@@ -1394,6 +1422,7 @@ export const refineVoiceOver = async (params: {
     festivalName: formData.festivalName,
     brief: params.coreMessage ?? null,
     speakers: pack ? speakers : undefined,
+    register: pack ? contractRegisterFor(pack) : undefined,
   });
   const editPrompt = (correction = '') => `SCRIPT (the whole script, for context):
 ${numbered}
@@ -1436,9 +1465,10 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
       const edits = new Map([...parseClipTextEdits(raw, plan.clips)].map(([i, t]) => [i, speakableLine(cleanScriptText(toSpokenEndings(t, language)), language)] as [number, string]));
       const merged = mergeClipEdits(lines, edits);
       const formatted = formatVoiceOverScript(merged);
+      // Every problem the edit created, and any clip it edited still outside 17–20 words (utils/voiceOverRefine editProblems).
       const problems = edits.size === 0
         ? ['Your reply contained no usable clips in the required JSON.']
-        : introducedIssues(before, validateVoiceOverSegments(formatted, merged, count, language, everyday, wishClip));
+        : editProblems(before, validateVoiceOverSegments(formatted, merged, count, language, everyday, wishClip), [...edits.keys()]);
       return { merged, formatted, problems };
     };
     let result = attempt(await edit());
@@ -1447,7 +1477,7 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
       const correction = plan.clips.map(i => {
         const clipProblems = issuesForClip(result.problems, i, count);
         return clipProblems.length
-          ? `- Clip ${i + 1}: ${repairDirection(clipProblems, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP)}\n  As you wrote it — ${numberedWords(tokenizeWords(result.merged[i]))}`
+          ? `- Clip ${i + 1}: ${repairDirection(clipProblems)}\n  As you wrote it — ${numberedWords(tokenizeWords(result.merged[i]))}`
           : '';
       }).filter(Boolean).concat(result.problems.filter(p => clipIndexesFromIssues([p], count).length === 0).map(p => `- ${p}`));
       const retry = attempt(await edit(correction.join('\n')));
@@ -1469,15 +1499,11 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
     return { script: result.formatted, changed, understood: plan.understood };
   }
 
-  const budget = wordBudgetFor(speakers.length);
   const spellings = packNameSpellings(pack, language);
+  // Held to the one contract (17–20 a clip, both lines together) like the writer — utils/scriptContract.
   const check = (clips: DialogueClip[]) => validateDialogueClips(clips, count, speakers, {
     // The writer's own name rules — a role label is never spoken, a named character is named once.
     ...dialogueNameRules(pack, language),
-    minWordsPerClip: budget.minClip,
-    maxWordsPerClip: budget.maxClip,
-    minWordsPerLine: budget.minLine,
-    maxWordsPerLine: budget.maxLine,
   }).concat(dialogueHardWordIssues(clips, language, ownNames, k => nameOf.get(k) ?? k));
   /** A speaker as the model wrote it — key, name, or position — resolved to the pack's own key. */
   const speakerKey = (raw: string, position: number) => {
@@ -1491,7 +1517,7 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
     const merged = applyNameSpellings(mergeClipEdits(dialogue, edits), spellings);
     const problems = edits.size === 0
       ? ['Your reply contained no usable clips in the required JSON.']
-      : introducedIssues(before, check(merged));
+      : editProblems(before, check(merged), [...edits.keys()]);
     return { merged, problems };
   };
   let result = attempt(await edit());
@@ -2144,13 +2170,13 @@ const cleanScriptText = (text: string): string => {
     .trim();
 };
 
-const tokenizeWords = (text: string): string[] => {
-  return text
-    .replace(/[\[\]{}()<>:;,.!?"'`~@#$%^&*+=_|\\/\-]+/g, ' ')
-    .split(/\s+/)
-    .map(w => w.trim())
-    .filter(Boolean);
-};
+/**
+ * The spoken words of a line — the ONE tokenizer (utils/scriptContract spokenWordsOf). This file used to
+ * keep its own, which counted a dash or an ellipsis standing between two words as a word and split
+ * "don't" in two, while the dialogue validator counted differently — so one clip could pass one check and
+ * fail the other.
+ */
+const tokenizeWords = (text: string): string[] => spokenWordsOf(text);
 
 const isLongWordClip = (words: string[]): boolean => {
   if (words.length === 0) return false;
@@ -2249,7 +2275,18 @@ const enforceClipWordCount = (clipText: string): string => {
   return result;
 };
 
-const normalizeVoiceOverSegments = (segments: string[], segmentCount: number): string[] => {
+/**
+ * The clips as they will be SPOKEN and shipped — what every check counts.
+ *
+ * `language` makes each clip speakable here (utils/spokenNumbers: numbers as words, మరియు as "mariyu",
+ * the festival's fixed spelling). That pass used to run only AFTER the script had been validated, repaired
+ * and judged, and it changes the word count — "₹999" is one token on the page and five spoken words — so
+ * the validated text was not the shipped text. It is idempotent, so a clip already speakable is unchanged.
+ *
+ * A clip the reply did not give is left EMPTY (it used to be filled with a copy of the last clip, which
+ * then surfaced only as a "duplicates clip" issue); an empty clip is a contract violation the repair fixes.
+ */
+const normalizeVoiceOverSegments = (segments: string[], segmentCount: number, language?: string): string[] => {
   const normalized = segments
     .map(s => cleanScriptText(s))
     .filter(Boolean)
@@ -2260,10 +2297,10 @@ const normalizeVoiceOverSegments = (segments: string[], segmentCount: number): s
   }
 
   while (normalized.length < segmentCount) {
-    normalized.push(normalized[normalized.length - 1]);
+    normalized.push('');
   }
 
-  return normalized.map(enforceClipWordCount);
+  return normalized.map(s => (s ? enforceClipWordCount(language ? speakableLine(s, language) : s) : ''));
 };
 
 const formatVoiceOverScript = (segments: string[]): string => {
@@ -2278,10 +2315,15 @@ const formatVoiceOverScript = (segments: string[]): string => {
 
 const CTA_OR_CONTACT_PATTERN = /(కాల్|సంప్రదించ|నంబర్|ఫోన్|వాట్సాప్|సంప్రదింపు|కాంటాక్ట్|విజిట్)/;
 const LATIN_OR_DIGIT_PATTERN = /[A-Za-z0-9]/;
-const FINAL_SCREEN_CTA = "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి.";
+const FINAL_SCREEN_CTA = TELUGU_SCREEN_CTA;
 const STRUCTURED_SEGMENT_PATTERN = /^(\d+\s*-\s*\d+)\s*:|^segment\s*\d+\s*:/i;
-const PHONE_DIGIT_WORD_PATTERN = /\b(జీరో|వన్|టూ|త్రీ|ఫోర్|ఫైవ్|సిక్స్|సెవెన్|ఎయిట్|నైన్)\b/g;
-const NATIVE_DIGIT_WORD_PATTERN = /\b(సున్నా|ఒకటి|రెండు|మూడు|నాలుగు|ఐదు|ఆరు|ఏడు|ఎనిమిది|తొమ్మిది)\b/g;
+/*
+  Spoken digits, as whole Telugu words. These used \b, which only knows ASCII letters — between a space and
+  a Telugu letter there is no \b, so neither pattern ever matched a Telugu script and a spoken phone number
+  passed unseen (found 2026-10-15). A word edge is now "not a letter, a vowel sign or a joiner".
+*/
+const PHONE_DIGIT_WORD_PATTERN = /(?<![\p{L}\p{M}\u{200C}\u{200D}])(జీరో|వన్|టూ|త్రీ|ఫోర్|ఫైవ్|సిక్స్|సెవెన్|ఎయిట్|నైన్)(?![\p{L}\p{M}\u{200C}\u{200D}])/gu;
+const NATIVE_DIGIT_WORD_PATTERN = /(?<![\p{L}\p{M}\u{200C}\u{200D}])(సున్నా|ఒకటి|రెండు|మూడు|నాలుగు|ఐదు|ఆరు|ఏడు|ఎనిమిది|తొమ్మిది)(?![\p{L}\p{M}\u{200C}\u{200D}])/gu;
 const MAX_VOICEOVER_REPAIR_PASSES = 2;
 
 const getStructuredSegmentLineCount = (script: string): number => {
@@ -2374,10 +2416,9 @@ const validateVoiceOverSegments = (
       issues.push(`Clip ${clipNumber} contains repeated adjacent words.`);
     }
 
-    // The band, not a single number — see utils/dialogueFormat.
-    if (words.length < MIN_WORDS_PER_CLIP || words.length > MAX_WORDS_PER_CLIP) {
-      issues.push(`Clip ${clipNumber} must contain ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words, but it has ${words.length}.`);
-    }
+    // The one contract (utils/scriptContract): 17–20 spoken words, counted by the one counter.
+    const countIssue = clipWordCountIssue(clipNumber, words.length);
+    if (countIssue) issues.push(countIssue);
 
     if (!isFinalClip && CTA_OR_CONTACT_PATTERN.test(segment)) {
       issues.push(`Clip ${clipNumber} leaks CTA or contact language before the final clip.`);
@@ -2418,9 +2459,9 @@ const validateVoiceOverSegments = (
   return issues;
 };
 
-const normalizeAndFormatVoiceOver = (script: string, segmentCount: number) => {
+const normalizeAndFormatVoiceOver = (script: string, segmentCount: number, language?: string) => {
   const parsed = parseVoiceOverSegments(script, segmentCount);
-  const segments = normalizeVoiceOverSegments(parsed, segmentCount);
+  const segments = normalizeVoiceOverSegments(parsed, segmentCount, language);
 
   return {
     rawScript: script,
@@ -2428,6 +2469,86 @@ const normalizeAndFormatVoiceOver = (script: string, segmentCount: number) => {
     segments,
     formatted: formatVoiceOverScript(segments)
   };
+};
+
+type NormalizedVoiceOver = ReturnType<typeof normalizeAndFormatVoiceOver>;
+
+/**
+ * Fixes ONLY the clips a problem names, and keeps a fix only when it is better (utils/voiceOverRefine
+ * isBetterRepair: never further from 17–20 words, then fewer problems). One implementation for the ad
+ * generator (generateAdAssets repairFailingClips) and the Script Duration Checker (convertToVoiceOverScript).
+ *
+ * The whole-script repair rewrites every clip to fix one, which is how a script with a perfect clip 1 and
+ * one short closing line could come back with clip 1's message gone. Clip-scoped problems — word counts, a
+ * leaked call to action, spoken digits, a judge's per-clip finding ("Clip 2: …") — are repaired clip by clip
+ * with the edit contract a member's refine uses, the direction and size of each word-count fix spelled out
+ * and the clip's words numbered by the one counter, so the model sees the count instead of guessing it. One
+ * wasted pass is not a reason to give up; only the second barren pass in a row ends it.
+ */
+const repairClipsByEdit = async (
+  current: NormalizedVoiceOver,
+  issues: string[],
+  ctx: {
+    segmentCount: number;
+    /** The editor's system prompt (VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT and the rules it is written under). */
+    systemInstruction: string;
+    /** The facts the edit may use, as the editor is shown them. */
+    facts: string;
+    /** Reads an edited script back into a draft — parsed and speakable, exactly as it ships. */
+    normalize: (script: string) => NormalizedVoiceOver;
+    /** Every problem with a draft. */
+    issuesOf: (draft: NormalizedVoiceOver) => string[];
+    /** Extra direction for one clip (0-based) — shown in the edit plan, never counted as a problem. */
+    hint?: (clipIndex: number) => string;
+  },
+): Promise<{ normalized: NormalizedVoiceOver; issues: string[] }> => {
+  const { segmentCount } = ctx;
+  const distanceOf = (draft: NormalizedVoiceOver) => bandDistance(clipWordCounts(draft.segments));
+  let best = current;
+  let bestIssues = issues;
+  let bestDistance = distanceOf(best);
+  let barren = 0;
+  for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 2 && bestIssues.length > 0 && barren < 2; pass++) {
+    const targets = clipIndexesFromIssues(bestIssues, segmentCount);
+    if (targets.length === 0 || best.segments.length !== segmentCount) break;
+    const userPrompt = `SCRIPT (the whole script, for context):
+${best.segments.map((s, i) => `Clip ${i + 1}: ${s}`).join('\n')}
+
+${ctx.facts}
+
+EDIT PLAN — fix these clips only, keeping their meaning:
+${targets.map(i => `- Clip ${i + 1}: ${repairDirection(issuesForClip(bestIssues, i, segmentCount))}${ctx.hint?.(i) ? ` ${ctx.hint(i)}` : ''}
+  Its words as they stand — ${numberedWords(spokenWordsOf(best.segments[i]))}
+  The clip must hold ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words. Count your rewritten clip the same way before you return it.`).join('\n')}
+
+Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
+    try {
+      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        config: { systemInstruction: ctx.systemInstruction, responseMimeType: 'application/json' },
+      }), { effort: 'standard' });
+      const edits = new Map([...parseClipTextEdits(response.text || '', targets)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string]));
+      if (edits.size === 0) break;
+      const candidate = ctx.normalize(formatVoiceOverScript(mergeClipEdits(best.segments, edits)));
+      const candidateIssues = ctx.issuesOf(candidate);
+      const candidateDistance = distanceOf(candidate);
+      // Keep a fix that gets closer even when it does not clear the issue outright; stop only when a
+      // pass makes nothing better.
+      if (!isBetterRepair({ issues: bestIssues, distance: bestDistance }, { issues: candidateIssues, distance: candidateDistance })) {
+        barren += 1;
+        continue;
+      }
+      barren = 0;
+      best = candidate;
+      bestIssues = candidateIssues;
+      bestDistance = candidateDistance;
+    } catch (err) {
+      console.warn('Clip-level voice-over repair failed; keeping the script as it was.', err);
+      break;
+    }
+  }
+  return { normalized: best, issues: bestIssues };
 };
 
 export const generateAdAssets = async (
@@ -2480,6 +2601,20 @@ export const generateAdAssets = async (
     if (voices.length > 0) {
       throw new Error(`Your script is a conversation between ${voices.map(v => `[${v}]`).join(' and ')}, but this ad has one presenter, who would say every line — labels included. `
         + `Choose the special category with those two people, or paste the script without the speaker labels.`);
+    }
+  }
+
+  /*
+    The Real Owner Duo (2026-10-14): each owner's face comes ONLY from their own photograph, so a run with
+    one of the two would invent the other person — the one thing this ad may never do. Refused before a
+    single call, naming the photo that is missing (the studio checks first; this is the generator's own guard).
+  */
+  const ownerSlots = ownerPhotoSlots(pack);
+  if (isOwnerDuoPack(pack)) {
+    const missing = ownerSlots.filter(slot => !ownerPhotoFile(files, slot));
+    if (missing.length > 0) {
+      throw new Error(`This is a ${pack!.label} ad: each owner's face comes only from their own photograph. `
+        + `Upload ${missing.map(s => `${s.name}'s photo (the ${s.kind} who stands on the ${s.side})`).join(' and ')}, then press Generate again.`);
     }
   }
 
@@ -2859,19 +2994,33 @@ export const generateAdAssets = async (
   };
 
   /**
-   * Generate → validate → repair, for the two-character script. Mirrors the standard loop.
-   * `feedback` is the quality gate's report on an earlier draft, when this is a second draft.
+   * The cast's script tools — the checks and spelling passes every dialogue draft, repair and polish
+   * shares, built ONCE per run (2026-10-15). The town's spoken spelling is one Gemini call, and it used to
+   * be asked again for every draft the quality gate wrote.
    */
-  const generateCharacterDialogue = async (feedback = ''): Promise<DialogueClip[]> => {
-    if (!pack) return [];
-    /** Key AND display name, so a script that labels lines `[Chhota Bheem]:` still resolves. */
-    const speakerVocabulary = packSpeakerList;
+  interface DialogueTools {
+    /** Every problem with a draft: the validator (cast, order, the 17–20 contract), hard words, where it is spoken from, the address. */
+    check: (clips: DialogueClip[]) => string[];
     /**
-     * The characters' names have one fixed spelling in the spoken language. Applied to every
-     * script that enters here — generated, repaired, or pasted — because the point is that the
-     * same character is never called two different things, whatever the source.
+     * The spelling passes, in order: the names' one spelling, spoken verb endings, then every line made
+     * speakable (numbers as words, "mariyu") — BEFORE any check, so what is counted is what ships. The
+     * speakable pass used to run after the checks and could change a clip's word count.
      */
-    const fixNames = (clips: DialogueClip[]) => applyNameSpellings(clips, packNameSpellings(pack, formData.language));
+    finish: (clips: DialogueClip[]) => DialogueClip[];
+    /** The town in the spelling the script must use: the native form when one was fixed, else the Latin name. */
+    promptPlace: string;
+  }
+  let dialogueToolsPromise: Promise<DialogueTools> | null = null;
+  const dialogueTools = (): Promise<DialogueTools> => {
+    if (!dialogueToolsPromise) dialogueToolsPromise = buildDialogueTools();
+    return dialogueToolsPromise;
+  };
+  const buildDialogueTools = async (): Promise<DialogueTools> => {
+    /**
+     * The characters' names have one fixed spelling in the spoken language. Applied to every generated
+     * script, because the point is that the same character is never called two different things.
+     */
+    const fixNames = (clips: DialogueClip[]) => applyNameSpellings(clips, packNameSpellings(pack!, formData.language));
     /**
      * Each character's name and every spelling of it, so "both names, each exactly once" is
      * enforced per character rather than merely requested. A single total would let a script say
@@ -2880,30 +3029,7 @@ export const generateAdAssets = async (
      * be said out loud made the two women call each other "Friend"; their labels are FORBIDDEN instead.
      * One rule with the refine (dialogueNameRules).
      */
-    const { characterNames, forbiddenNames } = dialogueNameRules(pack, formData.language);
-    /**
-     * A member's own script is used word for word — see utils/customScript.
-     *
-     * Already in speaker form: exactly as written (the characters' names are not even respelt; the
-     * member chose them). A single-speaker category needs no speaker lines, so its clips — or its
-     * unlabelled text, cut at sentence boundaries — become that character's lines unchanged. A
-     * two-speaker category cannot guess who says which sentence, and guessing is how lines landed in
-     * the wrong character's mouth: its script was read as this cast at the start of the run, and one
-     * that does not say who speaks never reaches here (castScriptProblems).
-     */
-    if (customScript?.trim()) {
-      if (pastedDialogue.length > 0) {
-        return pastedDialogue.map(clip => clip.map(line => ({ ...line, text: verbatimScriptText(line.text) })));
-      }
-      if (packSpeakerList.length === 1) {
-        const texts = preSplitCustomClips.length > 0
-          ? preSplitCustomClips.map(verbatimScriptText)
-          : splitScriptVerbatim(customScript, segmentCount);
-        return texts.map(text => [{ speaker: packSpeakerList[0].key, text }]);
-      }
-      throw new Error('A two-person script has to say who speaks each line — paste it with its [Speaker]: labels.');
-    }
-
+    const { characterNames, forbiddenNames } = dialogueNameRules(pack!, formData.language);
     const spokenPlace = await resolveSpokenPlace();
     /**
      * Which clip has to carry the town.
@@ -2942,33 +3068,24 @@ export const generateAdAssets = async (
         });
       }
     }
-    /**
-     * Validated against the budget for THIS cast.
-     *
-     * The default bands assume two speakers: 18-20 words a clip, 8-12 a line. On a single-speaker
-     * entry — a deity, a solo cartoon, the owner's own face — the one line has to satisfy both,
-     * which nothing can. Every clip failed, every script fell into the repair loop, and the repair
-     * prompt re-imposed the same impossible pair. See wordBudgetFor.
-     */
-    const budget = wordBudgetFor(packSpeakerList.length);
     const speakerName = (key: string) => packSpeakerList.find(s => s.key === key)?.name ?? key;
     // The town, in both spellings, joins the business's names: a name is never a hard word.
     const ownNames = [...(everyday?.names ?? []), placeName, spokenPlace].filter(Boolean) as string[];
     /*
+     * Validated against the ONE contract (utils/scriptContract): 17–20 spoken words in every clip, the two
+     * lines of a two-person clip together, whoever the cast is — validateDialogueClips no longer takes a
+     * clip band from its caller, so no category can be checked against a different one.
+     *
      * A human cast has role labels, not names — Girl, Boy, Friend, Host. Scripts came back with the
      * two of them addressing each other by the label, in Telugu, which reads to a client like a
-     * template nobody finished. The pack text asked for it not to happen; `forbiddenNames` (above) is
-     * what checks it, so the repair pass rewrites the line instead of it being delivered.
+     * template nobody finished. `forbiddenNames` (above) is what checks it, so the repair pass rewrites
+     * the line instead of it being delivered.
      */
-    const checkDialogue = (clips: DialogueClip[]) =>
+    const check = (clips: DialogueClip[]) =>
       validateDialogueClips(clips, segmentCount, packSpeakerList, {
         characterNames,
         forbiddenNames,
         requiredPhrases,
-        minWordsPerClip: budget.minClip,
-        maxWordsPerClip: budget.maxClip,
-        minWordsPerLine: budget.minLine,
-        maxWordsPerLine: budget.maxLine,
       }).concat(dialogueHardWordIssues(clips, formData.language, ownNames, speakerName))
         // The characters are standing inside the business in every frame — see utils/speakingPosition.
         .concat(clips.flatMap((clip, i) => clip
@@ -2976,23 +3093,154 @@ export const generateAdAssets = async (
           .filter((issue): issue is string => !!issue)))
         // The address: said in the last clip when the client gave one, never invented when not.
         .concat(addressIssues(clips.map(clip => clip.map(line => line.text).join(' ')), ownNames));
-    /** Written verb endings made spoken, in code — see toSpokenEndings. */
-    const spokenLines = (clips: DialogueClip[]): DialogueClip[] =>
-      clips.map(clip => clip.map(line => ({ ...line, text: toSpokenEndings(line.text, formData.language) })));
+    const finish = (clips: DialogueClip[]): DialogueClip[] => fixNames(clips).map(clip => clip.map(line => ({
+      ...line,
+      text: speakableLine(toSpokenEndings(line.text, formData.language), formData.language),
+    })));
+    return { check, finish, promptPlace: spokenPlace || placeName };
+  };
 
-    // The spelling the script must use: the native form when we could get one, else the Latin name.
-    const promptPlace = spokenPlace || placeName;
+  /** How far a cast script's clips sit outside 17–20 words, summed (the clip total — both lines). */
+  const dialogueDistance = (clips: DialogueClip[]) =>
+    bandDistance(clips.map(clip => clip.reduce((sum, line) => sum + countSpokenWords(line.text), 0)));
+  /** Only a problem that names no clip needs the whole script rewritten. */
+  const scriptLevelIssue = (issues: string[]) => issues.some(i => !/^(Clip \d+|Final clip)\b/.test(i));
+  /*
+    The words the FINAL clip must keep word for word — the Telugu closing call line (a single voice) and the
+    verified address — and how many words they leave (2026-10-15, found live: a Telugu final clip kept a
+    9-word call line, a 5-word address AND an offer, and no repair got it under 22 words). Every repair of
+    that clip is told the room exactly: a short invitation, and no other offer or detail.
+  */
+  const finalClipFixed = [!pack && isTeluguScript(formData.language) ? FINAL_SCREEN_CTA : '', sayAddress].filter(Boolean);
+  const finalClipHint = (clipIndex: number): string => {
+    if (clipIndex !== segmentCount - 1 || finalClipFixed.length === 0) return '';
+    const used = finalClipFixed.reduce((sum, words) => sum + countSpokenWords(words), 0);
+    return `This final clip must keep ${finalClipFixed.map(f => `"${f}"`).join(' and ')} word for word (${used} words), which leaves room for `
+      + `${Math.max(0, MIN_WORDS_PER_CLIP - used)}–${Math.max(0, MAX_WORDS_PER_CLIP - used)} other words: a short invitation only — leave out any other offer or detail.`;
+  };
 
+  /**
+   * A member's own cast script — used word for word (utils/customScript).
+   *
+   * Already in speaker form: exactly as written (the characters' names are not even respelt; the
+   * member chose them). A single-speaker category needs no speaker lines, so its clips — or its
+   * unlabelled text, cut at sentence boundaries — become that character's lines unchanged. A
+   * two-speaker category cannot guess who says which sentence, and guessing is how lines landed in
+   * the wrong character's mouth: its script was read as this cast at the start of the run, and one
+   * that does not say who speaks never reaches here (castScriptProblems). It is never held to the
+   * 17–20 contract — a member's script is not ours to rewrite.
+   */
+  const pastedCharacterDialogue = (): DialogueClip[] => {
+    if (pastedDialogue.length > 0) {
+      return pastedDialogue.map(clip => clip.map(line => ({ ...line, text: verbatimScriptText(line.text) })));
+    }
+    if (packSpeakerList.length === 1) {
+      const texts = preSplitCustomClips.length > 0
+        ? preSplitCustomClips.map(verbatimScriptText)
+        : splitScriptVerbatim(customScript || '', segmentCount);
+      return texts.map(text => [{ speaker: packSpeakerList[0].key, text }]);
+    }
+    throw new Error('A two-person script has to say who speaks each line — paste it with its [Speaker]: labels.');
+  };
+
+  /**
+   * Fixes ONLY the clips a problem names — the cast's counterpart of repairFailingClips — and keeps an
+   * edit only when it is better (utils/voiceOverRefine isBetterRepair: never further from 17–20 words,
+   * then fewer problems). `extra` carries problems code cannot see, the quality judge's per clip, for a
+   * targeted polish; they are worded "Clip N: …" so they are routed to their clip.
+   *
+   * ── Why per clip ───────────────────────────────────────────────────────────────────────────────
+   * The whole-script repair gave up on a 16-word closing clip in live testing; this edits only that
+   * clip, shows the model its lines counted by the one counter, and keeps any fix that gets closer to
+   * the band. One wasted pass is not a reason to give up — counting words in Telugu script is exactly
+   * what these models are worst at — so only the second barren pass in a row ends it.
+   */
+  const repairDialogueClips = async (start: DialogueClip[], startIssues: string[]): Promise<{ clips: DialogueClip[]; issues: string[] }> => {
+    const tools = await dialogueTools();
+    let clips = start;
+    let issues = startIssues;
+    const nameOfKey = new Map(packSpeakerList.map(s => [s.key, s.name]));
+    const speakerKeyOf = (raw: string, position: number) => {
+      const t = raw.trim().toLowerCase();
+      return packSpeakerList.find(s => s.key === t || s.name.toLowerCase() === t)?.key ?? packSpeakerList[position]?.key ?? t;
+    };
+    let barren = 0;
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 2 && issues.length > 0 && barren < 2; pass++) {
+      const targets = clipIndexesFromIssues(issues, segmentCount);
+      if (targets.length === 0 || clips.length !== segmentCount) break;
+      const userPrompt = `SCRIPT (the whole script, for context):
+${clips.map((c, i) => `Clip ${i + 1}:\n${c.map(l => `  [${nameOfKey.get(l.speaker) ?? l.speaker}]: ${l.text}`).join('\n')}`).join('\n\n')}
+
+BUSINESS INFORMATION:
+${JSON.stringify(businessInfo, null, 2)}
+
+EDIT PLAN — fix these clips only, keeping their meaning and every speaker:
+${targets.map(i => {
+  const total = clips[i].reduce((sum, l) => sum + countSpokenWords(l.text), 0);
+  return `- Clip ${i + 1}: ${repairDirection(issuesForClip(issues, i, segmentCount))}${finalClipHint(i) ? ` ${finalClipHint(i)}` : ''}
+  Its lines as they stand (${total} words in all) — ${clips[i].map(l => `${nameOfKey.get(l.speaker) ?? l.speaker}: ${numberedWords(spokenWordsOf(l.text))}`).join('  |  ')}
+  The clip must total ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words${packSpeakerList.length > 1 ? ' across its lines together' : ''}. Count your rewritten lines the same way before you return them.`;
+}).join('\n')}
+
+Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
+      try {
+        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          config: {
+            systemInstruction: buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
+              language: formData.language || 'Telugu',
+              clipCount: segmentCount,
+              adType: formData.adType,
+              festivalName: formData.festivalName,
+              brief: coreMessage,
+              speakers: packSpeakerList,
+              register: contractRegisterFor(pack!),
+              address: sayAddress || latinAddress,
+            }) + addressRule,
+            responseMimeType: 'application/json',
+          },
+        }), { effort: 'standard' });
+        const edits = new Map([...parseClipDialogueEdits(response.text || '', targets)].map(([i, ls]) =>
+          [i, ls.map((l, p) => ({ speaker: speakerKeyOf(l.speaker, p), text: l.text }))] as [number, DialogueClip]));
+        if (edits.size === 0) break;
+        const candidate = tools.finish(mergeClipEdits(clips, edits));
+        const candidateIssues = tools.check(candidate);
+        if (!isBetterRepair({ issues, distance: dialogueDistance(clips) }, { issues: candidateIssues, distance: dialogueDistance(candidate) })) {
+          barren += 1;
+          continue;
+        }
+        barren = 0;
+        clips = candidate;
+        issues = candidateIssues;
+      } catch (err) {
+        console.warn('Clip-level dialogue repair failed; keeping the script as it was.', err);
+        break;
+      }
+    }
+    if (issues.length > 0) console.warn('Character dialogue issues remain after repair:', issues);
+    return { clips, issues };
+  };
+
+  /**
+   * One generated cast script: written, read as THIS cast, then repaired — the whole script only for a
+   * problem that names no clip (a lost clip, a name said twice), and clip by clip for the rest.
+   * `feedback` tells a new draft what an earlier one got wrong (the quality gate, the cast, the budget).
+   */
+  const writeDialogueDraft = async (feedback = ''): Promise<DialogueClip[]> => {
+    if (!pack) return [];
+    const tools = await dialogueTools();
     const systemPrompt = CHARACTER_VOICEOVER_SYSTEM_PROMPT(
-      pack, effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, promptPlace,
+      pack, effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, tools.promptPlace,
       coreMessage,
     ) + addressRule;
+    const townClip = formData.adType === 'festival' && segmentCount > 1 ? 2 : 1;
     const userPrompt = `Write the ${segmentCount}-clip ${packAdKind(pack).script} for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName} (clip 1 is the wishes on behalf of the business and sells nothing)` : ''}
   ${placeName ? `TOWN / VILLAGE (must be spoken once, in clip ${townClip}): ${placeName}` : ''}
-  DURATION: ${effectiveDuration} seconds (${segmentCount} clips of ${CLIP_SECONDS} seconds)`;
+  DURATION: ${effectiveDuration} seconds (${segmentCount} clips of ${CLIP_SECONDS} seconds, ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words in each clip)`;
 
     const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
       model,
@@ -3000,10 +3248,10 @@ export const generateAdAssets = async (
       config: { systemInstruction: systemPrompt },
     }), { effort: 'deep' });
 
-    let clips = spokenLines(fixNames(parseDialogueClips(response.text || '', speakerVocabulary)));
-    let issues = checkDialogue(clips);
+    let clips = tools.finish(parseDialogueClips(response.text || '', packSpeakerList));
+    let issues = tools.check(clips);
 
-    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0; pass++) {
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0 && scriptLevelIssue(issues); pass++) {
       const repairPrompt = `Repair this ${packAdKind(pack).script} using only verified business facts.
 
 BUSINESS INFORMATION:
@@ -3022,181 +3270,76 @@ Return only the repaired ${segmentCount} clips.`;
         contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
         config: {
           systemInstruction: CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(
-            pack, effectiveDuration, segmentCount, formData.language, promptPlace,
+            pack, effectiveDuration, segmentCount, formData.language, tools.promptPlace,
             formData.adType, formData.festivalName,
           ) + addressRule,
         },
       }), { effort: 'standard' });
 
-      const next = spokenLines(fixNames(parseDialogueClips(repaired.text || '', speakerVocabulary)));
-      // Only accept a repair that genuinely improves things — a worse rewrite is discarded.
-      const nextIssues = checkDialogue(next);
-      if (next.length > 0 && nextIssues.length < issues.length) {
+      const next = tools.finish(parseDialogueClips(repaired.text || '', packSpeakerList));
+      // Only a repair that is genuinely better is kept — never one that moves a clip further from 17–20 words.
+      const nextIssues = tools.check(next);
+      if (next.length > 0 && isBetterRepair({ issues, distance: dialogueDistance(clips) }, { issues: nextIssues, distance: dialogueDistance(next) })) {
         clips = next;
         issues = nextIssues;
       } else break;
     }
 
-    /**
-     * Whatever is still wrong inside individual clips — a clip under the 18-word floor, one line too
-     * short — is fixed clip by clip, the same way a normal ad's script is (repairFailingClips). The
-     * whole-script repair above gave up on a 16-word closing clip in live testing; this edits only that
-     * clip, shows the model its lines counted, and keeps any fix that gets closer to the band.
-     */
-    const nameOfKey = new Map(packSpeakerList.map(s => [s.key, s.name]));
-    const distanceOf = (list: DialogueClip[]) => wordBandDistance(
-      list.map(c => c.reduce((sum, l) => sum + countSpokenWords(l.text), 0)), budget.minClip, budget.maxClip,
-    );
-    const speakerKeyOf = (raw: string, position: number) => {
-      const t = raw.trim().toLowerCase();
-      return packSpeakerList.find(s => s.key === t || s.name.toLowerCase() === t)?.key ?? packSpeakerList[position]?.key ?? t;
-    };
-    /**
-     * One wasted pass is not a reason to give up.
-     *
-     * A live run finished with two clips at 17 words because the first pass came back no better and
-     * the loop stopped there. Counting words in Telugu script is exactly what these models are worst
-     * at, and asking the same clip again usually lands it — so a pass that improves nothing costs a
-     * strike, and only the second strike in a row ends the repair.
-     */
-    let barren = 0;
-    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 2 && issues.length > 0 && barren < 2; pass++) {
-      const targets = clipIndexesFromIssues(issues, segmentCount);
-      if (targets.length === 0 || clips.length !== segmentCount) break;
-      const userPrompt = `SCRIPT (the whole script, for context):
-${clips.map((c, i) => `Clip ${i + 1}:\n${c.map(l => `  [${nameOfKey.get(l.speaker) ?? l.speaker}]: ${l.text}`).join('\n')}`).join('\n\n')}
-
-BUSINESS INFORMATION:
-${JSON.stringify(businessInfo, null, 2)}
-
-EDIT PLAN — fix these clips only, keeping their meaning and both speakers:
-${targets.map(i => `- Clip ${i + 1}: ${repairDirection(issuesForClip(issues, i, segmentCount), budget.minClip, budget.maxClip)}
-  Its lines as they stand — ${clips[i].map(l => `${nameOfKey.get(l.speaker) ?? l.speaker}: ${numberedWords(l.text.split(/\s+/).filter(Boolean))}`).join('  |  ')}
-  The clip must total ${budget.minClip}–${budget.maxClip} words. Count your rewritten lines the same way before you return them.`).join('\n')}
-
-Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
-      try {
-        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-          model,
-          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          config: {
-            systemInstruction: buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
-              language: formData.language || 'Telugu',
-              clipCount: segmentCount,
-              adType: formData.adType,
-              festivalName: formData.festivalName,
-              brief: coreMessage,
-              speakers: packSpeakerList,
-            }) + addressRule,
-            responseMimeType: 'application/json',
-          },
-        }), { effort: 'standard' });
-        const edits = new Map([...parseClipDialogueEdits(response.text || '', targets)].map(([i, ls]) =>
-          [i, ls.map((l, p) => ({ speaker: speakerKeyOf(l.speaker, p), text: l.text }))] as [number, DialogueClip]));
-        if (edits.size === 0) break;
-        const candidate = spokenLines(fixNames(mergeClipEdits(clips, edits)));
-        const candidateIssues = checkDialogue(candidate);
-        if (!isBetterRepair({ issues, distance: distanceOf(clips) }, { issues: candidateIssues, distance: distanceOf(candidate) })) {
-          barren += 1;
-          continue;
-        }
-        barren = 0;
-        clips = candidate;
-        issues = candidateIssues;
-      } catch (err) {
-        console.warn('Clip-level dialogue repair failed; keeping the script as it was.', err);
-        break;
-      }
-    }
-
-    if (issues.length > 0) console.warn('Character dialogue issues remain after repair:', issues);
-    return clips;
+    return (await repairDialogueClips(clips, issues)).clips;
   };
+
 
   /**
-   * Fixes ONLY the clips that failed validation, and keeps a fix only if it leaves fewer problems.
-   *
-   * The whole-script repair below rewrites every clip to fix one, which is how a script with a
-   * perfect clip 1 and one short closing line could come back with clip 1's message gone. And it
-   * accepted whatever it got back, better or worse. Clip-scoped problems — word counts, a leaked call
-   * to action, spoken digits — are now repaired clip by clip with the same edit contract a member's
-   * refine uses, with the direction and size of each word-count fix spelled out.
+   * A single-voice draft as it will be spoken and shipped: parsed, its endings made spoken and every clip
+   * made speakable (normalizeVoiceOverSegments) — so the checks below count exactly what ships.
    */
-  const repairFailingClips = async (current: ReturnType<typeof normalizeAndFormatVoiceOver>, issues: string[]) => {
-    let best = current;
-    let bestIssues = issues;
-    const distanceOf = (segments: string[]) =>
-      wordBandDistance(segments.map(s => tokenizeWords(s).length), MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP);
-    let bestDistance = distanceOf(best.segments);
-    let barren = 0;
-    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 2 && bestIssues.length > 0 && barren < 2; pass++) {
-      const targets = clipIndexesFromIssues(bestIssues, segmentCount);
-      if (targets.length === 0 || best.segments.length !== segmentCount) break;
-      const systemInstruction = buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
-        language: formData.language || 'Telugu',
-        clipCount: segmentCount,
-        adType: formData.adType,
-        festivalName: formData.festivalName,
-        brief: coreMessage,
-      }) + addressRule;
-      const userPrompt = `SCRIPT (the whole script, for context):
-${best.segments.map((s, i) => `Clip ${i + 1}: ${s}`).join('\n')}
+  const normalizeDraft = (script: string) => normalizeAndFormatVoiceOver(spoken(script), segmentCount, formData.language);
+  type VoiceDraft = ReturnType<typeof normalizeDraft>;
+  /** Every problem with a single-voice draft: the validator (the 17–20 contract and the rest) and the address. */
+  const voiceIssuesOf = (draft: VoiceDraft): string[] =>
+    validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined)
+      .concat(addressIssues(draft.segments, everyday?.names));
+  /** How far a draft's clips sit outside 17–20 spoken words, summed. */
+  const voiceDistance = (draft: VoiceDraft) => bandDistance(clipWordCounts(draft.segments));
 
-BUSINESS INFORMATION:
-${JSON.stringify(businessInfo, null, 2)}
+  /**
+   * Fixes ONLY the clips a problem names — this run's facts and rules around the shared clip repair
+   * (repairClipsByEdit). `issues` may also carry the quality judge's per-clip problems ("Clip 2: …") for a
+   * targeted polish (2026-10-15).
+   */
+  const repairFailingClips = (current: VoiceDraft, issues: string[]) => repairClipsByEdit(current, issues, {
+    segmentCount,
+    systemInstruction: buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
+      language: formData.language || 'Telugu',
+      clipCount: segmentCount,
+      adType: formData.adType,
+      festivalName: formData.festivalName,
+      brief: coreMessage,
+      address: sayAddress || latinAddress,
+    }) + addressRule,
+    facts: `BUSINESS INFORMATION:\n${JSON.stringify(businessInfo, null, 2)}`,
+    normalize: normalizeDraft,
+    issuesOf: voiceIssuesOf,
+    hint: finalClipHint,
+  });
 
-EDIT PLAN — fix these clips only, keeping their meaning:
-${targets.map(i => `- Clip ${i + 1}: ${repairDirection(issuesForClip(bestIssues, i, segmentCount), MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP)}
-  Its words as they stand — ${numberedWords(tokenizeWords(best.segments[i]))}
-  Count your rewritten clip the same way before you return it.`).join('\n')}
-
-Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
-      try {
-        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-          model,
-          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          config: { systemInstruction, responseMimeType: 'application/json' },
-        }), { effort: 'standard' });
-        const edits = new Map([...parseClipTextEdits(response.text || '', targets)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string]));
-        if (edits.size === 0) break;
-        const merged = mergeClipEdits(best.segments, edits);
-        const candidate = normalizeAndFormatVoiceOver(spoken(formatVoiceOverScript(merged)), segmentCount);
-        const candidateIssues = validateVoiceOverSegments(candidate.rawScript, candidate.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined)
-          .concat(addressIssues(candidate.segments, everyday?.names));
-        const candidateDistance = distanceOf(candidate.segments);
-        // Keep a fix that gets closer even when it does not clear the issue outright; stop only when a
-        // pass makes nothing better.
-        if (!isBetterRepair({ issues: bestIssues, distance: bestDistance }, { issues: candidateIssues, distance: candidateDistance })) {
-          barren += 1;
-          continue;
-        }
-        barren = 0;
-        best = candidate;
-        bestIssues = candidateIssues;
-        bestDistance = candidateDistance;
-      } catch (err) {
-        console.warn('Clip-level voice-over repair failed; keeping the script as it was.', err);
-        break;
-      }
-    }
-    return { normalized: best, issues: bestIssues };
-  };
 
   const applyVoiceOverRepairIfNeeded = async (candidateScript: string) => {
-    let normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(candidateScript), segmentCount);
-    let voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined)
-      .concat(addressIssues(normalizedVoiceOver.segments, everyday?.names));
+    let normalizedVoiceOver = normalizeDraft(candidateScript);
+    let voiceOverIssues = voiceIssuesOf(normalizedVoiceOver);
 
     // Problems inside clips are fixed clip by clip; only a script-level problem (a wrong clip count)
     // still needs the whole script rewritten.
-    const scriptLevel = (issues: string[]) => issues.some(i => !/^(Clip \d+|Final clip)\b/.test(i));
-    if (voiceOverIssues.length > 0 && !scriptLevel(voiceOverIssues)) {
+    /** Whether the clip-level repair has already worked on THIS text — it is never run twice on the same draft. */
+    let clipRepairDone = false;
+    if (voiceOverIssues.length > 0 && !scriptLevelIssue(voiceOverIssues)) {
       const fixed = await repairFailingClips(normalizedVoiceOver, voiceOverIssues);
       normalizedVoiceOver = fixed.normalized;
       voiceOverIssues = fixed.issues;
+      clipRepairDone = true;
     }
 
-    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0 && scriptLevel(voiceOverIssues); pass++) {
+    for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && voiceOverIssues.length > 0 && scriptLevelIssue(voiceOverIssues); pass++) {
       const repairSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_REPAIR_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, coreMessage) + addressRule;
       const repairUserPrompt = `Repair this ${formData.language || 'Telugu'} voice-over script using only verified business facts.
 
@@ -3219,13 +3362,22 @@ Return only the repaired ${segmentCount} clip lines.`;
         });
       }, { effort: 'standard' });
 
-      normalizedVoiceOver = normalizeAndFormatVoiceOver(spoken(repairResponse.text || normalizedVoiceOver.formatted), segmentCount);
-      voiceOverIssues = validateVoiceOverSegments(normalizedVoiceOver.rawScript, normalizedVoiceOver.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined)
-      .concat(addressIssues(normalizedVoiceOver.segments, everyday?.names));
+      /*
+        Kept only when it is better (2026-10-15). The whole-script repair's answer used to replace the
+        draft unconditionally — a repair asked to fix the clip count could hand back clips that were
+        all fine before and now 23 words long, and that was what shipped.
+      */
+      const next = normalizeDraft(repairResponse.text || normalizedVoiceOver.formatted);
+      const nextIssues = voiceIssuesOf(next);
+      if (!isBetterRepair({ issues: voiceOverIssues, distance: voiceDistance(normalizedVoiceOver) }, { issues: nextIssues, distance: voiceDistance(next) })) break;
+      normalizedVoiceOver = next;
+      voiceOverIssues = nextIssues;
+      clipRepairDone = false;
     }
 
-    // Whatever the whole-script repair left inside individual clips gets the clip-level fix too.
-    if (voiceOverIssues.length > 0 && !scriptLevel(voiceOverIssues)) {
+    // Whatever the whole-script repair left inside individual clips gets the clip-level fix too — once per
+    // text (it used to run a second time on the very draft it had just failed on: two to four calls for nothing).
+    if (!clipRepairDone && voiceOverIssues.length > 0 && clipIndexesFromIssues(voiceOverIssues, segmentCount).length > 0) {
       const fixed = await repairFailingClips(normalizedVoiceOver, voiceOverIssues);
       normalizedVoiceOver = fixed.normalized;
       voiceOverIssues = fixed.issues;
@@ -3237,6 +3389,7 @@ Return only the repaired ${segmentCount} clip lines.`;
 
     return normalizedVoiceOver;
   };
+
 
   // Native-speaker linguistic QA / self-refine pass (see VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT
   // in prompts.ts for the full rationale). applyVoiceOverRepairIfNeeded only enforces MECHANICAL
@@ -3348,7 +3501,9 @@ Review it now and return the JSON verdict.` }] }],
     if (announce) onProgress("Planning a different background for every clip...", 42);
     const subject = pack
       ? (isHumanPack(pack)
-          ? (pack.characters.length > 1 ? (isKidsPack(pack) ? 'the two children' : 'the two presenters') : 'the presenter')
+          ? (pack.characters.length > 1
+              ? (isKidsPack(pack) ? 'the two children' : isOwnerDuoPack(pack) ? "the business's two owners" : 'the two presenters')
+              : 'the presenter')
           : pack.characters.map(c => c.name).join(' and '))
       : `the ${formData.gender === 'male' ? 'male' : 'female'} brand ambassador`;
     const systemInstruction = SCENE_PLAN_SYSTEM_PROMPT({
@@ -3412,19 +3567,30 @@ Review it now and return the JSON verdict.` }] }],
 
   /*
     ── The QUALITY GATE (services/prompts/scriptQa, utils/scriptQa) ────────────────────────────────
-    Every script the platform writes — single voice or a cast — is judged by a separate model that
-    never rewrites: it checks every claim against the business facts and scores language, persuasion,
-    clarity, relevance and how it speaks. Code decides from the scores: ship it, polish it with the
-    judge's exact problems, or write a NEW draft told what the last one got wrong. Each new draft is
-    judged again, and the best of up to three ships. A member's own script is never judged or touched.
-    A judge that cannot run (quota, a broken reply) never blocks the ad — the draft ships as it is.
+    generate → validate → repair → judge → improve → validate and judge again, until 10/10 or the budget
+    is spent (2026-10-15; before it: judge once, ship at ≥ 8/10, best of three).
+
+    Every script the platform writes — single voice or a cast — is checked in code (the 17–20 word
+    contract on the exact text, the cast, the language and placement rules) and judged by a separate model
+    that never rewrites. Code turns the judge's rubric scores and its own findings into one score
+    (utils/scriptQa withMechanicalChecks), then improves the BEST draft: targeted edits of the clips the
+    problems name (a polish), or a new draft told exactly what failed (a rewrite). Every candidate is
+    checked and judged again and replaces the best only when it is better — the cast first, then the word
+    contract, then the score. The loop stops at a genuine 10/10, after SCRIPT_IMPROVEMENT_PASSES passes,
+    after two rounds that found nothing better, or at SCRIPT_GATE_DEADLINE_MS (utils/scriptQa
+    nextImprovement), and the kit reports the real score, the passes and why it stopped. A member's own
+    script is never judged or touched. A judge that cannot run never blocks the ad — but nothing it did not
+    judge is ever called 10/10.
   */
-  const MAX_SCRIPT_DRAFTS = 3;
-  /** How long the extra drafts may take, together, before the best draft so far ships. */
-  const SCRIPT_GATE_DEADLINE_MS = 60_000;
+  /** Who the judge must hear — the cast's own identity, so a deity is held to a blessing, not a sales pitch. */
+  const castNote = pack ? castNoteFor(pack) : '';
+  /** A two-person clip is counted across both lines together (utils/scriptContract). */
+  const contractCast = packSpeakerList.length > 1;
+  /** The fixed closing sentence the judge must not penalise — a Telugu single-voice ad only. */
+  const closingLine = !pack && isTeluguScript(formData.language) ? `"${FINAL_SCREEN_CTA}"` : '';
   let scriptQa: ScriptQaSummary | null = null;
-  const judgeScript = async (script: string): Promise<ScriptQaReport | null> => {
-    try {
+  const judgeScript = async (script: string, clipWords: number[]): Promise<ScriptQaReport | null> => {
+    const ask = async (note = '') => {
       const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
         model,
         contents: [{ role: 'user', parts: [{ text: `SCRIPT TO JUDGE:
@@ -3433,7 +3599,7 @@ ${script}
 BUSINESS INFORMATION (the only facts the script may state):
 ${JSON.stringify(businessInfo, null, 2)}
 
-Judge it now and return the JSON.` }] }],
+Judge it now and return the JSON.${note}` }] }],
         config: {
           systemInstruction: SCRIPT_QA_SYSTEM_PROMPT({
             language: formData.language,
@@ -3441,14 +3607,23 @@ Judge it now and return the JSON.` }] }],
             festivalName: formData.festivalName,
             clipCount: segmentCount,
             speakers: packSpeakerList.map(sp => sp.name),
+            castNote,
             brief: coreMessage,
             messageClip,
+            // The verified address the last clip must say — the judge was never told it, and marked it as invented.
+            address: sayAddress || latinAddress,
+            clipWords,
+            closingLine,
           }),
           responseMimeType: 'application/json',
           temperature: 0.2,
         },
       }), { effort: 'deep' });
       return parseScriptQa(response.text || '');
+    };
+    try {
+      // A reply that is not JSON, or misses one of the eight scores, is asked for once more — a missing score is never a 10.
+      return (await ask()) ?? (await ask('\n\nYOUR LAST REPLY WAS NOT VALID JSON WITH ALL EIGHT SCORES. Reply with ONLY the JSON object, every score a number from 0 to 10.'));
     } catch (err) {
       console.warn('The script quality check could not run; the script ships as it is.', err);
       return null;
@@ -3470,60 +3645,103 @@ ${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
 THE PREVIOUS DRAFT DID NOT GIVE EVERY CHARACTER THEIR OWN LINES — get this right first:
 ${issues.slice(0, 8).map(line => `- ${line}`).join('\n')}
 Every clip has exactly one line for EACH character, in the fixed order, each on its own line and labelled with its own speaker in the exact output format.`;
-  /** Judge → polish or rewrite → judge again, keeping the best draft. */
-  const withScriptQa = async <T,>(
-    first: T,
-    textOf: (draft: T) => string,
-    nextDraft: (draft: T, report: ScriptQaReport | null, castIssues: string[]) => Promise<T>,
-    mechanicalIssues: (draft: T) => number,
-    /** Called with every draft before it is judged — the scene plan starts from it. */
-    onDraft?: (draft: T) => void,
-    /**
-     * The problems that make a draft NOT this ad's cast (castIntegrityIssues) — none for a single voice.
-     *
-     * ── Why the gate checks the cast (2026-10-08) ──────────────────────────────────────────────────
-     * The judge scores words, not who says them. A Male & Female Duo draft that had lost the man's lines
-     * scored higher than the correct draft and shipped — a one-person script, then one-person video
-     * prompts, under frames that showed the pair. A draft with any of these problems is not judged (no
-     * score can make it usable), always loses to one without them (isBetterDraft `broken`), and makes the
-     * gate write new drafts even when a judge would have passed it, or could not run.
-     */
-    castIssuesOf: (draft: T) => string[] = () => [],
-  ): Promise<T> => {
-    onProgress("Checking the script — facts, language and selling power...", 30);
-    onDraft?.(first);
-    const judge = async (draft: T) => {
-      const broken = castIssuesOf(draft).length;
-      return { draft, report: broken > 0 ? null : await judgeScript(textOf(draft)), mechanicalIssues: mechanicalIssues(draft), broken };
-    };
-    let best = await judge(first);
-    let drafts = 1;
-    const firstCastIssues = castIssuesOf(first);
-    /*
-      Further drafts are written AT THE SAME TIME and judged together — not one after another.
+  /** What a new draft is told about one that broke the word budget — clip by clip, with the exact fix. */
+  const contractFeedback = (violations: string[]): string => violations.length === 0 ? '' : `
 
-      Written in turn, a weak first draft cost two more full rounds of writing, repairing and judging:
-      a live Motu & Patlu run spent 110 seconds there and ended on the score it started with. Written
-      side by side (each call on its own key), the same drafts take the time of one. A polish is one
-      directed edit, so it is one candidate; a rewrite gets every remaining draft at once. Anything not
-      back by the deadline is left out, and the best draft so far ships.
-    */
-    if (firstCastIssues.length > 0 || (best.report && qaDecision(best.report) !== 'pass')) {
-      const firstReport = best.report;
-      const rewrite = firstCastIssues.length > 0 || (!!firstReport && qaDecision(firstReport) === 'rewrite');
-      onProgress(firstCastIssues.length > 0
-        ? 'The script lost one of the speakers — writing it again with every line in its own voice...'
-        : rewrite
-          ? `The script scored ${firstReport?.overall}/10 — writing stronger drafts...`
-          : `The script scored ${firstReport?.overall}/10 — polishing what the check found...`, 32);
-      const attempts = rewrite ? MAX_SCRIPT_DRAFTS - 1 : 1;
+THE PREVIOUS DRAFT BROKE THE WORD BUDGET — every clip must hold ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words${contractCast ? ' across both lines together' : ''}:
+${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : repairDirection([v])}`.trim()).join('\n')}`;
+  /** The judge's problems that belong to one clip, worded so the clip-level repair routes them ("Clip 2: …"). */
+  const judgeClipIssues = (report: ScriptQaReport | null): string[] => !report ? [] : [
+    ...report.unsupportedClaims.flatMap(claim => {
+      const m = claim.match(/^\s*clip\s*(\d+)\s*[:\-–]\s*(.*)$/i);
+      return m && +m[1] >= 1 && +m[1] <= segmentCount
+        ? [`Clip ${+m[1]}: it states something the business information does not give ("${m[2].trim()}") — remove it, or replace it with a fact the business information actually gives.`]
+        : [];
+    }),
+    ...report.problems.filter(p => p.clip >= 1 && p.clip <= segmentCount).map(p => `Clip ${p.clip}: ${p.issue}${p.fix ? ` — ${p.fix}` : ''}`),
+  ];
+  /** How many of the judge's findings belong to no single clip — those need a whole new pass over the script. */
+  const generalProblems = (report: ScriptQaReport | null): number => !report ? 0
+    : report.problems.filter(p => p.clip < 1 || p.clip > segmentCount).length
+      + report.unsupportedClaims.filter(claim => !/^\s*clip\s*\d+/i.test(claim)).length
+      // Scores below 10 with nothing listed against any clip: only a whole pass can raise them.
+      + (report.problems.length === 0 && report.unsupportedClaims.length === 0 && report.mechanical.length === 0 && !isPerfect(report) ? 1 : 0);
+
+  /** A draft as the gate holds it: its exact text, its counts, what code found, and the judge's report. */
+  type Assessed<T> = DraftStanding & { draft: T; text: string; clipWords: number[]; violations: string[]; mechanical: string[]; broken: number };
+  const improvementMessage = (best: Assessed<unknown>, mode: 'polish' | 'rewrite', passes: number) => {
+    const n = `pass ${passes + 1} of ${SCRIPT_IMPROVEMENT_PASSES}`;
+    if (best.broken > 0) return `The script lost one of the speakers — writing it again with every line in its own voice (${n})...`;
+    if (!best.report) return `Fitting every clip to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words (${n})...`;
+    return mode === 'rewrite'
+      ? `The script scored ${best.report.overall}/10 — writing a stronger draft (${n})...`
+      : `The script scored ${best.report.overall}/10 — polishing what the check found (${n})...`;
+  };
+  /** The improvement loop — see the banner above. Returns the best draft, already assessed. */
+  const runQualityLoop = async <T,>(cfg: {
+    first: T;
+    /** The exact script text this draft ships as — what is judged, and what the kit shows. */
+    textOf: (draft: T) => string;
+    /** Its spoken text per clip (a cast's lines joined) — what the word contract counts. */
+    clipTextsOf: (draft: T) => string[];
+    /** Every problem code finds in it. */
+    mechanicalOf: (draft: T) => string[];
+    /** The problems that make it NOT this ad's cast (castIntegrityIssues) — none for a single voice. */
+    castIssuesOf?: (draft: T) => string[];
+    /** A better draft from the best one: a targeted polish, or a new draft told what failed. */
+    improve: (from: Assessed<T>, mode: 'polish' | 'rewrite') => Promise<T>;
+    /** The last resort when even the best draft breaks the word contract: a repair of just that. */
+    fit: (draft: T, violations: string[]) => Promise<T>;
+    /** Called with every draft before it is judged — the scene plan starts from it. */
+    onDraft?: (draft: T) => void;
+  }): Promise<Assessed<T>> => {
+    const started = Date.now();
+    onProgress("Checking the script — word counts, facts, language and selling power...", 30);
+    const assess = async (draft: T): Promise<Assessed<T>> => {
+      const text = cfg.textOf(draft);
+      const clipTexts = cfg.clipTextsOf(draft);
+      const clipWords = clipWordCounts(clipTexts);
+      const violations = contractViolations(clipTexts, segmentCount, contractCast);
+      const mechanical = cfg.mechanicalOf(draft);
+      const broken = cfg.castIssuesOf?.(draft).length ?? 0;
+      // A draft that is not this cast's is never judged — no score can make it usable (2026-10-08).
+      const raw = broken === 0 ? await judgeScript(text, clipWords) : null;
+      return {
+        draft, text, clipWords, violations, mechanical, broken,
+        report: raw ? withMechanicalChecks(raw, mechanical) : null,
+        mechanicalIssues: mechanical.length,
+        contract: { violations: violations.length, distance: bandDistance(clipWords) },
+      };
+    };
+    cfg.onDraft?.(cfg.first);
+    let best = await assess(cfg.first);
+    let drafts = 1;
+    let passes = 0;
+    let stalls = 0;
+    let stopReason: ImprovementStop = 'passes';
+    for (;;) {
+      const step = nextImprovement({ best, passesUsed: passes, stalls, elapsedMs: Date.now() - started });
+      if ('stop' in step) {
+        stopReason = step.stop;
+        break;
+      }
+      onProgress(improvementMessage(best, step.mode, passes), 32);
+      /*
+        A rewrite on the first round writes two drafts AT THE SAME TIME (each call on its own key), so a
+        weak first draft costs the time of one more round, not two. Anything not back by the deadline is
+        left out, and the best draft so far ships.
+      */
+      const remaining = Math.max(0, SCRIPT_GATE_DEADLINE_MS - (Date.now() - started));
       let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-      const deadline = new Promise<null>(resolve => { deadlineTimer = setTimeout(() => resolve(null), SCRIPT_GATE_DEADLINE_MS); });
-      const candidates = await Promise.all(Array.from({ length: attempts }, () => Promise.race([
+      const deadline = new Promise<null>(resolve => { deadlineTimer = setTimeout(() => resolve(null), remaining); });
+      const from = best;
+      const round = await Promise.all(Array.from({ length: step.drafts }, () => Promise.race([
         (async () => {
-          const candidate = await nextDraft(first, firstReport, firstCastIssues);
-          onDraft?.(candidate);
-          return await judge(candidate);
+          const candidate = await cfg.improve(from, step.mode);
+          // An edit that changed nothing is not a new draft — no judge call is spent on it.
+          if (cfg.textOf(candidate) === from.text) return null;
+          cfg.onDraft?.(candidate);
+          return await assess(candidate);
         })().catch(err => {
           console.warn('Writing another script draft failed; keeping the best so far.', err);
           return null;
@@ -3531,48 +3749,82 @@ Every clip has exactly one line for EACH character, in the fixed order, each on 
         deadline,
       ])));
       clearTimeout(deadlineTimer);
-      for (const entry of candidates) {
+      passes += step.drafts;
+      let improved = false;
+      for (const entry of round) {
         if (!entry) continue;
         drafts += 1;
-        if (isBetterDraft(best, entry)) best = entry;
+        if (isBetterDraft(best, entry)) {
+          best = entry;
+          improved = true;
+        }
+      }
+      stalls = improved ? 0 : stalls + 1;
+    }
+    /*
+      The last resort: when even the best draft breaks the word contract, ONE repair of just that —
+      checked and judged like any draft, so what ships is reviewed too. If it still breaks the contract
+      the run stops below (the final acceptance gate) rather than shipping a clip that cannot be said in
+      eight seconds.
+    */
+    if (best.violations.length > 0 && best.broken === 0) {
+      try {
+        onProgress(`Fitting every clip to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words...`, 34);
+        const fitted = await assess(await cfg.fit(best.draft, best.violations));
+        drafts += 1;
+        if (isBetterDraft(best, fitted)) best = fitted;
+      } catch (err) {
+        console.warn('The final word-count fit failed.', err);
       }
     }
-    if (best.report) {
-      scriptQa = qaSummary(best.report, drafts);
-      console.info(`Script quality check: ${best.report.overall}/10 after ${drafts} draft${drafts === 1 ? '' : 's'}`, best.report);
-    }
-    return best.draft;
+    const extra = { passes, stopReason, clipWords: best.clipWords, checkedScript: best.text };
+    scriptQa = best.report ? qaSummary(best.report, drafts, extra) : unscoredSummary(drafts, best.mechanical, extra);
+    console.info(
+      `Script quality check: ${best.report ? `${best.report.overall}/10` : 'not scored'} after ${drafts} draft${drafts === 1 ? '' : 's'} `
+      + `and ${passes} improvement pass${passes === 1 ? '' : 'es'} (stopped: ${stopReason}); words per clip ${best.clipWords.join(' · ')}`,
+      best.report ?? best.mechanical,
+    );
+    return best;
   };
 
   if (pack) {
     // Two characters share every 8-second clip, so the script is an exchange rather than a line.
-    // Every line as it is spoken — numbers as words, మరియు exactly — whoever wrote it.
     /** One string per clip, speaker-labelled — exactly what parsedSegments holds below. */
     const dialogueSegments = (clips: DialogueClip[]) => {
       const nameOf = new Map(packSpeakerList.map(s => [s.key, s.name]));
       return clips.map(clip => clip.map(line => `${nameOf.get(line.speaker) ?? line.speaker}: ${line.text}`).join(' '));
     };
-    const speakableDialogue = (clips: DialogueClip[]) =>
-      clips.map(clip => clip.map(line => ({ ...line, text: speakableLine(line.text, formData.language) })));
-    dialogueClips = speakableDialogue(await generateCharacterDialogue());
-    if (!customScript?.trim()) {
+    if (customScript?.trim()) {
+      // A member's own script, word for word — only numbers and మరియు made speakable, as on every line.
+      dialogueClips = pastedCharacterDialogue().map(clip => clip.map(line => ({ ...line, text: speakableLine(line.text, formData.language) })));
+    } else {
+      const tools = await dialogueTools();
       /** Who is missing from a draft — the cast is checked on every draft, not only asked for. */
       const castIssuesOf = (clips: DialogueClip[]) => castIntegrityIssues(clips, segmentCount, packSpeakerList);
-      dialogueClips = await withScriptQa(
-        dialogueClips,
-        clips => formatDialogueScript(clips, packSpeakerList),
-        async (_draft, report, castIssues) => speakableDialogue(await generateCharacterDialogue(
-          castFeedback(castIssues) + (!report
-            ? ''
-            : qaDecision(report) === 'rewrite'
-              ? rewriteFeedback(report)
-              : `\n\nA QUALITY CHECK OF AN EARLIER DRAFT (${report.overall}/10) FOUND THESE PROBLEMS — write the script so that none of them happens:\n${qaInstructions(report).map(line => `- ${line}`).join('\n')}`),
-        )),
-        clips => clips.length === segmentCount ? 0 : 1,
-        // A draft that lost a speaker is never shipped, so no scene plan is started for it.
-        clips => { if (castIssuesOf(clips).length === 0) planScenesEarly(dialogueSegments(clips)); },
+      const qualityFeedback = (report: ScriptQaReport | null, mode: 'polish' | 'rewrite') => !report
+        ? ''
+        : mode === 'rewrite'
+          ? rewriteFeedback(report)
+          : `\n\nA QUALITY CHECK OF AN EARLIER DRAFT (${report.overall}/10) FOUND THESE PROBLEMS — write the script so that none of them happens:\n${qaInstructions(report).map(line => `- ${line}`).join('\n')}`;
+      const best = await runQualityLoop<DialogueClip[]>({
+        first: await writeDialogueDraft(),
+        textOf: clips => formatDialogueScript(clips, packSpeakerList),
+        clipTextsOf: clips => clips.map(clip => clip.map(line => line.text).join(' ')),
+        mechanicalOf: tools.check,
         castIssuesOf,
-      );
+        // A draft that lost a speaker is never shipped, so no scene plan is started for it.
+        onDraft: clips => { if (castIssuesOf(clips).length === 0) planScenesEarly(dialogueSegments(clips)); },
+        improve: async (from, mode) => {
+          // A polish edits only the clips the problems name — every other clip stays exactly as it is.
+          const targeted = [...from.mechanical, ...judgeClipIssues(from.report)];
+          if (mode === 'polish' && from.broken === 0 && generalProblems(from.report) === 0 && clipIndexesFromIssues(targeted, segmentCount).length > 0) {
+            return (await repairDialogueClips(from.draft, targeted)).clips;
+          }
+          return writeDialogueDraft(castFeedback(castIssuesOf(from.draft)) + contractFeedback(from.violations) + qualityFeedback(from.report, mode));
+        },
+        fit: async (clips, violations) => (await repairDialogueClips(clips, [...new Set([...violations, ...tools.check(clips)])])).clips,
+      });
+      dialogueClips = best.draft;
       /*
         THE GUARDRAIL (2026-10-08): a generated script that is still not this cast's — a clip with no line
         from one of the two people on screen, a line from somebody the ad does not have, the wrong number of
@@ -3590,10 +3842,7 @@ Every clip has exactly one line for EACH character, in the fixed order, each on 
     voiceOverScript = formatDialogueScript(dialogueClips, packSpeakerList);
     // Downstream (main frame, Veo, stock images) consumes one string per clip — give it the whole
     // exchange, speaker-labelled, so every later prompt knows who says what.
-    const nameOf = new Map(packSpeakerList.map(s => [s.key, s.name]));
-    parsedSegments = dialogueClips.map(clip =>
-      clip.map(line => `${nameOf.get(line.speaker) ?? line.speaker}: ${line.text}`).join(' ')
-    );
+    parsedSegments = dialogueSegments(dialogueClips);
   } else if (preSplitCustomClips.length > 0) {
     // The business already split the script into `clip-N[…sec]:` lines — honour it exactly.
     // No AI re-segmentation, no word-count repair, no quality rewrite: the wording the business
@@ -3637,17 +3886,20 @@ Segment 2: <text>`;
     voiceOverScript = formatVoiceOverScript(parsedSegments);
   } else {
     // Auto-generate voice-over script
-    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female', coreMessage) + addressRule;
+    const scriptSystemPrompt = buildLanguageDirective(formData) + VOICEOVER_SYSTEM_PROMPT(
+      effectiveDuration, segmentCount, formData.adType, formData.festivalName, formData.language, formData.gender || 'female', coreMessage,
+      { address: sayAddress || latinAddress },
+    ) + addressRule;
     const scriptUserPrompt = `Generate a ${effectiveDuration}-second ${formData.language || 'Telugu'} voice-over script for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
   ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName}` : ''}
-  DURATION: ${effectiveDuration} seconds (${segmentCount} segments)`;
+  DURATION: ${effectiveDuration} seconds (${segmentCount} segments, ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words in each)`;
 
     /**
      * One draft: written and mechanically repaired. The native-speaker review no longer runs on every
      * draft — it rewrote scripts the quality gate then scored 9.8/10, sixteen seconds for nothing. It
-     * runs when the gate asks for a polish (polishDraft), or when the gate could not run at all.
+     * runs when the gate asks for a polish of the whole script, or when the gate could not run at all.
      */
     const writeDraft = async (feedback = '') => {
       const scriptResponse = await callWithFallback(async (ai, model) => {
@@ -3660,26 +3912,50 @@ Segment 2: <text>`;
 
       return applyVoiceOverRepairIfNeeded(scriptResponse.text || "Failed to generate Script.");
     };
-    type Draft = Awaited<ReturnType<typeof writeDraft>>;
-    /** The same draft, polished by the native-speaker editor told exactly what the gate found. */
-    const polishDraft = async (draft: Draft, report: ScriptQaReport): Promise<Draft> => {
-      const reviewed = await runVoiceOverQualityReview(draft.formatted, qaInstructions(report));
-      return reviewed === draft.formatted ? draft : await applyVoiceOverRepairIfNeeded(reviewed);
+    /**
+     * The best draft, polished: the clips the problems name are edited one by one (every other clip stays
+     * exactly as it is); a problem about the whole script goes to the native-speaker editor, told exactly
+     * what the gate found, and its rewrite is repaired back into the contract.
+     */
+    const polishDraft = async (from: Assessed<VoiceDraft>): Promise<VoiceDraft> => {
+      const targeted = [...from.mechanical, ...judgeClipIssues(from.report)];
+      if (generalProblems(from.report) === 0 && clipIndexesFromIssues(targeted, segmentCount).length > 0) {
+        return (await repairFailingClips(from.draft, targeted)).normalized;
+      }
+      if (!from.report) return from.draft;
+      const reviewed = await runVoiceOverQualityReview(from.draft.formatted, qaInstructions(from.report));
+      return reviewed === from.draft.formatted ? from.draft : await applyVoiceOverRepairIfNeeded(reviewed);
     };
-    let finalVoiceOver = await withScriptQa<Draft>(
-      await writeDraft(),
-      draft => draft.formatted,
-      // One presenter has no cast to lose, so the gate only ever asks again with the judge's report.
-      (draft, report) => (!report ? writeDraft() : qaDecision(report) === 'rewrite' ? writeDraft(rewriteFeedback(report)) : polishDraft(draft, report)),
-      draft => validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, formData.language, everyday,
-        formData.adType === 'festival' ? 1 : undefined).concat(addressIssues(draft.segments, everyday?.names)).length,
-      // The same lines the script will be planned from once it is final (see the speakableLine pass below).
-      draft => planScenesEarly(draft.segments.map(segment => speakableLine(segment, formData.language))),
-    );
-    // The gate could not run (quota, a broken reply): the native-speaker review still polishes the draft.
-    if (!scriptQa) {
+    const best = await runQualityLoop<VoiceDraft>({
+      first: await writeDraft(),
+      textOf: draft => draft.formatted,
+      clipTextsOf: draft => draft.segments,
+      mechanicalOf: voiceIssuesOf,
+      // The lines are already speakable — exactly the lines the scene plan is made from once the script is final.
+      onDraft: draft => planScenesEarly(draft.segments),
+      // One presenter has no cast to lose: a rewrite is a new draft told what failed; a polish is targeted.
+      improve: (from, mode) => mode === 'rewrite'
+        ? writeDraft(contractFeedback(from.violations) + (from.report ? rewriteFeedback(from.report) : ''))
+        : polishDraft(from),
+      fit: async (draft, violations) => (await repairFailingClips(draft, [...new Set([...violations, ...voiceIssuesOf(draft)])])).normalized,
+    });
+    let finalVoiceOver = best.draft;
+    /*
+      The judge could not run (quota, a broken reply twice): the native-speaker review still polishes the
+      draft — and its rewrite is kept only when it still obeys the word contract and adds no problem.
+    */
+    if (!best.report && best.violations.length === 0) {
       const reviewed = await runVoiceOverQualityReview(finalVoiceOver.formatted);
-      if (reviewed !== finalVoiceOver.formatted) finalVoiceOver = await applyVoiceOverRepairIfNeeded(reviewed);
+      if (reviewed !== finalVoiceOver.formatted) {
+        const candidate = await applyVoiceOverRepairIfNeeded(reviewed);
+        if (contractViolations(candidate.segments, segmentCount).length === 0 && voiceIssuesOf(candidate).length <= best.mechanical.length) {
+          finalVoiceOver = candidate;
+          scriptQa = unscoredSummary(scriptQa?.drafts ?? 1, voiceIssuesOf(candidate), {
+            passes: scriptQa?.passes, stopReason: scriptQa?.stopReason,
+            clipWords: clipWordCounts(candidate.segments), checkedScript: candidate.formatted,
+          });
+        }
+      }
     }
 
     parsedSegments = finalVoiceOver.segments;
@@ -3690,14 +3966,38 @@ Segment 2: <text>`;
    * The last word on a single-voice script, whatever produced it — the writer, the repair, the
    * review or the member's own paste: every number is written as the words that are spoken, and
    * మరియు is spelled exactly (utils/spokenNumbers). The prompts ask for both; this guarantees them.
+   * (A generated script is already speakable — it was checked that way — so this changes nothing there.)
    */
   if (!pack) {
     parsedSegments = parsedSegments.map(segment => speakableLine(segment, formData.language));
     voiceOverScript = formatVoiceOverScript(parsedSegments);
   }
 
+  /*
+    THE FINAL ACCEPTANCE GATE (2026-10-15 — the owner: every clip 17–20 spoken words, a hard maximum of
+    20). The EXACT text that ships is counted once more, after every rewrite, repair, review, spelling
+    pass and formatting step. A generated script with a clip outside 17–20 words, an empty clip or a
+    repeated one STOPS the run here — before any frame or video prompt is written from it — rather than
+    shipping a clip that cannot be said in eight seconds. A member's own script is used word for word and
+    is never held to it.
+  */
+  if (!customScript?.trim()) {
+    const shippedClips = pack ? dialogueClips.map(clip => clip.map(line => line.text).join(' ')) : parsedSegments;
+    const violations = contractViolations(shippedClips, segmentCount, contractCast);
+    if (violations.length > 0) {
+      throw new Error(`The voice-over could not be fitted to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words in every clip, even after it was repaired and written again: `
+        + `${violations.slice(0, 3).join(' ')} No frame or video prompt was made from it. Press Generate to write it again.`);
+    }
+    // Nothing may change the words after they were checked; if anything ever did, the kit must not claim the check.
+    if (scriptQa && scriptQa.checkedScript !== voiceOverScript) {
+      console.warn('The shipped voice-over differs from the checked one — the quality badge is withdrawn.');
+      scriptQa = { ...scriptQa, passed: false, clipWords: clipWordCounts(shippedClips) };
+    }
+  }
+
   // Emit partial result: voiceOver ready (with its quality check, when it had one)
   emitPartial({ voiceOverScript, scriptQa });
+
 
   const clientLocations = await clientLocationsPromise;
 
@@ -3723,6 +4023,8 @@ Segment 2: <text>`;
   const frameBrand = getBrandMark(frameNoLogo, frameNameBoard);
   /** A Real Owner Face ad is built from the owner's own photo, uploaded in its own slot. */
   const ownerFace = !!pack?.usesClientFace && !!files.ownerImage;
+  /** The Real Owner Duo's two photographs, in speaking order — both present, or the run was refused above. */
+  const ownerDuo = ownerFace && ownerSlots.length > 1;
   /** The team's FRAME / BACKGROUND INSTRUCTIONS box — the highest-priority direction for every frame. */
   const frameInstructionsBlock = formData.frameInstructions?.trim()
     ? `
@@ -3985,7 +4287,8 @@ CRITICAL PRODUCT IMAGE INSTRUCTIONS FOR MAIN FRAME:
   • Ad type: ${formData.adType}${formData.adType === 'festival' ? ` — festival: ${formData.festivalName}` : ''}
   • Spoken language: ${formData.language || 'Telugu'}
   • Location: ${formData.locationMode === 'real_provided' ? "the client's own photographs, attached" : 'built from the business profile'}
-  • Logo: ${!frameNoLogo ? 'attached — place it as-is, never describe it' : `none — show ${frameBrand.ref} instead; there is nothing to attach`}${ownerFace ? `
+  • Logo: ${!frameNoLogo ? 'attached — place it as-is, never describe it' : `none — show ${frameBrand.ref} instead; there is nothing to attach`}${ownerDuo ? `
+  • Owner photos: ${ownerSlots.length} attached, one per owner — ${ownerSlots.map(s => `${s.photo} is the ${s.kind} who stands on the ${s.side}`).join('; ')}, in every clip` : ownerFace ? `
   • Owner image: attached — the person on screen IS this person, in every clip` : ''}
   ${hasProductImages ? `• Product images: ${productImageCount} attached — show them unchanged on real shelves, counters or display cases behind the characters.` : ''}
   SPECIAL CLIENT INSTRUCTIONS: ${businessInfo.specialRequirements?.customInstructions || 'None'}
@@ -4076,8 +4379,22 @@ ${sceneContext ? `
     }
   }
 
-  // The owner's own face — the only source of the person on screen in a Real Owner Face ad.
-  if (ownerFace && files.ownerImage) {
+  /*
+    The Real Owner Duo's two faces (2026-10-14), each sent with the words that tie it to ONE side of the
+    frame — in speaking order, so "owner photo 1" is the first photograph the writer sees and the one the
+    member attaches first. Unlabelled, two reference photos are blended, swapped or used as one face.
+  */
+  if (ownerDuo) {
+    for (const slot of ownerSlots) {
+      const photo = ownerPhotoFile(files, slot);
+      if (!photo) continue;
+      mainFrameParts.push({ inlineData: { mimeType: photo.type, data: await fileToBase64(photo) } });
+      mainFrameParts.push({ text: `This is ${slot.photo.toUpperCase()} — a photograph of ${slot.name}, the ${slot.kind} who stands on the ${slot.side} of the frame in EVERY clip. `
+        + `That ${slot.kind} IS this person: the same face, bone structure, age, skin tone, hair and build, never beautified, de-aged, blended with the other owner or replaced by a look-alike. `
+        + `Refer to this person in your prompts only as "the ${slot.kind} from ${slot.photo}"; do not describe their face in words.` });
+    }
+  } else if (ownerFace && files.ownerImage) {
+    // The owner's own face — the only source of the person on screen in a Real Owner Face ad.
     mainFrameParts.push({ inlineData: { mimeType: files.ownerImage.type, data: await fileToBase64(files.ownerImage) } });
     mainFrameParts.push({ text: `This is the OWNER IMAGE — a photograph of the business owner. The person in EVERY clip IS this person: the same face, bone structure, age, skin tone, hair and build, never beautified, de-aged or replaced by a look-alike. Refer to it in your prompts only as "the attached owner image"; do not describe their face in words.` });
   }
@@ -4258,14 +4575,22 @@ ${sceneContext ? `
       prompt — and each carries, in the text the member pastes, that the face is the photograph's: the
       forehead as photographed, nothing added (withOwnerFaceLock — the bindi the owner reported).
     */
+    /*
+      The Real Owner Duo (2026-10-14): the two-shot composition with each owner on their fixed side, and the
+      duo's FACE LOCK — each side the person in ITS OWN photograph, never blended, swapped or one face.
+    */
+    const ownerSeats = ownerSlots.length > 1 ? seatsOf(ownerSlots) : undefined;
     if (realPerson) {
-      mainFramePrompts = mainFramePrompts.map((prompt, i) => withOwnerFaceLock(
-        withRealPersonComposition(prompt, { plate: clipPhotoPlan[i] !== undefined && clipPhotoPlan[i]?.photoIndex !== null }),
-        packModelGender(pack),
-      ));
+      mainFramePrompts = mainFramePrompts.map((prompt, i) => {
+        const composed = withRealPersonComposition(prompt, {
+          plate: clipPhotoPlan[i] !== undefined && clipPhotoPlan[i]?.photoIndex !== null,
+          pair: ownerSeats,
+        });
+        return ownerSeats ? withOwnerDuoFaceLock(composed, ownerSlots) : withOwnerFaceLock(composed, packModelGender(pack));
+      });
     }
-    // Last, so it joins the photo line: the member attaches the owner's face to every frame.
-    if (ownerFace) mainFramePrompts = mainFramePrompts.map(withOwnerImageDirective);
+    // Last, so it joins the photo line: the member attaches the owner's face — a duo's two faces, in order — to every frame.
+    if (ownerFace) mainFramePrompts = mainFramePrompts.map(prompt => withOwnerImageDirective(prompt, ownerDuo ? ownerSlots : []));
 
     emitPartial({ mainFramePrompts });
     return mainFramePrompts;
@@ -4466,6 +4791,20 @@ const writeVeoPrompts = async (
     video model may change (assembleRealPersonVeoPrompt).
   */
   if (pack?.usesClientFace) {
+    /*
+      The Real Owner Duo (2026-10-14, the owner's choice: "your template, for two"): each line voiced by its
+      own owner, named by side and kind ("the man on the LEFT needs to say :-"). The side is the speaker's
+      own (packVeoSubject puts characters[0] on the LEFT) — never the line's order — so a clip a member gave
+      to Owner 2 alone is still voiced on the RIGHT.
+    */
+    const owners = ownerPhotoSlots(pack);
+    if (owners.length > 1) {
+      const seats = seatsOf(owners);
+      return clips.map(c => assembleRealPersonDuoVeoPrompt({
+        seats,
+        lines: c.speech.map(s => ({ seat: /\bRIGHT\b/.test(s.position || '') ? 1 : 0, line: s.line })),
+      }));
+    }
     const gender = packModelGender(pack) || (formData.gender === 'male' ? 'male' : 'female');
     return clips.map(c => assembleRealPersonVeoPrompt({ gender, line: c.speech.map(s => s.line).join(' ') }));
   }
@@ -4972,7 +5311,7 @@ export const extractScriptFromImage = async (imageFile: File): Promise<string> =
 // (WhatsApp notes, a rough script, a service list) and rewrites it into a broadcast-ready
 // voice-over script using the SAME formula as the AI Ads Platform — see
 // SCRIPT_TO_VOICEOVER_SYSTEM_PROMPT, which composes VOICEOVER_SYSTEM_PROMPT so the tone,
-// clip arc, and exactly-18-words-per-clip contract stay identical across both surfaces.
+// clip arc, and the 17–20-words-per-clip contract (utils/scriptContract) stay identical across both surfaces.
 
 export interface VoiceOverClip {
   /** 1-based clip number. */
@@ -4998,24 +5337,20 @@ export interface ScriptConversion {
   originalText: string;
 }
 
-/** Words per clip in the ads-platform voice-over formula (see VOICEOVER_SYSTEM_PROMPT). */
+/** Words per clip in the ads-platform voice-over formula — the planned pace (utils/scriptContract). */
 export const WORDS_PER_CLIP = TARGET_WORDS_PER_CLIP;
-/** The spoken-word band a clip must land in. */
+/** The spoken-word band a clip must land in — the one contract, 17–20 (utils/scriptContract). */
 export const WORD_BAND = { min: MIN_WORDS_PER_CLIP, max: MAX_WORDS_PER_CLIP } as const;
 
-/** Word count of raw pasted text, ignoring punctuation and decorative characters. */
+/** Word count of raw pasted text, by the one counter (punctuation and decorative characters never count). */
 export const countScriptWords = (scriptText: string): number =>
-  tokenizeWords(cleanScriptText(scriptText || '')).length;
+  countSpokenWords(cleanScriptText(scriptText || ''));
 
 /**
  * How many 8-second clips the pasted text naturally fills, at the platform's planned pace — the
- * middle of the 18–20 word band. Used to pre-select "Auto" in the tool before any API call is made.
+ * middle of the preferred 18–19 words. Used to pre-select "Auto" in the tool before any API call is made.
  */
-export const suggestClipCount = (scriptText: string): number => {
-  const words = countScriptWords(scriptText);
-  if (words === 0) return 0;
-  return Math.max(1, Math.round(words / WORDS_PER_CLIP));
-};
+export const suggestClipCount = (scriptText: string): number => clipsAtPace(countScriptWords(scriptText));
 
 /** Detects the script's language from its Unicode block so "Auto" keeps the business's language. */
 export const detectScriptLanguage = (scriptText: string): string => {
@@ -5038,7 +5373,7 @@ const buildScriptConversion = (
     startSec: index * CLIP_SECONDS,
     endSec: (index + 1) * CLIP_SECONDS,
     text,
-    wordCount: tokenizeWords(text).length,
+    wordCount: countSpokenWords(text),
   }));
 
   return {
@@ -5102,12 +5437,16 @@ Output exactly ${segmentCount} clip lines, ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_P
     });
   });
 
-  let normalized = normalizeAndFormatVoiceOver(response.text || '', segmentCount);
-  let issues = validateVoiceOverSegments(normalized.rawScript, normalized.segments, segmentCount, language);
+  // Read as it will be spoken (numbers as words) — the text the 17–20 contract counts and the tool shows.
+  const normalize = (script: string) => normalizeAndFormatVoiceOver(script, segmentCount, language);
+  const issuesOf = (draft: NormalizedVoiceOver) => validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, language);
+  let normalized = normalize(response.text || '');
+  let issues = issuesOf(normalized);
+  const distanceOf = (draft: NormalizedVoiceOver) => bandDistance(clipWordCounts(draft.segments));
 
   // Same mechanical repair loop the platform runs — the pasted text stands in for the extracted
   // business info, so the repair pass can only re-word using facts the business actually gave us.
-  for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0; pass++) {
+  for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES && issues.length > 0 && issues.some(i => !/^(Clip \d+|Final clip)\b/.test(i)); pass++) {
     const repairResponse = await callWithFallback(async (ai, model) => {
       return await ai.models.generateContent({
         model,
@@ -5131,8 +5470,25 @@ Return only the repaired ${segmentCount} clip lines.` }] }],
       });
     });
 
-    normalized = normalizeAndFormatVoiceOver(repairResponse.text || normalized.formatted, segmentCount);
-    issues = validateVoiceOverSegments(normalized.rawScript, normalized.segments, segmentCount, language);
+    // Kept only when it is better — never a repair that moves a clip further from 17–20 words.
+    const next = normalize(repairResponse.text || normalized.formatted);
+    const nextIssues = issuesOf(next);
+    if (!isBetterRepair({ issues, distance: distanceOf(normalized) }, { issues: nextIssues, distance: distanceOf(next) })) break;
+    normalized = next;
+    issues = nextIssues;
+  }
+
+  // Whatever is left inside clips is fixed clip by clip — the same repair the ad generator uses.
+  if (issues.length > 0 && clipIndexesFromIssues(issues, segmentCount).length > 0) {
+    const fixed = await repairClipsByEdit(normalized, issues, {
+      segmentCount,
+      systemInstruction: VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({ language, clipCount: segmentCount, adType, festivalName }),
+      facts: `SOURCE TEXT (the only allowed source of facts):\n${cleanScriptText(source)}`,
+      normalize,
+      issuesOf,
+    });
+    normalized = fixed.normalized;
+    issues = fixed.issues;
   }
 
   if (issues.length > 0) {

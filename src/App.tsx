@@ -118,6 +118,8 @@ const JoinOnboarding = lazy(() => import("@/pages/onboarding/JoinOnboarding"));
 const Chat = lazy(() => import("@/pages/shared/Chat"));
 const SocialMedia = lazy(() => import("@/pages/shared/SocialMedia"));
 const SmmCampaignPage = lazy(() => import("@/pages/shared/SmmCampaignPage"));
+// SMM Delivery Control (2026-10-15) — the new Social Media screen behind the classic page's button.
+const SmmDeliveryControl = lazy(() => import("@/pages/shared/SmmDeliveryControl"));
 const Meeting = lazy(() => import("@/pages/shared/Meeting"));
 const AdminChatMonitor = lazy(() => import("@/pages/shared/AdminChatMonitor"));
 // Invoice Builder (2026-10-08): the register, the workspace, and the team-leader switch's door.
@@ -221,6 +223,9 @@ const App = () => (
             "main_admin", "tech_admin", "sales_admin", "tech_member", "sales_member", "tech_team_leader",
           ]} />}>
             <Route path="/smm" element={<SocialMedia />} />
+            {/* SMM Delivery Control (2026-10-15): static segments, so they win over /smm/:campaignId. */}
+            <Route path="/smm/control" element={<SmmDeliveryControl />} />
+            <Route path="/smm/control/:monthId" element={<SmmDeliveryControl />} />
             <Route path="/smm/:campaignId" element={<SmmCampaignPage />} />
           </Route>
 

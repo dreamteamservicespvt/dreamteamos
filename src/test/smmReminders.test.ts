@@ -153,7 +153,7 @@ describe("ad money running out", () => {
 describe("renewals", () => {
   it("raises it five days out, with the month's score attached", () => {
     const c = campaign({
-      cycle: cycleFromStart("2026-08-25"),   // ends 2026-09-23
+      cycle: cycleFromStart("2026-08-25"),   // own days to 2026-09-23, renews 2026-09-24
       commitments: { poster: 2, ai_ad: 0, real_video: 0 },
       items: [item({ status: "posted" }), item()],
     });

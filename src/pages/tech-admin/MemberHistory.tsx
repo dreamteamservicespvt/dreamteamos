@@ -10,6 +10,7 @@ import { format, subDays, startOfDay } from "date-fns";
 import { ArrowLeft, BarChart3, FileText, Loader2, TrendingUp, IndianRupee, Video, CheckCircle2, XCircle, ExternalLink, Image, Clock, Calendar, ChevronDown } from "lucide-react";
 import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import { formatCurrency, formatDate, formatTime } from "@/utils/formatters";
+import { salaryFor, termsPeriodOn } from "@/utils/payTerms";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -183,10 +184,16 @@ export default function TechAdminMemberHistory() {
     const verified = filteredAssignments.filter((a) => a.status === "verified");
     const totalRevenue = verified.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
     const totalVideos = verified.length;
-    const salary = member?.salary || 0;
+    // The salary that applied in the pay period of the day shown (`utils/payTerms`), not today's
+    // `users.salary`: a raise saved today must not shrink an earlier day's ratio, nor a raise agreed
+    // for next period re-price this one. "All" is set against the period running now.
+    const lastDay = assignCalDate ? format(assignCalDate, "yyyy-MM-dd")
+      : assignDayFilter === "all" ? null
+      : recentDays[parseInt(assignDayFilter)]?.dateStr ?? null;
+    const salary = salaryFor(member, termsPeriodOn(lastDay, todayStr));
     const revenueVsSalary = salary > 0 ? ((totalRevenue / salary) * 100) : 0;
     return { totalRevenue, totalVideos, salary, revenueVsSalary, verifiedCount: verified.length };
-  }, [filteredAssignments, member?.salary]);
+  }, [filteredAssignments, member, assignCalDate, assignDayFilter, recentDays, todayStr]);
 
   const statusColor = (s: string) =>
     s === "verified" ? "bg-success/15 text-success"

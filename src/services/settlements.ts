@@ -1,9 +1,11 @@
 /**
- * Commission settlements — payouts between a sales admin and a sales member.
+ * Commission settlements — incentive payouts between a sales admin and a sales member.
  *
- * A member earns commission on their VERIFIED sales (10% for `incentive_10`, otherwise 5% — the
- * same rule the leaderboard uses). The admin pays this out for sequential, non-overlapping date
- * ranges and marks each one paid, so both sides always know "paid through <date>" and what's left.
+ * Since 2026-10-15 (owner: "Payroll's rule everywhere") a settlement pays the incentive of ENDED pay
+ * periods under the one commission rule (`utils/salesPay`): money collected in the period, at the rate
+ * that applied then, only when 75% of that period's target was met — and never a period Sales Payroll
+ * has paid, nor a collection a settlement already paid. Each settlement records the periods and the
+ * collections it paid (`settlementRecord`).
  */
 import {
   collection, addDoc, doc, updateDoc, query, where, serverTimestamp, type Query, type DocumentData,
@@ -12,7 +14,8 @@ import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { formatCurrency } from "@/utils/formatters";
-import { collectedInRange, collectedOf } from "@/utils/salePayments";
+import { payPeriodLabel } from "@/utils/payrollEngine";
+import type { CommissionPeriodRow } from "@/utils/salesPay";
 import type { AppUser, CommissionSettlement, Lead, SaleDetail } from "@/types";
 
 /** Member commission rate as a whole percent (5 or 10). */
@@ -36,71 +39,11 @@ function saleDateStr(item: SaleDetail, lead: Lead): string | null {
   return s ? format(new Date(s * 1000), "yyyy-MM-dd") : null;
 }
 
-export interface RangeCommission {
-  base: number;        // verified sales total in range
-  commission: number;  // base * rate / 100, rounded
-  saleCount: number;
-}
-
-/**
- * Commission for a member's VERIFIED sales, on money COLLECTED within [fromDate, toDate].
- *
- * ── Why it is the money and not the sale value ────────────────────────────────────────────────
- * Commission is a share of what the company was actually paid. A social-media month sold at 50%
- * up front used to pay the member commission on the whole year's price the day they wrote it down,
- * months before the balance arrived — and if the balance never arrived, the company had paid
- * commission on money it never received, with no mechanism to claw it back.
- *
- * Counting payments also puts the balance in the right period. A member who collects the second
- * half in November earns that commission in November, which is the cycle they did the collecting
- * in. A sale nobody marked partial is a single payment of the full price on the day of the sale,
- * so ordinary sales settle exactly as they always did.
- */
-export function computeCommissionInRange(leads: Lead[], fromDate: string, toDate: string, rate: number): RangeCommission {
-  let base = 0;
-  let saleCount = 0;
-  for (const lead of leads) {
-    for (const it of saleItems(lead)) {
-      if (it.verificationStatus !== "verified") continue;
-      const collected = collectedInRange(it, lead, fromDate, toDate);
-      if (collected <= 0) continue;
-      base += collected;
-      saleCount++;
-    }
-  }
-  return { base, commission: Math.round((base * rate) / 100), saleCount };
-}
-
-/** Sales dated within [fromDate, toDate] still awaiting verification. A settlement only pays
- *  VERIFIED sales, and once a day is behind "paid through" it is never revisited — so any
- *  pending sale in the range would silently fall out of every future settlement. Surface the
- *  count so the admin verifies (or rejects) them BEFORE marking the period paid. */
-export function countPendingInRange(leads: Lead[], fromDate: string, toDate: string): number {
-  let pending = 0;
-  for (const lead of leads) {
-    for (const it of saleItems(lead)) {
-      if (it.verificationStatus !== "pending") continue;
-      const d = saleDateStr(it, lead);
-      if (!d || d < fromDate || d > toDate) continue;
-      pending++;
-    }
-  }
-  return pending;
-}
-
-// ── Timestamp-cut settlement model ─────────────────────────────────────────────
-// A settlement pays EVERYTHING verified up to the exact moment it is marked (paidAt).
-// The next settlement pays everything verified AFTER that moment. Cutting by the payment
-// timestamp instead of a calendar date means a sale submitted/approved later on the very
-// day of a settlement simply falls into the next payout — it can never be skipped, which
-// the old "paid through <date>, resume next day" model allowed.
-
-/** Millisecond timestamp when a verified sale became payable — its verification moment,
- *  falling back to submission time for legacy items that predate verifiedAt stamping. */
-function verifiedAtMs(item: SaleDetail, lead: Lead): number {
-  const s = (item.verifiedAt as any)?.seconds ?? (item.submittedAt as any)?.seconds ?? (lead.createdAt as any)?.seconds;
-  return s ? s * 1000 : 0;
-}
+// ── Superseded (2026-10-15) ─────────────────────────────────────────────────────────────────────
+// `computeCommissionInRange` (a date range, no target gate), the timestamp-cut `computeUnpaidCommission`
+// (everything verified since the last settlement's moment — a re-approval re-dated a settled sale and paid
+// it again) and `paidThrough` were three of the five commission rules. The one rule is `utils/salesPay`
+// (`commissionByPeriod`, `periodIncentive`, `commissionInWindow`).
 
 /** The member's most recent settlement (by payment moment), or null if never settled. */
 export function lastSettlementOf(settlements: CommissionSettlement[], memberId: string): CommissionSettlement | null {
@@ -110,32 +53,6 @@ export function lastSettlementOf(settlements: CommissionSettlement[], memberId: 
     if (!latest || ((s.paidAt as any)?.seconds || 0) > ((latest.paidAt as any)?.seconds || 0)) latest = s;
   }
   return latest;
-}
-
-/**
- * Commission on every VERIFIED sale not covered by the last settlement — i.e. verified
- * after the moment that settlement was marked (pass 0 when never settled).
- *
- * Only money actually collected counts, for the reasons in `computeCommissionInRange`. The cut is
- * still the VERIFICATION moment rather than each payment's own date, because that is what decides
- * whether this settlement already paid for the sale — moving that would re-pay sales that have
- * been settled. A balance collected after the cut therefore rides in with its sale the first time
- * the sale becomes payable, and a sale already settled does not come back.
- */
-export function computeUnpaidCommission(leads: Lead[], lastPaidAtMs: number, rate: number): RangeCommission {
-  let base = 0;
-  let saleCount = 0;
-  for (const lead of leads) {
-    for (const it of saleItems(lead)) {
-      if (it.verificationStatus !== "verified") continue;
-      if (verifiedAtMs(it, lead) <= lastPaidAtMs) continue;
-      const collected = collectedOf(it, lead);
-      if (collected <= 0) continue;
-      base += collected;
-      saleCount++;
-    }
-  }
-  return { base, commission: Math.round((base * rate) / 100), saleCount };
 }
 
 /** All of a member's sales still awaiting verification — they join a payout automatically
@@ -163,43 +80,63 @@ export function earliestVerifiedSaleDate(leads: Lead[]): string | null {
   return min;
 }
 
-/** Latest settled date for a member ("paid through"), or null if never settled. */
-export function paidThrough(settlements: CommissionSettlement[], memberId: string): string | null {
-  let max: string | null = null;
-  for (const s of settlements) {
-    if (s.memberId !== memberId) continue;
-    if (!max || s.toDate > max) max = s.toDate;
-  }
-  return max;
-}
-
 export function totalPaid(settlements: CommissionSettlement[], memberId: string): number {
   return settlements.filter((s) => s.memberId === memberId).reduce((sum, s) => sum + (s.amount || 0), 0);
 }
 
-/** Record a commission payment and notify the member. */
+/**
+ * What a settlement of these periods records — pure, so the page, the request and the tests agree.
+ *
+ * ── Why it records keys (2026-10-15) ──
+ * A settlement used to be "everything verified since the last one", found again later by comparing each
+ * sale's approval stamp with the settlement's moment. Revoking and re-approving a settled sale moved its
+ * stamp past that moment, so the next settlement paid it again; and nothing stopped Sales Payroll from
+ * paying the same money with the salary. Now a settlement pays whole ended pay periods under the one rule
+ * (`utils/salesPay.commissionByPeriod`) and writes down the periods and every collection it paid.
+ */
+export function settlementRecord(rows: CommissionPeriodRow[]): {
+  periods: string[]; paidKeys: string[]; fromDate: string; toDate: string; rate: number; salesBase: number;
+  amount: number; saleCount: number; breakdown: { period: string; salesBase: number; rate: number; amount: number }[];
+} {
+  const paying = rows.filter((r) => r.commission > 0).sort((a, b) => a.period.localeCompare(b.period));
+  if (paying.length === 0) throw new Error("Nothing is due to settle.");
+  return {
+    periods: paying.map((r) => r.period),
+    paidKeys: paying.flatMap((r) => r.payableKeys),
+    fromDate: paying[0].start,
+    toDate: paying[paying.length - 1].end,
+    // One figure for the history line; the breakdown keeps each period's own rate.
+    rate: paying[paying.length - 1].rate,
+    salesBase: paying.reduce((s, r) => s + r.payableBase, 0),
+    amount: paying.reduce((s, r) => s + r.commission, 0),
+    saleCount: paying.reduce((s, r) => s + r.saleCount, 0),
+    breakdown: paying.map((r) => ({ period: r.period, salesBase: r.payableBase, rate: r.rate, amount: r.commission })),
+  };
+}
+
+/** Record a commission payment for the due periods and notify the member. */
 export async function createSettlement(params: {
   member: AppUser;
   admin: AppUser;
-  fromDate: string;
-  toDate: string;
-  rate: number;
-  salesBase: number;
-  amount: number;
-  saleCount: number;
+  /** The due periods being paid — `commissionByPeriod(...).due`. */
+  rows: CommissionPeriodRow[];
   note?: string;
 }): Promise<void> {
-  const { member, admin, fromDate, toDate, rate, salesBase, amount, saleCount, note } = params;
+  const { member, admin, rows, note } = params;
+  const record = settlementRecord(rows);
   await addDoc(collection(db, "commission_settlements"), {
     memberId: member.uid,
     memberName: member.name,
     adminId: admin.uid,
-    fromDate,
-    toDate,
-    commissionRate: rate,
-    salesBase,
-    amount,
-    saleCount,
+    fromDate: record.fromDate,
+    toDate: record.toDate,
+    commissionRate: record.rate,
+    salesBase: record.salesBase,
+    amount: record.amount,
+    saleCount: record.saleCount,
+    periods: record.periods,
+    paidKeys: record.paidKeys,
+    breakdown: record.breakdown,
     note: note?.trim() || null,
     paidAt: serverTimestamp(),
     createdAt: serverTimestamp(),
@@ -208,7 +145,8 @@ export async function createSettlement(params: {
     userId: member.uid,
     type: "commission_paid",
     title: "Incentives paid",
-    message: `${formatCurrency(amount)} incentives paid for ${fromDate} → ${toDate} (${rate}% of ${formatCurrency(salesBase)}).`,
+    message: `${formatCurrency(record.amount)} incentives paid for ${record.periods.map((p) => payPeriodLabel(p)).join(", ")}.`,
+    link: "/sales/settlements",
   });
 }
 

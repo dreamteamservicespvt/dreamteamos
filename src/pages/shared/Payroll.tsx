@@ -13,9 +13,11 @@ import { formatCurrency } from "@/utils/formatters";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { isBankComplete, isBankVerified, payoutMethodOf, payoutSummary, verifyEmployeeBank } from "@/services/payroll";
 import { setEmployeeId } from "@/services/employment";
-import { isLinePaid, markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
+import { earlyPayDays, isLinePaid, markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
 import { downloadPayslip } from "@/utils/payslipPdf";
-import { currentPayMonth, deductionsFor, formatDays, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import {
+  currentPayMonth, deductionsFor, earlyPayWarning, formatDays, payMonthsBetween, payPeriodLabel, salaryMonthDue, shiftPayMonth,
+} from "@/utils/payrollEngine";
 import { useTechProductivity } from "@/hooks/useTechProductivity";
 import { formatRatio, ratioBand, RATIO_BAND_STYLE, RATIO_TARGET, RATIO_LIMIT } from "@/utils/techProductivity";
 import { isActiveUser } from "@/utils/roleHelpers";
@@ -50,10 +52,19 @@ export default function Payroll() {
   }, [allUsers, isTeamLeader, user?.createdBy]);
 
   const [monthOffset, setMonthOffset] = useState(0);
-  // The pay period we are IN, stepped by the ‹ › buttons. The calendar month names a period that
-  // has not started for the first nine days of every month — see payrollEngine.currentPayMonth.
-  const month = shiftPayMonth(currentPayMonth(), monthOffset);
+  /*
+    ── Opens on the period DUE, not the one running (owner, 2026-10-15: "open on due, warn early pay") ──
+    A cycle is paid after it ends. Opening on the running cycle put payday (10 Oct) on 10 Oct → 9 Nov, every
+    day still to come and so nothing deducted — the full salary — while September, the salary actually due,
+    sat unpaid and Salary Management called it "Not sent". The ‹ › buttons step from the due period, back
+    through history and forward as far as the period running now (to pay a leaver early, with a warning).
+  */
+  const dueMonth = salaryMonthDue();
+  const maxOffset = Math.max(0, payMonthsBetween(dueMonth, currentPayMonth()));
+  const month = shiftPayMonth(dueMonth, monthOffset);
   const monthLabel = payPeriodLabel(month);
+  /** Asked once, before the receipt picker opens, when uploading a receipt would pay a running period. */
+  const earlyConfirmedForReceipt = useRef(false);
 
   const [search, setSearch] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
@@ -64,6 +75,7 @@ export default function Payroll() {
   const pendingReceiptRow = useRef<PayrollRow | null>(null);
 
   const { loading, error, rows, payDay, totals, period } = useMonthPayroll(members, month);
+  const periodRunning = earlyPayDays(month, { periodStart: period.start, periodEnd: period.end }) !== null;
 
 
   const filtered = useMemo(() => {
@@ -110,10 +122,15 @@ export default function Payroll() {
     const receiptNote = row.receipts.length
       ? ` Accounts has already recorded ${row.receipts.map(r => formatCurrency(r.amount)).join(" + ")} for this period in Salary Management.`
       : "";
+    // A period that has not ended is paid only after naming the days not worked yet (2026-10-15).
+    const early = earlyPayDays(month, row.computation);
     const { confirmed, inputValue } = await confirm({
-      title: `Pay ${row.member.name}?`,
-      description: `${formatCurrency(netOf(row))} for ${monthLabel} via ${payoutSummary(row.bank)}.${receiptNote} You can undo this afterwards if something's wrong.`,
-      confirmText: "Mark as paid",
+      title: early ? `Pay ${row.member.name} before the period ends?` : `Pay ${row.member.name}?`,
+      description: `${formatCurrency(netOf(row))} for ${monthLabel} via ${payoutSummary(row.bank)}.${receiptNote}`
+        + (early ? ` ${earlyPayWarning(row.member.name, monthLabel, early)}` : "")
+        + " You can undo this afterwards if something's wrong.",
+      confirmText: early ? "Pay early" : "Mark as paid",
+      variant: early ? "destructive" : undefined,
       withInput: true,
       inputPlaceholder: "Transaction ID (optional)",
     });
@@ -122,7 +139,7 @@ export default function Payroll() {
     setBusyUid(row.member.uid);
     try {
       await markSalaryPaid(
-        { month, member: row.member, netSalary: netOf(row), computation: row.computation },
+        { month, member: row.member, netSalary: netOf(row), computation: row.computation, earlyPayConfirmed: !!early },
         { uid: user.uid, name: user.name },
         { transactionId: inputValue?.trim() || undefined, paidVia: payoutMethodOf(row.bank) },
       );
@@ -183,7 +200,19 @@ export default function Payroll() {
     }
   };
 
-  const handlePickReceipt = (row: PayrollRow) => {
+  const handlePickReceipt = async (row: PayrollRow) => {
+    // Uploading a receipt on an unpaid row records the payment — the same early-pay question first.
+    const early = isLinePaid(row.line) ? null : earlyPayDays(month, row.computation);
+    if (early) {
+      const { confirmed } = await confirm({
+        title: `Pay ${row.member.name} before the period ends?`,
+        description: `Uploading a receipt records ${formatCurrency(netOf(row))} as paid for ${monthLabel}. ${earlyPayWarning(row.member.name, monthLabel, early)}`,
+        confirmText: "Pay early",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    earlyConfirmedForReceipt.current = !!early;
     pendingReceiptRow.current = row;
     fileInputRef.current?.click();
   };
@@ -198,7 +227,7 @@ export default function Payroll() {
     try {
       const url = await uploadToCloudinary(file);
       await markSalaryPaid(
-        { month, member: row.member, netSalary: netOf(row), computation: row.computation },
+        { month, member: row.member, netSalary: netOf(row), computation: row.computation, earlyPayConfirmed: earlyConfirmedForReceipt.current },
         { uid: user.uid, name: user.name },
         { receiptUrl: url, receiptName: file.name, paidVia: payoutMethodOf(row.bank) },
       );
@@ -314,8 +343,16 @@ export default function Payroll() {
               className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-[8.5rem] text-center text-sm font-semibold text-foreground">{monthLabel}</span>
-            <button onClick={() => setMonthOffset(o => Math.min(0, o + 1))} disabled={monthOffset >= 0}
+            <span className="min-w-[8.5rem] text-center text-sm font-semibold text-foreground">
+              {monthLabel}
+              {/* Which period this is, in words: the one due, or one still running (paying it is early). */}
+              <span data-test="payroll-period-state" className={`block text-[10px] font-medium ${
+                periodRunning ? "text-warning" : month === dueMonth ? "text-success" : "text-muted-foreground"
+              }`}>
+                {periodRunning ? "Not ended yet — paying it is early" : month === dueMonth ? "Due now" : "Past period"}
+              </span>
+            </span>
+            <button onClick={() => setMonthOffset(o => Math.min(maxOffset, o + 1))} disabled={monthOffset >= maxOffset}
               aria-label="Next month"
               className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40">
               <ChevronRight className="h-4 w-4" />
@@ -472,6 +509,13 @@ export default function Payroll() {
                         <span title="Accounts recorded a payment for this period in Salary Management"
                           className="inline-flex items-center gap-1 rounded-full bg-info/15 px-2 py-1 text-[11px] font-semibold text-info">
                           <FileText className="h-3 w-3" /> Receipt sent
+                        </span>
+                      )}
+                      {isPaid && row.line?.earlyPay && (
+                        <span data-test="payroll-paid-early"
+                          title={`Paid before the period ended — ${row.line.earlyPay.from} to ${row.line.earlyPay.to} were not worked yet`}
+                          className="inline-flex items-center rounded-full bg-warning/15 px-2 py-1 text-[11px] font-semibold text-warning">
+                          Paid early
                         </span>
                       )}
                       {/* Holiday work waiting to be settled against absences — visible without opening the row. */}

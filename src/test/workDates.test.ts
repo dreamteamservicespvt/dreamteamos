@@ -1,4 +1,9 @@
+// The app's users are in India; the day rules below are checked on India time whatever the machine's
+// zone is (vitest runs each file in its own process, so this only affects this file).
+process.env.TZ = "Asia/Kolkata";
+
 import { describe, it, expect } from "vitest";
+import { format } from "date-fns";
 import { workCountsOn, deliveryDate, assignedAtMs } from "@/utils/workDates";
 import type { WorkAssignment } from "@/types";
 
@@ -61,9 +66,13 @@ describe("workCountsOn", () => {
     expect(workCountsOn(a)).toBe("2026-06-30");
   });
 
-  it("falls back to assignedAtIso as a last resort", () => {
+  // assignedAtIso is a UTC instant: 20:11 UTC on 30 June is 01:41 IST on 1 JULY. The day is the
+  // local (India) one — this test locked in the UTC day ("2026-06-30") until 2026-10-15.
+  it("falls back to assignedAtIso as a last resort, on the India day of that instant", () => {
     const a = make({ status: "verified", date: "", assignedAt: null, assignedAtIso: "2026-06-30T20:11:06.000Z" });
-    expect(workCountsOn(a)).toBe("2026-06-30");
+    expect(workCountsOn(a)).toBe("2026-07-01");
+    const midday = make({ status: "verified", date: "", assignedAt: null, assignedAtIso: "2026-06-30T06:30:00.000Z" });
+    expect(workCountsOn(midday)).toBe("2026-06-30");
   });
 
   it("returns undefined rather than an empty string when nothing is dated", () => {
@@ -112,7 +121,7 @@ describe("assignedAtMs", () => {
 
   it("agrees with workCountsOn about which day the work belongs to", () => {
     const a = { assignedAt: { seconds: Date.UTC(2026, 6, 20, 9, 30) / 1000 }, assignedAtIso: "2026-07-20T09:30:00.000Z" } as unknown as WorkAssignment;
-    const day = new Date(assignedAtMs(a)!).toISOString().slice(0, 10);
+    const day = format(new Date(assignedAtMs(a)!), "yyyy-MM-dd");
     expect(day).toBe(workCountsOn(a));
   });
 });

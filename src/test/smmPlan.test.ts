@@ -14,6 +14,7 @@ import {
   daysUntilDue, derivedProgressCounts, extraWork, fulfilment, isMade, isOverdue, isPosted,
   isSmmOverseer, itemsForRun, postsByPlatform, smmWatchers, targetsFromCommitments, teamMembers,
   adTotals, adRunDays, budgetForDay, plannedSpend, postLinks, paymentProofs, DEFAULT_UPLOAD_TIME,
+  lastOwnDay, ownDayCount,
 } from "@/utils/smmPlan";
 import { isProgressComplete, progressPercent } from "@/utils/orderProgress";
 import { collectReadiness } from "@/utils/collectReadiness";
@@ -54,14 +55,17 @@ describe("dates", () => {
   it("runs a month for thirty days from the day it was sold, not to the end of the calendar month", () => {
     const c = cycleFromStart("2026-09-22");
     expect(c.startDate).toBe("2026-09-22");
-    expect(c.endDate).toBe("2026-10-21");
+    // 2026-10-15: the end date is the renewal day — thirty own days run 22 Sep … 21 Oct, renewing 22 Oct.
+    expect(c.endDate).toBe("2026-10-22");
+    expect(lastOwnDay(c)).toBe("2026-10-21");
+    expect(ownDayCount(c)).toBe(30);
     expect(c.month).toBe("2026-09");
   });
 
   it("counts today as a day left, and goes negative once the month is over", () => {
-    const c = cycleFromStart("2026-09-01");
-    expect(daysLeftInCycle(c, "2026-09-30")).toBe(1);
-    expect(daysLeftInCycle(c, "2026-10-01")).toBe(0);
+    const c = cycleFromStart("2026-09-01"); // 1 Sep → 1 Oct: its own days are 1–30 Sep
+    expect(daysLeftInCycle(c, "2026-09-30")).toBe(1); // its last own day
+    expect(daysLeftInCycle(c, "2026-10-01")).toBe(0); // the renewal day — over
     expect(daysLeftInCycle(c, "2026-10-05")).toBe(-4);
   });
 

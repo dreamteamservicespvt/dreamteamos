@@ -324,3 +324,48 @@ export async function enableGuestPush(chatId: string): Promise<PushState> {
     return pushState();
   }
 }
+
+// ─── Social Media: the client's one-tap approval (SMM Delivery Control, phase 7, 2026-10-15) ────
+
+/** A Social Media piece waiting for this client's answer (from `api/order-chat` `smm-approvals`). */
+export interface GuestSmmPiece {
+  itemId: string;
+  title: string;
+  label: string;
+  sentAt: number | null;
+}
+
+async function guestPost(body: Record<string, unknown>): Promise<Response> {
+  const { auth } = guestApp();
+  const token = await auth.currentUser?.getIdToken();
+  return fetch(`${API_BASE}/api/order-chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * What waits for this client's approval on their Social Media month (the chat id is the month's id). An empty
+ * list when the chat is not a Social Media month, nothing waits, or there is no API server (dev).
+ */
+export async function fetchSmmApprovals(chatId: string): Promise<GuestSmmPiece[]> {
+  try {
+    const res = await guestPost({ action: "smm-approvals", chatId });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { pieces?: GuestSmmPiece[] };
+    return Array.isArray(data.pieces) ? data.pieces : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The client's answer: approved, or changes with what to change. Throws the server's sentence when refused. */
+export async function answerSmmPiece(chatId: string, itemId: string, approved: boolean, note?: string): Promise<void> {
+  const res = await guestPost({ action: "smm-answer", chatId, itemId, approved, note: note || "" });
+  if (!res.ok) {
+    let message = "It could not be saved — please try again, or reply in the chat.";
+    try { message = ((await res.json()) as { error?: string }).error || message; } catch { /* keep the default */ }
+    throw new Error(message);
+  }
+}

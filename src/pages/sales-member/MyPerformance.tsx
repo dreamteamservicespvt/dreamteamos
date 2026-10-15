@@ -3,11 +3,20 @@ import { useAuthStore } from "@/store/authStore";
 import { useFirestoreQuery } from "@/hooks/useFirestore";
 import { useMyLeads } from "@/hooks/useMyLeads";
 import { formatCurrency } from "@/utils/formatters";
-import { format, addDays, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
+import { collection, query, where } from "firebase/firestore";
+import { db } from "@/services/firebase";
 import type { Lead, SaleDetail, CommissionSettlement } from "@/types";
-import { commissionRate, computeCommissionInRange, earliestVerifiedSaleDate, paidThrough, totalPaid, memberSettlementsQuery } from "@/services/settlements";
+import type { PayrollLine } from "@/types/payroll";
+import { lastSettlementOf, totalPaid, memberSettlementsQuery } from "@/services/settlements";
+import { isLinePaid } from "@/services/payrollRun";
 import { payPeriodForDate, payPeriodLabel, currentPayMonth } from "@/utils/payrollEngine";
-import { saleDay } from "@/utils/salesRevenue";
+import {
+  collectionsOf, commissionByPeriod, salesInPeriod, runningPlanEstimate,
+  PLAN_ESTIMATE_SALARY_MAX, PLAN_ESTIMATE_SALES_FOR_FULL_SALARY,
+} from "@/utils/salesPay";
+import { commissionTermsFor, payTermsFor } from "@/utils/payTerms";
+import CommissionPeriodList from "@/components/sales/CommissionPeriodList";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { TrendingUp, Target, Award, Zap, IndianRupee, Wallet, History, CheckCircle2, Search, Plus } from "lucide-react";
 import AttendanceCard from "@/components/sales/AttendanceCard";
@@ -58,22 +67,34 @@ export default function MyPerformance() {
    * opened this page on 1 August and was told they had earned nothing.
    */
   const cycle = payPeriodForDate(new Date());
-  const monthlyVerifiedRevenue = leads.reduce((sum, lead) =>
-    sum + getSaleItems(lead)
-      .filter((i) => {
-        if (i.verificationStatus !== "verified") return false;
-        const day = saleDay(i, lead);
-        return !!day && day >= cycle.start && day <= cycle.end;
-      })
-      .reduce((s, i) => s + (i.amount || 0), 0), 0);
+  /*
+    The money COLLECTED on verified sales in this cycle — the base of the one commission rule (utils/salesPay,
+    2026-10-15). It summed verified sale PRICES on the sale's day, so an advance counted its whole package and
+    a balance collected this cycle on last cycle's sale counted nothing.
+  */
+  const monthlyVerifiedRevenue = salesInPeriod(leads, cycle.start, cycle.end).salesBase;
 
-  // Earnings calculations
-  const MONTHLY_TARGET = 30000;
-  const STIPEND_MAX = 5000;
-  const stipendAmount = Math.min(STIPEND_MAX, (monthlyVerifiedRevenue / MONTHLY_TARGET) * STIPEND_MAX);
-  const option1Total = stipendAmount + monthlyVerifiedRevenue * 0.05;
-  const option2Total = monthlyVerifiedRevenue * 0.10;
-  const assignedOption = user?.earningsOption;
+  /*
+    The running period's terms (utils/payTerms): the plan and the target that apply NOW — the stored fields are
+    the latest change, which may be one agreed for a later period.
+  */
+  const runningTerms = payTermsFor(user, cycle.month);
+  /*
+    Earnings calculations — an ESTIMATE for the running period under the ONE rule (utils/salesPay.runningPlanEstimate,
+    2026-10-15): the incentive only at 75% of this period's target, as Sales Payroll pays it. It multiplied the
+    period's money by 5% / 10% with no gate, promising an incentive payroll would withhold.
+  */
+  const MONTHLY_TARGET = PLAN_ESTIMATE_SALES_FOR_FULL_SALARY;
+  const STIPEND_MAX = PLAN_ESTIMATE_SALARY_MAX;
+  const estimate = useMemo(() => runningPlanEstimate({
+    collections: collectionsOf(leads),
+    period: cycle,
+    dailyTarget: runningTerms.dailyTarget,
+  }), [leads, cycle.month, runningTerms.dailyTarget]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stipendAmount = estimate.option1.salary;
+  const option1Total = estimate.option1.total;
+  const option2Total = estimate.option2.total;
+  const assignedOption = runningTerms.earningsOption;
 
   /**
    * Which breakdown is on screen.
@@ -90,15 +111,27 @@ export default function MyPerformance() {
     useMemo(() => (user ? memberSettlementsQuery(user.uid) : null), [user?.uid]),
     [user?.uid],
   );
-  const commRate = commissionRate(user?.earningsOption);
+  // The rate of the period running now (a plan change agreed for a later period is not shown as today's).
+  const commRate = commissionTermsFor(user, cycle.month).rate;
   const todayStr = format(new Date(), "yyyy-MM-dd");
-  const settlePaidThrough = user ? paidThrough(settlements, user.uid) : null;
-  const settleUnpaidFrom = settlePaidThrough
-    ? format(addDays(parseISO(settlePaidThrough), 1), "yyyy-MM-dd")
-    : (earliestVerifiedSaleDate(leads) || todayStr);
-  const settleOutstanding = settleUnpaidFrom <= todayStr
-    ? computeCommissionInRange(leads, settleUnpaidFrom, todayStr, commRate)
-    : { base: 0, commission: 0, saleCount: 0 };
+  // The periods paid with the salary in Sales Payroll — their incentive went there, not to Settlements.
+  const { data: payrollLines } = useFirestoreQuery<PayrollLine>(
+    useMemo(() => (user ? query(collection(db, "payroll_lines"), where("memberId", "==", user.uid)) : null), [user?.uid]),
+    [user?.uid],
+  );
+  /*
+    What is owed, by pay period, under the ONE rule Settlements pays and Sales Payroll prices (2026-10-15).
+    This panel summed 5% / 10% of verified sale prices since the last settlement's "paid through" day — no
+    target gate, and blind to what Sales Payroll had already paid with the salary.
+  */
+  const settle = useMemo(() => commissionByPeriod({
+    collections: collectionsOf(leads),
+    settlements: settlements.filter((s) => s.memberId === user?.uid),
+    payrollPaid: new Set(payrollLines.filter((l) => isLinePaid(l)).map((l) => l.month)),
+    termsFor: (period) => commissionTermsFor(user, period),
+    todayStr,
+  }), [leads, settlements, payrollLines, user, todayStr]);
+  const lastSettlement = user ? lastSettlementOf(settlements, user.uid) : null;
   const settlePaidTotal = user ? totalPaid(settlements, user.uid) : 0;
   const settleHistory = useMemo(
     () => settlements.filter((s) => s.memberId === user?.uid).sort((a, b) => (b.paidAt?.seconds || 0) - (a.paidAt?.seconds || 0)),
@@ -240,19 +273,18 @@ export default function MyPerformance() {
             <p className="font-display font-bold text-lg text-foreground">{formatCurrency(settlePaidTotal)}</p>
           </div>
           <div className="rounded-lg bg-warning/10 p-3 text-center">
-            <p className="text-[10px] text-muted-foreground">Pending</p>
-            <p className="font-display font-bold text-lg text-warning">{formatCurrency(settleOutstanding.commission)}</p>
+            <p className="text-[10px] text-muted-foreground">Due</p>
+            <p className="font-display font-bold text-lg text-warning" data-test="settle-due">{formatCurrency(settle.dueAmount)}</p>
           </div>
           <div className="rounded-lg bg-muted/40 p-3 text-center">
-            <p className="text-[10px] text-muted-foreground">Paid through</p>
-            <p className="font-display font-bold text-sm text-foreground pt-1.5">{settlePaidThrough ? format(parseISO(settlePaidThrough), "dd MMM") : "—"}</p>
+            <p className="text-[10px] text-muted-foreground">Last paid</p>
+            <p className="font-display font-bold text-sm text-foreground pt-1.5">{lastSettlement?.paidAt?.seconds ? format(new Date(lastSettlement.paidAt.seconds * 1000), "dd MMM") : "—"}</p>
           </div>
         </div>
-        {settleOutstanding.commission > 0 && (
-          <p className="text-[11px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 mb-3">
-            Pending = {commRate}% of {formatCurrency(settleOutstanding.base)} verified sales from {format(parseISO(settleUnpaidFrom), "dd MMM")} to today ({settleOutstanding.saleCount} sales).
-          </p>
-        )}
+        {/* Period by period: due, paid with the salary, paid in Settlements, under target, or still running. */}
+        <div className="mb-3">
+          <CommissionPeriodList rows={settle.rows} max={4} />
+        </div>
         <div className="flex items-center gap-2 mb-2">
           <History size={13} className="text-muted-foreground" />
           <h3 className="text-xs font-semibold text-foreground">Payment history</h3>
@@ -264,7 +296,11 @@ export default function MyPerformance() {
             {settleHistory.map((s) => (
               <div key={s.id} className="flex items-center justify-between px-3 py-2 text-xs">
                 <div>
-                  <span className="text-foreground font-medium">{format(parseISO(s.fromDate), "dd MMM")} → {format(parseISO(s.toDate), "dd MMM yyyy")}</span>
+                  <span className="text-foreground font-medium">
+                    {Array.isArray(s.periods) && s.periods.length > 0
+                      ? s.periods.map((p) => payPeriodLabel(p).replace(/ \(.*\)$/, "")).join(", ")
+                      : `${format(parseISO(s.fromDate), "dd MMM")} → ${format(parseISO(s.toDate), "dd MMM yyyy")}`}
+                  </span>
                   <span className="block text-[10px] text-muted-foreground">{s.commissionRate}% of {formatCurrency(s.salesBase)}{s.note ? ` · ${s.note}` : ""}</span>
                 </div>
                 <span className="font-semibold text-primary">{formatCurrency(s.amount)}</span>
@@ -280,11 +316,26 @@ export default function MyPerformance() {
           <div>
             <div className="flex items-center gap-2">
               <IndianRupee size={16} className="text-primary" />
-              <h2 className="font-display font-semibold text-foreground">My Earnings This Month</h2>
+              <h2 className="font-display font-semibold text-foreground">My Earnings This Period · estimate</h2>
             </div>
             {/* Names the exact period, so "this month" can never be read as 1st–31st. */}
             <p data-test="earnings-period" className="text-xs text-muted-foreground mt-0.5">
-              Based on {formatCurrency(monthlyVerifiedRevenue)} verified revenue in {payPeriodLabel(currentPayMonth())}
+              Estimate so far, on {formatCurrency(monthlyVerifiedRevenue)} collected on verified sales in {payPeriodLabel(currentPayMonth())}
+            </p>
+            {/*
+              The 75% gate, said where the figures are: the period is still running, so the gate is decided when it
+              ends — an incentive shown here can still go, and one at ₹0 can still come.
+            */}
+            <p
+              data-test="earnings-gate"
+              data-gate={estimate.periodTarget <= 0 ? "none" : estimate.gateMetSoFar ? "met" : "under"}
+              className={`text-xs mt-0.5 ${estimate.periodTarget > 0 && !estimate.gateMetSoFar ? "text-warning" : "text-muted-foreground"}`}
+            >
+              {estimate.periodTarget <= 0
+                ? "No target set for this period — no incentive is withheld."
+                : estimate.gateMetSoFar
+                  ? `75% of this period's ${formatCurrency(estimate.periodTarget)} target reached (${Math.round(estimate.achievement * 100)}%) — the incentive counts if it holds until ${format(parseISO(cycle.end), "dd MMM")}.`
+                  : `Incentive not earned yet: ${Math.round(estimate.achievement * 100)}% of this period's ${formatCurrency(estimate.periodTarget)} target — ${formatCurrency(estimate.shortfall)} more by ${format(parseISO(cycle.end), "dd MMM")} reaches 75%.`}
             </p>
           </div>
           {assignedOption && (
@@ -343,11 +394,16 @@ export default function MyPerformance() {
               <span className="font-mono font-medium text-foreground">{formatCurrency(stipendAmount)}</span>
             </div>
             <div className="flex items-center justify-between text-sm py-1">
-              <span className="text-muted-foreground">5% Incentive on {formatCurrency(monthlyVerifiedRevenue)}</span>
-              <span className="font-mono font-medium text-foreground">{formatCurrency(monthlyVerifiedRevenue * 0.05)}</span>
+              <span className="text-muted-foreground">
+                5% Incentive on {formatCurrency(monthlyVerifiedRevenue)}
+                {!estimate.gateMetSoFar && estimate.option1.incentiveBeforeTarget > 0 && (
+                  <> · {formatCurrency(estimate.option1.incentiveBeforeTarget)} at 75% of target</>
+                )}
+              </span>
+              <span data-test="earnings-option1-incentive" className="font-mono font-medium text-foreground">{formatCurrency(estimate.option1.incentive)}</span>
             </div>
             <div className="border-t border-border pt-2 flex items-center justify-between">
-              <span className="font-semibold text-foreground">Total Earnings</span>
+              <span className="font-semibold text-foreground">Estimated total</span>
               <span className="font-display font-bold text-xl text-primary">{formatCurrency(option1Total)}</span>
             </div>
             <p className="text-[10px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 mt-1">
@@ -360,15 +416,21 @@ export default function MyPerformance() {
         {showOption2 && (
           <div className="space-y-2" data-test="earnings-option2">
             <div className="flex items-center justify-between text-sm py-1">
-              <span className="text-muted-foreground">10% on {formatCurrency(monthlyVerifiedRevenue)} verified sales</span>
-              <span className="font-mono font-medium text-foreground">{formatCurrency(option2Total)}</span>
+              <span className="text-muted-foreground">
+                10% on {formatCurrency(monthlyVerifiedRevenue)} collected on verified sales
+                {!estimate.gateMetSoFar && estimate.option2.incentiveBeforeTarget > 0 && (
+                  <> · {formatCurrency(estimate.option2.incentiveBeforeTarget)} at 75% of target</>
+                )}
+              </span>
+              <span data-test="earnings-option2-incentive" className="font-mono font-medium text-foreground">{formatCurrency(option2Total)}</span>
             </div>
             <div className="border-t border-border pt-2 flex items-center justify-between">
-              <span className="font-semibold text-foreground">Total Earnings</span>
+              <span className="font-semibold text-foreground">Estimated total</span>
               <span className="font-display font-bold text-xl text-success">{formatCurrency(option2Total)}</span>
             </div>
+            {/* It said "No target required" — untrue since the 75% gate applies to both plans (utils/salesPay). */}
             <p className="text-[10px] text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5 mt-1">
-              No target required — earn 10% on every verified sale. More you sell, more you earn.
+              10% on the money collected on verified sales — paid when the period reaches 75% of its target.
             </p>
           </div>
         )}

@@ -23,6 +23,18 @@ export interface AppUser {
    * that reads `user.salary` keeps working — see services/payroll.assignSalaryPackage.
    */
   salary: number;
+  /**
+   * When each change to the pay terms (salary, daily target, earnings plan) took effect — the pay period
+   * it applies from (2026-10-15). `salary` / `dailyTarget` / `earningsOption` above always hold the
+   * LATEST terms; a screen pricing a particular period asks `utils/payTerms.payTermsFor(user, period)`.
+   *
+   * ── Why ──
+   * The three fields were one value read for every period, so a raise saved on 1 Oct re-priced unpaid
+   * September in full and flagged the August payment, which was right, as "Now ₹18,000 … undo and pay
+   * again". Absent = no change recorded: today's fields apply to every period (legacy, nothing migrated).
+   * Written only by `services/payroll.savePayTerms`.
+   */
+  payHistory?: PayTermsChange[];
   /** Salary package this employee is on (`salary_packages/{id}`). Absent for unassigned staff. */
   salaryPackageId?: string;
   /**
@@ -124,6 +136,28 @@ export interface AppUser {
   designation?: string;
   createdAt: any;
   updatedAt: any;
+}
+
+/** The pay terms in force — what `AppUser.payHistory` records for each change. */
+export interface PayTermsSnapshot {
+  /** Gross monthly salary. */
+  salary: number;
+  /** A sales member's daily target (the 75% incentive gate); null/absent = none. */
+  dailyTarget?: number | null;
+  /** A sales member's plan (5% / 10%); null/absent = not assigned (5%). */
+  earningsOption?: "stipend_plus_5" | "incentive_10" | null;
+}
+
+/** One change to a person's pay terms and the pay period it applies from (2026-10-15). */
+export interface PayTermsChange extends PayTermsSnapshot {
+  /** The first pay period (`yyyy-MM`, the month the 10th → 9th cycle starts in) these terms apply to. */
+  from: string;
+  /** The terms just before this change — what applied to every period before the first change. */
+  previous?: PayTermsSnapshot | null;
+  /** When the change was saved, epoch ms (a Firestore array cannot hold serverTimestamp()). */
+  at: number;
+  byUid?: string | null;
+  byName?: string | null;
 }
 
 // Work Assignment System
@@ -453,6 +487,14 @@ export interface SaleDetail {
   submittedAt?: any;        // when the member recorded the sale
   verifiedAt?: any;         // when the admin approved it
   /**
+   * When the sale was FIRST approved (2026-10-15) — set once, never cleared by a revoke, a rejection
+   * or a re-approval. `verifiedAt` is rewritten by every re-approval, so a sale an old settlement had
+   * paid looked "verified after" that settlement once revoked and approved again, and was paid twice.
+   * Settlements made since record what they paid (`CommissionSettlement.paidKeys`); this keeps the older
+   * ones' reconstruction (`utils/salesPay.settlementCoverage`) stable. Absent = read `verifiedAt`.
+   */
+  firstVerifiedAt?: any;
+  /**
    * When the admin rejected it. Kept separate from `verifiedAt` — which is cleared on rejection —
    * because the approvals queue filters "what did I decide yesterday" on the decision's own stamp,
    * and a rejection with no stamp of its own could only be dated by the lead's last edit.
@@ -519,6 +561,14 @@ export interface SmmSaleSpec {
    * month continues from that one: its dates follow on, its team carries over. Absent on a first sale.
    */
   renewalOf?: string | null;
+  /**
+   * The day the month starts, `yyyy-MM-dd` — the sale form's "Month starts on" (owner, 2026-10-15: "the
+   * sale form asks when the month starts"). A renewal opens on the renewed month's end date (always, even
+   * when recorded late) and may not start before it; a first month opens on the day of the sale. The
+   * month is made on it, and the tech side's setup opens on it. Absent on a sale recorded before
+   * 2026-10-15: a renewal then starts on the old end date, a first month on the day of the sale.
+   */
+  startDate?: string | null;
 }
 
 /** One recorded edit of a sale, so a change is visible and accountable rather than silent. */
@@ -1138,6 +1188,20 @@ export interface CommissionSettlement {
   note?: string | null;
   paidAt: any;
   createdAt: any;
+  /**
+   * The pay periods (`yyyy-MM`) this payment settled (2026-10-15). Absent on settlements made before —
+   * those paid "everything verified since the last one" and are read through
+   * `utils/salesPay.settlementCoverage`.
+   */
+  periods?: string[];
+  /**
+   * Every collection this payment paid incentive on, as `<saleId>#<payment id>` (2026-10-15) — what makes
+   * a sale or a balance unpayable a second time, here or in Sales Payroll, whatever happens to its
+   * approval stamp afterwards. Absent on older settlements (see `periods`).
+   */
+  paidKeys?: string[];
+  /** Per period: the verified money counted, the rate that applied then and the incentive paid. */
+  breakdown?: { period: string; salesBase: number; rate: number; amount: number }[];
 }
 
 // Schedule Numbers Pool System

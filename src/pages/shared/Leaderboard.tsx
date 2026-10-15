@@ -10,6 +10,8 @@ import DashboardDayPicker from "@/components/dashboard/DayPicker";
 import { useNow } from "@/hooks/useNow";
 import { currentPayMonth, payPeriodForMonth, shiftPayMonth } from "@/utils/payrollEngine";
 import { collectedInRange, collectedOf } from "@/utils/salePayments";
+import { collectionsOf, commissionInWindow } from "@/utils/salesPay";
+import { commissionTermsFor } from "@/utils/payTerms";
 
 /** Granularity for the "Career Sales" / "Career Incentives" columns — Month is the default and
  *  the only option sales members ever see; Career (true all-time totals) is admin-only, since
@@ -72,8 +74,22 @@ function getSaleDate(item: SaleDetail, lead: Lead): string | null {
   return null;
 }
 
-function calcCommission(revenue: number, option?: "stipend_plus_5" | "incentive_10"): number {
-  return option === "incentive_10" ? revenue * 0.10 : revenue * 0.05;
+/**
+ * A member's incentive on the money collected inside a window of days — the ONE commission rule
+ * (`utils/salesPay.commissionInWindow`, owner 2026-10-15: "Payroll's rule everywhere").
+ *
+ * The columns used to show 5% / 10% of everything collected, with no 75% target gate and today's plan
+ * for every past period — a figure no payroll or settlement ever paid. Now: each pay period's rate (the
+ * plan that applied then) on the money collected in it, only when that period reached 75% of its target
+ * (so far, for the period running). Revenue ranking is unchanged — it is money, not commission.
+ */
+function calcCommission(member: AppUser, leads: Lead[], from: string | null, to: string | null): number {
+  return commissionInWindow({
+    collections: collectionsOf(leads),
+    from,
+    to,
+    termsFor: (period) => commissionTermsFor(member, period),
+  }).commission;
 }
 
 const RANK_STYLES = [
@@ -244,17 +260,16 @@ export default function Leaderboard() {
     const monthSales = verifiedCollectedIn(periodStart, periodEnd);
 
     let daySales = 0;
-    let dayVerified = 0;
+    let dayFrom: string | null = null;
+    let dayTo: string | null = null;
 
     if (effectiveDateStr || effectiveSpan) {
-      const from = effectiveSpan ? effectiveSpan.from : (effectiveDateStr as string);
-      const to = effectiveSpan ? effectiveSpan.to : (effectiveDateStr as string);
-      daySales = collectedIn(from, to);
-      dayVerified = verifiedCollectedIn(from, to);
+      dayFrom = effectiveSpan ? effectiveSpan.from : (effectiveDateStr as string);
+      dayTo = effectiveSpan ? effectiveSpan.to : (effectiveDateStr as string);
+      daySales = collectedIn(dayFrom, dayTo);
     } else {
       // All days
       daySales = allItems.reduce((s, { item, lead }) => s + collectedOf(item, lead), 0);
-      dayVerified = careerSales;
     }
 
     return {
@@ -262,9 +277,10 @@ export default function Leaderboard() {
       daySales,
       careerSales,
       monthSales,
-      commDay: calcCommission(dayVerified, member.earningsOption),
-      commCareer: calcCommission(careerSales, member.earningsOption),
-      commMonth: calcCommission(monthSales, member.earningsOption),
+      // The one commission rule on the same windows (verified money only, each period's gate and rate).
+      commDay: calcCommission(member, memberLeads, dayFrom, dayTo),
+      commCareer: calcCommission(member, memberLeads, null, null),
+      commMonth: calcCommission(member, memberLeads, periodStart, periodEnd),
     };
   });
 

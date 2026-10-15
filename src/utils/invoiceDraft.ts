@@ -16,7 +16,9 @@ import { numberInIndianWords, resolveCompany } from "@/utils/company";
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { GSTIN_PROBLEM_TEXT, HOME_STATE_CODE, gstinProblem, isValidIfsc, isValidUpiId, normalizeGstin, stateCodeOfGstin } from "@/utils/gst";
 import { computeInvoice, formatPaise, safeAmount, type InvoiceTotals, type Paise } from "@/utils/invoiceMath";
-import { invoiceNumberForFile } from "@/utils/invoiceNumber";
+import {
+  financialYearLabel, financialYearShort, financialYearSpan, financialYearStart, INVOICE_NUMBER_PREFIX, invoiceNumberForFile,
+} from "@/utils/invoiceNumber";
 
 // ─── Starting values ────────────────────────────────────────────────────────────────────────────
 
@@ -301,12 +303,21 @@ const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()
  * What stands between this content and a numbered invoice, in the order the editor shows its
  * sections — so "fix the first problem" scrolls to the top-most one.
  */
-export function validateInvoice(content: InvoiceContent, totals: InvoiceTotals = computeInvoice(content)): InvoiceIssue[] {
+export function validateInvoice(
+  content: InvoiceContent,
+  totals: InvoiceTotals = computeInvoice(content),
+  /** For an issued invoice: the year and neighbours its date must stay within (2026-10-15). */
+  issued?: IssuedDateRule | null,
+): InvoiceIssue[] {
   const issues: InvoiceIssue[] = [];
   const err = (field: string, message: string) => issues.push({ field, message, level: "error" });
   const warn = (field: string, message: string) => issues.push({ field, message, level: "warning" });
 
   if (!isValidIsoDate(content.issueDate)) err("issueDate", "Choose the invoice date.");
+  else if (issued) {
+    const problem = issuedDateProblem(content.issueDate, issued);
+    if (problem) err("issueDate", problem);
+  }
   if (content.dueDate && !isValidIsoDate(content.dueDate)) err("dueDate", "Choose a valid due date.");
   else if (isValidIsoDate(content.issueDate) && content.dueDate && content.dueDate < content.issueDate) {
     err("dueDate", "The due date is before the invoice date.");
@@ -351,6 +362,117 @@ export function validateInvoice(content: InvoiceContent, totals: InvoiceTotals =
 }
 
 export const blockingIssues = (issues: InvoiceIssue[]) => issues.filter((i) => i.level === "error");
+
+// ─── A numbered invoice's date (2026-10-15) ─────────────────────────────────────────────────────
+
+/** A neighbour in the series: its number and its invoice date. */
+export interface SeriesNeighbour {
+  number: string;
+  date: string;
+}
+
+/**
+ * What an ISSUED invoice's date must respect: the financial year its number belongs to, and — where
+ * they are known — the dates of the numbers either side of it in the same series.
+ */
+export interface IssuedDateRule {
+  number: string;
+  /** The year the number's series starts in (`DTS/26-27/…` → 2026). */
+  fyStart: number;
+  /** The nearest earlier number still on record, with its date (deleted numbers are skipped). */
+  prev?: SeriesNeighbour | null;
+  /** The nearest later number still on record, with its date. */
+  next?: SeriesNeighbour | null;
+}
+
+/**
+ * The earliest and latest dates an issued invoice can carry — for the date picker's min / max and
+ * the hint under it.
+ */
+export function issuedDateLimits(rule: IssuedDateRule): { min: string; max: string } {
+  const span = financialYearSpan(rule.fyStart);
+  const prev = rule.prev && isValidIsoDate(rule.prev.date) ? rule.prev.date : "";
+  const next = rule.next && isValidIsoDate(rule.next.date) ? rule.next.date : "";
+  return {
+    min: prev && prev > span.from ? prev : span.from,
+    max: next && next < span.to ? next : span.to,
+  };
+}
+
+/**
+ * Why this date cannot go on this numbered invoice, or null when it can.
+ *
+ * ── Why (bug audit, 2026-10-15) ──
+ * Editing an issued invoice only checked the date's format and that the due date was not before
+ * it. `DTS/26-27/0042` could be moved to 2 April 2027 — a date in the 2027-28 year — and still carry
+ * its 26-27 number and `financialYear: "2026-27"`; it could also be dated before 0041, putting the
+ * series out of order. GST numbers run in order within ONE financial year, so once an invoice has a
+ * number its date stays inside that number's year and between its neighbours'. A date the series
+ * cannot hold needs a new invoice (cancel this one), not a moved one.
+ */
+export function issuedDateProblem(issueDate: string, rule: IssuedDateRule): string | null {
+  if (!isValidIsoDate(issueDate)) return null; // "Choose the invoice date." is reported on its own
+  const span = financialYearSpan(rule.fyStart);
+  if (issueDate < span.from || issueDate > span.to) {
+    return `${rule.number} is in the ${financialYearLabel(rule.fyStart)} series, so its date must be between `
+      + `${formatInvoiceDate(span.from)} and ${formatInvoiceDate(span.to)}. For a date in another year, cancel this `
+      + `invoice and make a new one.`;
+  }
+  if (rule.prev && isValidIsoDate(rule.prev.date) && issueDate < rule.prev.date) {
+    return `${rule.number} comes after ${rule.prev.number}, dated ${formatInvoiceDate(rule.prev.date)}, so it can't be dated earlier.`;
+  }
+  if (rule.next && isValidIsoDate(rule.next.date) && issueDate > rule.next.date) {
+    return `${rule.number} comes before ${rule.next.number}, dated ${formatInvoiceDate(rule.next.date)}, so it can't be dated later.`;
+  }
+  return null;
+}
+
+/**
+ * What the Generate confirmation says (2026-10-15).
+ *
+ * ── Why it names the date and the series ──
+ * A draft keeps the date it was started on. One opened on 30 March 2027 and generated on 3 April
+ * took a DTS/26-27 number dated 30 March without anyone deciding that — the old confirmation only
+ * said "the next number in the 2026-27 series". Now it says which date the invoice will carry and the
+ * series that date puts it in, and when the draft's date is not today it offers today's date (and
+ * says when that changes the series).
+ */
+export function generateConfirmCopy(issueDate: string, todayIso: string = isoDate()): {
+  title: string;
+  description: string;
+  /** False when the draft is dated today — then there is nothing to choose. */
+  offerToday: boolean;
+  keepLabel: string;
+  todayLabel: string;
+} {
+  const fy = financialYearStart(issueDate);
+  const series = `${INVOICE_NUMBER_PREFIX}/${financialYearShort(fy)}/…`;
+  const offerToday = isValidIsoDate(todayIso) && issueDate !== todayIso;
+  const base = `Invoice date: ${formatInvoiceDate(issueDate)}. It gets the next number in the ${financialYearLabel(fy)} series (${series}). `
+    + `You can still edit it later — the number never changes, and the date stays inside that year.`;
+  if (!offerToday) {
+    return { title: "Generate this invoice?", description: base, offerToday, keepLabel: "Generate invoice", todayLabel: "" };
+  }
+  const todayFy = financialYearStart(todayIso);
+  const moves = todayFy !== fy
+    ? ` Today's date (${formatInvoiceDate(todayIso)}) would put it in the ${financialYearLabel(todayFy)} series instead (${INVOICE_NUMBER_PREFIX}/${financialYearShort(todayFy)}/…).`
+    : ` Today is ${formatInvoiceDate(todayIso)}.`;
+  return {
+    title: "Generate this invoice?",
+    description: `This draft is dated ${formatInvoiceDate(issueDate)}, not today.${moves}\n\n${base}`,
+    offerToday,
+    keepLabel: `Keep ${formatInvoiceDate(issueDate)}`,
+    todayLabel: "Use today's date",
+  };
+}
+
+/** The content with today's date — the due date moves with it, keeping the same gap. */
+export function withIssueDate(content: InvoiceContent, issueDate: string): InvoiceContent {
+  const gap = isValidIsoDate(content.issueDate) && isValidIsoDate(content.dueDate)
+    ? Math.max(0, daysBetween(content.issueDate, content.dueDate))
+    : null;
+  return { ...content, issueDate, dueDate: gap === null ? content.dueDate : addDaysIso(issueDate, gap) };
+}
 
 // ─── How it reads ───────────────────────────────────────────────────────────────────────────────
 

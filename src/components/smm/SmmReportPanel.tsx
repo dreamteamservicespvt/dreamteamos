@@ -17,7 +17,7 @@ import { Link } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { Send, Trophy, Clock, Users2, IndianRupee, Target, ArrowRight, RefreshCcw, XCircle, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/utils/formatters";
-import { adTotals, allAdReports, clientWaitSummary, daysLeftInCycle, extraWork, isoDay } from "@/utils/smmPlan";
+import { adTotals, clientWaitSummary, daysLeftInCycle, extraWork, isoDay, monthAdReports } from "@/utils/smmPlan";
 import { canRenewSmm, cycleTimeLabel, renewalDue } from "@/utils/smmPackage";
 import { adDaily, stageBreakdown } from "@/utils/smmDashboard";
 import { monthlyReportMessage, renewalMessage } from "@/utils/smmMessages";
@@ -44,7 +44,8 @@ export default function SmmReportPanel({ campaign, user, onMessage, onOpen, canE
 }) {
   const { toast } = useToast();
   const today = isoDay(new Date());
-  const ads = adTotals(allAdReports(campaign));
+  // The month's own days only, like the "leads a day" chart below (2026-10-15) — every report used to count.
+  const ads = adTotals(monthAdReports(campaign));
   const wait = clientWaitSummary(campaign.items);
   const extras = extraWork(campaign.items);
   const daysLeft = daysLeftInCycle(campaign.cycle, today);

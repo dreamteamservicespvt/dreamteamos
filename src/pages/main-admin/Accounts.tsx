@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from "@/utils/formatters";
 import type { AppUser } from "@/types";
 import { Wallet, TrendingUp, TrendingDown, Plus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useToday } from "@/hooks/useToday";
 
 interface Expense {
   id: string;
@@ -32,7 +33,15 @@ export default function Accounts() {
   const [loading, setLoading] = useState(true);
 
   const [showAdd, setShowAdd] = useState(false);
-  const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
+  // ── Why the date is "today unless picked" ── (same as accounts-admin/DailyExpenses)
+  // It was the UTC day (yesterday in India until 05:30 IST), fixed when the page opened, so a page
+  // left open past midnight kept stamping new expenses with the day before. Now the default is the
+  // LOCAL day from `useToday` (turns over at midnight); only a date the person picks is kept, and it
+  // is cleared after each entry.
+  const today = useToday();
+  const [pickedDate, setPickedDate] = useState<string | null>(null);
+  const expDate = pickedDate ?? today;
+  const setExpDate = (value: string) => setPickedDate(value || null);
   const [expCategory, setExpCategory] = useState("Miscellaneous");
   const [expDesc, setExpDesc] = useState("");
   const [expAmount, setExpAmount] = useState<number>(0);
@@ -85,6 +94,7 @@ export default function Accounts() {
       ]);
       setExpDesc("");
       setExpAmount(0);
+      setPickedDate(null);
       setShowAdd(false);
       toast({ title: "Expense Added", description: `${formatCurrency(expAmount)} recorded.` });
     } catch {

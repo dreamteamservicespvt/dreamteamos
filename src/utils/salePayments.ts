@@ -37,7 +37,29 @@ export interface PaymentEvent {
   note?: string | null;
   /** False for the synthesised full payment of an ordinary sale. */
   recorded: boolean;
+  /**
+   * Which payment this is within its sale (2026-10-15): the payment's own id, or `"opening"` for the
+   * money taken at the sale when nobody recorded it as a payment (a sale paid in full) — the same id the
+   * recorded "Paid at sale" entry (`pay_opening`) and an advance added to such a sale later carry, so the
+   * same money keeps one identity. With the sale's id it makes the collection key incentive payments
+   * record (`collectionKey`).
+   */
+  id: string;
 }
+
+/** The id the money taken at the sale goes by, recorded or not. */
+export const OPENING_PAYMENT_ID = "opening";
+
+/** One collection's identity across the app: `<saleId>#<payment id>` — what a settlement or a payroll payment records it paid. */
+export function collectionKey(saleId: string, paymentId: string): string {
+  return `${saleId}#${paymentId}`;
+}
+
+const paymentIdOf = (p: SalePayment, index: number): string => {
+  if (p?.id === "pay_opening") return OPENING_PAYMENT_ID;
+  if (p?.id) return p.id;
+  return index === 0 ? OPENING_PAYMENT_ID : `p${index}`;
+};
 
 const tsDay = (ts: unknown): string | null => {
   const seconds = (ts as { seconds?: number } | undefined)?.seconds;
@@ -72,17 +94,46 @@ export function paymentEvents(item: SaleDetail, lead?: Lead | null): PaymentEven
    * honest answer is that none has been received.
    */
   if (!item.partialPayment) {
-    return [{ amount: item.amount || 0, day: saleDay(item, lead), recorded: false }];
+    return [{ amount: item.amount || 0, day: saleDay(item, lead), recorded: false, id: OPENING_PAYMENT_ID }];
   }
   const list = Array.isArray(item.payments) ? item.payments : [];
-  return list.map((p: SalePayment) => ({
+  return list.map((p: SalePayment, index: number) => ({
     amount: Number(p.amount) || 0,
     // A payment with no stamp is one being written right now; it belongs to the sale's own day
     // rather than to nowhere, which would silently drop it out of every total.
     day: tsDay(p.collectedAt) ?? saleDay(item, lead),
     note: p.note ?? null,
     recorded: true,
+    id: paymentIdOf(p, index),
   }));
+}
+
+/**
+ * Why a "Collected on" day cannot be saved, or null when it can (2026-10-15).
+ *
+ * The day money arrived is the day it counts — towards revenue, and towards the incentive of the PAY
+ * PERIOD it falls in. Recording a payment used to stamp the moment of the click, so a balance collected
+ * on 9 Oct and typed in on 10 Oct counted in the October cycle instead of September's. The member now
+ * says the day; it cannot be before the sale (no money is paid for a sale not yet made) or after today
+ * (money not yet received is not collected).
+ */
+export function collectedOnProblem(day: string, input: { saleDay: string | null; today: string }): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return "Pick the day the money was collected.";
+  if (day > input.today) return "The collection day can't be in the future.";
+  if (input.saleDay && day < input.saleDay) return "The collection day can't be before the sale was made.";
+  return null;
+}
+
+/**
+ * The stamp to store for money collected on `day` (`yyyy-MM-dd`, local): the moment itself when that
+ * day is today, else midday of that day — a stamp, not a moment, so it reads as the same local day in
+ * any timezone near India.
+ */
+export function collectedAtFor(day: string, now: Date = new Date()): Date {
+  const today = format(now, "yyyy-MM-dd");
+  if (day === today) return now;
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
 }
 
 /** Money actually in hand for this sale. */

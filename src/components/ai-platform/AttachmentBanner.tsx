@@ -10,9 +10,39 @@
  * or in a chat thread rather than on the machine they are generating from — one click puts the
  * exact right file on disk, named, ready to attach.
  */
-import { Download, ImageOff } from 'lucide-react';
+import { Download, ImageOff, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PromptAttachment } from '@/utils/promptAttachments';
+
+/**
+ * The owners' faces a Real Owner Face frame needs (2026-10-14) — one owner image, or a Real Owner Duo's two
+ * photos IN ORDER: the prompt says "owner photo 1 is the man on the LEFT", so the one attached first must be his.
+ */
+function OwnerPhotosBanner({ ownerPhotos, isDark }: { ownerPhotos: string[]; isDark: boolean }) {
+  const duo = ownerPhotos.length > 1;
+  return (
+    <div
+      data-test="attach-owners"
+      className={cn("mb-3 flex items-start gap-3 rounded-xl border-2 p-2",
+        isDark ? "border-amber-500/60 bg-amber-950/30" : "border-amber-400 bg-amber-50")}
+    >
+      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+        isDark ? "bg-amber-500/15 text-amber-300" : "bg-amber-100 text-amber-700")}>
+        <UserRound className="w-5 h-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={cn("text-sm font-bold leading-tight", isDark ? "text-amber-200" : "text-amber-900")}>
+          {duo ? '📎 Attach both owner photos, in this order' : "📎 Attach the owner's photo"}
+        </p>
+        <ol className={cn("mt-0.5 text-xs leading-snug", isDark ? "text-amber-300/90" : "text-amber-800")}>
+          {ownerPhotos.map((photo, i) => (
+            <li key={photo}>{duo ? `${i + 1}. ` : ''}{photo}</li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
 
 interface AttachmentBannerProps {
   attachment: PromptAttachment;
@@ -23,7 +53,9 @@ interface AttachmentBannerProps {
 
 export default function AttachmentBanner({ attachment, isDark, compact = false }: AttachmentBannerProps) {
   const { photoNumber, zone, url, fileName } = attachment;
+  const ownerPhotos = attachment.ownerPhotos ?? [];
   const needsPhoto = photoNumber !== null;
+  const owners = ownerPhotos.length > 0 ? <OwnerPhotosBanner ownerPhotos={ownerPhotos} isDark={isDark} /> : null;
 
   const save = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -34,6 +66,8 @@ export default function AttachmentBanner({ attachment, isDark, compact = false }
     link.click();
   };
 
+  // No store photo: the owners' faces when the ad has them, else nothing at all to attach.
+  if (!needsPhoto && owners) return owners;
   if (!needsPhoto) {
     return (
       <div
@@ -47,7 +81,9 @@ export default function AttachmentBanner({ attachment, isDark, compact = false }
     );
   }
 
+  // A store photo — and, on an owner ad shot in the client's premises, the owners' faces under it.
   return (
+    <>
     <div
       data-test="attach-banner"
       className={cn("mb-3 flex items-center gap-3 rounded-xl border-2 p-2",
@@ -97,5 +133,7 @@ export default function AttachmentBanner({ attachment, isDark, compact = false }
         </button>
       )}
     </div>
+    {owners}
+    </>
   );
 }

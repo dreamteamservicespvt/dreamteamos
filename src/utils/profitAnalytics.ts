@@ -1,8 +1,11 @@
 import { format } from "date-fns";
-import { withinPeriod, type PeriodFilter } from "./periodFilter";
-import { deliveryDate } from "./workDates";
-import { commissionRate } from "@/services/settlements";
+import { periodBounds, withinPeriod, type PeriodFilter } from "./periodFilter";
+import { workCountsOn } from "./workDates";
+import { isLinePaid, netPayable, payPeriodForDate, payPeriodForMonth, periodDates, shiftPayMonth } from "./payrollEngine";
+import { collectionsOf, commissionInWindow, type Collection } from "./salesPay";
+import { commissionTermsFor, salaryFor } from "./payTerms";
 import type { AppUser, Lead, SaleDetail, WorkAssignment } from "@/types";
+import { DEFAULT_PAYROLL_CONFIG, type PayrollLine } from "@/types/payroll";
 
 /**
  * Company profit and loss, derived from what the two departments actually did.
@@ -90,34 +93,35 @@ export interface ComputeProfitInput {
   expenses: ExpenseRecord[];
   otherIncome?: OtherIncomeRecord[];
   /**
-   * How many months of salary the period represents. Salary is monthly, so a single-day view
-   * must not charge a whole month against one day's revenue.
+   * The salary payment records (`payroll_lines`) — what was actually paid for a paid period. Absent or empty:
+   * every period is priced at the salary that applied in it (`utils/payTerms`).
    */
-  salaryMonths?: number;
+  payrollLines?: PayrollLine[];
+  /** First day of the career view (the earliest sale, as a LOCAL day). Default: today. */
+  earliestDate?: string;
+  /** Today, `yyyy-MM-dd` — where the career view ends. Default: the clock. */
+  todayStr?: string;
+  /** The pay cycle's first day of the month. Default: the company's (the 10th). */
+  cycleStartDay?: number;
 }
 
 export function computeProfit(input: ComputeProfitInput): ProfitBreakdown {
   const { filter, users, leads, assignments, expenses } = input;
   const otherIncomeRecords = input.otherIncome ?? [];
-  const salaryMonths = input.salaryMonths ?? 1;
+  const cycleStartDay = input.cycleStartDay ?? DEFAULT_PAYROLL_CONFIG.payDayOfMonth;
+  const todayStr = input.todayStr ?? format(new Date(), "yyyy-MM-dd");
 
   // ── Income: verified sales only. Pending sales aren't money yet. ──────────
   let salesRevenue = 0;
   let salesCount = 0;
-  const commissionByMember = new Map<string, number>();
 
   for (const lead of leads) {
     for (const item of saleItemsOf(lead)) {
       if (item.verificationStatus !== "verified") continue;
       const date = saleDate(item, lead);
       if (!withinPeriod(date ?? undefined, filter)) continue;
-
-      const amount = item.amount || 0;
-      salesRevenue += amount;
+      salesRevenue += item.amount || 0;
       salesCount += 1;
-
-      const owner = lead.assignedTo;
-      if (owner) commissionByMember.set(owner, (commissionByMember.get(owner) ?? 0) + amount);
     }
   }
 
@@ -125,25 +129,74 @@ export function computeProfit(input: ComputeProfitInput): ProfitBreakdown {
     .filter(r => withinPeriod(r.date, filter))
     .reduce((sum, r) => sum + (r.amount || 0), 0);
 
-  // ── Commission: each member's own rate applied to their own verified sales ─
+  // The window the P&L covers, as days — the career view runs from the first sale to today.
+  const bounds = periodBounds(filter);
+  const window = bounds ?? { from: input.earliestDate ?? todayStr, to: todayStr };
+
+  /*
+    ── Commission: the ONE rule (owner, 2026-10-15) ──────────────────────────────────────────────
+    It was each member's TODAY's rate on the verified sale PRICES dated in the window — no 75% target gate,
+    and a plan changed later re-priced every past period. Now it is `utils/salesPay.commissionInWindow`: the
+    money collected inside the window, at the rate that applied in its pay period, only when that period
+    reached 75% of its target — what Sales Payroll and Settlements pay.
+  */
+  const collectionsByOwner = new Map<string, Collection[]>();
+  for (const c of collectionsOf(leads)) {
+    if (!c.ownerId) continue;
+    collectionsByOwner.set(c.ownerId, [...(collectionsByOwner.get(c.ownerId) || []), c]);
+  }
   let salesCommission = 0;
-  for (const [memberId, base] of commissionByMember) {
+  for (const [memberId, collections] of collectionsByOwner) {
     const member = users.find(u => u.uid === memberId);
-    salesCommission += Math.round((base * commissionRate(member?.earningsOption)) / 100);
+    salesCommission += commissionInWindow({
+      collections,
+      from: bounds ? bounds.from : null,
+      to: bounds ? bounds.to : null,
+      termsFor: (period) => commissionTermsFor(member, period),
+      cycleStartDay,
+    }).commission;
   }
 
-  // ── Salary cost, prorated to the length of the period ─────────────────────
-  // External creators aren't staff — no salary, so excluded from the cost side of profit.
-  const activeUsers = users.filter(u => u.isActive !== false && !u.externalCreator);
-  const techTeam = activeUsers.filter(u =>
-    u.role === "tech_member" || u.role === "tech_team_leader");
-  const salesTeam = activeUsers.filter(u => u.role === "sales_member");
+  /*
+    ── Salary cost: what each pay period actually cost, for the days of it inside the window (2026-10-15) ──
+    It was TODAY's active staff × TODAY's salary × the window's length in 30-day months, for any period —
+    a raise re-priced last year, a leaver vanished from the months they were paid, a joiner was charged for
+    months before they joined. Now, pay period by pay period: a period someone was PAID for costs what was
+    paid (the payment record, the salary part only — a sales incentive is the commission line); one not paid
+    (yet) costs the salary that applied in it, for the people employed then. Each period counts for the share
+    of its days that fall inside the window.
 
-  const sumSalary = (people: AppUser[]) =>
-    Math.round(people.reduce((sum, u) => sum + (u.salary || 0), 0) * salaryMonths);
-
-  const techSalary = sumSalary(techTeam);
-  const salesSalary = sumSalary(salesTeam);
+    ── A period still running costs its days so far (2026-10-15) ──
+    An unpaid period that has not ended is charged only for its days up to and including today — elapsed ÷ the
+    period's days. Charging it in full set a whole month's salary against half a month's sales and expenses, so a
+    P&L opened on the 20th showed a loss the period would not make (the Accounts Dashboard shows the running period
+    by default, so it read worst exactly where it is looked at most). A period not started yet costs nothing. A
+    PAID period costs what was paid, even when it was paid early — that money has left the company.
+  */
+  const linesByKey = new Map<string, PayrollLine>();
+  for (const line of input.payrollLines ?? []) {
+    if (isLinePaid(line)) linesByKey.set(`${line.month}_${line.memberId}`, line);
+  }
+  const staff = users.filter(u => !u.externalCreator
+    && (u.role === "tech_member" || u.role === "tech_team_leader" || u.role === "sales_member"));
+  let techSalary = 0;
+  let salesSalary = 0;
+  for (const { month, share, end, shareToDate } of periodsInWindow(window.from, window.to, cycleStartDay, todayStr)) {
+    for (const u of staff) {
+      const line = linesByKey.get(`${month}_${u.uid}`);
+      let cost = 0;
+      let part = share;
+      if (line) cost = salaryPartOf(line, u);
+      else if (u.isActive !== false && employedBy(u, end)) {
+        cost = salaryFor(u, month);
+        part = shareToDate ?? share; // not paid: only the days up to today (all of them once it has ended)
+      }
+      if (u.role === "sales_member") salesSalary += cost * part;
+      else techSalary += cost * part;
+    }
+  }
+  techSalary = Math.round(techSalary);
+  salesSalary = Math.round(salesSalary);
 
   // ── Expenses ──────────────────────────────────────────────────────────────
   const periodExpenses = expenses.filter(e => withinPeriod(e.date, filter));
@@ -154,12 +207,17 @@ export function computeProfit(input: ComputeProfitInput): ProfitBreakdown {
     byCategory.set(e.category || "Uncategorised", (byCategory.get(e.category || "Uncategorised") ?? 0) + (e.amount || 0));
   }
 
-  // ── Tech productivity — reported, never added to income ───────────────────
+  /*
+    ── Tech productivity — reported, never added to income ───────────────────
+    Delivered work counts on the day it was ASSIGNED (`utils/workDates.workCountsOn`, 2026-10-15) — the rule
+    Work Reports, My Team and the dashboards use. It counted on the completion day, so the same job sat in a
+    different period here than on every other screen.
+  */
   let techDeliveredValue = 0;
   let techVideosDelivered = 0;
   for (const a of assignments) {
     if (a.status !== "completed" && a.status !== "verified") continue;
-    if (!withinPeriod(deliveryDate(a) ?? undefined, filter)) continue;
+    if (!withinPeriod(workCountsOn(a), filter)) continue;
     techDeliveredValue += a.totalPrice || 0;
     techVideosDelivered += 1;
   }
@@ -192,32 +250,55 @@ export function computeProfit(input: ComputeProfitInput): ProfitBreakdown {
 }
 
 /**
- * How many months of salary a period represents.
- *
- * A day view charges 1/30th of a month, a week charges a quarter, and a career view charges the
- * number of months actually elapsed. Without this, a one-day P&L would show a catastrophic loss
- * purely because it billed a full month of salary against a single day of revenue.
+ * The salary half of a payment record — what was paid, less a sales incentive inside it (the P&L counts
+ * commission on its own line). An older sales payment without its incentive recorded: the computation's
+ * payable salary.
  */
-export function salaryMonthsFor(filter: PeriodFilter, earliestDate?: string): number {
-  const DAYS_PER_MONTH = 30;
+function salaryPartOf(line: PayrollLine, member: AppUser): number {
+  if (line.incentive) return Math.max(0, (line.netSalary || 0) - (line.incentive.amount || 0));
+  const sales = (line.memberRole ?? member.role) === "sales_member";
+  if (sales && line.computation && Array.isArray(line.computation.lines)) return netPayable(line.computation);
+  return line.netSalary || 0;
+}
 
-  switch (filter.mode) {
-    case "day":
-      return 1 / DAYS_PER_MONTH;
-    case "month":
-      return 1;
-    case "range": {
-      if (!filter.range?.from) return 1;
-      const to = filter.range.to ?? filter.range.from;
-      const days = Math.max(1, Math.round((to.getTime() - filter.range.from.getTime()) / 86_400_000) + 1);
-      return days / DAYS_PER_MONTH;
+/** Was this person on the books by `day`? Their account's creation day; unknown counts as yes. */
+function employedBy(u: AppUser, day: string): boolean {
+  const seconds = (u.createdAt as { seconds?: number } | null | undefined)?.seconds;
+  if (!seconds) return true;
+  return format(new Date(seconds * 1000), "yyyy-MM-dd") <= day;
+}
+
+/**
+ * The pay periods a window of days touches, each with the share of its days inside the window — a whole
+ * period inside counts 1, one day of a 31-day period counts 1/31. Replaces the 30-day-month proration
+ * (`salaryMonthsFor`, removed 2026-10-15), which charged every window today's salary list.
+ *
+ * With `todayStr`, each entry also carries `shareToDate`: the share of its days inside the window that are
+ * not after today (today included — a day being worked is a day being paid for). Equal to `share` for a
+ * period that has ended; less for the period running now; 0 for one not started.
+ */
+export function periodsInWindow(
+  from: string,
+  to: string,
+  cycleStartDay: number = DEFAULT_PAYROLL_CONFIG.payDayOfMonth,
+  todayStr?: string,
+): { month: string; share: number; end: string; shareToDate?: number }[] {
+  if (!from || !to || from > to) return [];
+  const [fy, fm, fd] = from.split("-").map(Number);
+  let month = payPeriodForDate(new Date(fy, fm - 1, fd), cycleStartDay).month;
+  const out: { month: string; share: number; end: string; shareToDate?: number }[] = [];
+  for (let guard = 0; guard < 600; guard += 1) {
+    const period = payPeriodForMonth(month, cycleStartDay);
+    if (period.start > to) break;
+    const days = periodDates(period);
+    const insideDays = days.filter(d => d >= from && d <= to);
+    if (insideDays.length > 0) {
+      const entry: { month: string; share: number; end: string; shareToDate?: number } =
+        { month, share: insideDays.length / days.length, end: period.end };
+      if (todayStr) entry.shareToDate = insideDays.filter(d => d <= todayStr).length / days.length;
+      out.push(entry);
     }
-    case "career":
-    default: {
-      if (!earliestDate) return 1;
-      const start = new Date(`${earliestDate}T00:00:00`);
-      const days = Math.max(1, Math.round((Date.now() - start.getTime()) / 86_400_000));
-      return days / DAYS_PER_MONTH;
-    }
+    month = shiftPayMonth(month, 1);
   }
+  return out;
 }

@@ -17,11 +17,12 @@
  * Pure, and built on the rules every other screen uses (smmPlan, smmPackage), so a card can never
  * disagree with the month's page about whether a post is late.
  */
-import { clientWaitSummary, daysBetween, fulfilment, isOverdue, isPosted } from "@/utils/smmPlan";
+import { clientWaitSummary, daysBetween, fulfilment, isOverdue, isPosted, postedDayOf } from "@/utils/smmPlan";
 import {
-  cycleElapsed, cyclePhase, cycleTimeLabel, daysToRenewal, isOnHold, needsSetup, paceOf, renewalDue, shortDayLabel, toneCounts,
+  DATED_OUTSIDE_HINT, cycleElapsed, cyclePhase, cycleTimeLabel, datedOutsideLine, daysToRenewal, isOnHold, needsSetup,
+  ownDaysLabel, paceOf, renewalDue, renewalWhenLabel, shortDayLabel, splitByMonthDates, toneCounts,
 } from "@/utils/smmPackage";
-import type { SmmCampaign, SmmContentKind } from "@/types/smm";
+import type { SmmCampaign, SmmContentItem, SmmContentKind } from "@/types/smm";
 
 export type SmmGlanceStatus =
   | "setup" | "history" | "nothing" | "done" | "not_started" | "off_track" | "at_risk" | "on_track" | "on_hold";
@@ -29,13 +30,18 @@ export type SmmGlanceStatus =
 /** The colour family of a status: green fine, amber watch it, red act now, grey nothing yet. */
 export type SmmGlanceTone = "good" | "warn" | "bad" | "idle";
 
-/** Where a promised post is, in the five words the card uses. */
-export type SmmBucket = "posted" | "progress" | "waiting" | "notStarted" | "late";
+/**
+ * Where a promised post is, in the words the card uses. `outside` (2026-10-15): posted, but dated
+ * outside the month's own days — it is not this month's post, so it is not "Posted" here.
+ */
+export type SmmBucket = "posted" | "progress" | "waiting" | "notStarted" | "late" | "outside";
 
 /**
  * In the order the ring draws them, clockwise from the top. Late sits between "waiting" and "not
  * started" on purpose: in a ring the last colour touches the first, and red beside green is the one
- * pair a colour-blind reader cannot tell apart (checked with the dataviz palette validator).
+ * pair a colour-blind reader cannot tell apart (checked with the dataviz palette validator). "Posted
+ * outside its dates" (2026-10-15) comes last, a neutral grey beside green, and is listed only when a
+ * month has one (`RingLegend`).
  */
 export const SMM_BUCKETS: { key: SmmBucket; label: string; hint: string }[] = [
   { key: "posted", label: "Posted", hint: "live on the client's pages" },
@@ -43,6 +49,7 @@ export const SMM_BUCKETS: { key: SmmBucket; label: string; hint: string }[] = [
   { key: "waiting", label: "Waiting for client", hint: "sent to the client for approval" },
   { key: "late", label: "Late", hint: "past its date and not posted" },
   { key: "notStarted", label: "Not started", hint: "planned, or not planned yet" },
+  { key: "outside", label: "Posted outside its dates", hint: "live, but its upload date is not one of this month's days — it does not count toward this month" },
 ];
 
 export const SMM_STATUS_LABEL: Record<SmmGlanceStatus, string> = {
@@ -104,6 +111,13 @@ export interface SmmGlance {
   kinds: { kind: SmmContentKind; label: string; posted: number; total: number }[];
   /** Extra pieces delivered beyond the package — said, never counted in the ring. */
   extra: number;
+  /**
+   * Promised pieces dated outside the month's own days, posted or not (2026-10-15) — and the amber line
+   * that says so ("3 posts are dated outside 6 Sep – 5 Oct"), "" when there are none, with its hint.
+   */
+  datedOutside: number;
+  outsideLine: string;
+  outsideHint: string;
   /** "13 days left", "Starts in 3 days", "Ended yesterday". */
   timeLabel: string;
   /** 0–1, how much of the month has gone. */
@@ -129,6 +143,28 @@ export function clockLabel(hhmm: string | null | undefined): string | null {
   return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
 }
 
+/**
+ * "Up today, 6:00 AM", "Up yesterday", "Up 3d ago" — when a posted piece went up (2026-10-15), for the
+ * Content list's chip.
+ *
+ * ── From its upload date, not from when Posted was pressed ───────────────────────────────────
+ * It counted from `postedAt`, stamped when somebody pressed Posted — and the team often marks a month's
+ * posts together, days later, so "Up 10d ago" sat right beside an upload date two months earlier. The
+ * upload date (and its time) is the day the post went up, the day the calendar draws it on
+ * (`smmPlan.postedDayOf`); the press is used only when no upload date was given. A posted piece dated in
+ * the future (a date typed wrong) says its date rather than a negative count.
+ */
+export function postedUpLabel(item: Pick<SmmContentItem, "postedAt" | "uploadDate" | "uploadTime">, today: string): string {
+  const day = postedDayOf(item);
+  if (!day) return "Up";
+  const ago = daysBetween(day, today);
+  const time = item.uploadDate ? clockLabel(item.uploadTime) : null;
+  if (ago < 0) return `Up · dated ${shortDayLabel(day)}`;
+  if (ago === 0) return time ? `Up today, ${time}` : "Up today";
+  if (ago === 1) return time ? `Up yesterday, ${time}` : "Up yesterday";
+  return `Up ${ago}d ago`;
+}
+
 /** "Today", "Tomorrow", a weekday within the week, else "18 Oct". */
 export function upcomingDayLabel(day: string, today: string): string {
   const d = daysBetween(today, day);
@@ -139,15 +175,17 @@ export function upcomingDayLabel(day: string, today: string): string {
   return `${da} ${MONTHS[mo - 1]}`;
 }
 
+/**
+ * The renewal chip. Counted from `daysToRenewal` — the same number as the card's time line and the
+ * bell (2026-10-15) — and worded by `renewalWhenLabel`, like the renewals card and the Money tab.
+ */
 function renewalGlance(c: SmmCampaign, today: string): SmmGlance["renewal"] {
   if (c.renewal?.nextCampaignId || c.renewal?.state === "won") return { state: "renewed", label: "Renewed" };
   if (c.renewal?.state === "lost") return { state: "lost", label: "Not renewing" };
   if (!renewalDue(c, today)) return { state: "none", label: "" };
   const d = daysToRenewal(c.cycle, today);
   if (d < 0) return { state: "overdue", label: "Renewal overdue" };
-  if (d === 0) return { state: "due", label: "Renewal is today" };
-  if (d === 1) return { state: "due", label: "Renewal tomorrow" };
-  return { state: "due", label: `Renewal in ${d} days` };
+  return { state: "due", label: renewalWhenLabel(d) };
 }
 
 export function monthGlance(c: SmmCampaign, today: string): SmmGlance {
@@ -158,6 +196,7 @@ export function monthGlance(c: SmmCampaign, today: string): SmmGlance {
     waiting: t.wait,
     notStarted: t.idle + t.unplanned,
     late: t.late,
+    outside: t.outside,
   };
   const total = t.total;
   const posted = buckets.posted;
@@ -166,6 +205,12 @@ export function monthGlance(c: SmmCampaign, today: string): SmmGlance {
   const pace = paceOf(c, today);
   const lateCount = c.items.filter((i) => isOverdue(i, today)).length;
   const waiting = clientWaitSummary(c.items).openCount;
+  // Promised pieces dated outside the month's own days, posted or not — the amber line (2026-10-15).
+  const datedOutside = splitByMonthDates(c.items.filter((i) => !i.extra), c.cycle).outside.length;
+  // Truly not live, wherever dated: a post live under another month's date is live, just not this month's.
+  // Pieces moved into the next month are owed there, not here (`toneCounts.moved`, 2026-10-15).
+  const notLive = c.items.filter((i) => !i.extra && !isPosted(i)).length + t.unplanned;
+  const movedNote = t.moved > 0 ? ` · ${plural(t.moved, "post", "posts")} moved to the next month` : "";
 
   const upcoming = c.items
     .filter((i) => !isPosted(i) && i.uploadDate && i.uploadDate >= today)
@@ -185,9 +230,9 @@ export function monthGlance(c: SmmCampaign, today: string): SmmGlance {
     // Ended with no renewal decision (owner, 2026-10-05) — before history: an old client's last month is
     // on hold too. A history month's blank rows are a record left blank, not posts that failed to go up.
     status = "on_hold";
-    const notLive = total - posted;
+    // On hold from the renewal day (the end date) on — "Ended 6 Oct" for "6 Sep → 6 Oct" (2026-10-15).
     reason = `Ended ${shortDayLabel(c.cycle.endDate)} — not renewed yet`
-      + (!c.history && notLive > 0 ? ` · ${plural(notLive, "post", "posts")} not live` : "");
+      + (!c.history && notLive > 0 ? ` · ${plural(notLive, "post", "posts")} not live` : "") + movedNote;
   } else if (c.history) {
     status = "history";
     reason = "Recorded after the month ended";
@@ -198,17 +243,24 @@ export function monthGlance(c: SmmCampaign, today: string): SmmGlance {
     status = "nothing";
     reason = "No posts were promised this month";
   } else if (posted >= total) {
+    // Only posts dated on the month's own days count as posted (2026-10-15): the owner's month whose 10
+    // posts were live but 9 of them dated 13 Aug – 9 Sep read "Completed — All 10 posts are live".
     status = "done";
-    reason = total === 1 ? "The post is live" : `All ${total} posts are live`;
+    reason = (total === 1 ? "The post is live" : `All ${total} posts are live`) + movedNote;
   } else if (phase === "upcoming") {
     status = "not_started";
     reason = cycleTimeLabel(c.cycle, today);
   } else if (lateCount > 0) {
     status = "off_track";
     reason = `${plural(lateCount, "post is", "posts are")} late`;
+  } else if (t.outside > 0 && posted + t.outside >= total) {
+    // Everything is live, but some of it under dates outside the month: the work may be done — the dates
+    // say it was another month's. Amber: fix the dates (or the month), not the work.
+    status = "at_risk";
+    reason = `${plural(t.outside, "post is", "posts are")} dated outside ${ownDaysLabel(c.cycle)}`;
   } else if (phase === "ended") {
     status = "off_track";
-    reason = `Month ended with ${plural(total - posted, "post", "posts")} not live`;
+    reason = `Month ended with ${plural(notLive, "post", "posts")} not live${movedNote}`;
   } else if (pace.state === "behind") {
     status = "at_risk";
     reason = `${plural(pace.behindBy, "post", "posts")} behind schedule`;
@@ -232,6 +284,9 @@ export function monthGlance(c: SmmCampaign, today: string): SmmGlance {
       kind: k.kind, label: KIND_LABEL[k.kind], posted: Math.min(k.posted, k.committed), total: k.committed,
     })),
     extra: c.items.filter((i) => i.extra).length,
+    datedOutside,
+    outsideLine: datedOutsideLine(datedOutside, c.cycle),
+    outsideHint: datedOutside > 0 ? DATED_OUTSIDE_HINT : "",
     timeLabel: cycleTimeLabel(c.cycle, today),
     monthGone: phase === "upcoming" ? 0 : cycleElapsed(c.cycle, today),
     startDate: c.cycle.startDate,

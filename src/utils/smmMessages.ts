@@ -17,7 +17,7 @@
 
 import { formatCurrency } from "@/utils/formatters";
 import {
-  adTotals, allAdReports, budgetLedger, clientWaitSummary, extraWork, fulfilment, postLinks,
+  adTotals, budgetLedger, clientWaitSummary, extraWork, fulfilment, monthAdReports, postLinks,
   postsByPlatform,
 } from "@/utils/smmPlan";
 import { SMM_CONTENT_KINDS, SMM_PLATFORMS } from "@/types/smm";
@@ -179,8 +179,13 @@ export function monthlyReportMessage(
   campaign: SmmCampaign,
   body = DEFAULT_TEMPLATES.monthly_report,
 ): string {
+  /*
+    This month's work and ads only (2026-10-15): `fulfilment` counts a post only when it went up on one of
+    the month's own days, and the ads only on those days — the client was sent "9 of 9" for a month whose
+    posts were dated a month before it, and leads from runs outside its dates.
+  */
   const f = fulfilment(campaign);
-  const ads = adTotals(allAdReports(campaign));
+  const ads = adTotals(monthAdReports(campaign));
   const extra = extraWork(campaign.items);
   const wait = clientWaitSummary(campaign.items);
 
@@ -189,7 +194,7 @@ export function monthlyReportMessage(
     .map((k) => `• ${SMM_CONTENT_KINDS.find((c) => c.key === k.kind)?.label}: ${k.posted} of ${k.committed}`)
     .join("\n");
 
-  const platforms = postsByPlatform(campaign.items);
+  const platforms = postsByPlatform(campaign.items, campaign.cycle);
   const platformLine = platforms.length
     ? `\n\n*Where they went:* ${platforms.map((p) => `${p.label} (${p.count})`).join(", ")}`
     : "";
@@ -221,8 +226,9 @@ export function monthlyReportMessage(
 
 /** The renewal ask, which is really just the month's results with a question at the end. */
 export function renewalMessage(campaign: SmmCampaign, body = DEFAULT_TEMPLATES.renewal): string {
+  // "This month" — its own days only, as the monthly report (2026-10-15).
   const f = fulfilment(campaign);
-  const ads = adTotals(allAdReports(campaign));
+  const ads = adTotals(monthAdReports(campaign));
   return renderTemplate(body, {
     ...baseTokens(campaign),
     posted: f.posted,

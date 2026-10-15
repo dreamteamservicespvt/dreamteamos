@@ -51,7 +51,7 @@ import {
   withSaleIds,
 } from "@/utils/saleIdentity";
 import {
-  jobPatchForSaleEdit, lockedServiceChange, mergeSaleEdit, saleChangeList, saleEditNotice, saleHasWork,
+  jobPatchForSaleEdit, lockedServiceChange, mergeSaleEdit, paymentEditRefusal, saleChangeList, saleEditNotice, saleHasWork,
   sameSaleValue, type SaleChange, type SaleEditAudience,
 } from "@/utils/saleEdit";
 import type { AppUser, Lead, Order, SaleDetail, WorkAssignment } from "@/types";
@@ -59,7 +59,7 @@ import type { SmmCampaign } from "@/types/smm";
 
 /* ── Refusals ──────────────────────────────────────────────────────────────────────────────── */
 
-export type SaleWriteErrorCode = "lead_missing" | "sale_missing" | "sale_has_work" | "service_locked";
+export type SaleWriteErrorCode = "lead_missing" | "sale_missing" | "sale_has_work" | "service_locked" | "payments_locked";
 
 /** A sale write that was refused, with a sentence the screen can show as it is. */
 export class SaleWriteError extends Error {
@@ -266,6 +266,9 @@ export async function updateSale(params: {
       const locked = lockedServiceChange(fresh, merged);
       if (locked) throw new SaleWriteError("service_locked", locked);
     }
+    // A balance collected after the sale is never dropped or moved to the sale day by an edit (2026-10-15).
+    const moneyLocked = paymentEditRefusal(fresh, merged);
+    if (moneyLocked) throw new SaleWriteError("payments_locked", moneyLocked);
 
     const at = Timestamp.now();
     const saved: SaleDetail = {

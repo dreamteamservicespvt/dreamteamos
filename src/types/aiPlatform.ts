@@ -150,8 +150,14 @@ export interface FileStore {
    * The business owner's own face, for a Real Owner Face special category. Its own slot rather than
    * a store photo: on every other ad a client photo is a LOCATION reference, and here this one photo
    * is the identity the whole ad is built from. Optional so older callers compile unchanged.
+   * On a Real Owner Duo this is OWNER 1's photo (the person on the LEFT, who speaks first).
    */
   ownerImage?: File | null;
+  /**
+   * OWNER 2's photo on a Real Owner Duo (2026-10-14) — the person on the RIGHT. In memory only, like every
+   * file here (never stored). Read through characterPacks.ownerPhotoFile, never by position.
+   */
+  secondOwnerImage?: File | null;
   visitingCard: File[];
   storeImage: File[];
   productImages: File[];

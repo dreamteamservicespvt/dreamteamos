@@ -26,6 +26,20 @@ export interface DecidableLead {
   lastUpdated?: StampLike | null;
 }
 
+/**
+ * The FIRST approval stamp to keep on a sale that is being decided again (2026-10-15).
+ *
+ * `verifiedAt` is cleared by a revoke or a rejection and rewritten by every re-approval. Settlements made
+ * before 2026-10-15 recorded no list of what they paid, so what they covered is read from when each sale
+ * was approved — and a revoke + re-approval made a settled sale look new, and it was paid again.
+ * `firstVerifiedAt` is set the first time a sale is approved and survives every later decision. Returns the
+ * field to write — `{}` when the sale has never been approved (nothing to keep).
+ */
+export function keepFirstApproval(item: { firstVerifiedAt?: unknown; verifiedAt?: unknown }, now?: unknown): { firstVerifiedAt?: unknown } {
+  const first = item.firstVerifiedAt || item.verifiedAt || now;
+  return first ? { firstVerifiedAt: first } : {};
+}
+
 /** Epoch ms the sale was decided, or 0 when nothing dates it. */
 export function decidedAtMs(item: DecidableSale, lead?: DecidableLead | null): number {
   const own = item.verificationStatus === "rejected"

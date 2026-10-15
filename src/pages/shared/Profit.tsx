@@ -8,8 +8,10 @@ import { useFirestoreCollection } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/utils/formatters";
 import PeriodFilterBar from "@/components/dashboard/PeriodFilterBar";
 import { defaultPeriodFilter, periodLabel, type PeriodFilter } from "@/utils/periodFilter";
-import { computeProfit, salaryMonthsFor, type ExpenseRecord, type OtherIncomeRecord } from "@/utils/profitAnalytics";
+import { computeProfit, type ExpenseRecord, type OtherIncomeRecord } from "@/utils/profitAnalytics";
+import { saleDay, saleItemsOf } from "@/utils/salePayments";
 import type { AppUser, Lead, WorkAssignment } from "@/types";
+import type { PayrollLine } from "@/types/payroll";
 
 /**
  * Profit & Loss — what the company earned, what it cost, and what is left.
@@ -25,6 +27,8 @@ export default function Profit() {
 
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [otherIncome, setOtherIncome] = useState<OtherIncomeRecord[]>([]);
+  /** The salary payment records — a paid period costs what was actually paid (2026-10-15). */
+  const [payrollLines, setPayrollLines] = useState<PayrollLine[]>([]);
   const [filter, setFilter] = useState<PeriodFilter>(defaultPeriodFilter);
 
   useEffect(() => {
@@ -34,26 +38,31 @@ export default function Profit() {
       onSnapshot(collection(db, "other_income"), snap =>
         setOtherIncome(snap.docs.map(d => ({ id: d.id, ...d.data() } as OtherIncomeRecord))),
         () => setOtherIncome([])),
+      onSnapshot(collection(db, "payroll_lines"), snap =>
+        setPayrollLines(snap.docs.map(d => ({ id: d.id, ...d.data() } as PayrollLine))),
+        () => setPayrollLines([])),
     ];
     return () => unsubs.forEach(u => u());
   }, []);
 
-  /** Earliest sale date, so a career view charges the salary months actually elapsed. */
+  /**
+   * The first sale's LOCAL day, where the career view starts. It was `toISOString().slice(0, 10)` — the UTC
+   * day, which is the day before for anything between 00:00 and 05:30 IST (2026-10-15).
+   */
   const earliestDate = useMemo(() => {
     let earliest: string | undefined;
     for (const lead of leads) {
-      const seconds = (lead.createdAt as { seconds?: number })?.seconds;
-      if (!seconds) continue;
-      const date = new Date(seconds * 1000).toISOString().slice(0, 10);
-      if (!earliest || date < earliest) earliest = date;
+      for (const item of saleItemsOf(lead)) {
+        const date = saleDay(item, lead);
+        if (date && (!earliest || date < earliest)) earliest = date;
+      }
     }
     return earliest;
   }, [leads]);
 
   const profit = useMemo(() => computeProfit({
-    filter, users, leads, assignments, expenses, otherIncome,
-    salaryMonths: salaryMonthsFor(filter, earliestDate),
-  }), [filter, users, leads, assignments, expenses, otherIncome, earliestDate]);
+    filter, users, leads, assignments, expenses, otherIncome, payrollLines, earliestDate,
+  }), [filter, users, leads, assignments, expenses, otherIncome, payrollLines, earliestDate]);
 
   if (usersLoading || leadsLoading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -185,8 +194,10 @@ export default function Profit() {
 
       <p className="flex items-start gap-2 rounded-xl border border-border bg-accent/20 px-4 py-3 text-[11px] leading-relaxed text-muted-foreground">
         <Banknote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        Salary is prorated to the length of the selected period, so a single day is charged one
-        day of salary rather than a whole month. Only verified sales count as income.
+        Salary is counted pay period by pay period, for the days of each inside the selected period: what
+        was actually paid for a paid period, otherwise the salary that applied then — for a period still
+        running, only its days so far (today included). Incentives follow the payroll rule (money collected,
+        75% of target). Only verified sales count as income.
       </p>
     </div>
   );

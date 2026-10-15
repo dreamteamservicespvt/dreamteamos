@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Plus, Sparkles, Image as ImageIcon, Video, ChevronRight, Link2, List, CalendarDays } from "lucide-react";
 import { addItem, addItems } from "@/services/smm";
-import { clipsPerVideoOf, videoLengthLabel } from "@/utils/smmPackage";
+import { clipsPerVideoOf, itemDatedOutside, ownDaysLabel, videoLengthLabel } from "@/utils/smmPackage";
 import SmmCalendar from "@/components/smm/SmmCalendar";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/authStore";
@@ -49,6 +49,17 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
       {item.carriedFrom && <span data-test="smm-row-carried" className="mr-1.5 text-[10px] font-medium text-info">From {item.carriedFrom.label}</span>}
     </>
   );
+  /**
+   * "Outside this month" beside a row dated off the month's own days (2026-10-15) — it does not count
+   * toward this month, and the card and the page header say how many there are; here is which ones.
+   */
+  const ownDays = ownDaysLabel(campaign.cycle);
+  const outsideTag = (item: SmmContentItem) => (itemDatedOutside(item, campaign.cycle) ? (
+    <span data-test="smm-row-outside" title={`Its date is not one of this month's days (${ownDays}), so it does not count toward this month. Fix its date if it belongs here.`}
+      className="ml-1.5 inline-flex items-center rounded-full border border-warning/40 bg-warning/10 px-1.5 py-px text-[10px] font-medium text-amber-800 dark:text-warning">
+      Outside this month
+    </span>
+  ) : null);
   const [adding, setAdding] = useState(false);
   const user = useAuthStore((s) => s.user);
   /** The extra-work form (2026-10-01): what it is, and a video's length. Null while closed. */
@@ -194,7 +205,7 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
                         </div>
                       </td>
                       <td className="px-3 py-2">
-                        <div className="text-xs text-foreground">{item.uploadDate || "—"}{item.uploadTime ? ` · ${item.uploadTime}` : ""}</div>
+                        <div className="text-xs text-foreground">{item.uploadDate || "—"}{item.uploadTime ? ` · ${item.uploadTime}` : ""}{outsideTag(item)}</div>
                         <DueChip item={item} today={today} />
                       </td>
                       <td className="px-3 py-2"><PlatformChips platforms={item.platforms} /></td>
@@ -251,7 +262,7 @@ export default function SmmContentTable({ campaign, canEdit, onOpen }: {
                     <PlatformChips platforms={item.platforms} />
                   </div>
                   <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>{item.uploadDate || "No date"}{item.uploadTime ? ` · ${item.uploadTime}` : ""}</span>
+                    <span>{item.uploadDate || "No date"}{item.uploadTime ? ` · ${item.uploadTime}` : ""}{outsideTag(item)}</span>
                     <span>{item.makerName || "Unassigned"}{item.extra ? " · extra" : ""}</span>
                   </div>
                   {(item.kind === "ai_ad" || item.carriedFrom) && <div className="mt-0.5">{rowNotes(item)}</div>}

@@ -305,6 +305,12 @@ export interface PayrollLine {
   receiptName?: string;
   failureReason?: string;
   updatedAt?: FirestoreTime;
+  /**
+   * Paid before the period ended (2026-10-15): the days, today included, that had not been worked yet
+   * and were paid as if worked — the admin confirmed them (someone leaving mid-period). Absent = paid
+   * after the period ended, or a payment made before this was recorded.
+   */
+  earlyPay?: { from: string; to: string; workingDays: number };
 }
 
 /** The incentive half of a sales payment, as it stood when paid. */
@@ -317,6 +323,13 @@ export interface PayrollLineIncentive {
   amount: number;
   /** True when the target gate withheld an incentive the sales would otherwise have earned. */
   withheld?: boolean;
+  /**
+   * Collections in the period whose incentive Settlements had already paid, so this payment left them
+   * out (2026-10-15): their verified money and keys (`<saleId>#<payment id>`). Absent = nothing left out
+   * (or a payment made before this was recorded).
+   */
+  settledBase?: number;
+  settledKeys?: string[];
 }
 
 // ─── Engine output ──────────────────────────────────────────────────────────
@@ -457,6 +470,8 @@ export type AuditAction =
   | "salary_package_created"
   | "salary_package_updated"
   | "salary_package_assigned"
+  /** Salary / target / plan changed, with the pay period it applies from (2026-10-15). */
+  | "pay_terms_changed"
   | "payroll_generated"
   | "payroll_approved"
   | "payroll_locked"

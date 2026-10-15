@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
-import { formatDate, formatTime } from "@/utils/formatters";
+import { formatDate, formatLocalDateTime, formatTime } from "@/utils/formatters";
 import type { AppUser } from "@/types";
 import { Clock, Download } from "lucide-react";
 
@@ -57,8 +57,9 @@ export default function TechAdminSessionHistory() {
       const m = getMember(s.userId);
       rows.push([
         m?.name || "Unknown",
-        s.loginAt?.toDate?.() ? s.loginAt.toDate().toISOString() : "",
-        s.logoutAt?.toDate?.() ? s.logoutAt.toDate().toISOString() : "Active",
+        // Local (India) time, not UTC — `toISOString()` put a 01:00 IST login on the day before.
+        s.loginAt?.toDate?.() ? formatLocalDateTime(s.loginAt.toDate()) : "",
+        s.logoutAt?.toDate?.() ? formatLocalDateTime(s.logoutAt.toDate()) : "Active",
         String(s.duration || 0),
       ]);
     });

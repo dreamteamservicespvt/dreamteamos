@@ -168,7 +168,7 @@ export function sameSaleValue(a: unknown, b: unknown): boolean {
  * approval, its penalties or its trail — each written by somebody else, at another time.
  */
 const NOT_THE_FORMS = new Set([
-  "saleId", "submittedAt", "verificationStatus", "verifiedAt", "rejectedAt", "discountApprovedBy",
+  "saleId", "submittedAt", "verificationStatus", "verifiedAt", "firstVerifiedAt", "rejectedAt", "discountApprovedBy",
   "discountApprovedAt", "discountRejectionReason", "penaltyTotal", "penaltyClips", "editLog", "editedAt",
   "enteredBy", "disputed", "proofImageUrl", "proofNote",
 ]);
@@ -202,6 +202,32 @@ export function mergeSaleEdit(fresh: SaleDetail, base: SaleDetail, next: SaleDet
       : (next?.payments ?? null);
   }
   return merged as unknown as SaleDetail;
+}
+
+/**
+ * Why an edit cannot be saved because of the money already recorded on the sale, or null (2026-10-15).
+ *
+ * The form owns only the advance taken at the sale; a balance collected later is its own payment, on its
+ * own day, in its own pay period. Unticking "Advance collected" turns the sale back into one paid in full
+ * on the sale day — which, with a balance recorded, would drop that payment and move its money to the
+ * sale's day and pay period (and its incentive with it). So it is refused, in plain words, and the
+ * balance stays where it is. `fresh` is the sale as it is now; `merged` what the save would write.
+ */
+export function paymentEditRefusal(fresh: SaleDetail, merged: SaleDetail): string | null {
+  const balances = fresh.partialPayment && Array.isArray(fresh.payments) ? fresh.payments.slice(1) : [];
+  const recorded = balances.filter((p) => (Number(p?.amount) || 0) > 0);
+  if (recorded.length === 0) return null;
+  if (merged.partialPayment && Array.isArray(merged.payments) && merged.payments.length >= fresh.payments!.length) return null;
+  const total = recorded.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const days = recorded
+    .map((p) => {
+      const ms = timestampMs(p.collectedAt);
+      return ms ? new Date(ms).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : null;
+    })
+    .filter(Boolean);
+  return `This sale already has ${formatCurrency(total)} collected after the sale${days.length ? ` (${days.join(", ")})` : ""}. `
+    + "It can't be switched back to \"paid in full\" — that would move that money to the sale day. Keep \"Advance collected\" ticked; "
+    + "if a payment was recorded by mistake, ask your sales admin.";
 }
 
 /* ── What cannot change once the tech side has started ─────────────────────────────────────── */

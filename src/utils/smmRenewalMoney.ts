@@ -8,8 +8,11 @@
  * sales admin need the same numbers across the company, per salesperson.
  *
  * ── The rules, in one place ───────────────────────────────────────────────────────────────────
- * - A month is **due** for renewal in the calendar month its last day falls in (its renewal date is
- *   its end date — `smmPackage.daysToRenewal`).
+ * - A month is **due** for renewal in the calendar month of its RENEWAL DAY — its end date
+ *   (`smmPackage.daysToRenewal`). Kept on the end date on purpose when the owner made the end date the
+ *   renewal day rather than one of the month's own days (2026-10-15): renewals are grouped by the day the
+ *   client renews, so "6 Sep → 6 Oct" is an October renewal although its last own day is 5 Oct, and a
+ *   month ending on the 1st is due in the month of the 1st. `fetchMonthsEndingBetween` reads the same field.
  * - Its outcome: **renewed** when a next month is linked (`renewal.nextCampaignId`) or it was marked
  *   won; **lost** when the salesperson said the client is not renewing (or it lapsed); otherwise
  *   **waiting** — still to come, or ended with no decision.
@@ -25,8 +28,7 @@
  * Pure: no React, no Firestore. Tested in src/test/smmRenewalMoney.test.ts.
  */
 import { findPackage } from "@/utils/serviceCatalog";
-import { cyclePhase } from "@/utils/smmPackage";
-import { daysBetween } from "@/utils/smmPlan";
+import { cyclePhase, daysToRenewal, renewalWhenLabel } from "@/utils/smmPackage";
 import type { SmmCampaign } from "@/types/smm";
 
 export type RenewalOutcome = "renewed" | "waiting" | "lost";
@@ -34,7 +36,11 @@ export type RenewalOutcome = "renewed" | "waiting" | "lost";
 export interface RenewalRow {
   month: SmmCampaign;
   outcome: RenewalOutcome;
-  /** Days from today to the month's last day: 2 = two days left, 0 = last day, -3 = ended 3 days ago. */
+  /**
+   * Days from today to the month's renewal day (its end date — `smmPackage.daysToRenewal`): 2 = renewal
+   * in two days, 1 = its last own day (renewal tomorrow), 0 = the renewal day (the month has ended),
+   * -3 = three days past it.
+   */
   daysLeft: number;
   /** What the next month is worth, in rupees. */
   value: number;
@@ -119,7 +125,7 @@ function rowOf(c: SmmCampaign, today: string, byId: Map<string, SmmCampaign>): R
   return {
     month: c,
     outcome,
-    daysLeft: daysBetween(today, c.cycle.endDate),
+    daysLeft: daysToRenewal(c.cycle, today),
     value: outcome === "renewed" && next && next.amount > 0 ? next.amount : monthValue(c),
     nextId,
   };
@@ -224,11 +230,12 @@ export function renewalsBySeller(months: SmmCampaign[], ym: string, today: strin
 
 /* ── Words ─────────────────────────────────────────────────────────────────────────────────── */
 
-/** "Ends in 2 days", "Last day today", "Ends tomorrow", "Ended 3 days ago". */
+/**
+ * "Renewal in 2 days", "Renewal tomorrow", "Renewal is today", "Renewal was 3 days ago" — the card's
+ * renewal chip's words (`smmPackage.renewalWhenLabel`, 2026-10-15). It said "Last day today" on the
+ * renewal day, which since 2026-10-15 is the day the month has ended (its last own day is the day
+ * before), and "Ends tomorrow" on that last day while the card said "Last day".
+ */
 export function renewalWhen(daysLeft: number): string {
-  if (daysLeft > 1) return `Ends in ${daysLeft} days`;
-  if (daysLeft === 1) return "Ends tomorrow";
-  if (daysLeft === 0) return "Last day today";
-  if (daysLeft === -1) return "Ended yesterday";
-  return `Ended ${-daysLeft} days ago`;
+  return renewalWhenLabel(daysLeft);
 }

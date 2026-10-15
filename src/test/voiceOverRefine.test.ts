@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  changedClipIndexes, clipIndexesFromIssues, introducedIssues, isBetterRepair, issuesForClip, mergeClipEdits,
+  changedClipIndexes, clipIndexesFromIssues, editProblems, introducedIssues, isBetterRepair, issuesForClip, mergeClipEdits,
   numberedWords, parseClipDialogueEdits, parseClipTextEdits, parseRefinePlan, repairDirection, wordBandDistance,
 } from "@/utils/voiceOverRefine";
 import {
@@ -94,7 +94,10 @@ describe("the edit", () => {
     const p = VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({ language: "Telugu", clipCount: 4, adType: "commercial" });
     expect(p).toContain("You are NOT writing a new script");
     expect(p).toContain("Every clip not in the plan is not yours to touch");
-    expect(p).toContain("Between 18 and 20 spoken words per clip");
+    // The one word contract, in the shared words every script prompt uses (prompts/wordContract).
+    expect(p).toContain("THE WORD BUDGET — 17–20 SPOKEN WORDS IN EVERY CLIP");
+    expect(p).toContain("aim for 18–19. 20 is the hard ceiling");
+    expect(p).toContain("A clip you return outside the budget is rejected by code");
     expect(p).toContain("Clip 1 must still carry the core message");
     expect(p).not.toMatch(/write the \d+ clips now/i);
   });
@@ -106,8 +109,28 @@ describe("the edit", () => {
     });
     expect(p).toContain("exactly 2 lines, Motu then Patlu, in that order");
     expect(p).toContain('"speaker": "motu"');
+    // Two speakers share the clip's 17–20 — never 17–20 each.
+    expect(p).toContain("A clip's TWO lines TOGETHER make the 17–20 — never 17–20 each");
+    expect(p).not.toMatch(/15[–-]17|7[–-]9 words/);
   });
 });
+
+describe("an edited clip obeys the contract (2026-10-15)", () => {
+    const before = ["Clip 2 must contain 17–20 spoken words, but it has 21.", "Clip 3 must contain 17–20 spoken words, but it has 25."];
+    it("counts a word-count problem left in a clip the edit rewrote, even if it was there before", () => {
+      // Clip 2 was edited and is still 21 words: rejected. Clip 3 was not touched: its old fault is not the edit's.
+      expect(editProblems(before, before, [1])).toEqual(["Clip 2 must contain 17–20 spoken words, but it has 21."]);
+      expect(editProblems(before, ["Clip 3 must contain 17–20 spoken words, but it has 25."], [1])).toEqual([]);
+    });
+    it("still counts every problem the edit created", () => {
+      expect(editProblems([], ["Clip 1 leaks CTA or contact language before the final clip."], [0])).toEqual(["Clip 1 leaks CTA or contact language before the final clip."]);
+    });
+    it("counts a speaker's line length in an edited two-person clip", () => {
+      const line = "Clip 2: Motu's line must be 7-12 words but has 14.";
+      expect(editProblems([line], [line], [1])).toEqual([line]);
+      expect(editProblems([line], [line], [0])).toEqual([]);
+    });
+  });
 
 describe("merging", () => {
   // The guarantee a clip refine depends on: untouched clips never go through a model.
@@ -137,8 +160,8 @@ describe("merging", () => {
  */
 describe("repairing only the clips that failed", () => {
   const issues = [
-    "Clip 2 must contain 18–20 spoken words, but it has 17.",
-    "Clip 4 must contain 18–20 spoken words, but it has 16.",
+    "Clip 2 must contain 17–20 spoken words, but it has 23.",
+    "Clip 4 must contain 17–20 spoken words, but it has 16.",
     "Final clip must include the on-screen call CTA: x",
   ];
 
@@ -152,23 +175,31 @@ describe("repairing only the clips that failed", () => {
     expect(issuesForClip(issues, 0, 4)).toEqual([]);
   });
 
-  it("says which way to fix a word count, by how much, and with what", () => {
-    expect(repairDirection([issues[1]], 18, 20)).toMatch(/It has 16 spoken words; it needs 18–20\. ADD 2 to 4 words by carrying one more real/);
-    expect(repairDirection(["Clip 1 must contain 18–20 spoken words, but it has 25."], 18, 20)).toMatch(/CUT 5 to 7 words .* keep the business name, the promise/);
-    expect(repairDirection(["Clip 2 leaks CTA or contact language before the final clip."], 18, 22)).toBe("Clip 2 leaks CTA or contact language before the final clip.");
+  it("says which way to fix a word count, by exactly how much, and with what", () => {
+    expect(repairDirection([issues[1]])).toBe(
+      "It has only 16 spoken words — 1 word under the 17-word floor. ADD at least 1 word (adding 2 to 3 lands it at the preferred 18–19), "
+      + "never more than 4 words, by carrying one more real, specific detail from the business information inside the same sentence — "
+      + "never filler, a repeated adjective, empty praise or a greeting.");
+    expect(repairDirection([issues[0]])).toBe(
+      "It has 23 spoken words — 3 words over the 20-word ceiling. REMOVE at least 3 words (removing 4 to 5 lands it at the preferred 18–19) "
+      + "by tightening the sentence — keep what this clip must say (its hook or core message, the business name, and the address and closing call line where they belong); "
+      + "drop the words that carry nothing first, and if it still does not fit, leave out a secondary offer or detail — never squeeze it in.");
+    expect(repairDirection(["Clip 2 leaks CTA or contact language before the final clip."])).toBe("Clip 2 leaks CTA or contact language before the final clip.");
   });
 });
 
 // The character validator words it "…but has 16." and gives a line its own band.
 describe("repairing a two-character clip", () => {
-  it("reads the dialogue validator's clip wording", () => {
-    expect(repairDirection(["Clip 4 must contain 18-20 spoken words across both characters, but has 16."], 18, 20))
-      .toMatch(/^It has 16 spoken words; it needs 18–20\. ADD 2 to 4 words/);
+  it("reads the dialogue validator's clip wording — the clip's lines together", () => {
+    expect(repairDirection(["Clip 4 must contain 17–20 spoken words across both lines together, but it has 22."]))
+      .toMatch(/^Its two lines together have 22 spoken words — 2 words over the 20-word ceiling\. REMOVE at least 2 words .* mostly from the longer line, keeping both lines whole and in their own speakers' mouths/);
+    expect(repairDirection(["Clip 4 must contain 17–20 spoken words across both lines together, but it has 15."]))
+      .toMatch(/^Its two lines together have only 15 spoken words — 2 words under the 17-word floor\. ADD at least 2 words .* in whichever line is shorter/);
   });
 
   it("uses a line's own band, and names whose line it is", () => {
-    expect(repairDirection(["Clip 2: Motu's line must be 8-12 words but has 6."], 18, 20))
-      .toMatch(/^Motu's line has 6 spoken words; it needs 8–12\. ADD 2 to 6 words/);
+    expect(repairDirection(["Clip 2: Motu's line must be 7-12 words but has 5."]))
+      .toMatch(/^Motu's line has only 5 spoken words — 2 words under the 7-word floor\. ADD at least 2 words, never more than 7 words/);
   });
 });
 
@@ -183,6 +214,18 @@ describe("judging a repair", () => {
     expect(isBetterRepair({ issues: ["x"], distance: 1 }, { issues: ["x"], distance: 1 })).toBe(false);
     expect(isBetterRepair({ issues: ["x"], distance: 1 }, { issues: [], distance: 0 })).toBe(true);
     expect(isBetterRepair({ issues: [], distance: 0 }, { issues: ["x"], distance: 0 })).toBe(false);
+  });
+
+  /*
+    2026-10-15: "fewer problems wins" kept a rewrite that fixed a hard word and a leaked call to action
+    while pushing a clip from 20 to 22 words. Nearer the word band always comes first.
+  */
+  it("never keeps a repair that moves a clip further from 17–20 words, whatever else it fixed", () => {
+    const before = { issues: ["Clip 2 uses words people do not say in everyday Telugu", "Clip 2 leaks CTA or contact language before the final clip."], distance: 0 };
+    const after = { issues: ["Clip 2 must contain 17–20 spoken words, but it has 22."], distance: 2 };
+    expect(isBetterRepair(before, after)).toBe(false);
+    // Equally near the band (both inside it): fewer problems wins.
+    expect(isBetterRepair(before, { issues: [], distance: 0 })).toBe(true);
   });
 
   it("numbers a clip's words so the count can be seen, not guessed", () => {

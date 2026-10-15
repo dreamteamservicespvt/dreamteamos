@@ -1,6 +1,7 @@
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc, collection, addDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
+import { todayIso } from "@/utils/hrPolicy";
 import type { InvitePublicView, IssuedCredentials, OnboardingInvite } from "@/types/onboarding";
 
 /**
@@ -122,7 +123,9 @@ async function devFallback(action: Action, body: Record<string, unknown>): Promi
     if (invite.status === "revoked") return { ok: false, error: "revoked" };
     if (String(invite.accessCode) !== code) return { ok: false, error: "wrong_code", attemptsLeft: 4 };
 
-    const today = new Date().toISOString().slice(0, 10);
+    // The local (India) day, as `api/onboarding.ts` computes it — `toISOString()` is the UTC day,
+    // yesterday in India until 05:30 IST.
+    const today = todayIso();
     const view = (over: Partial<OnboardingInvite> = {}): InvitePublicView => {
       const merged = { ...invite, ...over };
       return {

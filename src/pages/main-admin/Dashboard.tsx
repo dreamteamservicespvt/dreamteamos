@@ -7,6 +7,7 @@ import StatCard from "@/components/dashboard/StatCard";
 import type { AppUser } from "@/types";
 import { TrendingUp, Users, Video, ShoppingBag } from "lucide-react";
 import { dailyTargetOf } from "@/utils/salesTargets";
+import { useToday } from "@/hooks/useToday";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -21,7 +22,10 @@ export default function MainAdminDashboard() {
   const [recentActivity, setRecentActivity] = useState<{ text: string; time: string; type: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const today = new Date().toISOString().slice(0, 10);
+  // The LOCAL day: `work_assignments.date` is written with `format(new Date(), "yyyy-MM-dd")`, so the
+  // UTC day (`toISOString`) showed yesterday's jobs as "today" until 05:30 IST. `useToday` also turns
+  // over at midnight, which re-subscribes the effect below (it is keyed on `today`).
+  const today = useToday();
 
   useEffect(() => {
     let allUsers: AppUser[] = [];

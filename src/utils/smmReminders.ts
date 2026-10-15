@@ -13,7 +13,7 @@
  */
 
 import {
-  clientWaitSummary, budgetLedger, daysLeftInCycle, daysUntilDue, isPosted, isWaitingOnClient,
+  clientWaitSummary, budgetLedger, daysLeftInCycle, daysUntilDue, isDeliveredInMonth, isPosted, isWaitingOnClient,
   itemOwners, approvalWaitDays,
 } from "@/utils/smmPlan";
 import type { SmmCampaign, SmmContentItem } from "@/types/smm";
@@ -165,6 +165,11 @@ export interface SmmRenewalDue {
   businessName: string;
   clientName: string;
   clientPhone: string;
+  /**
+   * The month's own days left, today included — the same number as days to its renewal day
+   * (`smmPlan.daysLeftInCycle` = `smmPackage.daysToRenewal`, 2026-10-15): 1 on its last day, 0 on the
+   * renewal day (ended), negative after. The bell, the card and its chip all count from it.
+   */
   daysLeft: number;
   postedOfCommitted: string;
 }
@@ -189,7 +194,8 @@ export function renewalsDueFor(
     if (campaign.renewal?.state === "won" || campaign.renewal?.state === "lost") continue;
     const daysLeft = daysLeftInCycle(campaign.cycle, today);
     if (daysLeft > withinDays) continue;
-    const posted = campaign.items.filter((i) => !i.extra && isPosted(i)).length;
+    // Posted on the month's own days only — a post dated in another month is not this month's (2026-10-15).
+    const posted = campaign.items.filter((i) => !i.extra && isDeliveredInMonth(i, campaign.cycle)).length;
     const committed = Object.values(campaign.commitments || {}).reduce((n, v) => n + (v || 0), 0);
     out.push({
       campaignId: campaign.id,

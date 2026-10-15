@@ -11,8 +11,15 @@
 
 import { CLIP_SECONDS, clipChoiceLabel, durationForClips, humanDuration } from "@/utils/assignmentDuration";
 import {
-  clientWaitSummary, dayToDate, daysBetween, daysLeftInCycle, fulfilment, isOverdue, isPosted, isoDay,
+  clientWaitSummary, dayToDate, daysBetween, daysLeftInCycle, fulfilment, isOverdue, isOwnDay, isPosted, isoDay,
+  itemDatedOutside, lastOwnDay, ownDayCount,
 } from "@/utils/smmPlan";
+
+/*
+  The month's own days live in smmPlan (the layer below, which `fulfilment` needs them in); they are
+  re-exported here because this is where every screen looks for a month's date rules (2026-10-15).
+*/
+export { isOwnDay, itemDatedOutside, lastOwnDay, ownDayCount } from "@/utils/smmPlan";
 import { SMM_RENEWAL_NOTICE_DAYS } from "@/utils/smmReminders";
 import {
   SMM_ITEM_STATUSES, SMM_PLATFORMS,
@@ -87,8 +94,25 @@ export function addMonthsIso(iso: string, months: number): string {
   return isoDay(target);
 }
 
+/** The day of the month (1–31) of a `yyyy-MM-dd`, or 0 when it is not a date. */
+const dayOfMonth = (iso: string | null | undefined): number => dayToDate(iso)?.getDate() || 0;
+
 /**
- * A month as the business sells it: from the start date to the same date next month.
+ * The day after `startIso`'s month on which the client's run is billed: `anchorDay` of the next
+ * calendar month, clamped to that month's length — 28 Feb with anchor 31 → 31 Mar, 31 Jan → 28 Feb.
+ */
+function nextAnchorDate(startIso: string, anchorDay: number): string {
+  const d = dayToDate(startIso);
+  if (!d) return startIso;
+  const target = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(anchorDay, lastDay));
+  return isoDay(target);
+}
+
+/**
+ * A month as the business sells it: from the start date to the same date next month — the end date
+ * being the RENEWAL DAY, not one of the month's own days (2026-10-15, see smmPlan `lastOwnDay`).
  *
  * ── Why not thirty days ──────────────────────────────────────────────────────────────────────
  * Until 2026-10-03 a month ran thirty days (sold on the 22nd, ended on the 21st). That is not how
@@ -96,37 +120,76 @@ export function addMonthsIso(iso: string, months: number): string {
  * client expected was a renewal conversation started on the wrong foot. The next month starts on
  * this end date, so a client who renews stays on the same date every month.
  *
+ * ── The billing day survives a short month (2026-10-15) ──────────────────────────────────────
+ * "Same date next month" clamps: 31 Jan → 28 Feb. The renewal then started on 28 Feb and ran to
+ * 28 Mar, and a client sold on the 31st was on the 28th for ever. `anchorDay` is the day the client is
+ * billed on: the end is that day of the next month, clamped to the month's length (28 Feb → 31 Mar
+ * with anchor 31), and the cycle remembers it (`SmmCycle.anchorDay`) while it differs from the start's
+ * own day. Only an anchor AFTER the start's day is honoured — that is the only way a clamp can have
+ * moved it; anything else is the start's own day (absent = legacy, the start's day).
+ *
  * An end date somebody typed is honoured when it is after the start; anything else falls back to
  * the rule.
  */
-export function monthCycle(startIso: string, endIso?: string | null): SmmCycle {
+export function monthCycle(startIso: string, endIso?: string | null, anchorDay?: number | null): SmmCycle {
   const start = dayToDate(startIso) ? startIso : isoDay(new Date());
-  const end = endIso && dayToDate(endIso) && endIso > start ? endIso : addMonthsIso(start, 1);
-  return { month: start.slice(0, 7), startDate: start, endDate: end };
+  const startDay = dayOfMonth(start);
+  const anchor = anchorDay && Number.isInteger(anchorDay) && anchorDay > startDay && anchorDay <= 31 ? anchorDay : startDay;
+  const end = endIso && dayToDate(endIso) && endIso > start ? endIso : nextAnchorDate(start, anchor);
+  return { month: start.slice(0, 7), startDate: start, endDate: end, ...(anchor !== startDay ? { anchorDay: anchor } : {}) };
+}
+
+/** The day of the month a cycle is billed on: its `anchorDay`, else its start's own day. */
+export function anchorDayOf(cycle: Pick<SmmCycle, "startDate" | "anchorDay">): number {
+  return cycle.anchorDay || dayOfMonth(cycle.startDate);
+}
+
+/**
+ * The month that follows `prev` — what every renewal is built with (2026-10-15).
+ *
+ * Starts on `start` (default: `prev`'s end date, its renewal day). When it starts exactly there — the
+ * client renewed in time — it keeps the client's billing day (`anchorDayOf(prev)`), so 31 Jan → 28 Feb
+ * is followed by 28 Feb → 31 Mar, not 28 Mar. A month that starts later (the client had a gap) is
+ * billed on its own new start day.
+ */
+export function nextCycleAfter(prev: Pick<SmmCycle, "startDate" | "endDate" | "anchorDay">, start?: string | null): SmmCycle {
+  const from = start && dayToDate(start) ? start : prev.endDate;
+  return monthCycle(from, null, from === prev.endDate ? anchorDayOf(prev) : null);
 }
 
 export type SmmPhase = "upcoming" | "running" | "ended";
 
-/** Before its first day, inside its dates, or past its last day. */
+/**
+ * Before its first day, on one of its own days, or over (from its end date — the renewal day — on).
+ *
+ * ── The end date is not a running day (owner, 2026-10-15) ─────────────────────────────────────
+ * It was: on 6 Oct "6 Sep → 6 Oct" and "6 Oct → 6 Nov" were both running. Now a month runs while
+ * start ≤ today < end, and on the renewal day it has ended — On hold if nobody renewed it.
+ */
 export function cyclePhase(cycle: SmmCycle, today: string): SmmPhase {
   if (today < cycle.startDate) return "upcoming";
-  if (today > cycle.endDate) return "ended";
+  if (today > lastOwnDay(cycle)) return "ended";
   return "running";
 }
 
-/** How much of the month has gone, 0 to 1 — today counts as gone, so the last day reads 1. */
+/**
+ * How much of the month has gone, 0 to 1, over its OWN days — today counts as gone, so the last own day
+ * (the day before the renewal day) reads 1.
+ */
 export function cycleElapsed(cycle: SmmCycle, today: string): number {
-  const total = daysBetween(cycle.startDate, cycle.endDate) + 1;
-  if (total <= 0) return 1;
+  const total = ownDayCount(cycle);
   const gone = daysBetween(cycle.startDate, today) + 1;
   return Math.max(0, Math.min(1, gone / total));
 }
 
 /**
- * "12 days left", "Last day", "Starts in 3 days", "Ended yesterday" — one sentence for every screen.
+ * "12 days left", "Last day", "Starts in 3 days", "Ended today", "Ended yesterday" — one sentence for
+ * every screen, counted from `daysLeftInCycle` like the bell and the renewal chip (2026-10-15).
  *
- * The card used to say "Last day" on the day AFTER a month ended: the count it read is inclusive,
- * so it is 1 on the last day and 0 the day after, and 0 had been given the wrong words.
+ * The month's last own day (the day before its end date) reads "Last day"; the end date itself is the
+ * renewal day, when the month has ended ("Ended today"). The card once said "Last day" on the day after
+ * a month ended; then, until 2026-10-15, on the renewal day — while the chip beside it said "Renewal is
+ * today".
  */
 export function cycleTimeLabel(cycle: SmmCycle, today: string): string {
   if (today < cycle.startDate) {
@@ -136,8 +199,8 @@ export function cycleTimeLabel(cycle: SmmCycle, today: string): string {
   const left = daysLeftInCycle(cycle, today);
   if (left > 1) return `${left} days left`;
   if (left === 1) return "Last day";
-  const ago = 1 - left;
-  return ago === 1 ? "Ended yesterday" : `Ended ${ago} days ago`;
+  if (left === 0) return "Ended today";
+  return left === -1 ? "Ended yesterday" : `Ended ${-left} days ago`;
 }
 
 /** "3 Oct 2026". */
@@ -158,9 +221,57 @@ export function monthLabel(iso: string | null | undefined): string {
   return d ? `${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}` : "";
 }
 
-/** "3 Oct → 3 Nov 2026" — a month's dates in one breath. */
+/** "3 Oct → 3 Nov 2026" — a month's dates in one breath, as the client is billed (end = renewal day). */
 export function cycleRangeLabel(cycle: SmmCycle): string {
   return `${shortDayLabel(cycle.startDate)} → ${dayLabel(cycle.endDate)}`;
+}
+
+/**
+ * "6 Sep – 5 Oct" — the month's OWN days, first to last (2026-10-15): what a warning about a date
+ * outside the month names, so the reader sees that the renewal day (6 Oct) is not one of them.
+ */
+export function ownDaysLabel(cycle: Pick<SmmCycle, "startDate" | "endDate">): string {
+  return `${shortDayLabel(cycle.startDate)} – ${shortDayLabel(lastOwnDay(cycle))}`;
+}
+
+/* ── Pieces dated outside the month (2026-10-15) ──────────────────────────────────────────────── */
+
+/**
+ * The month's pieces split by their dates: `inside` count toward it (dated on one of its own days, or
+ * undated), `outside` do not (smmPlan `itemDatedOutside` — a post dated on the renewal day is the next
+ * month's). Order kept.
+ */
+export function splitByMonthDates<T extends Pick<SmmContentItem, "uploadDate">>(
+  items: T[],
+  cycle: Pick<SmmCycle, "startDate" | "endDate"> | null | undefined,
+): { inside: T[]; outside: T[] } {
+  const inside: T[] = [];
+  const outside: T[] = [];
+  for (const item of items) (itemDatedOutside(item, cycle) ? outside : inside).push(item);
+  return { inside, outside };
+}
+
+/**
+ * "3 posts are dated outside 6 Sep – 5 Oct" — the amber line on the card, the month page, the timeline
+ * and the renewal popup. Empty when there are none.
+ */
+export function datedOutsideLine(count: number, cycle: Pick<SmmCycle, "startDate" | "endDate">): string {
+  if (count <= 0) return "";
+  return `${count} ${count === 1 ? "post is" : "posts are"} dated outside ${ownDaysLabel(cycle)}`;
+}
+
+/** The hint after that line — the fix is the date, in the Content list. */
+export const DATED_OUTSIDE_HINT =
+  "They don't count toward this month. If they belong to it, fix their upload dates in the Content list.";
+
+/**
+ * Where a new ad run starts by default (2026-10-15): today while the month is running, else the
+ * month's first day — so a run added on a month that has ended or not begun is inside its dates (its
+ * reports count on the month's report only on its own days, smmPlan `monthAdReports`).
+ */
+export function defaultAdRunStart(cycle: SmmCycle | null | undefined, today: string): string {
+  if (!cycle?.startDate) return today;
+  return cyclePhase(cycle, today) === "running" ? today : cycle.startDate;
 }
 
 /* ── Pace: time gone against work posted ────────────────────────────────────────────────────── */
@@ -224,6 +335,11 @@ export interface SmmSegment {
   title: string;
   uploadDate: string | null;
   status: SmmItemStatus;
+  /**
+   * Dated outside the month's own days (2026-10-15) — drawn apart, and never counted as this month's
+   * post even when `tone` is "done". False when no month was given.
+   */
+  outside: boolean;
 }
 
 export function toneOf(item: SmmContentItem, today: string): SmmTone {
@@ -245,18 +361,31 @@ export const SMM_TONE_LEGEND: { tone: SmmTone; label: string }[] = [
   { tone: "late", label: "Late" },
 ];
 
-/** One block per piece the month owes of this kind — extra work is a gift or an invoice, not a target. */
-export function kindSegments(items: SmmContentItem[], kind: SmmContentKind, today: string): SmmSegment[] {
+/**
+ * One block per piece the month owes of this kind — extra work is a gift or an invoice, not a target.
+ * Given the month's dates, a piece dated outside them is flagged `outside` and sorted after the rest:
+ * it is not this month's (2026-10-15), whatever stage it reached.
+ */
+export function kindSegments(
+  items: SmmContentItem[],
+  kind: SmmContentKind,
+  today: string,
+  cycle?: Pick<SmmCycle, "startDate" | "endDate"> | null,
+): SmmSegment[] {
   return items
     .filter((i) => i.kind === kind && !i.extra)
-    .map((i) => ({
-      id: i.id,
-      tone: toneOf(i, today),
-      title: i.title?.trim() || "Untitled",
-      uploadDate: i.uploadDate,
-      status: i.status,
-    }))
-    .sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone]);
+    .map((i) => {
+      const outside = itemDatedOutside(i, cycle);
+      return {
+        id: i.id,
+        tone: toneOf(i, today),
+        title: `${i.title?.trim() || "Untitled"}${outside ? " — dated outside this month" : ""}`,
+        uploadDate: i.uploadDate,
+        status: i.status,
+        outside,
+      };
+    })
+    .sort((a, b) => Number(a.outside) - Number(b.outside) || TONE_ORDER[a.tone] - TONE_ORDER[b.tone]);
 }
 
 /* ── What needs whom ────────────────────────────────────────────────────────────────────────── */
@@ -356,7 +485,8 @@ const renewalDecided = (r: SmmCampaign["renewal"] | null | undefined): boolean =
  * On hold (owner, 2026-10-05: "if the social is not renewal then keep it as hold").
  *
  * A month whose last day has passed with nothing decided about the next one — not renewed, not marked
- * not renewing. It stays on the board under its own "On hold" count, said in those words, until the
+ * not renewing. On hold starts ON the end date, the renewal day (owner, 2026-10-15: "On hold starts on
+ * 6 Oct if not renewed" — `cyclePhase`). It stays on the board under its own "On hold" count, said in those words, until the
  * salesperson renews it (filed as renewed) or says the client is not renewing (filed as not renewed —
  * the owner's choice: "On hold" means only "no decision yet"). A month recorded after it ended (history)
  * is on hold too when nothing follows it: an old client's last month is a renewal nobody has made yet.
@@ -430,15 +560,26 @@ export function closingStatus(c: SmmCampaign, today: string): "renewed" | "lapse
 /* ── Renewal ────────────────────────────────────────────────────────────────────────────────── */
 
 /**
- * The day a renewal month starts: the old month's end date when renewed in time, so the client stays
- * on the same date every month — or the day it was renewed, when that is later (the client had a gap).
+ * The day a renewal month starts by default: the old month's END DATE — its renewal day, the first day
+ * that is no longer its own — so the client stays on the same date every month. Its end follows from
+ * `nextCycleAfter`, which keeps the client's billing day.
+ *
+ * ── Never "today" (owner, 2026-10-15) ─────────────────────────────────────────────────────────
+ * It used to be the old end date when renewed by then, else the day the renewal was recorded — so a
+ * renewal typed in three days late silently started three days late, and the sale form's "the next month
+ * starts …" (worked out when the form opened) could differ from what was saved. The owner: a renewal
+ * defaults to the old month's end date ALWAYS; the sale form's "Month starts on" is where a real gap is
+ * typed (`SmmSaleSpec.startDate`). `today` is no longer read; the parameter stays for older callers.
  */
-export function renewalStartDate(prev: SmmCycle, today: string): string {
-  return today <= prev.endDate ? prev.endDate : today;
+export function renewalStartDate(prev: SmmCycle, _today?: string): string {
+  return prev.endDate;
 }
 
-/** What the sale form opens on when the salesperson presses Renew on this month. */
-export function renewalPrefillOf(c: SmmCampaign, today: string): SmmRenewalPrefill {
+/**
+ * What the sale form opens on when the salesperson presses Renew on this month — "Month starts on" opens
+ * on its end date (`renewalStartDate`), and that is the date saved unless the salesperson changes it.
+ */
+export function renewalPrefillOf(c: SmmCampaign, _today?: string): SmmRenewalPrefill {
   return {
     campaignId: c.id,
     businessName: c.businessName || c.clientName,
@@ -446,7 +587,8 @@ export function renewalPrefillOf(c: SmmCampaign, today: string): SmmRenewalPrefi
     platforms: c.platforms || [],
     clipsPerVideo: c.clipsPerVideo ?? null,
     monthLabel: monthLabel(c.cycle.startDate),
-    nextStart: renewalStartDate(c.cycle, today),
+    nextStart: renewalStartDate(c.cycle),
+    previousEnd: c.cycle.endDate,
   };
 }
 
@@ -471,11 +613,23 @@ export const SMM_RENEWAL_POPUP_DAYS = 3;
  * Whole days from today to the renewal date — the month's end date, which is also the day a renewed
  * month starts (`renewalStartDate`). 3, 2, 1, then 0 on the day itself; negative once it has passed.
  *
- * Not `daysLeftInCycle`: that counts today and reads 1 on the last day, which is right for "days left
- * in the month" and wrong for "days to renewal".
+ * The same number as `daysLeftInCycle` since 2026-10-15 — the end date is the renewal day, not one of
+ * the month's own days, so "days left in the month" and "days to renewal" are one count, and the bell,
+ * the card's time line and its renewal chip can no longer disagree.
  */
 export function daysToRenewal(cycle: SmmCycle, today: string): number {
-  return daysBetween(today, cycle.endDate);
+  return daysLeftInCycle(cycle, today);
+}
+
+/**
+ * "Renewal in 4 days", "Renewal tomorrow", "Renewal is today", "Renewal was 2 days ago" — from
+ * `daysToRenewal`: the card's renewal chip, the renewals card, the Money tab and the bell's words.
+ */
+export function renewalWhenLabel(days: number): string {
+  if (days > 1) return `Renewal in ${days} days`;
+  if (days === 1) return "Renewal tomorrow";
+  if (days === 0) return "Renewal is today";
+  return days === -1 ? "Renewal was yesterday" : `Renewal was ${-days} days ago`;
 }
 
 /** "3 days to renewal", "1 day to renewal — tomorrow", "Renewal is today". */
@@ -527,8 +681,8 @@ export function renewalPopupMonths(
   withinDays = SMM_RENEWAL_POPUP_DAYS,
 ): SmmCampaign[] {
   return campaigns
-    // `renewalDue` counts in days LEFT (today included), one more than days TO renewal.
-    .filter((c) => c.soldBy === uid && renewalDue(c, today, withinDays + 1))
+    // Days left and days to renewal are one count since 2026-10-15 (the end date is the renewal day).
+    .filter((c) => c.soldBy === uid && renewalDue(c, today, withinDays))
     .filter((c) => {
       const d = daysToRenewal(c.cycle, today);
       return d >= 0 && d <= withinDays;
@@ -542,23 +696,41 @@ export function renewalPopupSeenKey(uid: string, campaignId: string, day: string
 }
 
 /**
- * How many of the month's promised pieces sit at each stage — the stacked status bar in the popup.
- * Extra work is left out (it is not what was sold); a promise with no row yet counts as `unplanned`.
+ * How many of the month's promised pieces sit at each stage — the stacked status bar in the popup and
+ * the card's ring. Extra work is left out (it is not what was sold); a promise with no row yet counts
+ * as `unplanned`.
+ *
+ * `outside` (2026-10-15): pieces POSTED with an upload date outside the month's own days — live, but not
+ * this month's, so not `done` (smmPlan `isDeliveredInMonth`). A piece not posted keeps its stage
+ * wherever it is dated: it is not delivered either way, and late is late. Needs the month's `cycle`;
+ * without it nothing is outside, as before.
  */
 export function toneCounts(
-  campaign: Pick<SmmCampaign, "items" | "commitments">,
+  campaign: Pick<SmmCampaign, "items" | "commitments"> & { cycle?: SmmCycle | null; carriedOut?: SmmCampaign["carriedOut"] },
   today: string,
-): Record<SmmTone, number> & { unplanned: number; total: number } {
+): Record<SmmTone, number> & { outside: number; unplanned: number; moved: number; total: number } {
   const counts = { done: 0, ready: 0, wait: 0, work: 0, idle: 0, late: 0 } as Record<SmmTone, number>;
+  let outside = 0;
   let rows = 0;
   for (const item of campaign.items) {
     if (item.extra) continue;
-    counts[toneOf(item, today)] += 1;
     rows += 1;
+    if (isPosted(item) && itemDatedOutside(item, campaign.cycle)) {
+      outside += 1;
+      continue;
+    }
+    counts[toneOf(item, today)] += 1;
   }
   const committed = Object.values(campaign.commitments || {}).reduce((n, v) => n + Math.max(0, Math.floor(v || 0)), 0);
-  const unplanned = Math.max(0, committed - rows);
-  return { ...counts, unplanned, total: rows + unplanned };
+  /*
+    Pieces moved into the next month ("Move them here", `carriedOut`) are owed THERE now (2026-10-15): they
+    left this month's plan while its commitments stayed as sold (its report says honestly they were not
+    posted in its dates). Counted as `moved` — never as "not started" / "not live" here, which is what the
+    gap between commitments and rows made them before.
+  */
+  const moved = (campaign.carriedOut || []).length;
+  const unplanned = Math.max(0, committed - rows - moved);
+  return { ...counts, outside, unplanned, moved, total: rows + unplanned };
 }
 
 /* ── The team, as jobs ──────────────────────────────────────────────────────────────────────── */
@@ -765,8 +937,9 @@ export function canAdminRenewSmm(user: Viewer): boolean {
  * Whether a social media month is completed or historical, and therefore locked against being
  * edited to represent the next renewal.
  *
- * Once a month's dates are past or its status is completed/renewed/lapsed or it is marked as history,
- * its dates, assignments, content and history are locked. A new period must be created as a new month.
+ * Once a month's own days are past — from its end date, the renewal day, on (2026-10-15) — or its status
+ * is completed/renewed/lapsed or it is marked as history, its dates, assignments, content and history
+ * are locked. A new period must be created as a new month.
  */
 export function isMonthLocked(
   c: Pick<SmmCampaign, "status" | "history" | "cycle"> | null | undefined,
@@ -775,8 +948,30 @@ export function isMonthLocked(
   if (!c) return false;
   if (c.history) return true;
   if (c.status === "completed" || c.status === "renewed" || c.status === "lapsed") return true;
-  if (c.cycle?.endDate && c.cycle.endDate < today) return true;
+  if (c.cycle?.endDate && c.cycle.endDate <= today) return true;
   return false;
+}
+
+/**
+ * The words on a locked month's badge (2026-10-15) — or null when the month is not locked.
+ *
+ * ── Why not "Completed" for every locked month ───────────────────────────────────────────────
+ * The badge said "Completed (Locked)" on any month whose end had passed — including an undecided On
+ * hold month, whose renewal row beneath it said "has not been renewed". Completed is said only for a
+ * month that IS finished: filed completed / renewed / lapsed, or recorded as history. An ended month
+ * still on the board reads by its renewal: not decided yet (On hold), renewed, or not renewing.
+ */
+export function lockedMonthLabel(
+  c: Pick<SmmCampaign, "status" | "history" | "cycle" | "renewal"> | null | undefined,
+  today: string,
+): { label: string; finished: boolean } | null {
+  if (!c || !isMonthLocked(c, today)) return null;
+  if (c.history || c.status === "completed" || c.status === "renewed" || c.status === "lapsed") {
+    return { label: "Completed", finished: true };
+  }
+  if (c.renewal?.nextCampaignId || c.renewal?.state === "won") return { label: "Ended — renewed", finished: false };
+  if (c.renewal?.state === "lost") return { label: "Ended — not renewing", finished: false };
+  return { label: "Ended — not renewed yet", finished: false };
 }
 
 /**
@@ -854,8 +1049,9 @@ export function sellerLabelOf(c: Pick<SmmCampaign, "origin">): string {
 }
 
 /**
- * Do two months share a day of work? Back-to-back months share their boundary day — one ends on the
- * day the next starts ("same date next month") — so touching is not overlapping.
+ * Do two months share a day of work? The end date is the renewal day, not one of a month's own days
+ * (2026-10-15), so ends are exclusive: "6 Sep → 6 Oct" and "6 Oct → 6 Nov" — one ends on the day the
+ * next starts — do NOT overlap; "6 Sep → 7 Oct" and "6 Oct → 6 Nov" do (6 Oct is both's).
  */
 export function cyclesOverlap(a: SmmCycle, b: SmmCycle): boolean {
   return a.startDate < b.endDate && b.startDate < a.endDate;

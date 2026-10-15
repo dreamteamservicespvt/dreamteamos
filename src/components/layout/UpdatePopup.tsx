@@ -4,6 +4,7 @@ import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/f
 import { format } from "date-fns";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
+import { usePopupClaim } from "@/hooks/usePopupClaim";
 import { ClipboardList, CalendarCheck2, ExternalLink, BellRing, CheckCircle2, HelpCircle, FilePenLine } from "lucide-react";
 import { ATTENDANCE_META, AttendanceStatus } from "@/services/techAttendance";
 import { isPopupNotification, POPUP_ROLES } from "@/utils/notificationRouting";
@@ -76,7 +77,11 @@ export default function UpdatePopup() {
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))[0];
   }, [unread, dismissedTick]);
 
-  if (!user || !MEMBER_ROLES.has(user.role) || !current) return null;
+  const shown = !!user && MEMBER_ROLES.has(user.role) && !!current;
+  // Told to the popup coordinator, so a popup that waits its turn stays away while this is up.
+  usePopupClaim("update", shown);
+
+  if (!shown || !user || !current) return null;
 
   const meta = POPUP_TYPES[current.type];
   const Icon = meta.icon;

@@ -4,6 +4,7 @@ import { db } from "@/services/firebase";
 import { formatCurrency } from "@/utils/formatters";
 import { getRoleLabel, isActiveUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
+import { salesBookedByDay, salesBookedByOwner } from "@/utils/salesRevenue";
 import { TrendingUp, Download } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -27,10 +28,15 @@ export default function RevenueSummary() {
   }, []);
 
   const verifiedAssignments = assignments.filter((a) => a.status === "verified");
-  const salesDone = leads.filter((l: any) => l.saleDone && l.saleDetails);
+  /*
+    Sales on their own day (2026-10-15): every sale in `saleItems` and the legacy `saleDetails`, its amount on
+    the local day it was made — not the lead's last-touched time in UTC, and not the legacy field alone.
+  */
+  const salesByDay = salesBookedByDay(leads);
+  const salesByOwner = salesBookedByOwner(leads);
 
   const totalTechRevenue = verifiedAssignments.reduce((s, a) => s + (a.totalPrice || 0), 0);
-  const totalSalesRevenue = salesDone.reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
+  const totalSalesRevenue = [...salesByDay.values()].reduce((s, v) => s + v, 0);
 
   // Revenue by date
   const revenueByDate: Record<string, { date: string; tech: number; sales: number }> = {};
@@ -39,10 +45,9 @@ export default function RevenueSummary() {
     if (!revenueByDate[d]) revenueByDate[d] = { date: d, tech: 0, sales: 0 };
     revenueByDate[d].tech += a.totalPrice || 0;
   });
-  salesDone.forEach((l: any) => {
-    const d = l.lastUpdated?.toDate?.() ? l.lastUpdated.toDate().toISOString().slice(0, 10) : "unknown";
+  salesByDay.forEach((amount, d) => {
     if (!revenueByDate[d]) revenueByDate[d] = { date: d, tech: 0, sales: 0 };
-    revenueByDate[d].sales += l.saleDetails?.amount || 0;
+    revenueByDate[d].sales += amount;
   });
   const chartData = Object.values(revenueByDate)
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -53,7 +58,7 @@ export default function RevenueSummary() {
     .filter((m) => ["tech_member", "sales_member", "tech_admin", "sales_admin"].includes(m.role))
     .map((m) => {
       const techRev = verifiedAssignments.filter((a) => a.assignedTo === m.uid).reduce((s, a) => s + (a.totalPrice || 0), 0);
-      const salesRev = salesDone.filter((l: any) => l.assignedTo === m.uid).reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
+      const salesRev = salesByOwner.get(m.uid) ?? 0;
       return { ...m, techRev, salesRev, total: techRev + salesRev };
     })
     .filter((m) => m.total > 0)

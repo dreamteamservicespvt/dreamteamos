@@ -23,7 +23,7 @@ import { CalendarClock, Loader2, Lock } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
 import { extendOrderPromise } from "@/services/orders";
-import { canExtendPromise, formatHoursLabel, promiseOriginalDueMs } from "@/utils/promiseSla";
+import { canExtendPromise, defaultExtensionHours, formatHoursLabel, promiseOriginalDueMs } from "@/utils/promiseSla";
 import { format } from "date-fns";
 import type { Order, WorkAssignment } from "@/types";
 
@@ -41,8 +41,9 @@ export default function ExtendPromiseButton({ order, assignment, compact = false
   // Pre-filled with the promise's own length again, which is the answer in almost every case — a
   // field already holding the right number is the difference between an extension recorded now and
   // one recorded tomorrow. Still editable: an afternoon's delay on a five-day website is not five
-  // more days.
-  const [hours, setHours] = useState(() => order.promise?.hours || 24);
+  // more days. A social-media month's deadline opens on three days, not another whole month
+  // (`defaultExtensionHours`, 2026-10-15).
+  const [hours, setHours] = useState(() => defaultExtensionHours(order.promise));
   const [reason, setReason] = useState("");
 
   // Escape closes it. The rest of this app treats a modal a phone cannot dismiss as a trap, and

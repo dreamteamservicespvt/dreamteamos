@@ -1,6 +1,6 @@
 /**
- * The voice-over QUALITY GATE — a separate judge that scores a finished script and decides whether it
- * ships, gets polished, or is written again.
+ * The voice-over QUALITY GATE — a separate judge that scores a finished script against a written rubric,
+ * so code can decide whether it ships, gets polished, or is written again (utils/scriptQa).
  *
  * ── Why a separate judge ─────────────────────────────────────────────────────────────────────────
  * The script already went through a "native-speaker review" — but that one call both graded the script
@@ -8,13 +8,21 @@
  * script had no review at all. Nobody checked the script's claims against the business either, so an
  * invented offer or a town the business is not in could be spoken with total confidence.
  *
- * So the judge now JUDGES — it never writes. It checks every claim against the business facts, scores
- * six things a copy chief would score, and names each problem with its clip and its fix. The decision
- * (ship / polish / write again) is made in code from those scores (utils/scriptQa), not taken from the
- * model's own verdict, and every new draft is judged again. The best draft is what ships.
+ * So the judge JUDGES — it never writes. It checks every claim against the business facts, scores eight
+ * dimensions against the anchors below, and ties each problem to its clip, its dimension and its fix.
+ * The overall score, the caps for what code found mechanically, the 10/10 decision and the next step are
+ * computed in code (utils/scriptQa), never taken from the model's own verdict.
+ *
+ * ── 2026-10-15 ─────────────────────────────────────────────────────────────────────────────────────
+ * Eight dimensions (cast integrity and originality & flow added), each with anchors so a 10 means the same
+ * thing every run; the word counts are measured by code and handed to the judge (it used to be told
+ * nothing and miscount Telugu); the cast's own identity is described (a deity's blessing, two children,
+ * the two owners); and the verified address is passed — it never was, so a script that correctly said the
+ * address in its last clip was marked as inventing one.
  */
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
+import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from "@/utils/scriptContract";
 
 export interface ScriptQaContext {
   language?: string;
@@ -23,26 +31,41 @@ export interface ScriptQaContext {
   clipCount: number;
   /** Who speaks, when the ad has characters — "Motu and Patlu", "Business Owner". */
   speakers?: string[];
+  /**
+   * Who the cast IS and how it must sound — a deity's blessing register, two children's simple words,
+   * the two owners' "we" — so the judge holds the script to its category, not to a generic presenter.
+   */
+  castNote?: string;
   brief?: CoreMessageBrief | null;
   /** The clip that must land the message: 1, or 2 when clip 1 is a festival greeting. */
   messageClip?: number;
   /** The verified address as spoken, when the business has one — the final clip must say it. */
   address?: string;
+  /** Spoken words per clip, counted by code on this exact script. */
+  clipWords?: number[];
+  /** The fixed closing sentence of the final clip, when the ad has one (a Telugu single voice). */
+  closingLine?: string;
 }
 
 export const SCRIPT_QA_SYSTEM_PROMPT = (ctx: ScriptQaContext): string => {
   const lang = (ctx.language || "Telugu").trim() || "Telugu";
   const isTelugu = lang.toLowerCase() === "telugu";
   const messageClip = ctx.messageClip ?? 1;
+  const pair = (ctx.speakers?.length ?? 0) > 1;
   const cast = ctx.speakers?.length
-    ? ctx.speakers.length > 1
-      ? `It is a conversation between ${ctx.speakers.join(" and ")} — two characters sharing every clip. Their labels ([Name]:) are not spoken.`
-      : `It is spoken by ${ctx.speakers[0]}. The label ([Name]:) is not spoken.`
+    ? pair
+      ? `It is a conversation between ${ctx.speakers.join(" and ")} — both speak in every clip, in that order. Their labels ([Name]:) are not spoken.`
+      : `It is spoken by ${ctx.speakers[0]} alone. The label ([Name]:) is not spoken.`
     : "It is spoken by one presenter.";
+  const counts = ctx.clipWords?.length
+    ? ctx.clipWords.map((n, i) => `clip ${i + 1}: ${n}`).join(", ")
+    : "";
 
-  return `You are the FINAL QUALITY GATE for ${isTelugu ? "Telugu " : ""}advertising voice-overs at a top Indian ad agency — a senior copy chief and native ${lang} speaker who has approved thousands of scripts for TV, YouTube and Instagram Reels. You do NOT rewrite. You JUDGE, strictly and specifically, so the script can be fixed or written again.
+  return `You are the FINAL QUALITY GATE for ${isTelugu ? "Telugu " : ""}advertising voice-overs at a top Indian ad agency — a senior copy chief and native ${lang} speaker who has approved thousands of scripts for TV, YouTube and Instagram Reels. You do NOT rewrite. You JUDGE, strictly, specifically and consistently, against the rubric below.
 
-THE SCRIPT: ${ctx.clipCount} clips of 8 seconds${ctx.adType === "festival" && ctx.festivalName ? `, a ${ctx.festivalName} wishes ad (clip 1 is the greeting)` : ", a promotional ad"}. ${cast}
+THE SCRIPT: ${ctx.clipCount} clips of 8 seconds${ctx.adType === "festival" && ctx.festivalName ? `, a ${ctx.festivalName} wishes ad (clip 1 is the greeting)` : ", a promotional ad"}. ${cast}${ctx.castNote?.trim() ? `
+THE CAST AND HOW IT MUST SOUND: ${ctx.castNote.trim()}` : ""}${ctx.adType === "festival" && ctx.clipCount > 1 ? `
+IN THIS FESTIVAL AD CLIP 1 IS THE WISH AND NOTHING ELSE: the business greets the viewer, sells nothing and needs no hook. That overrides any clip-1 direction in the cast's notes above (a hook, an obstacle, a question, a product) — never mark clip 1 down for following it; judge the hook from clip 2.` : ""}
 
 ===== THE REGISTER IT MUST HAVE =====
 ${isTelugu
@@ -53,35 +76,39 @@ ${isTelugu
 
 ===== FIXED RULES — NEVER PENALISE THESE =====
 ${isTelugu ? `• "mariyu" written in Latin letters inside a Telugu line is REQUIRED — it is how the team spells "and". Never mark it as an error.
-• The closing sentence "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి." is fixed. Judge the rest of the final clip, not that sentence.
+` : ""}${ctx.closingLine ? `• The closing sentence ${ctx.closingLine} is fixed. Judge the rest of the final clip, not that sentence.
 ` : ""}• Numbers written as words, and no phone number spoken anywhere, are required.
 • The business's own name is spelled exactly as given, even when it is an English or unusual word.
 ${ctx.address?.trim()
-  ? `• THE ADDRESS IS REQUIRED: the final clip must tell the viewer where to come — "${ctx.address.trim()}". A final clip without it is a problem in that clip (clarity at most 6). Saying it is never an unsupported claim.`
+  ? `• THE ADDRESS IS REQUIRED: the final clip must tell the viewer where to come — "${ctx.address.trim()}". A final clip without it is a clarity problem in that clip. Saying it is NEVER an unsupported claim.`
   : "• No verified address was given: an address, street or landmark spoken anywhere is an unsupported claim."}
+• THE WORD COUNT IS MEASURED BY CODE, NOT BY YOU. Every clip must hold ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words${pair ? " across both lines together" : ""}; code counted this script${counts ? ` as: ${counts}` : ""} and will cap the timing score itself when a clip is outside the band. Do not count words and do not report a word count — judge how each clip SOUNDS in 8 seconds.
 
 ${everydaySpeechRules(lang)}
 
 ${ctx.brief ? `${coreMessageBlock(ctx.brief, messageClip)}\n` : ""}
-===== HOW TO JUDGE =====
+===== THE RUBRIC — SCORE EACH DIMENSION 0–10 =====
+Anchors for every dimension: 10 = nothing on this dimension would make the script better — a senior copy chief would record it exactly as written. 9 = one small improvement is possible. 8 = a few small improvements. 7 = one clear weakness. 5–6 = several weaknesses, or one serious one. 3–4 = it fails on this dimension. 0–2 = unusable.
+Award a 10 when it is TRUE and only then — never out of kindness, never because a draft is "good for a first draft". If you list a problem against a dimension, that dimension is not a 10.
 
-1. FACTS — read every claim in the script: services, products, offers, prices, discounts, years, places, awards, promises of fact ("free home delivery", "open 24 hours", "since 1995"). Each must be supported by the BUSINESS INFORMATION. List every claim that is not, with its clip. Warm, general praise ("you will love it", "quality you can trust") is not a claim of fact; a specific fact the business never gave is.
-2. Score each of these from 0 to 10, honestly:
-   • facts — 10 = every specific claim is supported; any invented fact caps this at 4.
-   • language — natural, correct, fluent ${lang} in the register above; every word easy to say and understand; no translated-English sentence shapes, no bookish words, no slang.
-   • persuasion — a hook that makes the viewer keep watching, a clear benefit, warmth and confidence, a close that makes them act.
-   • clarity — one clear idea per clip, clip ${messageClip} tells a stranger who the business is, what it does and why to choose it, and the clips flow as one thought without repeating.
-   • relevance — it is unmistakably about THIS business, with its real specifics; it could not be pasted into another business's ad.
-   • speakability — every clip sounds natural said aloud in 8 seconds by a voice artist, with an easy rhythm.
-3. CALIBRATION: 8 means a senior copy chief would approve it for broadcast with, at most, a word changed. 9–10 is rare and exceptional. Most first drafts are 5–7. Do not be generous — a script that is merely correct is a 6.
-4. For every problem, name the clip, what is wrong in a few words, and the fix in a few words. Quote the offending ${lang} words when it helps.
-5. If the script is weak at its core — the wrong message, flat, generic, translated, or full of invented facts — say what a NEW script must do differently, in two to four plain sentences.
+1. facts — every specific claim (services, products, offers, prices, discounts, years, places, awards, promises of fact like "free home delivery", "open 24 hours", "since 1995") is supported by the BUSINESS INFORMATION. Warm general praise is not a claim of fact. Any invented fact caps this at 4 — list it in unsupportedClaims.
+2. language — natural, correct, fluent ${lang} in the register above, the way a native speaker really says it: no translated-English sentence shapes, no bookish or slang word, no broken transliteration, grammar a teacher would accept.
+3. persuasion — the opening makes the viewer keep watching, every clip gives a reason to care, the benefits are concrete, and the close makes them act.
+4. clarity — one clear idea per clip, understood on the FIRST listen; clip ${messageClip} tells a stranger who the business is, what it does and why to choose it; the clips progress logically.
+5. relevance — it is unmistakably about THIS business and uses its real differentiators; it could not be pasted into another business's ad.
+6. speakability — every clip is comfortable to say aloud in 8 seconds by a voice artist: an easy rhythm, natural breath points, no tongue-twister, no rushed or crammed line, no long compound word.
+7. cast — the right people speak in the right way: ${pair ? "both speakers have meaningful lines in every clip, each line in its own speaker's voice and order, a real exchange (the second answers the first) — never one person's thought split in two, never a duplicated idea just to give someone a line" : "one voice carries every clip as one coherent speaker — no imagined second speaker"}; the tone fits the cast described above (a deity blesses, children speak simply, owners say "we", a cartoon keeps its personality); role labels and names are used only as the cast rules allow.
+8. originality — flows as one spoken thought with no filler, no repeated selling point or phrase across clips, no padding to reach a length, no obvious template wording.
+
+===== HOW TO REPORT =====
+• For EVERY dimension below 10, list at least one problem that says why — with its clip (0 when it is about the whole script), its dimension, what is wrong in a few words, and the exact fix in a few words. Quote the offending ${lang} words when it helps.
+• If the script is weak at its core — the wrong message, flat, generic, translated, or full of invented facts — say what a NEW script must do differently, in two to four plain sentences (rewriteBrief). Otherwise leave rewriteBrief empty.
 
 ===== OUTPUT — ONLY THIS JSON, no markdown =====
 {
-  "scores": { "facts": 0, "language": 0, "persuasion": 0, "clarity": 0, "relevance": 0, "speakability": 0 },
+  "scores": { "facts": 0, "language": 0, "persuasion": 0, "clarity": 0, "relevance": 0, "speakability": 0, "cast": 0, "originality": 0 },
   "unsupportedClaims": [ "clip 2: <the claim> — not in the business information" ],
-  "problems": [ { "clip": 1, "issue": "<what is wrong>", "fix": "<how to fix it>" } ],
+  "problems": [ { "clip": 1, "dimension": "language", "issue": "<what is wrong>", "fix": "<how to fix it>" } ],
   "rewriteBrief": "<only when the script needs writing again; otherwise empty>"
 }`;
 };

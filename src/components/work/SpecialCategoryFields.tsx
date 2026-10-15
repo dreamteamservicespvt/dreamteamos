@@ -21,7 +21,7 @@
  * selling sales member on their own sale. The member making the ad reads it and cannot move it;
  * see `backgroundLocked` in AIPlatformApp.
  */
-import { characterPackGroups, getCharacterPack, isCustomPack } from '@/services/characterPacks';
+import { characterPackGroups, getCharacterPack, isCustomPack, ownerPhotoSlots } from '@/services/characterPacks';
 
 interface SpecialCategoryFieldsProps {
   characterPack: string;
@@ -72,12 +72,19 @@ export default function SpecialCategoryFields({ characterPack, realLocationProvi
         {pack && (
           <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5">
             <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
-              <b>{pack.label}</b> — {pack.tagline}.{pack.characters.length > 1 ? ' Both characters speak in every clip.' : ''}
+              <b>{pack.label}</b> — {pack.tagline}.{ownerPhotoSlots(pack).length > 1 ? ' Both owners speak in every clip.' : pack.characters.length > 1 ? ' Both characters speak in every clip.' : ''}
             </p>
             {/* The face is not the location. On every other entry a client photo is a background
                 reference; here it is the identity the whole ad is built from, and there is no ad at
                 all without it — so it is stated separately and unconditionally. */}
-            {pack.usesClientFace && (
+            {/* The Real Owner Duo (2026-10-14): one photo of EACH owner, both required, in the studio's two slots. */}
+            {ownerPhotoSlots(pack).length > 1 ? (
+              <p data-test="job-owner-duo-note" className="mt-1.5 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
+                <b>Both owners’ photos are required — one clear, front-facing photo of EACH owner.</b>{" "}
+                {ownerPhotoSlots(pack).map((s) => `${s.name} = the ${s.kind} on the ${s.side}`).join(" · ")}. Both exact faces are
+                reproduced in every clip; without either photo there is nothing to build.
+              </p>
+            ) : pack.usesClientFace && (
               <p className="mt-1.5 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
                 <b>The owner’s photo is required.</b> Upload a clear, front-facing photo of the owner —
                 this exact face is reproduced in every clip. Without it there is nothing to build.

@@ -9,9 +9,10 @@ import { isLinePaid, watchPayrollLines, watchPayrollRun } from "@/services/payro
 import { watchPeriodReceipts, type SalaryReceipt } from "@/services/salaryReceipts";
 import { useToday } from "@/hooks/useToday";
 import {
-  compOffToApply, computeSalary, currentPayMonth, netPayable, nextPayDay, payPeriodForMonth, payPeriodLabel, periodDates,
+  compOffToApply, computeSalary, currentPayMonth, netPayable, nextPayDay, payPeriodForMonth, periodDates,
   type PayDayInfo, type PayPeriod,
 } from "@/utils/payrollEngine";
+import { salaryFor } from "@/utils/payTerms";
 import {
   DEFAULT_PAYROLL_CONFIG,
   type EmployeeBank, type PayrollConfig, type PayrollLine, type PayrollRun,
@@ -119,7 +120,6 @@ export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrol
     () => payPeriodForMonth(targetMonth, config.payDayOfMonth),
     [targetMonth, config.payDayOfMonth],
   );
-  const periodText = payPeriodLabel(targetMonth, config.payDayOfMonth);
 
   useEffect(() => {
     setReady({ overrides: false, holidays: false, checkins: false, lines: false });
@@ -136,10 +136,12 @@ export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrol
       watchCheckedInDaysInRange(period.start, period.end, set => { setCheckedIn(set); mark("checkins"); }, failed),
       watchPayrollRun(targetMonth, setRun),
       watchPayrollLines(targetMonth, map => { setLines(map); mark("lines"); }, failed),
-      watchPeriodReceipts(targetMonth, periodText, setReceipts),
+      // The receipts that PAY this period — an older one labelled with the next period is read too
+      // (services/salaryReceipts, 2026-10-15).
+      watchPeriodReceipts(targetMonth, setReceipts, config.payDayOfMonth),
     ];
     return () => unsubs.forEach(u => u());
-  }, [targetMonth, period.start, period.end, periodText]);
+  }, [targetMonth, period.start, period.end, config.payDayOfMonth]);
 
   useEffect(() => watchPayrollConfig(setConfig), []);
   useEffect(() => watchAllEmployeeBanks(setBanks), []);
@@ -167,7 +169,9 @@ export function useMonthPayroll(members: AppUser[], month?: string): MonthPayrol
         }));
         const liveComputation = computeSalary({
           month: targetMonth,
-          monthlySalary: member.salary || 0,
+          // The salary that applied IN this period (utils/payTerms, 2026-10-15) — so a raise from a later
+          // period neither re-prices this one nor flags its payment as "changed".
+          monthlySalary: salaryFor(member, targetMonth),
           days,
           todayStr,
           config: activeConfig,

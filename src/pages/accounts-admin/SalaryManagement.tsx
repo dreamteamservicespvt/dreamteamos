@@ -1,22 +1,27 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { collection, onSnapshot, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
+import { savePayTerms } from "@/services/payroll";
 import { sendNotification } from "@/services/notifications";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency } from "@/utils/formatters";
 import { getRoleLabel, getRoleColor, isActiveUser } from "@/utils/roleHelpers";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import type { AppUser } from "@/types";
-import { Users, Download, Edit3, Check, X, Loader2, Send, Receipt, Upload, FileText, Trash2, History } from "lucide-react";
+import { Users, Download, Edit3, Check, X, Loader2, Send, Receipt, Upload, FileText, Trash2, History, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useConfirm } from "@/hooks/useConfirm";
-import { deductionsFor, formatDayCount, payPeriodLabel, salaryMonthDue } from "@/utils/payrollEngine";
+import {
+  currentPayMonth, deductionsFor, formatDayCount, payMonthsBetween, payPeriodLabel, salaryMonthDue, shiftPayMonth,
+} from "@/utils/payrollEngine";
 import {
   isLinePaid, priceMemberForPeriod, watchPayrollLines, type PeriodPay,
 } from "@/services/payrollRun";
-import { addSalaryReceipt, deleteSalaryReceipt } from "@/services/salaryReceipts";
+import { addSalaryReceipt, deleteSalaryReceipt, receiptPeriodText } from "@/services/salaryReceipts";
+import { receiptPeriodOf } from "@/utils/receiptPeriod";
+import { applyFromChoices } from "@/utils/payTerms";
 import type { PayrollLine } from "@/types/payroll";
 
 export default function SalaryManagement() {
@@ -52,13 +57,27 @@ export default function SalaryManagement() {
   const [quoting, setQuoting] = useState(false);
   const [quoteFailed, setQuoteFailed] = useState(false);
 
-  /** Payments recorded in Payroll for the period being paid now — so the table can say "Paid in Payroll". */
+  /*
+    ── The status column is the status of ONE pay period (2026-10-15) ──
+    It showed the newest receipt by send time ("✓ August") whatever period was being paid, so on 15 Oct, with
+    September due and unpaid, every row read green. It now shows the period being looked at — the one due by
+    default, stepped with ‹ › — from the receipts that PAY it (an older receipt's label named the period
+    running when it was sent: utils/receiptPeriod) and from Payroll's payment for it.
+  */
+  const dueMonth = salaryMonthDue();
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const maxPeriodOffset = Math.max(0, payMonthsBetween(dueMonth, currentPayMonth()));
+  const thisPeriod = shiftPayMonth(dueMonth, periodOffset);
+  /** Payments recorded in Payroll for the period being looked at — so the table can say "Paid in Payroll". */
   const [payrollPaid, setPayrollPaid] = useState<Map<string, PayrollLine>>(new Map());
-  const thisPeriod = salaryMonthDue();
   useEffect(() => watchPayrollLines(thisPeriod, setPayrollPaid), [thisPeriod]);
 
+  /** From which pay period an edited salary applies (utils/payTerms) — the one running now by default. */
+  const runningPeriod = currentPayMonth();
+  const [editFrom, setEditFrom] = useState(runningPeriod);
+
   // Track sent receipts
-  const [sentReceipts, setSentReceipts] = useState<Record<string, { id: string; month: string; amount: number; fileUrl?: string; fileName?: string; sentAt: any; note?: string }[]>>({});
+  const [sentReceipts, setSentReceipts] = useState<Record<string, { id: string; month: string; period?: string; amount: number; fileUrl?: string; fileName?: string; sentAt: any; note?: string }[]>>({});
   const [receiptHistoryMember, setReceiptHistoryMember] = useState<AppUser | null>(null);
   const [deletingReceiptId, setDeletingReceiptId] = useState<string | null>(null);
 
@@ -75,11 +94,11 @@ export default function SalaryManagement() {
       setLoading(false);
     }));
     unsubs.push(onSnapshot(collection(db, "salary_receipts"), (snap) => {
-      const map: Record<string, { id: string; month: string; amount: number; fileUrl?: string; fileName?: string; sentAt: any; note?: string }[]> = {};
+      const map: Record<string, { id: string; month: string; period?: string; amount: number; fileUrl?: string; fileName?: string; sentAt: any; note?: string }[]> = {};
       snap.docs.forEach((d) => {
         const data = d.data();
         if (!map[data.userId]) map[data.userId] = [];
-        map[data.userId].push({ id: d.id, month: data.month, amount: data.amount, fileUrl: data.fileUrl, fileName: data.fileName, sentAt: data.sentAt, note: data.note });
+        map[data.userId].push({ id: d.id, month: data.month, period: data.period, amount: data.amount, fileUrl: data.fileUrl, fileName: data.fileName, sentAt: data.sentAt, note: data.note });
       });
       // Sort each by sentAt desc
       Object.values(map).forEach((arr) => arr.sort((a, b) => (b.sentAt?.seconds || 0) - (a.sentAt?.seconds || 0)));
@@ -88,13 +107,21 @@ export default function SalaryManagement() {
     return () => unsubs.forEach((u) => u());
   }, []);
 
+  const startEdit = (m: AppUser) => {
+    setEditingUid(m.uid);
+    setEditSalary(m.salary || 0);
+    setEditFrom(runningPeriod);
+  };
+
   const handleSave = async (uid: string) => {
     setSaving(true);
     try {
-      await updateDoc(doc(db, "users", uid), { salary: editSalary, updatedAt: serverTimestamp() });
+      // Through the one writer, with the period it applies from — earlier periods keep their salary
+      // (2026-10-15: a raise used to re-price unpaid months before it and flag the paid ones).
+      await savePayTerms(uid, { salary: editSalary }, editFrom, { uid: currentUser?.uid || "", name: currentUser?.name });
       setMembers((prev) => prev.map((m) => m.uid === uid ? { ...m, salary: editSalary } : m));
       setEditingUid(null);
-      toast({ title: "Saved", description: "Salary updated." });
+      toast({ title: "Saved", description: `Salary updated from ${payPeriodLabel(editFrom)}.` });
     } catch {
       toast({ title: "Error", description: "Failed to update.", variant: "destructive" });
     } finally {
@@ -108,7 +135,8 @@ export default function SalaryManagement() {
     setReceiptNote("");
     setReceiptFile(null);
     setUploadProgress(0);
-    setReceiptMonth(salaryMonthDue());
+    // The period the table is showing (the one due, unless the accountant stepped to another).
+    setReceiptMonth(thisPeriod);
   };
 
   // Price the chosen period whenever the member or the period changes; the amount starts there and
@@ -202,6 +230,39 @@ export default function SalaryManagement() {
     }
   };
 
+  /** The receipts that pay the period being looked at, for one person. */
+  const receiptsForPeriod = (uid: string) =>
+    (sentReceipts[uid] || []).filter((r) => receiptPeriodOf(r) === thisPeriod);
+
+  /** One status for the period being looked at: a receipt sent, paid in Payroll, or not sent. */
+  const periodStatus = (m: AppUser) => {
+    const mine = receiptsForPeriod(m.uid);
+    const all = sentReceipts[m.uid] || [];
+    const line = payrollPaid.get(m.uid);
+    return (
+      <div className="flex flex-col items-start md:items-center gap-0.5">
+        {mine.length > 0 ? (
+          <span data-test="receipt-sent-for-period" className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">
+            ✓ Receipt sent · {formatCurrency(mine.reduce((s, r) => s + (r.amount || 0), 0))}
+          </span>
+        ) : isLinePaid(line) ? (
+          // Paid from Payroll for this period — not "Not sent", which invited a second payment.
+          <span data-test="paid-in-payroll" title={`Payroll recorded ${formatCurrency(line!.netSalary)} for ${payPeriodLabel(thisPeriod)}`}
+            className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">
+            Paid in Payroll
+          </span>
+        ) : (
+          <span data-test="not-sent-for-period" className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Not sent</span>
+        )}
+        {all.length > 0 && (
+          <button onClick={() => setReceiptHistoryMember(m)} className="text-[9px] text-muted-foreground flex items-center gap-1 hover:text-foreground">
+            {all.length} sent in all <History size={9} />
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const filtered = roleFilter === "all" ? members : members.filter((m) => m.role === roleFilter);
   const totalSalary = filtered.reduce((s, m) => s + (m.salary || 0), 0);
 
@@ -256,6 +317,21 @@ export default function SalaryManagement() {
           <option value="tech_member">Tech Member</option>
           <option value="sales_member">Sales Executive</option>
         </select>
+        {/* The pay period whose status the Receipt column shows — the one due by default. */}
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5" data-test="salary-period-stepper">
+          <button onClick={() => setPeriodOffset((o) => o - 1)} aria-label="Previous pay period"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+            <ChevronLeft size={14} />
+          </button>
+          <span className="min-w-0 px-1 text-center text-[11px] font-medium text-foreground" data-test="salary-period-label">
+            {payPeriodLabel(thisPeriod)}{thisPeriod === dueMonth ? " · due" : ""}
+          </span>
+          <button onClick={() => setPeriodOffset((o) => Math.min(maxPeriodOffset, o + 1))} disabled={periodOffset >= maxPeriodOffset}
+            aria-label="Next pay period"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40">
+            <ChevronRight size={14} />
+          </button>
+        </div>
         <span className="ml-auto text-xs text-muted-foreground font-mono">{filtered.length} staff</span>
       </div>
 
@@ -297,21 +373,13 @@ export default function SalaryManagement() {
                   </div>
                   <span className="font-mono font-bold text-warning text-sm">{formatCurrency(m.salary || 0)}</span>
                 </div>
-                {/* Receipt status */}
-                {sentReceipts[m.uid]?.length > 0 ? (
-                  <button onClick={() => setReceiptHistoryMember(m)} className="flex items-center gap-1.5 mt-2 hover:opacity-80 transition-opacity">
-                    <Receipt size={11} className="text-success" />
-                    <span className="text-[10px] text-success font-medium">
-                      Last: {sentReceipts[m.uid][0]?.month || "—"}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">({sentReceipts[m.uid].length})</span>
-                    <History size={10} className="text-muted-foreground" />
-                  </button>
-                ) : isLinePaid(payrollPaid.get(m.uid)) ? (
-                  <p className="mt-2 text-[10px] font-medium text-success">Paid in Payroll · {payPeriodLabel(thisPeriod)}</p>
-                ) : null}
+                {/* The status of the period being looked at (2026-10-15), not the newest receipt. */}
+                <div className="mt-2 flex items-center gap-1.5">
+                  <Receipt size={11} className="text-muted-foreground shrink-0" />
+                  {periodStatus(m)}
+                </div>
                 <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/50">
-                  <button onClick={() => { setEditingUid(m.uid); setEditSalary(m.salary || 0); }}
+                  <button onClick={() => startEdit(m)}
                     className="flex-1 h-8 rounded-lg bg-accent text-foreground text-xs font-medium flex items-center justify-center gap-1.5 border border-border hover:bg-accent/80 transition-colors">
                     <Edit3 size={12} /> Edit Salary
                   </button>
@@ -332,7 +400,7 @@ export default function SalaryManagement() {
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Staff</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Role</th>
                 <th className="text-right px-4 py-3 font-medium text-muted-foreground">Salary</th>
-                <th className="text-center px-4 py-3 font-medium text-muted-foreground">Receipt</th>
+                <th className="text-center px-4 py-3 font-medium text-muted-foreground">Paid · {payPeriodLabel(thisPeriod).replace(/ \(.*\)$/, "")}</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-center px-4 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
@@ -372,6 +440,12 @@ export default function SalaryManagement() {
                         <div className="flex items-center gap-1 justify-end">
                           <input type="number" min={0} value={editSalary || ""} onChange={(e) => setEditSalary(Number(e.target.value) || 0)}
                             className="w-28 h-8 px-2 rounded-md bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono text-right" autoFocus />
+                          {/* From which pay period the new salary applies; earlier periods keep theirs. */}
+                          <select value={editFrom} onChange={(e) => setEditFrom(e.target.value)} title="Applies from pay period"
+                            data-test="salary-applies-from"
+                            className="h-8 max-w-[11rem] rounded-md border border-border bg-background px-1 text-[11px] text-foreground outline-none focus:border-primary">
+                            {applyFromChoices(runningPeriod).map((c) => <option key={c.value} value={c.value}>From {c.label}</option>)}
+                          </select>
                           <button onClick={() => handleSave(m.uid)} disabled={saving}
                             className="w-7 h-7 rounded-md inline-flex items-center justify-center text-success hover:bg-success/10">
                             {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
@@ -386,22 +460,7 @@ export default function SalaryManagement() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {sentReceipts[m.uid]?.length > 0 ? (
-                        <button onClick={() => setReceiptHistoryMember(m)} className="flex flex-col items-center hover:opacity-80 transition-opacity mx-auto">
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">
-                            ✓ {sentReceipts[m.uid][0]?.month}
-                          </span>
-                          <span className="text-[9px] text-muted-foreground mt-0.5 flex items-center gap-1">{sentReceipts[m.uid].length} sent <History size={9} /></span>
-                        </button>
-                      ) : isLinePaid(payrollPaid.get(m.uid)) ? (
-                        // Paid from Payroll this period — not "Not sent", which invited a second payment.
-                        <span data-test="paid-in-payroll" title={`Payroll recorded ${formatCurrency(payrollPaid.get(m.uid)!.netSalary)} for ${payPeriodLabel(thisPeriod)}`}
-                          className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">
-                          Paid in Payroll
-                        </span>
-                      ) : (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Not sent</span>
-                      )}
+                      {periodStatus(m)}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${m.isActive ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"}`}>
@@ -411,7 +470,7 @@ export default function SalaryManagement() {
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center gap-1 justify-center">
                         {editingUid !== m.uid && (
-                          <button onClick={() => { setEditingUid(m.uid); setEditSalary(m.salary || 0); }}
+                          <button onClick={() => startEdit(m)}
                             className="w-8 h-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Edit Salary">
                             <Edit3 size={14} />
                           </button>
@@ -437,6 +496,12 @@ export default function SalaryManagement() {
             <h3 className="font-display font-bold text-foreground mb-3">Edit Salary</h3>
             <input type="number" min={0} value={editSalary || ""} onChange={(e) => setEditSalary(Number(e.target.value) || 0)}
               className="w-full h-10 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary font-mono mb-3" autoFocus />
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Applies from pay period</label>
+            <select value={editFrom} onChange={(e) => setEditFrom(e.target.value)} data-test="salary-applies-from"
+              className="w-full h-10 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary mb-1">
+              {applyFromChoices(runningPeriod).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <p className="text-[10px] text-muted-foreground mb-3">Earlier pay periods keep the salary that applied to them.</p>
             <div className="flex gap-2">
               <button onClick={() => setEditingUid(null)} className="flex-1 h-9 rounded-lg bg-accent text-foreground text-sm font-medium border border-border">Cancel</button>
               <button onClick={() => handleSave(editingUid)} disabled={saving}
@@ -564,7 +629,8 @@ export default function SalaryManagement() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-display font-bold text-foreground">{formatCurrency(r.amount)}</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">{r.month}</span>
+                            {/* The period it PAYS — an older receipt's label named the period running when sent. */}
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">{receiptPeriodText(r)}</span>
                           </div>
                           {r.note && <p className="text-xs text-muted-foreground mt-1">{r.note}</p>}
                           <div className="flex items-center gap-3 mt-2">

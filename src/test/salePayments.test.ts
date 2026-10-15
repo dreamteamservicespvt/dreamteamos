@@ -4,7 +4,8 @@ import {
   pendingSales, totalPending, withPayment,
 } from "@/utils/salePayments";
 import { dayRevenue } from "@/utils/salesRevenue";
-import { computeCommissionInRange, computeUnpaidCommission } from "@/services/settlements";
+// The one commission rule (2026-10-15) — `services/settlements`' date-range and timestamp-cut rules are gone.
+import { collectionsOf, commissionInWindow } from "@/utils/salesPay";
 import { collectReadiness } from "@/utils/collectReadiness";
 import type { Lead, Order, SaleDetail } from "@/types";
 
@@ -195,6 +196,12 @@ describe("revenue on the day", () => {
 });
 
 describe("commission", () => {
+  /** No target set (nothing withheld) at the given rate — the money side of the rule. */
+  const commissionOn = (leads: Lead[], from: string, to: string, rate: number) => {
+    const r = commissionInWindow({ collections: collectionsOf(leads), from, to, termsFor: () => ({ rate, dailyTarget: 0 }) });
+    return { base: r.base, commission: r.commission };
+  };
+
   const partial = sale({
     amount: 40000,
     verificationStatus: "verified",
@@ -204,7 +211,7 @@ describe("commission", () => {
   });
 
   it("is paid on money received, never on the invoice", () => {
-    const r = computeCommissionInRange([lead([partial])], "2026-08-01", "2026-08-31", 5);
+    const r = commissionOn([lead([partial])], "2026-08-01", "2026-08-31", 5);
     expect(r.base).toBe(20000);
     expect(r.commission).toBe(1000);
   });
@@ -217,18 +224,18 @@ describe("commission", () => {
         { id: "b", amount: 20000, collectedAt: at("2026-09-14T10:00:00") },
       ],
     });
-    expect(computeCommissionInRange([lead([settled])], "2026-08-01", "2026-08-31", 5).base).toBe(20000);
-    expect(computeCommissionInRange([lead([settled])], "2026-09-01", "2026-09-30", 5).base).toBe(20000);
+    expect(commissionOn([lead([settled])], "2026-08-01", "2026-08-31", 5).base).toBe(20000);
+    expect(commissionOn([lead([settled])], "2026-09-01", "2026-09-30", 5).base).toBe(20000);
   });
 
   it("leaves an ordinary sale's commission untouched", () => {
-    const r = computeCommissionInRange([lead([sale({ amount: 1000 })])], "2026-08-01", "2026-08-31", 10);
-    expect(r).toEqual({ base: 1000, commission: 100, saleCount: 1 });
+    const r = commissionOn([lead([sale({ amount: 1000 })])], "2026-08-01", "2026-08-31", 10);
+    expect(r).toEqual({ base: 1000, commission: 100 });
   });
 
   it("does not owe a member anything for a sale with no money against it yet", () => {
     const nothingYet = sale({ amount: 5000, partialPayment: true, payments: [] });
-    expect(computeUnpaidCommission([lead([nothingYet])], 0, 5).base).toBe(0);
+    expect(commissionOn([lead([nothingYet])], "2026-01-01", "2026-12-31", 5).base).toBe(0);
   });
 });
 

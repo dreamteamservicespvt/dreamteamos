@@ -30,6 +30,8 @@ export interface RealLocationSubject {
  * ad that is an instruction to put a second figure in the frame, which the generator obeys.
  */
 export function packLocationSubject(pack: CharacterPack): RealLocationSubject {
+  // The Real Owner Duo (2026-10-14): the business's two real owners, placed into their own premises.
+  if (pack.family === "owner_duo") return { who: "the two owners", plural: true };
   if (pack.family === "human_duo") return { who: "the two people", plural: true };
   if (pack.family === "kids") return { who: "the two children", plural: true };
   if (pack.characters.length > 1) return { who: "the two characters", plural: true };
@@ -53,6 +55,7 @@ export function packStagingRole(pack: CharacterPack): string {
   switch (pack.family) {
     case "god": return "a DEITY";
     case "human": return "a REAL PERSON";
+    case "owner_duo": return "TWO REAL PEOPLE — the business's own two owners, from their photographs —";
     case "human_duo": return "TWO REAL PEOPLE";
     case "kids": return "TWO REAL CHILDREN";
     case "solo": return "a CARTOON CHARACTER";

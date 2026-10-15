@@ -56,9 +56,10 @@ describe("a month runs to the same date next month", () => {
     const c = monthCycle("2026-10-03");
     expect(cycleTimeLabel(c, "2026-10-01")).toBe("Starts in 2 days");
     expect(cycleTimeLabel(c, "2026-10-02")).toBe("Starts tomorrow");
-    expect(cycleTimeLabel(c, "2026-11-01")).toBe("3 days left");
-    expect(cycleTimeLabel(c, "2026-11-03")).toBe("Last day");
-    // The day after the last day used to read "Last day".
+    // 2026-10-15: the end date (3 Nov) is the renewal day, so its own days run 3 Oct … 2 Nov.
+    expect(cycleTimeLabel(c, "2026-11-01")).toBe("2 days left");
+    expect(cycleTimeLabel(c, "2026-11-02")).toBe("Last day");
+    expect(cycleTimeLabel(c, "2026-11-03")).toBe("Ended today");
     expect(cycleTimeLabel(c, "2026-11-04")).toBe("Ended yesterday");
     expect(cycleTimeLabel(c, "2026-11-08")).toBe("Ended 5 days ago");
     expect(cycleRangeLabel(c)).toBe("3 Oct → 3 Nov 2026");
@@ -68,14 +69,21 @@ describe("a month runs to the same date next month", () => {
     const c = monthCycle("2026-10-03");
     expect(cyclePhase(c, "2026-10-02")).toBe("upcoming");
     expect(cyclePhase(c, "2026-10-20")).toBe("running");
+    expect(cyclePhase(c, "2026-11-02")).toBe("running");
+    // The renewal day is not a running day (2026-10-15) — the month has ended on it.
+    expect(cyclePhase(c, "2026-11-03")).toBe("ended");
     expect(cyclePhase(c, "2026-11-04")).toBe("ended");
-    expect(cycleElapsed(c, "2026-11-03")).toBe(1);
+    expect(cycleElapsed(c, "2026-11-02")).toBe(1);
+    expect(cycleElapsed(c, "2026-10-03")).toBeCloseTo(1 / 31);
   });
 
-  it("a renewal starts on the old end date, or the day it was renewed if that is later", () => {
+  // Owner, 2026-10-15: a renewal starts on the old end date ALWAYS — a renewal recorded late no longer
+  // starts on the day it was typed in (the sale form's "Month starts on" is where a real gap goes).
+  it("a renewal starts on the old end date, even when it is recorded late", () => {
     const c = monthCycle("2026-10-03");
     expect(renewalStartDate(c, "2026-10-30")).toBe("2026-11-03");
-    expect(renewalStartDate(c, "2026-11-10")).toBe("2026-11-10");
+    expect(renewalStartDate(c, "2026-11-10")).toBe("2026-11-03");
+    expect(renewalStartDate(c)).toBe("2026-11-03");
   });
 });
 

@@ -143,7 +143,8 @@ describe("renewal", () => {
     }));
     noPlaceholders(text);
     expect(text).toContain("1 of 2");
-    expect(text).toContain("30 Sep 2026");
+    // Its end date — the renewal day, as the client is billed "from the 1st to the 1st" (2026-10-15).
+    expect(text).toContain("1 Oct 2026");
   });
 });
 

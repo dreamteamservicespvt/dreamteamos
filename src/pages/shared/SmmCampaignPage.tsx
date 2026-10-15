@@ -37,7 +37,7 @@ import {
 } from "@/utils/smmPlan";
 import {
   NO_SALE_NOTE, SMM_SEATS, canAdminRenewSmm, canRenewSmm, canSetUpSmm, clipsPerVideoOf, cycleRangeLabel, cyclePhase, hasTeam,
-  isMonthLocked, isNoSaleMonth, monthLabel, needsSetup, renewalDue, sellerLabelOf, shortDayLabel, videoLengthLabel,
+  isMonthLocked, isNoSaleMonth, lockedMonthLabel, monthLabel, needsSetup, renewalDue, sellerLabelOf, shortDayLabel, videoLengthLabel,
 } from "@/utils/smmPackage";
 import { monthGlance } from "@/utils/smmGlance";
 import { isGoneMonth } from "@/utils/smmRenewalLink";
@@ -159,6 +159,7 @@ export default function SmmCampaignPage() {
   const canRenew = !!campaign && !!user && canRenewSmm(campaign, user);
   const canAdminRenew = !!campaign && !!user && canAdminRenewSmm(user);
   const locked = campaign ? isMonthLocked(campaign, today) : false;
+  const lockedBadge = campaign ? lockedMonthLabel(campaign, today) : null;
   const { renew, renewingId } = useSmmRenewal(user);
   const navigate = useNavigate();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -381,8 +382,18 @@ export default function SmmCampaignPage() {
                 <span data-test="smm-page-month-no" className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">Month {monthNo}</span>
               )}
               {campaign.history && <span className="rounded-full bg-info/15 px-2 py-0.5 text-[11px] font-semibold text-info">History</span>}
-              {!campaign.history && locked && (
-                <span data-test="smm-page-locked-badge" className="rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-500">Completed (Locked)</span>
+              {/*
+                "Completed" only for a month that IS finished (2026-10-15, `lockedMonthLabel`): an undecided
+                month past its renewal day reads "Ended — not renewed yet" — the badge said "Completed
+                (Locked)" above a renewal row saying it had not been renewed.
+              */}
+              {!campaign.history && lockedBadge && (
+                <span data-test="smm-page-locked-badge" data-finished={lockedBadge.finished ? "true" : "false"}
+                  className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${lockedBadge.finished
+                    ? "border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-400"
+                    : "border-border bg-muted text-foreground"}`}>
+                  {lockedBadge.finished ? `${lockedBadge.label} (Locked)` : lockedBadge.label}
+                </span>
               )}
               {!campaign.history && !locked && STATUS_LABEL[campaign.status] && (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{STATUS_LABEL[campaign.status]}</span>
@@ -545,7 +556,7 @@ export default function SmmCampaignPage() {
                       ? <>Renewal due — renew it by recording the sale.</>
                       : <>Renewal due — {campaign.soldByName} renews it by recording the sale.</>)
                   : locked
-                    ? <>Completed and locked — month ended on {shortDayLabel(campaign.cycle.endDate)}.</>
+                    ? <>{lockedBadge?.finished ? "Completed and locked" : "Locked"} — month ended on {shortDayLabel(campaign.cycle.endDate)}.</>
                     : <>Month {monthNo} of this client.</>}
           </span>
           {nextId && !nextGone && (

@@ -10,15 +10,16 @@
  * festival list carries.
  *
  * ── Where the dates come from ─────────────────────────────────────────────────────────────────
- *  - Lunar festivals: the dated company calendar (`FESTIVALS`, 2026). Their dates move every
- *    year, so they are only offered for the years that calendar covers — never guessed.
+ *  - Lunar festivals: the dated company calendar (`FESTIVAL_CALENDAR`: 2026, and 2027 since
+ *    2026-10-15). Their dates move every year, so they are only offered for the years that calendar
+ *    covers — never guessed.
  *  - Fixed-date days (Independence Day, Engineers' Day, Christmas…): computed for any year.
  *  - Relative days (Mother's Day = second Sunday of May…): computed for any year.
  *
  * When the calendar runs out the picker still offers every fixed and relative day, and the
  * "type another festival" box is always there — the list saves typing, it never limits choice.
  */
-import { FESTIVALS } from "./festivals";
+import { FESTIVAL_CALENDAR } from "./festivals";
 
 export interface PosterOccasion {
   /** The name the prompt and the brief carry, e.g. "Ganesh Chaturthi (Vinayaka Chavithi)". */
@@ -85,8 +86,8 @@ const RELATIVE_DAYS: { month: number; weekday: number; nth: number; name: string
  * begins the day before Sharad Navratri (Mahalaya Amavasya) and ends on Durga Ashtami (Saddula).
  */
 function bathukammaFor(year: number): PosterOccasion[] {
-  const navratri = FESTIVALS.find((f) => f.date.startsWith(`${year}-`) && f.name === "Sharad Navratri begins");
-  const ashtami = FESTIVALS.find((f) => f.date.startsWith(`${year}-`) && f.name.startsWith("Durga Ashtami"));
+  const navratri = FESTIVAL_CALENDAR.find((f) => f.date.startsWith(`${year}-`) && f.name === "Sharad Navratri begins");
+  const ashtami = FESTIVAL_CALENDAR.find((f) => f.date.startsWith(`${year}-`) && f.name.startsWith("Durga Ashtami"));
   const out: PosterOccasion[] = [];
   if (navratri) {
     const d = new Date(`${navratri.date}T00:00:00`);
@@ -115,7 +116,7 @@ export function withRegionalAlias(name: string): string {
 /** Every dated occasion in one year, sorted by date, one entry per name per day. */
 export function posterOccasionCalendar(year: number): PosterOccasion[] {
   const all: PosterOccasion[] = [
-    ...FESTIVALS
+    ...FESTIVAL_CALENDAR
       .filter((f) => f.date.startsWith(`${year}-`))
       .map((f) => ({ name: withRegionalAlias(f.name), date: f.date, note: f.note })),
     ...bathukammaFor(year),

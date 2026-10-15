@@ -141,6 +141,52 @@ export function canExtendPromise(params: {
   return { allowed: false, reason: "Only the team leader, whoever is making it, or whoever sold it can move this." };
 }
 
+/** How many days a social-media month's extension box opens on (2026-10-15) — a few days, like any job. */
+export const SMM_MONTH_EXTENSION_HOURS = 72;
+
+/**
+ * What the extension box opens on: the promise's own length again — a 24-hour promise gets 24 more —
+ * except a social-media month's deadline (`presetKey: "smm_month"`, services/smm `monthPromise`), whose
+ * own length is the whole month (~744 hours): "extend once" opened on another month (2026-10-15). A
+ * month that slipped needs a few days, so it opens on three.
+ */
+export function defaultExtensionHours(promise: Pick<PromiseDeadline, "presetKey" | "hours"> | null | undefined): number {
+  if (promise?.presetKey === "smm_month") return SMM_MONTH_EXTENSION_HOURS;
+  return promise?.hours || 24;
+}
+
+/**
+ * A deadline set again keeps the one extension already used on the deadline it replaces (2026-10-15).
+ *
+ * ── Why ──────────────────────────────────────────────────────────────────────────────────────────
+ * A social-media month's deadline is written again on its order and open jobs every time its setup is
+ * saved (services/smmSetup `applyMonthPromise`), and on 2026-10-15 every save dropped an extension
+ * already used: the "Extended by …" note went, the job's later due date went back, and — with no
+ * `extension` on it — a SECOND extension became possible, which the one-extension rule forbids
+ * (`canExtendPromise`). Now the new deadline carries the used extension, and the later of the two due
+ * dates: an extension that already reaches past the new month's end keeps its day.
+ */
+export function keepUsedExtension(next: PromiseDeadline, current: PromiseDeadline | null | undefined): PromiseDeadline {
+  if (!current?.extension) return next;
+  const nextDue = promiseDueMs(next);
+  const currentDue = promiseDueMs(current);
+  const keepsCurrentDay = currentDue > nextDue;
+  const startMs = tsMs(next.startAt);
+  const dueMs = Math.max(nextDue, currentDue);
+  return {
+    ...next,
+    extension: current.extension,
+    originalDueAt: next.dueAt,
+    ...(keepsCurrentDay
+      ? {
+          dueAt: current.dueAt,
+          label: current.label || next.label,
+          hours: startMs ? Math.max(next.hours, Math.round((dueMs - startMs) / 3_600_000)) : next.hours,
+        }
+      : {}),
+  };
+}
+
 /**
  * The promise with its one extension applied.
  *
@@ -157,7 +203,8 @@ export function extendPromise(
   promise: PromiseDeadline,
   by: { hours?: number; uid: string; name: string; role: UserRole; reason?: string | null },
 ): PromiseDeadline {
-  const hours = Math.max(1, Math.round(by.hours || promise.hours || 24));
+  // A social-media month's default is a few days, not another month (`defaultExtensionHours`, 2026-10-15).
+  const hours = Math.max(1, Math.round(by.hours || defaultExtensionHours(promise)));
   const fromMs = promiseDueMs(promise);
   const extension: PromiseExtension = {
     hours,

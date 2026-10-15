@@ -71,8 +71,13 @@ const M1 = month({
     item("p3", { uploadDate: "2026-08-25" }),
   ],
 });
+/*
+  2026-10-15: a month's end date is its RENEWAL DAY, not one of its own days. Month 2 runs 5 Sep → 6 Oct, so
+  today (5 Oct) is its last own day, and Month 3 starts on 6 Oct, its renewal day — "Month 2 ends" and
+  "Month 3 starts" are written on two days, no longer on one.
+*/
 const M2 = month({
-  id: "m2", monthNumber: 2,
+  id: "m2", monthNumber: 2, cycle: { month: "2026-09", startDate: "2026-09-05", endDate: "2026-10-06" },
   items: [
     item("p5", { status: "posted", uploadDate: "2026-09-10", postedAt: at(2026, 10, 5) }),
     item("p6", { uploadDate: "2026-10-01" }),
@@ -80,7 +85,7 @@ const M2 = month({
   ],
 });
 const M3 = month({
-  id: "m3", monthNumber: 3, cycle: { month: "2026-10", startDate: "2026-10-05", endDate: "2026-11-05" },
+  id: "m3", monthNumber: 3, cycle: { month: "2026-10", startDate: "2026-10-06", endDate: "2026-11-06" },
   items: [item("p10", { uploadDate: "2026-10-20" })],
 });
 
@@ -120,7 +125,7 @@ describe("the client calendar on a month's page", () => {
     // This page's own month is named, not linked; the next one links to its page.
     const [own, next] = screen.getAllByTestId("smm-cal-client-month");
     expect(own.tagName).toBe("SPAN");
-    expect(own.textContent).toMatch(/Month 2· 5 Sep – 5 Oct 2026Running now/);
+    expect(own.textContent).toMatch(/Month 2· 5 Sep – 6 Oct 2026Running now/);
     expect(next.getAttribute("href")).toBe("/smm/m3");
     // The posts on October's days: 1 Oct not posted; 5 Oct and 20 Oct to come.
     expect(count("posted")).toBe("0Posted");
@@ -130,7 +135,8 @@ describe("the client calendar on a month's page", () => {
     // A wide calendar lists a day's posts by name, mark first; the handover day says so.
     const oct1 = within(cell("2026-10-01")).getAllByTestId("smm-cal-day-entry");
     expect(oct1.map((e) => [e.getAttribute("data-mark"), e.textContent])).toEqual([["notPosted", "P6"]]);
-    expect(within(cell("2026-10-05")).getAllByTestId("smm-cal-marker").map((m) => m.textContent)).toEqual(["Month 2 ends", "Month 3 starts"]);
+    expect(within(cell("2026-10-05")).getAllByTestId("smm-cal-marker").map((m) => m.textContent)).toEqual(["Month 2 ends"]);
+    expect(within(cell("2026-10-06")).getAllByTestId("smm-cal-marker").map((m) => m.textContent)).toEqual(["Month 3 starts"]);
     // A day of September is drawn empty and inert.
     expect(cell("2026-09-28").getAttribute("aria-disabled")).toBe("true");
     expect(within(cell("2026-09-28")).queryAllByTestId("smm-cal-day-entry")).toHaveLength(0);
@@ -230,7 +236,8 @@ describe("the client calendar on a month's page", () => {
     await loaded();
     expect(within(cell("2026-10-01")).getAllByTestId("smm-cal-day-mark").map((m) => m.getAttribute("data-mark"))).toEqual(["notPosted"]);
     expect(within(cell("2026-10-01")).queryAllByTestId("smm-cal-day-entry")).toHaveLength(0);
-    expect(within(cell("2026-10-05")).getByTestId("smm-cal-marker").textContent).toBe("Start");
+    expect(within(cell("2026-10-05")).getByTestId("smm-cal-marker").textContent).toBe("End");
+    expect(within(cell("2026-10-06")).getByTestId("smm-cal-marker").textContent).toBe("Start");
     expect(screen.getByTestId("smm-cal-prev").textContent).toBe(""); // just the arrow
   });
 

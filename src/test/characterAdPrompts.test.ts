@@ -11,7 +11,7 @@ import {
 import { getCharacterPack } from "@/services/characterPacks";
 import { assembleVeoPrompt, cameraShot, planClipMotion, spokenLinesIn } from "@/services/prompts/motion";
 import {
-  MIN_WORDS_PER_DUO_CLIP, MAX_WORDS_PER_DUO_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
+  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
 } from "@/utils/dialogueFormat";
 import {
   assignPhotosToClips, describeClipLocations, attachmentDirective, splitAttachmentDirective,
@@ -85,9 +85,11 @@ describe("voice-over prompt — the two-hander contract", () => {
     expect(prompt).toContain("24-32|patlu:");
   });
 
-  it("states the word budget the validator will enforce", () => {
-    expect(prompt).toContain(`between ${MIN_WORDS_PER_DUO_CLIP} and ${MAX_WORDS_PER_DUO_CLIP} spoken words`);
-    expect(prompt).toContain(`between ${MIN_WORDS_PER_LINE} and ${MAX_WORDS_PER_LINE} words`);
+  it("states the word budget the validator will enforce — the clip's two lines together", () => {
+    expect(prompt).toContain(`THE WORD BUDGET — ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} SPOKEN WORDS IN EVERY CLIP`);
+    expect(prompt).toContain(`A clip's TWO lines TOGETHER make the ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} — never ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} each`);
+    expect(prompt).toContain(`each line ${MIN_WORDS_PER_LINE}–${MAX_WORDS_PER_LINE}`);
+    expect(prompt).not.toMatch(/15[–-]17|between 7 and 9/);
   });
 
   it("keeps the CTA on the last clip only, spoken by Patlu", () => {
@@ -116,7 +118,8 @@ describe("voice-over prompt — the two-hander contract", () => {
   it("repair prompt restates the same contract so a fix cannot drift", () => {
     const repair = CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, 32, 4, "Telugu");
     expect(repair).toContain("EXACTLY 4 clips");
-    expect(repair).toContain(`${MIN_WORDS_PER_DUO_CLIP}-${MAX_WORDS_PER_DUO_CLIP} spoken words per clip`);
+    expect(repair).toContain(`THE WORD BUDGET — ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} SPOKEN WORDS IN EVERY CLIP`);
+    expect(repair).toContain("a clip that already fits it is returned exactly as it is");
     expect(repair).toContain("Motu speaks first");
     expect(repair).toContain("never add or remove clips");
   });
@@ -410,8 +413,8 @@ describe("voice-over prompt — promotional grounding", () => {
       // And each clip's pair totals inside the per-clip band.
       for (let i = 0; i < lines.length; i += 2) {
         const clipTotal = Number(lines[i][2]) + Number(lines[i + 1][2]);
-        expect(clipTotal).toBeGreaterThanOrEqual(MIN_WORDS_PER_DUO_CLIP);
-        expect(clipTotal).toBeLessThanOrEqual(MAX_WORDS_PER_DUO_CLIP);
+        expect(clipTotal).toBeGreaterThanOrEqual(MIN_WORDS_PER_CLIP);
+        expect(clipTotal).toBeLessThanOrEqual(MAX_WORDS_PER_CLIP);
       }
     });
 

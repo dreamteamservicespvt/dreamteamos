@@ -187,3 +187,43 @@ describe("Add Sale — social media month", () => {
     expect(updateDoc).not.toHaveBeenCalled();
   });
 });
+
+/*
+  "The sale form asks when the month starts" (owner, 2026-10-15): a new client opens on the sale day; a
+  renewal opens on the renewed month's END DATE — always, even recorded late — refuses an earlier day and
+  says a later one in days; the renewal note shows the very date that is saved.
+*/
+describe("Add Sale — \"Month starts on\" (2026-10-15)", () => {
+  it("opens a new client's month on the day of the sale", () => {
+    openSmmForm("Pro Package");
+    expect((screen.getByTestId("sale-smm-start-date") as HTMLInputElement).value).toBe("2026-09-18");
+    expect(screen.getByTestId("sale-smm-start-note").textContent).toMatch(/The day of the sale/);
+  });
+
+  it("opens a renewal on the old end date even when recorded late, refuses an earlier day, says a later one", async () => {
+    const SaleForm = (await import("@/components/sales/SaleForm")).default;
+    render(
+      <MemoryRouter>
+        <SaleForm
+          lead={leads[0] as never}
+          updateLead={vi.fn()}
+          onDone={vi.fn()}
+          renewal={{
+            campaignId: "sep", businessName: "Dhana lakshmi", packageKey: "Pro Package", platforms: ["instagram"],
+            clipsPerVideo: 4, monthLabel: "August 2026", nextStart: "2026-09-06", previousEnd: "2026-09-06",
+          }}
+        />
+      </MemoryRouter>,
+    );
+    // Today is 18 Sep — twelve days after the old month ended — and it still opens on 6 Sep.
+    expect((screen.getByTestId("sale-smm-start-date") as HTMLInputElement).value).toBe("2026-09-06");
+    expect(screen.getByTestId("sale-renewal").textContent).toMatch(/The next month starts 6 Sep 2026/);
+    expect(screen.getByTestId("sale-smm-start-note").textContent).toBe("Straight after the last month — it ended 6 Sep.");
+    fireEvent.change(screen.getByTestId("sale-smm-start-date"), { target: { value: "2026-09-01" } });
+    expect(screen.getByTestId("sale-smm-start-problem").textContent).toBe("The last month runs until 5 Sep — the next month can't start before 6 Sep.");
+    fireEvent.change(screen.getByTestId("sale-smm-start-date"), { target: { value: "2026-09-10" } });
+    expect(screen.getByTestId("sale-smm-start-note").textContent).toBe("4 days after the last month ended (6 Sep).");
+    // The note above follows the date that will be saved.
+    expect(screen.getByTestId("sale-renewal").textContent).toMatch(/The next month starts 10 Sep 2026/);
+  });
+});

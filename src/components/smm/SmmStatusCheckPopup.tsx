@@ -7,7 +7,9 @@
  * with every post not yet live — theirs first, late ones next — each with its status to change right
  * there (the same `setItemStatus` as the month's page: nothing is scheduled or posted without the
  * client's approval). "All updated" answers the slot on this device; "Later" brings it back in 30
- * minutes. It waits while another popup (the daily check-in, an update) is on screen, so two never stack.
+ * minutes. It waits its turn through the popup coordinator (2026-10-15, `store/popupStore`): never over a
+ * call, the AI studio, another popup (the daily check-in — even before that appears —, an update, …) or a
+ * window the person opened, and not within ten minutes of a different popup closing.
  *
  * Reads: one scoped read of the person's own months when a slot comes due (`fetchMyCampaigns`), and a
  * live listener on the same query only while the popup is open. Nothing for anybody with no seat.
@@ -19,6 +21,7 @@ import { AlertTriangle, CheckCircle2, ClipboardCheck, ExternalLink, Loader2 } fr
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MONEY_TEXT } from "@/components/smm/money/tone";
 import { useAuthStore } from "@/store/authStore";
+import { tryOpenPopup } from "@/store/popupStore";
 import { useToast } from "@/hooks/use-toast";
 import { fetchMyCampaigns, setItemStatus, watchMyCampaigns } from "@/services/smm";
 import { canPublish, isOverdue, isoDay } from "@/utils/smmPlan";
@@ -42,23 +45,17 @@ function writeMemory(uid: string, memory: StatusCheckMemory): void {
   try { localStorage.setItem(statusCheckStorageKey(uid), JSON.stringify(memory)); } catch { /* private window: it asks again */ }
 }
 
-/**
- * Another popup on screen right now — never stack two. The app's own prompts (daily check-in, profile,
- * agreement, update, birthday, the renewal countdown) are plain full-screen `fixed inset-0` overlays, not
- * Radix dialogs, so both are looked for; nothing in the app keeps such an overlay mounted while hidden,
- * and one that is `display: none` has no box. The AI studio counts too: the check waits until it closes.
- */
-function anotherPopupOpen(): boolean {
-  const open = document.querySelectorAll('[role="dialog"], [role="alertdialog"], .fixed.inset-0');
-  return Array.from(open).some((el) => el.getClientRects().length > 0);
-}
-
 export default function SmmStatusCheckPopup() {
   const user = useAuthStore((s) => s.user);
   const uid = user?.uid || "";
   const [slot, setSlot] = useState<StatusCheckSlot | null>(null);
   const [months, setMonths] = useState<SmmCampaign[]>([]);
   const checking = useRef(false);
+  /** The screen, held from the coordinator while the popup is open. */
+  const releaseScreen = useRef<(() => void) | null>(null);
+
+  // Unmounted while open (a sign-out, a role change): the screen is given back.
+  useEffect(() => () => { releaseScreen.current?.(); releaseScreen.current = null; }, []);
 
   /* ── When to open ─────────────────────────────────────────────────────────────────────────── */
   const check = useCallback(async () => {
@@ -76,7 +73,11 @@ export default function SmmStatusCheckPopup() {
         writeMemory(uid, answerSlot(memory, due));
         return;
       }
-      if (anotherPopupOpen()) return; // the next tick tries again
+      // Its turn? A call, the studio, another popup, a window the person opened, or the ten minutes
+      // after another popup closed keep it waiting — the next tick asks again.
+      const release = tryOpenPopup("smm_status_check");
+      if (!release) return;
+      releaseScreen.current = release;
       setMonths(mine);
       setSlot(due);
     } catch {
@@ -110,6 +111,8 @@ export default function SmmStatusCheckPopup() {
     const memory = readMemory(uid, isoDay(now));
     writeMemory(uid, answered ? answerSlot(memory, slot) : snoozeSlot(memory, now));
     setSlot(null);
+    releaseScreen.current?.();
+    releaseScreen.current = null;
   };
 
   if (!slot || !user) return null;

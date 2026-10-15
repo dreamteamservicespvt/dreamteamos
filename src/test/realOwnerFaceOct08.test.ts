@@ -168,7 +168,9 @@ describe("a full Real Owner Face run (the real pipeline, a fake Gemini)", () => 
   }
 
   it("dresses a male owner as the picker shows — the form's leftover Traditional is not a kurta", async () => {
-    dialogue = "0-8|owner: Welcome to Sri Lakshmi Silks.\n8-16|owner: Visit us in Kakinada today.";
+    // Every generated clip holds 17–20 spoken words (2026-10-15) — 19 and 18 here.
+    dialogue = "0-8|owner: Welcome to Sri Lakshmi Silks, where every family in Kakinada finds the finest pure silk sarees for every celebration."
+      + "\n8-16|owner: Visit us in Kakinada today and choose your favourite silk saree from our beautiful newest wedding collection here.";
     await gemini.generateAdAssets(form({ characterPack: "owner_face_male", gender: "female", attireType: "traditional" }), files(), () => {}, {});
     const frameCall = calls.find((c) => /Generate \d+ Main Frame image prompts/.test(c.user))!;
     expect(frameCall.sys).not.toMatch(/kurta with a Nehru jacket/);

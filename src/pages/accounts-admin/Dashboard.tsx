@@ -1,9 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { formatCurrency } from "@/utils/formatters";
 import { getRoleLabel, isActiveUser } from "@/utils/roleHelpers";
-import type { AppUser } from "@/types";
+import { computeProfit } from "@/utils/profitAnalytics";
+import { defaultPeriodFilter, periodLabel } from "@/utils/periodFilter";
+import { salesBookedByDay } from "@/utils/salesRevenue";
+import type { AppUser, Lead, WorkAssignment } from "@/types";
+import type { PayrollLine } from "@/types/payroll";
 import { Wallet, TrendingUp, TrendingDown, Users, PieChart } from "lucide-react";
 import {
   PieChart as RPieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
@@ -11,33 +15,51 @@ import {
 } from "recharts";
 
 export default function AccountsDashboard() {
-  const [members, setMembers] = useState<AppUser[]>([]);
+  /** Everyone, inactive included — a leader paid in the period still cost money in it. */
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
+  const [payrollLines, setPayrollLines] = useState<PayrollLine[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let loaded = 0;
-    const checkDone = () => { loaded++; if (loaded >= 4) setLoading(false); };
+    const checkDone = () => { loaded++; if (loaded >= 5) setLoading(false); };
     const unsubs: (() => void)[] = [];
-    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)).filter(isActiveUser)); /* only active people are shown */ checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setAllUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))); checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "expenses"), (snap) => { setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "leads"), (snap) => { setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
     unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => { setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "payroll_lines"), (snap) => { setPayrollLines(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PayrollLine))); checkDone(); }, () => checkDone()));
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  const totalSalesRevenue = leads
-    .filter((l: any) => l.saleDone && l.saleDetails)
-    .reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
-  const totalTechRevenue = assignments
-    .filter((a) => a.status === "verified")
-    .reduce((s, a) => s + (a.totalPrice || 0), 0);
-  const totalRevenue = totalSalesRevenue + totalTechRevenue;
-  const totalExpenses = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const totalSalaries = members.reduce((s, m) => s + (m.salary || 0), 0);
-  const netProfit = totalRevenue - totalExpenses - totalSalaries;
+  // Only active people are shown (owner, 2026-10-10).
+  const members = useMemo(() => allUsers.filter(isActiveUser), [allUsers]);
+
+  /*
+    ── One period for revenue, expenses and salaries (2026-10-15) ──
+    The net profit here was ALL-TIME revenue (sales + the delivered value of the same work, counted twice)
+    minus ALL-TIME expenses minus ONE month of today's salaries — three different periods in one subtraction.
+    It is now the P&L's own figure (utils/profitAnalytics, the Profit page's engine) for one pay period, the
+    one running now: verified sales, expenses, salaries (paid where paid, else what applied then) and
+    incentives (the payroll rule), all for the same days. An unpaid salary is charged for the period's days so
+    far (today included), not in full — a month's salary against half a month's sales read as a loss.
+  */
+  const period = useMemo(() => defaultPeriodFilter("cycle"), []);
+  const profit = useMemo(() => computeProfit({
+    filter: period,
+    users: allUsers,
+    leads: leads as Lead[],
+    assignments: assignments as WorkAssignment[],
+    expenses,
+    payrollLines,
+  }), [period, allUsers, leads, assignments, expenses, payrollLines]);
+  const totalRevenue = profit.totalIncome;
+  const totalExpenses = profit.expenses;
+  const totalSalaries = profit.techSalary + profit.salesSalary + profit.salesCommission;
+  const netProfit = profit.netProfit;
 
   // Expense by category for pie chart
   const expByCategory: Record<string, number> = {};
@@ -58,10 +80,11 @@ export default function AccountsDashboard() {
     if (!revenueByDate[d]) revenueByDate[d] = { date: d, sales: 0, tech: 0 };
     revenueByDate[d].tech += a.totalPrice || 0;
   });
-  leads.filter((l: any) => l.saleDone && l.saleDetails).forEach((l: any) => {
-    const d = l.lastUpdated?.toDate?.() ? l.lastUpdated.toDate().toISOString().slice(0, 10) : "unknown";
+  // Each sale on its own (local) day, across saleItems and the legacy shape (2026-10-15) — not the lead's
+  // last-touched time in UTC, and not the legacy field alone.
+  salesBookedByDay(leads as Lead[]).forEach((amount, d) => {
     if (!revenueByDate[d]) revenueByDate[d] = { date: d, sales: 0, tech: 0 };
-    revenueByDate[d].sales += l.saleDetails?.amount || 0;
+    revenueByDate[d].sales += amount;
   });
   const barData = Object.values(revenueByDate).sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
 
@@ -86,14 +109,16 @@ export default function AccountsDashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Accounts Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">Financial overview of the organization</p>
+        <p className="text-muted-foreground text-sm mt-1">
+          Financial overview of the organization · figures for this pay period, <span data-test="accounts-period">{periodLabel(period)}</span>
+        </p>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary Cards — one pay period for all of them, so Net Profit is their own sum. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatBox icon={TrendingUp} label="Total Revenue" value={formatCurrency(totalRevenue)} color="text-success" />
+        <StatBox icon={TrendingUp} label="Revenue (verified sales)" value={formatCurrency(totalRevenue)} color="text-success" />
         <StatBox icon={TrendingDown} label="Expenses" value={formatCurrency(totalExpenses)} color="text-destructive" />
-        <StatBox icon={Wallet} label="Salaries" value={formatCurrency(totalSalaries)} color="text-warning" />
+        <StatBox icon={Wallet} label="Salaries & incentives" value={formatCurrency(totalSalaries)} color="text-warning" />
         <StatBox icon={TrendingUp} label="Net Profit" value={formatCurrency(netProfit)} color={netProfit >= 0 ? "text-success" : "text-destructive"} />
         <StatBox icon={Users} label="Total Staff" value={members.length} color="text-info" />
       </div>

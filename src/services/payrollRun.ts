@@ -5,17 +5,19 @@ import { db } from "./firebase";
 import { recordAudit } from "./auditLog";
 import { attendanceKey, isCheckInRecord, resolveStatus, todayDate, type AttendanceStatus } from "./techAttendance";
 import { fetchPayrollConfig } from "./payroll";
-import { commissionRate } from "./settlements";
-import { computeSalary, netPayable, payPeriodForMonth, payPeriodLabel, periodDates } from "@/utils/payrollEngine";
-import { salesIncentive, salesInPeriod } from "@/utils/salesPay";
-import { dailyTargetOf } from "@/utils/salesTargets";
+import {
+  computeSalary, daysNotWorkedYet, isLinePaid as isPaymentRecorded, netPayable, payPeriodForMonth, payPeriodLabel,
+  periodDates, type PayPeriod,
+} from "@/utils/payrollEngine";
+import { collectionsOf, periodIncentive, settlementCoverage } from "@/utils/salesPay";
+import { commissionTermsFor, salaryFor } from "@/utils/payTerms";
 import { getSalaryRoute } from "@/utils/roleHelpers";
 import { sendNotification } from "./notifications";
 import type {
   PayoutMethod, PayrollConfig, PayrollLine, PayrollLineIncentive, PayrollRun,
   PaymentStatus, ResolvedDay, SalaryComputation,
 } from "@/types/payroll";
-import type { AppUser, Lead } from "@/types";
+import type { AppUser, CommissionSettlement, Lead } from "@/types";
 
 /**
  * Salary payment records.
@@ -42,7 +44,7 @@ export const lineId = (month: string, memberId: string) => `${month}_${memberId}
  * "Pending" in the row and counted in "Paid" above it.
  */
 export function isLinePaid(line: Pick<PayrollLine, "paymentStatus"> | null | undefined): boolean {
-  return !!line && (line.paymentStatus === "completed" || line.paymentStatus === "transferred");
+  return isPaymentRecorded(line);
 }
 
 /** Live payroll run for a month, or null if it hasn't been generated yet. */
@@ -199,7 +201,7 @@ export function resolveMemberDays(
  * server-side job go through, so two views of the same salary can never disagree.
  */
 export function computeMemberSalary(
-  member: Pick<AppUser, "uid" | "salary">,
+  member: Pick<AppUser, "uid" | "salary"> & Partial<Pick<AppUser, "payHistory">>,
   month: string,
   attendance: MonthAttendance,
   config: PayrollConfig,
@@ -210,7 +212,8 @@ export function computeMemberSalary(
   // so elapsed/remaining and past/today/future all resolve correctly without clamping.
   return computeSalary({
     month,
-    monthlySalary: member.salary || 0,
+    // The salary that applied IN this period (2026-10-15) — a raise from a later period leaves it alone.
+    monthlySalary: salaryFor(member, month),
     days: resolveMemberDays(member.uid, month, attendance, todayStr, config.payDayOfMonth),
     todayStr,
     config,
@@ -255,7 +258,7 @@ export async function priceMemberForPeriod(member: AppUser, month: string): Prom
   const paidLine = isLinePaid(line) ? line : null;
 
   if (!isAttendancePaid(member)) {
-    const salary = member.salary || 0;
+    const salary = salaryFor(member, month);
     return { amount: salary, salaryPayable: salary, incentive: 0, computation: null, paidLine };
   }
 
@@ -265,15 +268,20 @@ export async function priceMemberForPeriod(member: AppUser, month: string): Prom
 
   let incentive = 0;
   if (member.role === "sales_member") {
+    // The commission rule (utils/salesPay), as Sales Payroll prices it: the period's rate and target,
+    // and nothing Settlements already paid.
     const period = payPeriodForMonth(month, config.payDayOfMonth);
-    const snap = await getDocs(query(collection(db, "leads"), where("assignedTo", "==", member.uid)));
-    const leads = snap.docs.map(d => ({ id: d.id, ...d.data() } as Lead));
-    const sales = salesInPeriod(leads, period.start, period.end);
-    incentive = salesIncentive({
-      salesBase: sales.salesBase,
-      rate: commissionRate(member.earningsOption),
-      dailyTarget: dailyTargetOf(member),
-      periodStart: period.start,
+    const [leadSnap, settlementSnap] = await Promise.all([
+      getDocs(query(collection(db, "leads"), where("assignedTo", "==", member.uid))),
+      getDocs(query(collection(db, "commission_settlements"), where("memberId", "==", member.uid))),
+    ]);
+    const leads = leadSnap.docs.map(d => ({ id: d.id, ...d.data() } as Lead));
+    const settlements = settlementSnap.docs.map(d => ({ id: d.id, ...d.data() } as CommissionSettlement));
+    const collections = collectionsOf(leads);
+    const terms = commissionTermsFor(member, month);
+    incentive = periodIncentive({
+      collections, period, rate: terms.rate, dailyTarget: terms.dailyTarget,
+      exclude: settlementCoverage(settlements, collections),
     }).commission;
   }
 
@@ -291,6 +299,39 @@ export interface PaySalaryInput {
   computation: SalaryComputation;
   /** A sales member's incentive inside `netSalary`, frozen with it so the slip can itemise it. */
   incentive?: PayrollLineIncentive;
+  /**
+   * The admin confirmed paying a period that has not ended — the days still to come are paid as if worked
+   * (2026-10-15). Without it, paying a running period is refused (`EarlyPaymentError`).
+   */
+  earlyPayConfirmed?: boolean;
+}
+
+/**
+ * Paying a pay period before it has ended, without the confirmation that names the days not yet worked.
+ * The pages always ask first; this is the guard behind them.
+ */
+export class EarlyPaymentError extends Error {
+  constructor(readonly notWorked: { from: string; to: string; days: number; workingDays: number }) {
+    super(`This pay period has not ended — ${notWorked.from} to ${notWorked.to} are not worked yet. Confirm paying early first.`);
+    this.name = "EarlyPaymentError";
+  }
+}
+
+/** The span a computation covers — its own stamps, or the period its month names (older computations). */
+function periodOfComputation(month: string, c: Pick<SalaryComputation, "periodStart" | "periodEnd"> | null | undefined): PayPeriod {
+  return c?.periodStart && c?.periodEnd ? { month, start: c.periodStart, end: c.periodEnd } : payPeriodForMonth(month);
+}
+
+/**
+ * The days of a period not worked yet today — what an early payment must name. Null once it has ended.
+ * Exported so the pages ask exactly what `markSalaryPaid` checks.
+ */
+export function earlyPayDays(
+  month: string,
+  computation: Pick<SalaryComputation, "periodStart" | "periodEnd"> | null | undefined,
+  todayStr: string = todayDate(),
+) {
+  return daysNotWorkedYet(periodOfComputation(month, computation), todayStr);
 }
 
 export interface PaySalaryExtras {
@@ -303,6 +344,12 @@ export interface PaySalaryExtras {
 /**
  * Record a salary payment. Safe to call again to attach a receipt or correct a reference —
  * it merges onto the same document rather than creating a second payment record.
+ *
+ * ── Paying early (owner, 2026-10-15) ──
+ * A period that has not ended is paid only with `earlyPayConfirmed` (the page has named the days not
+ * worked yet), and the record keeps those days (`earlyPay`). Before, nothing checked: on payday the page
+ * sat on the period just begun and "Mark paid" paid it in full. Attaching a receipt to a payment already
+ * recorded is not a new payment and is never refused.
  */
 export async function markSalaryPaid(
   input: PaySalaryInput,
@@ -310,9 +357,15 @@ export async function markSalaryPaid(
   extras: PaySalaryExtras = {},
 ): Promise<void> {
   const { month, member, netSalary, computation } = input;
+  const ref = doc(db, "payroll_lines", lineId(month, member.uid));
+
+  const existing = await getDoc(ref);
+  const alreadyPaid = existing.exists() && isLinePaid(existing.data() as PayrollLine);
+  const notWorked = alreadyPaid ? null : earlyPayDays(month, computation);
+  if (notWorked && !input.earlyPayConfirmed) throw new EarlyPaymentError(notWorked);
 
   await setDoc(
-    doc(db, "payroll_lines", lineId(month, member.uid)),
+    ref,
     {
       month,
       memberId: member.uid,
@@ -324,6 +377,7 @@ export async function markSalaryPaid(
       netSalary,
       computation,
       ...(input.incentive ? { incentive: input.incentive } : {}),
+      ...(notWorked ? { earlyPay: { from: notWorked.from, to: notWorked.to, workingDays: notWorked.workingDays } } : {}),
       paymentStatus: "completed" satisfies PaymentStatus,
       paidAt: serverTimestamp(),
       paidBy: actor.uid,
@@ -341,8 +395,9 @@ export async function markSalaryPaid(
     actor,
     target: { id: member.uid, name: member.name },
     month,
-    summary: `Paid ${member.name} ₹${Math.round(netSalary).toLocaleString("en-IN")} for ${month}`,
-    after: { netSalary, ...extras },
+    summary: `Paid ${member.name} ₹${Math.round(netSalary).toLocaleString("en-IN")} for ${month}`
+      + (notWorked ? ` — early: ${notWorked.from} to ${notWorked.to} not worked yet` : ""),
+    after: { netSalary, ...extras, ...(notWorked ? { earlyPay: notWorked } : {}) },
   });
 
   await sendNotification({

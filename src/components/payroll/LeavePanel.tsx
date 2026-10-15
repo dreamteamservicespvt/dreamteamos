@@ -77,11 +77,16 @@ interface LeavePanelProps {
   month: string;
   config: PayrollConfig;
   /**
-   * The period's salary computation — the single source of truth for leave already taken.
+   * The period's LIVE salary computation (from attendance as it is now) — the single source of truth for
+   * leave already taken.
    *
    * Counting approved *requests* instead would miss leave an admin or team lead marked straight
    * onto the attendance grid, leaving the employee's balance disagreeing with their payslip.
    * The engine resolves leave from attendance itself, so both routes stay in sync.
+   *
+   * Never the paid snapshot (2026-10-15): once a period was paid the pages passed the frozen payment, so
+   * leave approved after payday still read "0 of 2 paid leaves used" and a new request was previewed as
+   * if the allowance were untouched — while the approval itself counts the attendance record.
    */
   computation: SalaryComputation;
 }

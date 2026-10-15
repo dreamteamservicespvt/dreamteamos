@@ -2,6 +2,9 @@ import {
   addDoc, collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, where,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import { receiptPeriodOf } from "@/utils/receiptPeriod";
+import { DEFAULT_PAYROLL_CONFIG } from "@/types/payroll";
 
 /**
  * Salary receipts — what the accounts admin records from Salary Management ("Send Receipt"):
@@ -16,8 +19,10 @@ import { db } from "./firebase";
  * a second payment for the same period is always seen before it is made.
  *
  * `period` (the `yyyy-MM` pay-period label, 2026-10-09) is what links a receipt to Payroll. Older
- * receipts carry only `month`, the printed label ("July 2026 (10 Jul – 09 Aug)"), and are matched
- * on that.
+ * receipts carry only `month`, the printed label ("July 2026 (10 Jul – 09 Aug)") — and those sent
+ * 2026-08-01 → 2026-10-10 printed the period RUNNING on the send day, one after the one they paid.
+ * Which period a receipt pays is therefore always `utils/receiptPeriod.receiptPeriodOf` (2026-10-15),
+ * never its label as written.
  */
 export interface SalaryReceipt {
   id: string;
@@ -48,40 +53,46 @@ export function watchMemberReceipts(userId: string, cb: (receipts: SalaryReceipt
   );
 }
 
+/** The period a receipt pays, printed — "August 2026 (10 Aug – 09 Sep)" — or its own label if unreadable. */
+export function receiptPeriodText(r: Pick<SalaryReceipt, "period" | "month" | "sentAt">, cycleStartDay?: number): string {
+  const period = receiptPeriodOf(r, cycleStartDay);
+  return period ? payPeriodLabel(period, cycleStartDay) : (r.month || "");
+}
+
 /**
  * Live: the receipts that pay one pay period, keyed by member.
  *
- * Matched on `period` (new receipts) OR the printed label (older ones) — two equality queries, so
- * neither needs a composite index.
+ * Three equality queries, so none needs a composite index: `period` (new receipts), and the printed
+ * label of this period AND of the next one (an older receipt labelled with the period running when it
+ * was sent — see `utils/receiptPeriod`). Every candidate is then kept only if `receiptPeriodOf` says it
+ * pays THIS period, so a receipt sent on payday for last month's salary moves to last month.
  */
 export function watchPeriodReceipts(
   period: string,
-  periodLabel: string,
   cb: (byMember: Map<string, SalaryReceipt[]>) => void,
+  cycleStartDay: number = DEFAULT_PAYROLL_CONFIG.payDayOfMonth,
 ): () => void {
-  let byPeriod: SalaryReceipt[] = [];
-  let byLabel: SalaryReceipt[] = [];
+  const sources: SalaryReceipt[][] = [[], [], []];
   const emit = () => {
     const seen = new Set<string>();
     const map = new Map<string, SalaryReceipt[]>();
-    for (const r of [...byPeriod, ...byLabel].sort(newestFirst)) {
+    for (const r of sources.flat().sort(newestFirst)) {
       if (seen.has(r.id)) continue;
       seen.add(r.id);
+      if (receiptPeriodOf(r, cycleStartDay) !== period) continue;
       map.set(r.userId, [...(map.get(r.userId) || []), r]);
     }
     cb(map);
   };
+  const listen = (index: number, field: "period" | "month", value: string) => onSnapshot(
+    query(collection(db, "salary_receipts"), where(field, "==", value)),
+    snap => { sources[index] = snap.docs.map(toReceipt); emit(); },
+    error => { console.error("Period receipts listener failed:", error); },
+  );
   const unsubs = [
-    onSnapshot(
-      query(collection(db, "salary_receipts"), where("period", "==", period)),
-      snap => { byPeriod = snap.docs.map(toReceipt); emit(); },
-      error => { console.error("Period receipts listener failed:", error); },
-    ),
-    onSnapshot(
-      query(collection(db, "salary_receipts"), where("month", "==", periodLabel)),
-      snap => { byLabel = snap.docs.map(toReceipt); emit(); },
-      error => { console.error("Period receipts listener failed:", error); },
-    ),
+    listen(0, "period", period),
+    listen(1, "month", payPeriodLabel(period, cycleStartDay)),
+    listen(2, "month", payPeriodLabel(shiftPayMonth(period, 1), cycleStartDay)),
   ];
   return () => unsubs.forEach(u => u());
 }

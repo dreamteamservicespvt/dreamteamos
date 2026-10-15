@@ -22,6 +22,8 @@ const STAGE_BG: Record<SmmStageKey, string> = {
   ...TONE_BG,
   // Owed and nothing exists yet: an outline, so "not planned" is a stage you can see, not a gap.
   unplanned: "bg-transparent ring-1 ring-inset ring-viz-axis",
+  // Live under a date outside its month (2026-10-15) — the same outlined grey as the renewal popup's blocks.
+  outside: "bg-viz-ink/30 ring-1 ring-inset ring-viz-ink",
 };
 
 const TONE_LABEL: Record<SmmTone, string> = Object.fromEntries(SMM_TONE_LEGEND.map((t) => [t.tone, t.label])) as Record<SmmTone, string>;

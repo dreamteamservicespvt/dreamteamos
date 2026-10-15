@@ -19,7 +19,7 @@
  * the last days count the months running now; the charts say so in their subtitles.
  */
 import {
-  adTotals, addDays, clientWaitSummary, daysBetween, isOverdue, isPosted, isoDay, teamMembers,
+  adTotals, addDays, clientWaitSummary, daysBetween, isOverdue, isPosted, lastOwnDay, postedDayOf, teamMembers,
 } from "@/utils/smmPlan";
 import {
   SMM_TONE_LEGEND, cycleElapsed, cyclePhase, cycleTimeLabel, daysToRenewal, needsSetup, paceOf, renewalDue,
@@ -34,23 +34,14 @@ export function dashboardMonths(campaigns: SmmCampaign[]): SmmCampaign[] {
 
 const nameOf = (c: Pick<SmmCampaign, "businessName" | "clientName">) => c.businessName || c.clientName || "Untitled";
 
-function tsToMs(ts: unknown): number {
-  if (ts === null || ts === undefined) return 0;
-  if (typeof ts === "number") return ts;
-  const t = ts as { toMillis?: () => number; seconds?: number };
-  if (typeof t.toMillis === "function") return t.toMillis();
-  if (typeof t.seconds === "number") return t.seconds * 1000;
-  const parsed = Date.parse(String(ts));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 /**
- * The day a piece went live: the stamp made when it was marked posted, or — for a piece posted before
- * that stamp existed, or marked posted without one — the day it was planned for.
+ * The day a piece went live: its UPLOAD date, or — only when it has none — the day it was marked posted
+ * (2026-10-15, `smmPlan.postedDayOf`; the calendar has done this since 2026-10-05). It used to be the
+ * stamp first, and the team often marks a month's posts posted together, days later, which piled the
+ * Insights posts-a-day sparkline onto that one day. Pass `uploadDate: null` to read the stamp alone.
  */
 export function postedDay(item: Pick<SmmContentItem, "postedAt" | "uploadDate">): string | null {
-  const ms = tsToMs(item.postedAt);
-  return ms ? isoDay(new Date(ms)) : item.uploadDate || null;
+  return postedDayOf(item);
 }
 
 /** The last `n` days ending today, oldest first. */
@@ -63,7 +54,10 @@ export function lastDays(today: string, n: number): string[] {
 /* ── The headline numbers ───────────────────────────────────────────────────────────────────── */
 
 export interface SmmDashboardKpis {
-  /** Inside their dates or about to start. */
+  /**
+   * Clients on one of their month's own days today (start ≤ today < end), each counted once — a client
+   * renewed early, or on the renewal day itself, used to count twice (2026-10-15).
+   */
   running: number;
   /** Past their last day with no renewal decision — still in play. */
   awaitingRenewal: number;
@@ -99,12 +93,22 @@ export function dashboardKpis(months: SmmCampaign[], today: string, now = Date.n
   let renewalsValue = 0;
   let setup = 0;
 
+  /*
+    ── Running: one per client, on its own days (owner's rule, 2026-10-15) ─────────────────────────
+    "Running" was every month not ended — about-to-start ones included — and the end date was a running
+    day. On 6 Oct a client renewed "6 Sep → 6 Oct" + "6 Oct → 6 Nov" was two running clients and both
+    amounts; renewed early, the coming month counted beside the current one. Now a month runs while
+    start ≤ today < end (`cyclePhase`), and a client counts once (by number, else the month), with the
+    later month's amount if two ever cover today.
+  */
+  const runningByClient = new Map<string, SmmCampaign>();
   for (const c of months) {
     const phase = cyclePhase(c.cycle, today);
     if (phase === "ended") awaitingRenewal += 1;
-    else {
-      running += 1;
-      monthlyValue += Number(c.amount) || 0;
+    else if (phase === "running") {
+      const key = c.clientPhoneId || `month:${c.id}`;
+      const held = runningByClient.get(key);
+      if (!held || c.cycle.startDate > held.cycle.startDate) runningByClient.set(key, c);
     }
     let lateHere = 0;
     for (const i of c.items) {
@@ -123,6 +127,8 @@ export function dashboardKpis(months: SmmCampaign[], today: string, now = Date.n
     }
     if (needsSetup(c, today)) setup += 1;
   }
+  running = runningByClient.size;
+  for (const c of runningByClient.values()) monthlyValue += Number(c.amount) || 0;
 
   return {
     running, awaitingRenewal, monthlyValue, dueThisWeek, late, lateMonths, waiting, waitDays,
@@ -202,15 +208,21 @@ export function deliverySummary(months: SmmCampaign[], today: string, trendDays 
 
 /* ── Stages: where every promised piece is ──────────────────────────────────────────────────── */
 
-/** A piece's stage, plus the promises with no row yet. */
-export type SmmStageKey = SmmTone | "unplanned";
+/**
+ * A piece's stage, plus the promises with no row yet — and (2026-10-15) the pieces posted under a date
+ * outside their month's own days (`toneCounts.outside`: live, but not that month's post).
+ */
+export type SmmStageKey = SmmTone | "unplanned" | "outside";
 
 /**
  * Left to right on the bar: done first, late last — the same order as a card's blocks, with the
  * promises nobody has planned yet just before the late ones (they are owed, and nothing exists).
+ * "Posted outside its dates" sits right after posted, and is listed only when there is one.
  */
 export const SMM_STAGE_ORDER: { key: SmmStageKey; label: string }[] = [
-  ...SMM_TONE_LEGEND.filter((t) => t.tone !== "late").map((t) => ({ key: t.tone as SmmStageKey, label: t.label })),
+  { key: "done", label: SMM_TONE_LEGEND.find((t) => t.tone === "done")?.label || "Posted" },
+  { key: "outside", label: "Posted outside its dates" },
+  ...SMM_TONE_LEGEND.filter((t) => t.tone !== "late" && t.tone !== "done").map((t) => ({ key: t.tone as SmmStageKey, label: t.label })),
   { key: "unplanned", label: "Not planned yet" },
   { key: "late", label: "Late" },
 ];
@@ -232,7 +244,7 @@ export interface SmmStageBreakdown {
 
 /** Every piece the months promised, by how far it has got. Extra work is left out — it was not sold. */
 export function stageBreakdown(months: SmmCampaign[], today: string): SmmStageBreakdown {
-  const counts: Record<SmmStageKey, number> = { done: 0, ready: 0, wait: 0, work: 0, idle: 0, unplanned: 0, late: 0 };
+  const counts: Record<SmmStageKey, number> = { done: 0, outside: 0, ready: 0, wait: 0, work: 0, idle: 0, unplanned: 0, late: 0 };
   let undated = 0;
   for (const c of months) {
     const t = toneCounts(c, today);
@@ -241,9 +253,11 @@ export function stageBreakdown(months: SmmCampaign[], today: string): SmmStageBr
   }
   const total = Object.values(counts).reduce((n, v) => n + v, 0);
   return {
-    slices: SMM_STAGE_ORDER.map(({ key, label }) => ({
-      key, label, count: counts[key], percent: total > 0 ? Math.round((counts[key] / total) * 100) : 0,
-    })),
+    slices: SMM_STAGE_ORDER
+      .filter(({ key }) => key !== "outside" || counts.outside > 0)
+      .map(({ key, label }) => ({
+        key, label, count: counts[key], percent: total > 0 ? Math.round((counts[key] / total) * 100) : 0,
+      })),
     total,
     undated,
   };
@@ -586,7 +600,9 @@ export function adDaily(
   campaign: Pick<SmmCampaign, "ads" | "cycle">,
   today: string,
 ): { day: string; leads: number; spend: number; reported: boolean }[] {
-  const end = today < campaign.cycle.endDate ? today : campaign.cycle.endDate;
+  // To today or the month's last own day — the renewal day (the end date) is the next month's (2026-10-15).
+  const last = lastOwnDay(campaign.cycle);
+  const end = today < last ? today : last;
   const n = daysBetween(campaign.cycle.startDate, end);
   if (n < 0) return [];
   const map = new Map<string, { leads: number; spend: number; reported: boolean }>();

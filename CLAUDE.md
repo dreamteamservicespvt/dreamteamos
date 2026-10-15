@@ -104,6 +104,9 @@
   special space or a 4-digit escape typed through an AI tool — a U+2000 in `withoutQuotedSpeech` was
   silently turned into a plain space once, which disabled the check. ESLint's
   `no-misleading-character-class` false-positives on Indic ranges.
+- **India day:** never derive a day with `toISOString().slice(0, 10)` (the UTC day — yesterday 00:00–05:30 IST). In the
+  browser use the local-day helpers (`format(d, "yyyy-MM-dd")`, `useToday`, `workDates.localDayOfInstant`); on the server
+  (Vercel runs in UTC) format in `Asia/Kolkata` (2026-10-15).
 - **Testing:** Vitest + Testing Library in `src/test/`; mock Firestore modules or seed zustand
   stores. A test that needs Firestore to behave (writes land, listeners re-fire, batches and
   transactions are all-or-nothing, `increment` / `arrayUnion` / `FieldPath` applied) mocks
@@ -114,7 +117,9 @@
   large changes (edit the JSON source).
 - **`api/` is outside the build and the typecheck** — a syntax error there ships unnoticed (it
   happened in `eb2c3ff`). Parse it after touching it:
-  `npx esbuild api/<file>.ts --platform=node --log-level=error > /dev/null`.
+  `npx esbuild api/<file>.ts --platform=node --log-level=error > /dev/null`. Vercel runs `api/` as **Node ESM**
+  (`"type": "module"`): an import from `api/` into `src/` must reach only alias-free files, and every runtime relative
+  import on that chain ends in `.js` (`../src/utils/x.js`) — extensionless fails only on Vercel (2026-10-15).
 - **Shell-scripted edits** (Windows + Git Bash): `node -e '…'` and heredocs mangle backslashes,
   backticks and apostrophes (a `\b` once landed in source as a backspace character). Write the script
   to a `.cjs` file with the editor tool, use `String.raw` for text with backslashes, assert every
@@ -216,9 +221,37 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-14)
+## 32. CURRENT PROJECT STATE (as of 2026-10-15)
 
-<<<<<<< HEAD
+- 2026-10-15, **in the working tree (not committed)** — **dates and periods**: an SMM month's end date is its renewal day
+  (own days end the day before), the sale asks "Month starts on", one checked way to change a month's dates, posts dated
+  outside not counted, Months to check; Payroll opens on the period due and asks before paying early; pay terms apply
+  from a chosen period (`users.payHistory`); ONE commission rule (collected in the period, 75% gate, Settlements and
+  Payroll never pay the same money); P&L / Accounts Dashboard per pay period; invoice dates kept in their series; Flow
+  credits dated by the day made; the India day everywhere (`smm.md`, `sales.md`, `people.md`, `orders-work.md`,
+  `invoices.md`, `ai-accounts.md`, `data-model.md`; the `invoice_numbers` rule).
+- 2026-10-15, **in the working tree (not committed)** — **the voice-over word contract**: every clip of every generated
+  script holds 17–20 spoken words (18–19 preferred, 20 the hard ceiling), for every cast, ad type and language — a pair's
+  two lines together — counted by ONE counter on the exact shipped text (`utils/scriptContract`, `prompts/wordContract`);
+  a 10/10 quality loop (8-dimension rubric, the score computed in code, ≤ 5 passes / 120 s) and a final gate that stops a
+  run whose script still breaks the contract (`ai-ads.md` §17.2 step 3, §24, §25, §27; `data-model.md`).
+- 2026-10-15, **in the working tree (not committed)** — **SMM Delivery Control, all phases (0–7)**, starting in **Preview**:
+  each client's month as WEEKLY tasks (`utils/smmCadence`), the supervisor (`utils/smmMonitor`), a new screen behind
+  **✨ Delivery Control** on the classic Social Media page (`/smm/control`: Today, Weeks, Client plan, Team, Starting line,
+  Alerts log, Settings — per role), the writes (`services/smmDelivery`: switch a month on, Do it now / Need more time,
+  Blocked, Why late, moves, reassigns, approvals with proof, posted links, check-out reasons, `smm_alert_state`), full-screen
+  alerts in the app (`components/smm/alerts`, through the popup coordinator; the 11 AM / 5 PM check and the due card step
+  aside for covered people), the AI layer (`services/smmAi`: titles, briefs, reasons, the client's WhatsApp update; 2027
+  festivals), the server checker `api/smm-monitor.ts` (cron, `CRON_SECRET`), and phase 7: Make it in the AI studio, the
+  Flow-credit forecast, and one-tap client approval in the client chat (`api/order-chat` `smm-approvals` / `smm-answer`)
+  (`smm.md` §9.9, `data-model.md`, `roles-routes.md`, `backend-security.md`, `people.md`, `chat.md`, `architecture.md`).
+- 2026-10-15, **in the working tree (not committed)** — the **Real Owner Duo**: Real Owner Face for two owners (Male + Male,
+  Female + Female, Male + Female). Two labelled owner-photo slots in the studio, both required (the run is refused
+  without either); Owner 1 = photo 1 = LEFT, speaks first (the man on Male + Female), Owner 2 = RIGHT; the duo face lock
+  and two-photo attach line on every frame, the owner's template for two on every Veo prompt; the sales notes ask for a
+  photo of EACH owner. Its first half was already on `main` (`74b0b8e`), so the three entries show in the pickers there
+  without this wiring (`ai-ads.md` §17.2, §24, §25, §27; `sales.md` §9.4).
+- 2026-10-14, **documentation in `main`** — cross-module DTS-OS navigation consolidated into the repository-wide system-navigation section in `.claude/rules/architecture.md`; `CLAUDE.md` points to it. This indexes the existing module guides, key service/data flows, repository layout, verification steps and security caveats; it is not a claim of a full runtime or pixel-level audit.
 - 2026-10-13 (late night), **in the working tree (not committed)**: the bell's follow-ups — **toasts at the bottom on
   phones**, a smaller badge, **dismiss one row** (X / swipe, Undo) and **mark as unread**, a **daily 90-day clean-up** of
   `notifications`, and the bell's index in **`firestore.indexes.json`** (+ `firebase.json`, `.firebaserc`)
@@ -227,9 +260,6 @@ errors:** done means every listed item is fully resolved with no build, console 
   on every notification, not the 50 loaded. Clear all is one `notification_state/{uid}` point with Undo, and the
   once-a-day reminders are written once (`sendNotification({ once })`), so they never come back
   (`backend-security.md` §18, `data-model.md`; new rule in `docs/firestore-rules.md`).
-=======
-- 2026-10-14, **documentation in `main`** — cross-module DTS-OS navigation consolidated into the repository-wide system-navigation section in `.claude/rules/architecture.md`; `CLAUDE.md` points to it. This indexes the existing module guides, key service/data flows, repository layout, verification steps and security caveats; it is not a claim of a full runtime or pixel-level audit.
->>>>>>> 8d3a0255cf0f07d8f8c27255e76455b23fd67d92
 - 2026-10-13 (evening), **in the working tree (not committed)** — **poster refine works**: design requests go in one
   "Changes:" line (the three sentences untouched), a refine can leave out / bring back a verified number or the address and
   change the words' language, and the studio says when nothing or not all was applied (`ai-ads.md` §17.2, §24).
@@ -272,14 +302,13 @@ errors:** done means every listed item is fully resolved with no build, console 
 - Before it on `main` (`abeab79`, 2026-10-08 17:10, the owner's commits): everything through 2026-10-05 (§31),
   **Sales → Tech on one permanent `saleId`** (`sales.md`, `orders-work.md`), **Real Owner Face** and **దసరా**
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
-- `npm run build` ✅ (main chunk ≈461 KB, vendor-firebase ≈665 KB, geminiService chunk ≈848 KB; lazy pages for
-  AI Accounts, Invoices).
-- `npx vitest run` ✅ 236 files, 3685 tests, all pass (2026-10-13, after the bell's one-row dismiss; the 5
-  `aiPlatformKitIntegrity` timeouts under a parallel browser run passed re-run alone).
-  Under heavy parallel load a few UI tests can time out; they pass re-run alone.
-- `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (the VideoCallManager one was fixed in `5ca75b0`).
+- `npm run build` ✅ (2026-10-15: main chunk ≈495 KB, vendor-firebase ≈665 KB, geminiService chunk ≈900 KB; lazy pages for
+  AI Accounts, Invoices, SMM Delivery Control, and its AI / alert parts).
+- `npx vitest run` ✅ 263 files, 4426 tests, all pass (2026-10-15, after SMM Delivery Control). Under heavy parallel load a
+  few UI tests can time out; they pass re-run alone.
+- `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-15).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): bottom toasts, one-row dismiss / unread, the 90-day clean-up, the
+- Most recent work (newest first; detail in §31): dates and periods across SMM, pay, invoices and AI accounts (2026-10-15); the voice-over word contract + 10/10 loop (2026-10-15); SMM Delivery Control, all phases (2026-10-15); the Real Owner Duo (2026-10-15); bottom toasts, one-row dismiss / unread, the 90-day clean-up, the
   index file; the bell's Mark all read / Clear all; poster refine (a Changes line,
   contacts, language, what was not applied); one contact-number list for posters and the footer; SMM Team Lead
   view-only, Half Day leave, one-type poster prompts (2026-10-13); Motu & Patlu walk only where needed; AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
@@ -287,7 +316,18 @@ errors:** done means every listed item is fully resolved with no build, console 
   Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
   money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
   AI Accounts and Cinematic Ads work.
-- Open follow-ups the owner must act on: deploy the bell's index (`firebase login`, then
+- Open follow-ups the owner must act on: **SMM Delivery Control** — set `CRON_SECRET` in Vercel and redeploy, create the
+  cron-job.org job (GET `https://dreamteamos.vercel.app/api/smm-monitor`, header `x-cron-secret`, every 30 min 09–20
+  Asia/Kolkata), publish the `smm_alert_state` rule, build a new APK (the `smm_urgent` channel), try it in Preview (Client plan →
+  Switch on a month; Settings → rehearsal, test alert), then go Live with a pilot group (Settings); repair Dhana lakshmi (Social Media → Months to check → Open → Edit setup back to
+  6 Sep → 6 Oct, then fix its posts' dates); publish the `invoice_numbers` rule (`docs/firestore-rules.md`); check one
+  Payroll month and one Settlement; confirm the behaviour changes — the Accounts Dashboard's revenue is now one pay period
+  with no tech delivered value, Settlements pays only ended periods, and recording Flow credits, editing a Flow account,
+  changing an issued invoice's date and moving a post between months need a connection; generate a few real ads (a Telugu duo, a Motu & Patlu, a deity festival ad) and
+  listen to the voice-overs in Flow — does a duo clip's second line now fit its half at 17–20 words, and is the slower run
+  (up to ~2–4 min while the script is improved) acceptable?; make one Real Owner Duo (Male + Female) ad from two real photos — attach owner
+  photo 1 then 2 with each frame prompt in ChatGPT / Gemini, then one Flow clip: are both faces their own, on their own
+  sides, and does only the speaker's mouth move?; deploy the bell's index (`firebase login`, then
   `firebase deploy --only firestore:indexes`, answering **No** to deleting other indexes) or check it in the console;
   on a phone dismiss one notification by swiping, mark one unread, and watch a toast appear at the bottom;
   in the live bell press Mark all read, then Clear all (and Undo), then reopen
@@ -319,7 +359,7 @@ the ads with Gemini-written prompts (visuals made in external tools). The app al
 attendance, payroll, commission and finance.
 
 **Stack.** React 18 + TS (non-strict) + Vite 5 + Tailwind/shadcn + zustand; Firebase
-Auth/Firestore/FCM called **directly from the browser**; 3 Vercel functions in `api/`
+Auth/Firestore/FCM called **directly from the browser**; 4 Vercel functions in `api/`
 (`send-notification`, `order-chat`, `onboarding`); Gemini via `@google/genai` from the browser
 with key/model rotation; Cloudinary uploads; WebRTC; Capacitor Android; PWA with self-update.
 

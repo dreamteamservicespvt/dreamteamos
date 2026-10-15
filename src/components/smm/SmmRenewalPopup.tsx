@@ -25,15 +25,16 @@ import {
   RefreshCcw, Sparkles, TrendingUp, Users, Video, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { usePopupClaim } from "@/hooks/usePopupClaim";
 import { useSmmCampaigns } from "@/hooks/useSmmCampaigns";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
 import { KindBar, MonthTimeline, PaceChip, TONE_BG, ToneLegend } from "@/components/smm/SmmVisuals";
 import { formatCurrency } from "@/utils/formatters";
 import {
-  adTotals, allAdReports, clientWaitSummary, extraWork, fulfilment, isoDay, postsByPlatform, teamMembers,
+  adTotals, clientWaitSummary, extraWork, fulfilment, isoDay, monthAdReports, postsByPlatform, teamMembers,
 } from "@/utils/smmPlan";
 import {
-  SMM_TONE_LEGEND, cycleRangeLabel, daysToRenewal, kindSegments, monthCycle, paceOf,
+  SMM_TONE_LEGEND, cycleRangeLabel, daysToRenewal, kindSegments, nextCycleAfter, paceOf,
   renewalCountdownLabel, renewalCountdownSteps, renewalPopupMonths, renewalPopupSeenKey, renewalStartDate,
   shortDayLabel, toneCounts,
 } from "@/utils/smmPackage";
@@ -74,6 +75,9 @@ export default function SmmRenewalPopup() {
     return renewalPopupMonths(campaigns, seller.uid, today)
       .filter((c) => !seenToday(renewalPopupSeenKey(seller.uid, c.id, today)));
   }, [campaigns, seller?.uid, today, seenTick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Told to the popup coordinator, so a popup that waits its turn stays away while this is up.
+  usePopupClaim("smm_renewal", !!seller && !loading && queue.length > 0);
 
   if (!seller || loading || queue.length === 0) return null;
   const at = Math.min(index, queue.length - 1);
@@ -119,12 +123,14 @@ function RenewalReport({ campaign, today, user, position, onPrev, onNext, onLate
   const f = fulfilment(campaign);
   const pace = paceOf(campaign, today);
   const counts = toneCounts(campaign, today);
-  const ads = adTotals(allAdReports(campaign));
+  // This month's figures only (2026-10-15): ads reported on its own days, posts that went up on them.
+  const ads = adTotals(monthAdReports(campaign));
   const wait = clientWaitSummary(campaign.items);
   const extras = extraWork(campaign.items);
-  const platforms = postsByPlatform(campaign.items);
+  const platforms = postsByPlatform(campaign.items, campaign.cycle);
   const team = teamMembers(campaign.team);
-  const next = monthCycle(renewalStartDate(campaign.cycle, today));
+  // The client's billing day carries over a short month (2026-10-15).
+  const next = nextCycleAfter(campaign.cycle, renewalStartDate(campaign.cycle, today));
   const name = campaign.businessName || campaign.clientName;
   const monthNo = campaign.monthNumber || 1;
 
@@ -132,6 +138,8 @@ function RenewalReport({ campaign, today, user, position, onPrev, onNext, onLate
     ...SMM_TONE_LEGEND.map(({ tone, label }) => ({ key: tone, label, count: counts[tone], fill: TONE_BG[tone] })),
     // Outlined grey rather than the track's own colour, so "not planned" is a stage you can see.
     { key: "unplanned", label: "Not planned yet", count: counts.unplanned, fill: "bg-muted-foreground/15 ring-1 ring-inset ring-muted-foreground/40" },
+    // Live under a date outside this month — not this month's post (2026-10-15).
+    { key: "outside", label: "Posted outside its dates", count: counts.outside, fill: "bg-viz-ink/30 ring-1 ring-inset ring-viz-ink" },
   ].filter((s) => s.count > 0);
 
   return (
@@ -271,8 +279,8 @@ function RenewalReport({ campaign, today, user, position, onPrev, onNext, onLate
               {KIND_ROWS.map(({ kind, label, icon }) => {
                 const committed = campaign.commitments?.[kind] || 0;
                 if (committed <= 0) return null;
-                const segments = kindSegments(campaign.items, kind, today);
-                const posted = segments.filter((s) => s.tone === "done").length;
+                const segments = kindSegments(campaign.items, kind, today, campaign.cycle);
+                const posted = segments.filter((s) => s.tone === "done" && !s.outside).length;
                 return (
                   <KindBar key={kind} testId={`smm-renewal-bar-${kind}`} label={label} icon={icon}
                     segments={segments} committed={committed} posted={posted} />

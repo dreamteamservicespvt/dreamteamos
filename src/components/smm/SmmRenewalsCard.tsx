@@ -24,7 +24,7 @@ import { useSmmCampaigns, type SmmViewer } from "@/hooks/useSmmCampaigns";
 import { notifyRenewalsDueOnOpen } from "@/services/smm";
 import { isoDay } from "@/utils/smmPlan";
 import { canRenewSmm } from "@/utils/smmPackage";
-import { commissionRate } from "@/utils/salesIncentive";
+import { commissionTermsFor, termsPeriodOn, type PayTermsBearer } from "@/utils/payTerms";
 import { formatCurrency } from "@/utils/formatters";
 import {
   commissionOn, monthKeyOf, monthKeyTitle, openRenewalsBefore, renewalTotals, renewalWhen, renewalsInMonth, runningClients,
@@ -36,7 +36,7 @@ import MonthStepper from "@/components/smm/money/MonthStepper";
 import { MONEY_TEXT } from "@/components/smm/money/tone";
 
 export default function SmmRenewalsCard({ user, ring = true }: {
-  user: SmmViewer & { earningsOption?: string };
+  user: SmmViewer & PayTermsBearer;
   /** Ring the "renewal due" bells. Off where the page already rings them (Social Media). */
   ring?: boolean;
 }) {
@@ -45,7 +45,17 @@ export default function SmmRenewalsCard({ user, ring = true }: {
   const current = monthKeyOf(today);
   const [ym, setYm] = useState(current);
   const { renew, renewingId } = useSmmRenewal(user);
-  const rate = commissionRate(user.earningsOption);
+  /*
+    The rate a renewal is worth — an ESTIMATE (2026-10-15). It was today's `earningsOption` for every row, so a
+    plan change re-priced renewals already won, and one agreed for next period priced the running one. Now the
+    salesperson's terms for the pay period the renewal money is collected in (`utils/payTerms`): a renewal won →
+    the period of its renewal day (the month's end date — when that money falls due); a renewal still to win →
+    the running period's terms, the only ones known now. Still an estimate: the commission itself is paid on the
+    money COLLECTED, verified, and only at 75% of that period's target (`utils/salesPay`).
+  */
+  const rateOn = (day: string | null) => commissionTermsFor(user, termsPeriodOn(day, today)).rate;
+  const rate = rateOn(null);
+  const rowRate = (r: RenewalRow) => rateOn(r.outcome === "renewed" ? r.month.cycle?.endDate ?? null : null);
 
   const mine = useMemo(() => campaigns.filter((c) => c.soldBy === user.uid), [campaigns, user.uid]);
 
@@ -63,7 +73,7 @@ export default function SmmRenewalsCard({ user, ring = true }: {
     // Months that ended before this one with no decision can still be saved — listed with today's month.
     const earlier = ym === current ? openRenewalsBefore(mine, ym, today, user.uid) : [];
     const toRenew = [...earlier, ...rows.filter((r) => r.outcome === "waiting")];
-    const sum = (list: RenewalRow[]) => list.reduce((s, r) => s + commissionOn(r.value, rate), 0);
+    const sum = (list: RenewalRow[]) => list.reduce((s, r) => s + commissionOn(r.value, rowRate(r)), 0);
     return {
       totals,
       earlier,
@@ -75,7 +85,8 @@ export default function SmmRenewalsCard({ user, ring = true }: {
       missed: sum(rows.filter((r) => r.outcome === "lost")),
       running: runningClients(mine, today, user.uid).count,
     };
-  }, [mine, ym, today, current, user.uid, rate]);
+    // The rates read only the plan and its history (rowRate / rateOn).
+  }, [mine, ym, today, current, user.uid, user.earningsOption, user.payHistory]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading || mine.length === 0) return null;
 
@@ -99,7 +110,7 @@ export default function SmmRenewalsCard({ user, ring = true }: {
         <div className="rounded-xl bg-muted/40 p-3.5">
           <p className="flex flex-wrap items-baseline gap-x-2 text-foreground">
             <span data-test="smm-my-earned" className={`text-3xl font-bold tracking-tight ${MONEY_TEXT}`}>{formatCurrency(view.earned)}</span>
-            <span className="text-sm font-medium">from your renewals {tense}</span>
+            <span className="text-sm font-medium">from your renewals {tense} · estimate</span>
           </p>
           {view.toRenew.length > 0 ? (
             <p data-test="smm-my-waiting" className="mt-1 text-sm font-semibold text-foreground">
@@ -162,7 +173,7 @@ export default function SmmRenewalsCard({ user, ring = true }: {
                     </div>
                     <div className="ml-auto flex items-center gap-2.5">
                     <span data-test="smm-renewal-row-money" className={`whitespace-nowrap text-sm font-bold ${MONEY_TEXT}`}>
-                      +{formatCurrency(commissionOn(r.value, rate))}
+                      +{formatCurrency(commissionOn(r.value, rowRate(r)))}
                     </span>
                     {can && (
                       <button onClick={() => renew(c)} disabled={renewingId === c.id} data-test="smm-renewal-row-renew"
@@ -180,7 +191,7 @@ export default function SmmRenewalsCard({ user, ring = true }: {
 
         {view.renewed.length > 0 && (
           <NameList testId="smm-my-renewed-list" mark="posted" title="Renewed"
-            rows={view.renewed.map((r) => ({ id: r.nextId || r.month.id, name: r.month.businessName || r.month.clientName, money: `+${formatCurrency(commissionOn(r.value, rate))}` }))} />
+            rows={view.renewed.map((r) => ({ id: r.nextId || r.month.id, name: r.month.businessName || r.month.clientName, money: `+${formatCurrency(commissionOn(r.value, rowRate(r)))}` }))} />
         )}
         {view.lost.length > 0 && (
           <NameList testId="smm-my-lost-list" mark="notPosted" title="Not renewing"
@@ -189,7 +200,10 @@ export default function SmmRenewalsCard({ user, ring = true }: {
 
         <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
           <IndianRupee size={12} className="mt-0.5 shrink-0" />
-          <span>{rate}% of each renewal sale is yours — paid once your sales admin verifies it and the client pays.</span>
+          <span data-test="smm-my-rate-note">
+            Estimate: {rate}% of each renewal sale (your rate this pay period) — paid on the money collected, once your
+            sales admin verifies the sale and you reach 75% of that period's target.
+          </span>
         </p>
       </div>
     </section>

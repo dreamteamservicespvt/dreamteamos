@@ -62,7 +62,7 @@ vi.mock("@google/genai", () => ({
         if (/FINAL QUALITY GATE/.test(sys)) {
           const s = judge.length > 1 ? judge.shift()! : judge[0] ?? 9.5;
           if (s === "none") return { text: "the judge is unavailable" };
-          return { text: JSON.stringify({ scores: { facts: 10, language: s, persuasion: s, clarity: s, relevance: s, speakability: s }, unsupportedClaims: [], problems: [], rewriteBrief: "" }) };
+          return { text: JSON.stringify({ scores: { facts: 10, language: s, persuasion: s, clarity: s, relevance: s, speakability: s, cast: s, originality: s }, unsupportedClaims: [], problems: [], rewriteBrief: "" }) };
         }
         if (/^Write the \d+-clip .* for:/m.test(user)) return { text: dialogue.length > 1 ? dialogue.shift()! : dialogue[0] ?? "" };
         if (/^Generate a \d+-second .*voice-over script for:/m.test(user)) return { text: singleVoice };
@@ -238,10 +238,10 @@ describe("cast integrity", () => {
   });
 
   it("never lets a draft that broke the cast beat one that kept it, whatever the judge scored", () => {
-    const report = (overall: number): ScriptQaReport => ({
-      scores: { facts: 10, language: overall, persuasion: overall, clarity: overall, relevance: overall, speakability: overall },
-      overall, unsupportedClaims: [], problems: [], rewriteBrief: "",
-    });
+    const report = (overall: number): ScriptQaReport => {
+      const scores = { facts: 10, language: overall, persuasion: overall, clarity: overall, relevance: overall, speakability: overall, cast: overall, originality: overall };
+      return { scores, judgeScores: scores, overall, unsupportedClaims: [], problems: [], rewriteBrief: "", mechanical: [] };
+    };
     expect(isBetterDraft({ report: report(6), mechanicalIssues: 3, broken: 0 }, { report: report(9.9), mechanicalIssues: 0, broken: 2 })).toBe(false);
     expect(isBetterDraft({ report: report(9.9), mechanicalIssues: 0, broken: 2 }, { report: null, mechanicalIssues: 0, broken: 0 })).toBe(true);
     // Without `broken` (a single voice) the ranking is exactly as before.
@@ -312,16 +312,25 @@ describe("a Male & Female Duo is a Male & Female Duo from the script to the last
       /two-person conversation script for this Male & Female Duo ad came back without every speaker's own lines[\s\S]*Clip 1 is missing Boy's line[\s\S]*Press Generate/,
     );
     expect(madeFrames()).toBe(false);
-    // It tried: the first draft and every redraft the gate allows.
-    expect(calls.filter((c) => /^Write the \d+-clip .* for:/m.test(c.user)).length).toBe(3);
+    // It tried: the first draft, a first round of two redrafts side by side, then one more — and stopped after
+    // two rounds in a row that found nothing better (utils/scriptQa nextImprovement), never looping on.
+    expect(calls.filter((c) => /^Write the \d+-clip .* for:/m.test(c.user)).length).toBe(1 + 2 + 1);
   });
 });
 
 // ── 4 · Every configuration in the catalogue, both ad types ────────────────────────────────────────
 describe("every configuration keeps its cast from the script to the video prompts", () => {
-  /** A script to contract for any cast — every speaker one line a clip, in order. */
+  /** A script to contract for any cast — every speaker one line a clip, in order, 17–20 words a clip, no clip repeated. */
+  const PAIR = [
+    ["Have you seen the new washing machines at Sharma today?", "Every brand is here with free home delivery for you."],
+    ["Is every television here also sold with a long warranty?", "Yes, the service team visits your home within a day."],
+  ];
+  const SOLO_LINES = [
+    "Have you seen the new washing machines at Sharma today, with every brand and free home delivery for you?",
+    "Every television here comes with a long warranty, and our service team visits your home within a day.",
+  ];
   const scriptFor = (keys: string[], clips: number) => Array.from({ length: clips }, (_, c) =>
-    keys.map((k, i) => `${c * 8}-${c * 8 + 8}|${k}: ${i === 0 ? "Have you seen the new washing machines at Sharma today?" : "Every brand is here with free home delivery for you."}`).join("\n"),
+    keys.map((k, i) => `${c * 8}-${c * 8 + 8}|${k}: ${keys.length === 1 ? SOLO_LINES[c % 2] : PAIR[c % 2][i]}`).join("\n"),
   ).join("\n");
 
   for (const adType of ["commercial", "festival"] as const) {
@@ -330,10 +339,15 @@ describe("every configuration keeps its cast from the script to the video prompt
         calls.length = 0;
         const cast = packSpeakers(pack);
         dialogue = [scriptFor(cast.map((s) => s.key), 2)];
-        const out = await run(form({
+        // The Real Owner Duo needs both owners' photos, or the run is refused before any call (2026-10-14).
+        const ownerPhoto = (name: string) => new File([new Uint8Array([1, 2, 3])], name, { type: "image/jpeg" });
+        const files = pack.family === "owner_duo"
+          ? { ...noFiles(), ownerImage: ownerPhoto("owner1.jpg"), secondOwnerImage: ownerPhoto("owner2.jpg") }
+          : noFiles();
+        const out = await gemini.generateAdAssets(form({
           characterPack: pack.id, adType, festivalName: adType === "festival" ? "Diwali" : "",
           customCharacter: pack.family === "custom" ? "a cheerful talking washing machine" : undefined,
-        }));
+        }), files, () => {});
         const where = `${adType}/${pack.id}`;
         // The script: exactly this cast in every clip, in order.
         expect(speakersOf(out.voiceOverScript, cast), where).toEqual([cast.map((s) => s.key), cast.map((s) => s.key)]);
@@ -341,6 +355,13 @@ describe("every configuration keeps its cast from the script to the video prompt
         // The video prompts: one per clip, voicing exactly this cast.
         expect(out.veoPrompts, where).toHaveLength(2);
         for (const prompt of out.veoPrompts) {
+          if (pack.usesClientFace && cast.length > 1) {
+            // The owner's template for two: each owner voices their own line, named by side.
+            expect(prompt, where).toMatch(/^Two (?:men|women|people) stand side by side/);
+            expect(prompt, where).toMatch(/With a very sweet voice the (?:man|woman) on the LEFT needs to say :-/);
+            expect(prompt, where).toMatch(/Then, with a very sweet voice the (?:man|woman) on the RIGHT needs to say :-/);
+            continue;
+          }
           if (pack.usesClientFace) {
             expect(prompt, where).toMatch(/^With a very sweet voice (?:she|he) needs to say :-/);
             continue;
@@ -359,7 +380,7 @@ describe("every configuration keeps its cast from the script to the video prompt
         // invented people word for word on a cast sheet, a drawn pair at its scale anchor.
         const frameWriter = calls.find((c) => /Main Frame image prompts/.test(c.user))!;
         if (cast.length > 1) {
-          expect(frameWriter.sys, where).toContain("BOTH characters together");
+          expect(frameWriter.sys, where).toContain(pack.family === "owner_duo" ? "BOTH owners together" : "BOTH characters together");
           expect(frameWriter.sys, where).toMatch(/ALWAYS stands on the LEFT of the frame and .* ALWAYS on the\s+RIGHT/);
           for (const frame of out.mainFramePrompts) {
             if (pack.family === "human_duo" || pack.family === "kids") expect(frame, where).toMatch(/CAST SHEET — THE SAME TWO (?:PEOPLE|CHILDREN) IN EVERY CLIP/);

@@ -89,9 +89,11 @@ describe("the voice-over prompt", () => {
     expect(commercial).toContain("Clip 1 passes the test");
   });
 
-  it("uses the 18–20 word band", () => {
-    expect(commercial).toContain(`BETWEEN ${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP} spoken words`);
-    expect(commercial).toContain(`Every clip has between ${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP} spoken words`);
+  it("uses the one 17–20 word contract, the closing call line counted inside it", () => {
+    expect(commercial).toContain(`THE WORD BUDGET — ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} SPOKEN WORDS IN EVERY CLIP`);
+    expect(commercial).toContain(`Every clip has ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words (aim for 18–19; 20 is the hard ceiling)`);
+    // The fixed Telugu closing sentence is 9 spoken words, so the rest of the final clip has 8–11.
+    expect(commercial).toContain("is 9 words and counts INSIDE that clip's 17–20, so the rest of the final clip has 8–11 words");
   });
 
   it("moves the message to clip 2 when clip 1 is a festival wish", () => {

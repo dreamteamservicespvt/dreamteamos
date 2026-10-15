@@ -51,7 +51,20 @@ function allowedOrigin(origin: string): string | null {
 
 type InviteDoc = Record<string, any>;
 
-const todayIso = (): string => new Date().toISOString().slice(0, 10);
+/**
+ * ── Why the India day, not `toISOString()` ──
+ * Vercel runs this function in UTC. `new Date().toISOString().slice(0, 10)` is the UTC day, which is
+ * YESTERDAY in India between 00:00 and 05:30 IST: a candidate signing at 01:00 IST got yesterday's
+ * `offerAcceptedOn` / `joiningAcceptedOn` and `signedDate` on their letters, a joining date of today
+ * was still "in the future" (stage `offer_accepted` instead of `probation`), and an offer valid until
+ * yesterday could still be accepted for those five and a half hours. Every date this file stores or
+ * compares is a `yyyy-MM-dd` India day (the dates the admins type in the browser are India days too),
+ * so the day is computed in Asia/Kolkata explicitly. `en-CA` formats as `yyyy-MM-dd`.
+ */
+const INDIA_DAY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+});
+const todayIso = (): string => INDIA_DAY.format(new Date());
 
 /** True when `date` is strictly before today. Used for the offer's acceptance deadline. */
 const isPast = (date?: string | null): boolean => !!date && date < todayIso();

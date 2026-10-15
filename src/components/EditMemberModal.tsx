@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/services/firebase";
 import { syncPublicBadge } from "@/services/publicBadge";
+import { savePayTerms } from "@/services/payroll";
+import { useAuthStore } from "@/store/authStore";
 import { normalizePhone, formatPhoneDisplay } from "@/utils/phone";
 import type { AppUser } from "@/types";
 import { X, Loader2, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { dailyTargetOf, daysInPayCycle, monthlyTargetFor } from "@/utils/salesTargets";
+import { applyFromChoices } from "@/utils/payTerms";
+import { currentPayMonth } from "@/utils/payrollEngine";
 
 interface EditMemberModalProps {
   member: AppUser;
@@ -32,6 +34,20 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
   /** The number this seller works on — where a delivered client's next enquiry is sent. */
   const [businessWhatsapp, setBusinessWhatsapp] = useState(member.businessWhatsapp || "");
   const [saving, setSaving] = useState(false);
+  const actor = useAuthStore((s) => s.user);
+
+  /*
+    ── Applies from pay period (2026-10-15) ──
+    A new salary, target or plan used to overwrite the one value every period read: a raise saved on 1 Oct
+    re-priced unpaid September in full and flagged the paid August row "Now ₹18,000 … undo and pay again".
+    The change now says which pay period it starts in — the one running now unless the admin picks another —
+    and earlier periods keep what applied to them (utils/payTerms).
+  */
+  const runningPeriod = currentPayMonth();
+  const [applyFrom, setApplyFrom] = useState(runningPeriod);
+  const payTermsChanged = salary !== (member.salary || 0)
+    || (variant === "sales" && (dailyTarget !== dailyTargetOf(member)
+      || (!!earningsOption && earningsOption !== (member.earningsOption || ""))));
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,32 +58,43 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
     setSaving(true);
     try {
       const normalizedPhone = phone.trim() ? normalizePhone(phone.trim()) : "";
-      const updates: Record<string, any> = {
+      const other: Record<string, unknown> = {
         name: name.trim(),
         phone: normalizedPhone,
-        salary,
-        updatedAt: serverTimestamp(),
       };
 
       if (variant === "sales") {
-        updates.dailyTarget = dailyTarget;
-        updates.businessWhatsapp = businessWhatsapp.trim() ? normalizePhone(businessWhatsapp.trim()) : null;
+        other.businessWhatsapp = businessWhatsapp.trim() ? normalizePhone(businessWhatsapp.trim()) : null;
         // Cleared, not left behind: these are the two fields the app used to read three different
         // ways, and a stale value in either would keep contradicting the figure above.
-        updates.monthlyTarget = null;
-        updates.target = null;
-        if (earningsOption) updates.earningsOption = earningsOption;
+        other.monthlyTarget = null;
+        other.target = null;
       } else {
-        updates.googleDriveBaseUrl = driveUrl.trim() || null;
+        other.googleDriveBaseUrl = driveUrl.trim() || null;
       }
 
-      await updateDoc(doc(db, "users", member.uid), updates);
+      // Salary / target / plan through the one writer, with the period they apply from; the rest of the
+      // form in the same write.
+      const { change } = await savePayTerms(
+        member.uid,
+        {
+          salary,
+          ...(variant === "sales" ? { dailyTarget } : {}),
+          ...(variant === "sales" && earningsOption ? { earningsOption } : {}),
+        },
+        applyFrom,
+        { uid: actor?.uid || "", name: actor?.name },
+        other,
+      );
       // The name and employee number are printed on the ID card, so the public badge follows.
       await syncPublicBadge(member.uid);
 
       const updated: AppUser = {
         ...member,
-        ...updates,
+        ...(other as Partial<AppUser>),
+        salary,
+        ...(variant === "sales" ? { dailyTarget, ...(earningsOption ? { earningsOption } : {}) } : {}),
+        ...(change ? { payHistory: [...(member.payHistory || []), change] } : {}),
         phone: normalizedPhone,
         updatedAt: new Date(),
       };
@@ -151,6 +178,22 @@ export default function EditMemberModal({ member, onClose, onUpdated, variant }:
                 <p className="text-[10px] text-muted-foreground mt-0.5">This controls which earnings plan the member is on</p>
               </div>
             </>
+          )}
+
+          {/* Only asked when the pay terms change: from which pay period they apply. */}
+          {payTermsChanged && (
+            <div data-test="pay-terms-from" className="rounded-lg border border-warning/40 bg-warning/5 p-3">
+              <label className="text-xs font-medium text-foreground mb-1 block">
+                {variant === "sales" ? "New salary / target / plan applies from pay period" : "New salary applies from pay period"}
+              </label>
+              <select value={applyFrom} onChange={(e) => setApplyFrom(e.target.value)} data-test="pay-terms-from-select"
+                className="w-full h-10 px-3 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary">
+                {applyFromChoices(runningPeriod).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Earlier pay periods keep what applied to them. A period already paid stays as it was paid.
+              </p>
+            </div>
           )}
 
           {variant === "tech" && (

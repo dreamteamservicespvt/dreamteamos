@@ -34,7 +34,7 @@
  *
  * Pure — no Firestore, no React — like `smmPlan` and `smmPackage`, whose rules it reuses.
  */
-import { addDays, daysBetween, dayToDate, isPosted, isSmmOverseer, isWaitingOnClient } from "@/utils/smmPlan";
+import { addDays, daysBetween, dayToDate, isPosted, isSmmOverseer, isWaitingOnClient, lastOwnDay } from "@/utils/smmPlan";
 import { cyclePhase, monthLabel, shortDayLabel, type SmmPhase } from "@/utils/smmPackage";
 import { postedDay } from "@/utils/smmDashboard";
 import { SMM_CONTENT_KINDS, type SmmCampaign, type SmmContentItem, type SmmContentKind } from "@/types/smm";
@@ -200,7 +200,8 @@ function entryOf(c: SmmCampaign, item: SmmContentItem, today: string): CalendarE
   const posted = isPosted(item);
   const stamped = posted ? postedDay({ postedAt: item.postedAt, uploadDate: null }) : null;
   const plannedDay = item.uploadDate || null;
-  const monthOver = c.cycle.endDate < today || c.status !== "active";
+  // Over from its renewal day (the end date) on — its last own day is the day before (2026-10-15).
+  const monthOver = c.cycle.endDate <= today || c.status !== "active";
   let state: CalendarEntryState;
   if (posted) state = "posted";
   else if (monthOver) state = "missed";
@@ -228,7 +229,13 @@ export interface CalendarClientMonth {
   /** "Month 2". */
   name: string;
   startDate: string;
+  /** The month's end date — its renewal day, the NEXT month's first day; how it is labelled ("6 Sep – 6 Oct"). */
   endDate: string;
+  /**
+   * The month's last own day — the day before `endDate` (2026-10-15). "Month 2 ends" is written on it, and
+   * a post dated after it (the renewal day included) is outside the month: it belongs to the next one.
+   */
+  lastDay: string;
   phase: SmmPhase;
   /** Recorded after it ended: only the posts filled in since are drawn, each on the day it went up. */
   history: boolean;
@@ -257,12 +264,12 @@ export function buildClientRun(campaigns: SmmCampaign[], today: string, kind: Ca
     const startDate = c.cycle.startDate;
     const endDate = c.cycle.endDate && c.cycle.endDate >= startDate ? c.cycle.endDate : startDate;
     return {
-      id: c.id, name: monthName(c), startDate, endDate,
+      id: c.id, name: monthName(c), startDate, endDate, lastDay: lastOwnDay({ startDate, endDate }),
       phase: cyclePhase({ month: "", startDate, endDate }, today), history: !!c.history,
     };
   });
   let from = months[0].startDate;
-  let to = months.reduce((max, m) => (m.endDate > max ? m.endDate : max), months[0].endDate);
+  let to = months.reduce((max, m) => (m.lastDay > max ? m.lastDay : max), months[0].lastDay);
   const entries: CalendarEntry[] = [];
   for (const c of list) {
     for (const item of c.items || []) {
@@ -277,10 +284,13 @@ export function buildClientRun(campaigns: SmmCampaign[], today: string, kind: Ca
   return { months, entries, first: monthOf(from), last: monthOf(to) };
 }
 
-/** The client's month a day is in — on a handover day (one month's last, the next's first), the new one. */
+/**
+ * The client's month a day is one of the own days of. The renewal day (one month's end date, the next's
+ * start) is the new month's alone since 2026-10-15; when two months' days ever overlap, the later one.
+ */
 export function clientMonthOn(months: CalendarClientMonth[], day: string): CalendarClientMonth | null {
   let found: CalendarClientMonth | null = null;
-  for (const m of months) if (m.startDate <= day && day <= m.endDate) found = m;
+  for (const m of months) if (m.startDate <= day && day <= m.lastDay) found = m;
   return found;
 }
 
@@ -306,14 +316,17 @@ export interface CalendarPage {
   months: CalendarClientMonth[];
   /** Posts of those months that were never given a day — listed under the calendar. */
   undated: CalendarEntry[];
-  /** Where a client's month starts or ends on this page — an end before a start on a handover day. */
+  /**
+   * Where a client's month starts or ends on this page — "ends" on its LAST OWN DAY (the day before its
+   * end date, 2026-10-15), so a renewed month's end and the next one's start sit on two days, not one.
+   */
   markers: Map<string, MonthMarker[]>;
 }
 
 /** Lay one calendar month (`yyyy-MM`) of the client out. */
 export function calendarPage(run: ClientRun, ym: string): CalendarPage {
   const { first, last } = monthBounds(ym);
-  const running = new Set(run.months.filter((m) => m.startDate <= last && m.endDate >= first).map((m) => m.id));
+  const running = new Set(run.months.filter((m) => m.startDate <= last && m.lastDay >= first).map((m) => m.id));
   // A month whose post is dated outside it (an upload date typed a month early) is named on that page too.
   const owning = new Set(run.entries.filter((e) => e.day && monthOf(e.day) === ym).map((e) => e.monthId));
   const months = run.months.filter((m) => running.has(m.id) || owning.has(m.id));
@@ -341,20 +354,21 @@ export function calendarPage(run: ClientRun, ym: string): CalendarPage {
     list.push(marker);
     markers.set(day, list);
   };
-  for (const m of months) mark(m.endDate, { kind: "end", month: m });
+  for (const m of months) mark(m.lastDay, { kind: "end", month: m });
   for (const m of months) mark(m.startDate, { kind: "start", month: m });
 
   return { ym, title: monthTitle(ym), days: weekGrid(first, last), byDay, counts, months, undated, markers };
 }
 
 /**
- * The client's month a piece belongs to, when its day falls outside that month — else null. Said on the
- * piece ("Its date is outside Month 1 · 6 Sep – 6 Oct") so a date typed a month early is easy to spot.
+ * The client's month a piece belongs to, when its day falls outside that month's own days — else null.
+ * Said on the piece ("Its date is outside Month 1 (6 Sep – 5 Oct 2026)") so a date typed a month early is
+ * easy to spot. A post dated on the renewal day (the end date) is outside: it is the next month's day.
  */
 export function outsideItsMonth(run: Pick<ClientRun, "months">, entry: CalendarEntry): CalendarClientMonth | null {
   if (!entry.day) return null;
   const own = run.months.find((m) => m.id === entry.monthId);
-  return own && (entry.day < own.startDate || entry.day > own.endDate) ? own : null;
+  return own && (entry.day < own.startDate || entry.day > own.lastDay) ? own : null;
 }
 
 /** Keep a calendar month inside the stretch the arrows can reach. */
@@ -370,7 +384,7 @@ const clampMonth = (ym: string, run: Pick<ClientRun, "first" | "last">): string 
 export function openingMonth(run: ClientRun, today: string, focusId?: string | null): string {
   const focus = focusId ? run.months.find((m) => m.id === focusId) : undefined;
   const target = focus || clientMonthOn(run.months, today) || run.months[run.months.length - 1];
-  const runsToday = target.startDate <= today && today <= target.endDate;
+  const runsToday = target.startDate <= today && today <= target.lastDay;
   if (runsToday) return clampMonth(monthOf(today), run);
   /*
     A month not running today opens on the page holding most of ITS posts (dated inside it), the middle
@@ -378,10 +392,10 @@ export function openingMonth(run: ClientRun, today: string, focusId?: string | n
     their own days: "24 Aug – 24 Sep" opened on September while the work filled in sat on 28 Aug, a page
     away. A post dated outside its month does not pull the page — it is flagged where it sits.
   */
-  const middle = monthOf(addDays(target.startDate, Math.floor(daysBetween(target.startDate, target.endDate) / 2)));
+  const middle = monthOf(addDays(target.startDate, Math.floor(daysBetween(target.startDate, target.lastDay) / 2)));
   const perPage = new Map<string, number>();
   for (const e of run.entries) {
-    if (e.monthId !== target.id || !e.day || e.day < target.startDate || e.day > target.endDate) continue;
+    if (e.monthId !== target.id || !e.day || e.day < target.startDate || e.day > target.lastDay) continue;
     perPage.set(monthOf(e.day), (perPage.get(monthOf(e.day)) || 0) + 1);
   }
   let best = middle;

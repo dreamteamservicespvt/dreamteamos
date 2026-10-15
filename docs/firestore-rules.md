@@ -313,13 +313,24 @@ service cloud.firestore {
       allow read:   if canUseInvoices();
       allow create: if canUseInvoices() && request.resource.data.byUid == request.auth.uid
                     && existsAfter(/databases/$(database)/documents/invoices/$(request.resource.data.invoiceId));
-      // The one change ever allowed: recording that its invoice was deleted, in the delete's own commit.
+      // Two changes are allowed: recording that its invoice was deleted, in the delete's own commit; and
+      // (2026-10-15) its invoice's new `issueDate`, written in the SAME transaction as the invoice by
+      // `services/invoices.saveIssuedContent` after the date passed the series check (its number's
+      // financial year, not before the earlier number's date nor after the later one's). Neighbouring
+      // numbers read this `issueDate`, so without the second branch a date change of an issued invoice
+      // would be refused ("permission") once published.
       allow update: if canUseInvoices()
-                    && request.resource.data.diff(resource.data).affectedKeys()
-                         .hasOnly(['deleted', 'deletedAt', 'deletedByUid', 'deletedByName', 'customerName', 'grandTotal'])
-                    && request.resource.data.deleted == true
-                    && request.resource.data.deletedByUid == request.auth.uid
-                    && !existsAfter(/databases/$(database)/documents/invoices/$(resource.data.invoiceId));
+                    && ((request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['deleted', 'deletedAt', 'deletedByUid', 'deletedByName', 'customerName', 'grandTotal'])
+                         && request.resource.data.deleted == true
+                         && request.resource.data.deletedByUid == request.auth.uid
+                         && !existsAfter(/databases/$(database)/documents/invoices/$(resource.data.invoiceId)))
+                        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueDate'])
+                         && request.resource.data.issueDate is string
+                         && (get(/databases/$(database)/documents/invoices/$(resource.data.invoiceId)).data.ownerId == request.auth.uid
+                             || invoiceAdmin())
+                         && getAfter(/databases/$(database)/documents/invoices/$(resource.data.invoiceId)).data.issueDate
+                              == request.resource.data.issueDate));
       allow delete: if false;
     }
     // The switch belongs to the Tech Admin and the Main Admin; the defaults (bank account, terms) to the
@@ -344,6 +355,36 @@ service cloud.firestore {
       allow read, write: if isStaff() && request.auth.uid == uid;
     }
 
+    // ── SMM Delivery Control: a person's answers on alerts that are not their own pieces (2026-10-15) ──
+    // `smm_alert_state/{uid}` = `{ answers: { <subject>: { kind on_it/escalate/remind/called/whatsapp, at ms,
+    // byName, note } }, updatedAt }` (services/smmDelivery.answerAlert). The Social Media Team Lead is view-only
+    // on months she is not on, so her "I'm on it" / "Escalate" / "Remind" cannot be written onto the month — they
+    // go here, and so do an admin's, a salesperson's and a marketer's. Only the person WRITES their own document;
+    // the supervisor on an overseer's screen READS every one (a lead's Escalate brings the admins in at once), and
+    // so does the server checker (Admin SDK). The `notifications` the server checker writes (`smm_urgent` /
+    // `smm_notice`, doc id = the alert's once key) are Admin SDK writes too, so the catch-all is untouched.
+    match /smm_alert_state/{uid} {
+      allow read:  if isStaff() && (request.auth.uid == uid
+                     || role() in ['main_admin', 'tech_admin', 'sales_admin', 'tech_team_leader']
+                     || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.smmLeader == true);
+      allow write: if isStaff() && request.auth.uid == uid;
+    }
+
+    // ── The app's company-wide settings documents (`app_settings/{docId}`, 2026-10-15) ───────────
+    // Every document here was under the catch-all (staff read and write): the Social Media Team Lead's
+    // "Edit team" (`smm_team`), the once-a-day notification clean-up claim (`notification_cleanup`, any
+    // app), the overseers' one-time hold record (`smm_history_hold`), the clients back-fill, the ad
+    // languages and the Flow account numbers — each written from whoever's browser does the job, so they
+    // stay open to staff exactly as before. The one exception is SMM Delivery Control's switch and
+    // numbers (`smm_delivery`, services/smmDeliverySettings): only the tech admin and the main admin
+    // change it — turning it off stops every weekly plan and alert (the owner's decision 14). The server
+    // checker writes its heartbeat (`lastRunAt`) with the Admin SDK, which rules do not apply to.
+    // `app_settings` is kept out of the catch-all below so this rule is the whole story.
+    match /app_settings/{docId} {
+      allow read:  if isStaff();
+      allow write: if isStaff() && (docId != 'smm_delivery' || role() in ['main_admin', 'tech_admin']);
+    }
+
     // ── Everything else the app runs on ────────────────────────────────────────────────────────
     // Staff-only, which is what it always should have been. Nothing outside this file needs it.
     //
@@ -357,7 +398,7 @@ service cloud.firestore {
       allow read, write: if isStaff() && !(collection in [
         'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets', 'gemini_api_keys',
         'invoices', 'invoice_counters', 'invoice_numbers', 'invoice_settings',
-        'smm_campaigns', 'notification_state'
+        'smm_campaigns', 'notification_state', 'app_settings', 'smm_alert_state'
       ]);
     }
   }
@@ -399,12 +440,19 @@ service cloud.firestore {
    back numbered `DTS/26-27/000N` (if it says "permission", `invoice_counters` / `invoice_numbers`
    did not publish). A second salesperson must not see it in **Invoices**; the Accounts Admin must.
    With the switch off (Tech Admin → Settings → Invoice Builder), a team leader opening `/invoices`
-   sees "isn't turned on for you", and a tech member is sent away by the route guard.
+   sees "isn't turned on for you", and a tech member is sent away by the route guard. Then Edit that
+   generated invoice, change its date to another day of the same financial year and Save changes — it
+   must save (2026-10-15; "permission" means the `invoice_numbers` `issueDate` branch did not publish).
 8. Social Media (2026-10-12): sign in as the Social Media Team Lead. On `/smm` every month is listed; a
    month somebody else works says **View only** at the top and offers no edit, delete or send buttons. On
    a month she is on, change a post's stage — it must save. A salesperson must still record an SMM sale
    (its month appears), and the tech admin must still set a month up and delete one — if any of these
    says "permission", the `smm_campaigns` rule did not publish as written.
+9. SMM Delivery Control (2026-10-15): as the tech admin open Social Media → ✨ Delivery Control → Settings and
+   switch Preview → Live → Preview (it must save; "permission" = the `app_settings` rule). In Live, sign in as the
+   Social Media Team Lead, open an alert's sheet or the full screen and press **I'm on it** — it must save
+   (`smm_alert_state`); then as the tech admin open Delivery Control — the page must load without a "permission"
+   error (it reads everybody's `smm_alert_state`).
 
 ## Status
 

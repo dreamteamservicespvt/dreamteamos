@@ -1,12 +1,11 @@
 import { AdType } from '@/types/aiPlatform';
-import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from '@/utils/dialogueFormat';
+import { MAX_WORDS_PER_CLIP } from '@/utils/scriptContract';
+import { TELUGU_SCREEN_CTA, WORD_BAND_TEXT, wordContractBlock } from './prompts/wordContract';
 import { coreMessageBlock, type CoreMessageBrief } from './prompts/coreMessage';
 import { everydaySpeechRules } from './prompts/everydaySpeech';
 import { wishAudienceRule, wishOpeningLine } from './prompts/festivalWish';
 import { VEO_DIRECTION_SYSTEM_PROMPT, cameraLabel, compositionFor, framingForMotion, type ClipMotionPlan } from './prompts/motion';
 
-/** The spoken-word band every clip is held to, as prompts say it. See utils/dialogueFormat. */
-const WORD_BAND = `${MIN_WORDS_PER_CLIP} to ${MAX_WORDS_PER_CLIP}`;
 
 const escapeKeywordForRegex = (keyword: string): string => (
   keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
@@ -2249,6 +2248,8 @@ export const VOICEOVER_SYSTEM_PROMPT = (
    * carries it — clip 1, or clip 2 after a festival greeting — must land it; see coreMessageBlock.
    */
   brief: CoreMessageBrief | null = null,
+  /** The address the final clip says, in its spoken form — counted inside that clip's word budget. */
+  options: { address?: string } = {},
 ) => {
   /** Where the core message is spoken. A festival ad spends clip 1 on the greeting. */
   const messageClip = adType === 'festival' && segmentCount > 1 ? 2 : 1;
@@ -2340,11 +2341,11 @@ ${everydaySpeechRules(lang)}
 
 1. Total duration = ${duration} seconds.
 2. Total clips = ${segmentCount}, each representing 8 seconds.
-3. Every clip must sound natural when read aloud in 7 to 8 seconds.
-4. Every clip must contain BETWEEN ${WORD_BAND} spoken words. Fewer than ${MIN_WORDS_PER_CLIP} leaves dead air; more than ${MAX_WORDS_PER_CLIP} cannot be spoken in 8 seconds. This is mandatory.
-5. Punctuation marks do not count as words.
-6. Every clip must be concise, complete and meaningful. End the sentence where it naturally ends inside the band — never pad a line to reach a number and never cut a thought in half to stay under one.
-7. Keep it SHORT. Each clip is ONE short spoken sentence — never two sentences squeezed into one clip, never a long run-on line. If a clip needs more than ${MAX_WORDS_PER_CLIP} words, it is carrying two ideas: keep the stronger one.
+3. Every clip must sound natural when read aloud in 7 to 8 seconds, at a calm, confident pace — never rushed.
+4. Every clip must be concise, complete and meaningful. End the sentence where it naturally ends inside the word budget below.
+5. Keep it SHORT. Each clip is ONE short spoken sentence — never two sentences squeezed into one clip, never a long run-on line. If a clip needs more than ${MAX_WORDS_PER_CLIP} words, it is carrying two ideas: keep the stronger one.
+
+${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '', address: options.address })}
 
 ===== QUALITY BAR =====
 
@@ -2453,7 +2454,7 @@ Verify all of the following before writing the final answer:
 • No CTA before the final clip
 • No contact reference before the final clip
 • ${isLatin ? 'No digits inside spoken content (spell numbers as words)' : `No Latin letters or digits inside spoken content — only native ${lang} script`}
-• Every clip has between ${WORD_BAND} spoken words
+• Every clip has ${WORD_BAND_TEXT} — counted, not guessed, the closing line and the address included
 • No phone number or contact number is spoken anywhere in the script
 • The final clip ends with the exact on-screen call CTA line
 • No duplicate clips
@@ -2469,7 +2470,7 @@ Output ONLY the ${segmentCount} clip lines.`;
  *
  * Deliberately layered ON TOP of VOICEOVER_SYSTEM_PROMPT rather than duplicating it: the Script
  * Duration Checker tool must produce scripts that obey the exact same formula, tone, clip
- * structure, and 18-words-per-clip contract as the AI Ads Platform. Only the SOURCE of the
+ * structure, and 17–20-words-per-clip contract (utils/scriptContract) as the AI Ads Platform. Only the SOURCE of the
  * content differs — here the copy must be derived from the text the user pasted instead of from
  * extracted business assets.
  */
@@ -2494,7 +2495,7 @@ You are NOT inventing an ad from a brief. The user has pasted RAW TEXT (rough no
 3. LANGUAGE: write the spoken lines in ${lang}, following every language rule above, regardless of what language the pasted text is in. Translate the MEANING; never produce a literal, translated-sounding line.
 4. COVERAGE: every important selling point from the pasted text must survive somewhere across the ${segmentCount} clips. Drop only true filler, greetings, emojis, hashtags, and repetition.
 5. COMPRESSION / EXPANSION: if the pasted text is longer than ${segmentCount} clips can hold, keep the strongest selling points and cut the weakest. If it is shorter, expand it with benefit-led phrasing built strictly from the facts that ARE present — never with invented claims.
-6. The word-count contract is absolute: EXACTLY ${segmentCount} clips, between ${WORD_BAND} spoken words in each one.
+6. The word-count contract is absolute: EXACTLY ${segmentCount} clips, ${WORD_BAND_TEXT} in each one.
 
 Output ONLY the ${segmentCount} clip lines in the required timestamp format.`;
 };
@@ -2561,13 +2562,15 @@ ${clipLines}
 7. NEVER speak or include any phone number or contact number anywhere — no English digit names, no native counting words, no number at all. The number is shown on screen, not spoken.
 8. ${finalCtaLine}
 9. ${transliterationRule}
-10. Every clip must contain between ${WORD_BAND} spoken words. Fix a count by tightening or completing the thought, never by padding or cutting a sentence in half.
+10. Every clip must contain ${WORD_BAND_TEXT} — see THE WORD BUDGET below. Fix a count by tightening or completing the thought, never by padding or cutting a sentence in half, and leave every clip that already fits exactly as it is.
 11. Remove duplicated clips and repeated closings.
 12. For festival ads, clip 1 must stay only as festival wishes, and all later clips must switch to pure business promotion.${adType === 'festival' ? ' ' + wishAudienceRule(festivalName, lang) : ''}
 13. Every clip must be a complete, natural spoken sentence in everyday ${lang} — never old, literary, textbook, or literally-translated-sounding ${lang}.
 14. Every clip must sound speakable in roughly 7 to 8 seconds.
 15. Clip ${messageClip} must still carry the core message after the repair: the business name, what it does, and its core promise. Never repair a word count by removing any of those three.
 ${brief ? `\n${coreMessageBlock(brief, messageClip)}\n` : ''}
+${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '' })}
+
 ${everydaySpeechRules(lang)}
 
 
@@ -2609,7 +2612,7 @@ Return only the repaired ${segmentCount} clip lines.`;
  * They do NOT verify LINGUISTIC quality — whether the script actually reads like natural,
  * modern, native-speaker commercial copy rather than a literal translation or textbook/literary
  * rendering. A script can pass every mechanical check and still sound stiff, archaic, or
- * translated, because "18 correctly-scripted words" says nothing about whether a native speaker
+ * translated, because "19 correctly-scripted words" says nothing about whether a native speaker
  * would ever actually say them.
  *
  * This prompt is a second, independent model call acting as a native-speaker creative-director
@@ -2664,6 +2667,8 @@ For each clip, silently read it exactly as a voice artist would say it aloud, an
 
 Then run the FIRST-LISTEN TEST on every single word. Replace every word from the NEVER list and every other word an ordinary listener in the town would pause on with the word they actually say — keeping the clip inside its word count.
 
+${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '' })}
+
 Then run the HERE TEST: the presenter is standing INSIDE the business in every clip. Any line that sends the viewer somewhere else — "go to …", "go there", "go to them", "they have …", "their shop" — is rewritten to speak from here: "here at …", "come to us", "we", "our".
 
 Then run the CLIP ${messageClip} TEST: imagine a stranger hears ONLY clip ${messageClip}, once. Write down, in English, who the business is, what it does, and why to choose it — using only what that clip actually says. If any of the three is missing or vague, clip ${messageClip} fails and must be rewritten until all three are unmistakable.
@@ -2671,7 +2676,7 @@ Then run the CLIP ${messageClip} TEST: imagine a stranger hears ONLY clip ${mess
 ===== MECHANICAL CONTRACT THE REWRITE MUST STILL OBEY (never break these while improving the language) =====
 
 • Exactly the same number of clip lines as the candidate, in the exact same "START-END: text" format.
-• Every clip must contain between ${WORD_BAND} spoken words (punctuation not counted).
+• Every clip must contain ${WORD_BAND_TEXT} (punctuation not counted) — a rewrite that improves the language but breaks the count is rejected by code.
 • Spoken content in pure, correct ${scriptWord} only — ${isLatin ? 'no digits' : 'no Latin letters or digits'} inside spoken content.
 • No phone/contact number is ever spoken. CTA and contact references appear ONLY in the final clip.
 • The final clip must end with ${finalCtaLine}

@@ -6,7 +6,9 @@ import {
 } from "@/services/aiAccounts";
 import { FLOW_CLIP_SECONDS, type FlowAccount, type FlowClipRow, type FlowClipSeconds, type FlowSettings, type FlowUsageEntry } from "@/types/aiAccounts";
 import type { WorkAssignment } from "@/types";
-import { accountState, creditsFor, defaultRowsFor, pickDefaultAccount, todayStr } from "@/utils/flowCredits";
+import {
+  accountState, creditsFor, cycleFiguresOn, defaultRowsFor, isDate, pickDefaultAccount, shortDay, todayStr, usageDateProblem,
+} from "@/utils/flowCredits";
 import { jobClipCount } from "@/utils/assignmentFormSpec";
 import { useToast } from "@/hooks/use-toast";
 
@@ -23,6 +25,13 @@ type Block = { accountId: string; rows: FlowClipRow[] };
  *
  * A job handed in a second time (back from edits, or after "Undo completion") says what was already
  * recorded for it and starts at 0 clips — offering the whole ad again is how it would be charged twice.
+ *
+ * ── "Day the clips were made" (2026-10-15) ──
+ * The entry's date, month and the account's cycle used to be the day Save was pressed: clips made on
+ * the evening of the 11th and handed in on the 12th went into the cycle that starts on the 12th. The
+ * day is asked now (today by default; never a day to come, never before the account was opened), and
+ * every figure here — "N left", "used in the cycle …", "left after this" — is for the cycle THAT day
+ * falls in. Editing an old entry therefore shows that entry's cycle, not today's.
  */
 export default function CreditUsageDialog({
   open, onClose, actor, settings, accounts, activeId, mode, assignment, entry, onDone,
@@ -45,6 +54,10 @@ export default function CreditUsageDialog({
   const [noUsage, setNoUsage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  /** The day the clips were made — the entry's date and the cycle it is counted in. */
+  const [madeOn, setMadeOn] = useState(today);
+  /** The day every figure is worked out for: the chosen day, or today while the field is half-typed. */
+  const figureDay = isDate(madeOn) && madeOn <= today ? madeOn : today;
   /** What this person already recorded for this job (completion mode only). */
   const [prior, setPrior] = useState<FlowUsageEntry[]>([]);
   /** Set once the member changes anything — a late answer about earlier entries must not undo their typing. */
@@ -56,6 +69,7 @@ export default function CreditUsageDialog({
     setNoUsage(false);
     setPrior([]);
     touched.current = false;
+    setMadeOn(mode === "edit" && entry ? entry.date : today);
     if (mode === "edit" && entry) {
       setBlocks([{ accountId: entry.accountId, rows: entry.rows.map((r) => ({ ...r })) }]);
       return;
@@ -97,13 +111,16 @@ export default function CreditUsageDialog({
     edit((bs) => bs.map((b, k) => (k === i ? { ...b, rows: b.rows.map((row, j) => (j === r ? { ...row, ...patch } : row)) } : b)));
   const priorCredits = prior.reduce((sum, e) => sum + e.credits, 0);
 
-  /** Credits left on an account if this entry is saved — an edited entry's old amount is given back first. */
+  /**
+   * Credits left in the cycle of the chosen day if this entry is saved — an edited entry's old amount is
+   * given back first when it sits in that same cycle.
+   */
   const leftAfter = (block: Block) => {
     const account = byId.get(block.accountId);
     if (!account) return null;
-    const state = accountState(account, today);
-    const giveBack = mode === "edit" && entry && entry.accountId === account.id ? entry.credits : 0;
-    return state.remaining + giveBack - creditsFor(block.rows, settings);
+    const figures = cycleFiguresOn(account, figureDay);
+    const giveBack = mode === "edit" && entry && entry.accountId === account.id && entry.cycleStart === figures.cycleStart ? entry.credits : 0;
+    return figures.remaining + giveBack - creditsFor(block.rows, settings);
   };
 
   const total = blocks.reduce((sum, b) => sum + creditsFor(b.rows, settings), 0);
@@ -116,18 +133,21 @@ export default function CreditUsageDialog({
       if (blocks.some((b) => !b.accountId || !byId.has(b.accountId))) return setError("Choose the Flow account the credits were used from.");
       if (new Set(blocks.map((b) => b.accountId)).size !== blocks.length) return setError("Each account only once — put its clips together.");
       if (total <= 0) return setError("Enter how many clips were generated.");
+      const dayIssue = usageDateProblem(madeOn, today)
+        || blocks.map((b) => usageDateProblem(madeOn, today, byId.get(b.accountId))).find(Boolean);
+      if (dayIssue) return setError(dayIssue);
     }
     setSaving(true);
     try {
       let credits = 0;
       if (mode === "edit" && entry) {
         const account = byId.get(blocks[0].accountId)!;
-        await editFlowUsage(entry, { account, rows: blocks[0].rows }, actor, settings);
+        await editFlowUsage(entry, { account, rows: blocks[0].rows, date: madeOn }, actor, settings, today);
         credits = creditsFor(blocks[0].rows, settings);
       } else if (!noUsage) {
         credits = await recordFlowUsage(
           blocks.map((b) => ({ account: byId.get(b.accountId)!, rows: b.rows })),
-          actor, settings, { assignment: assignment || null, source: mode === "completion" ? "completion" : "manual" }, today,
+          actor, settings, { assignment: assignment || null, source: mode === "completion" ? "completion" : "manual", madeOn }, today,
         );
         // The account the member just worked on is the one they are using now.
         const last = blocks[blocks.length - 1].accountId;
@@ -180,9 +200,19 @@ export default function CreditUsageDialog({
       ) : null}
 
       <fieldset disabled={noUsage} className={noUsage ? "opacity-40" : ""}>
+        <label className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1" data-test="credit-day">
+          <span className="text-xs font-medium text-foreground">Day the clips were made</span>
+          <input className={`${fieldClass} w-44`} type="date" max={today} value={madeOn}
+            onChange={(e) => { touched.current = true; setMadeOn(e.target.value); }} data-test="credit-made-on" />
+          <span className="text-[11px] text-muted-foreground basis-full sm:basis-auto">
+            {madeOn === today ? "Today" : "Not today"} — the credits count in each account's cycle for that day.
+          </span>
+        </label>
         {blocks.map((block, i) => {
           const account = byId.get(block.accountId);
-          const state = account ? accountState(account, today) : null;
+          const figures = account ? cycleFiguresOn(account, figureDay) : null;
+          const isCurrentCycle = !!account && !!figures && accountState(account, today).cycleStart === figures.cycleStart;
+          const dayIssue = account && isDate(madeOn) ? usageDateProblem(madeOn, today, account) : "";
           const left = leftAfter(block);
           const blockCredits = creditsFor(block.rows, settings);
           return (
@@ -191,10 +221,13 @@ export default function CreditUsageDialog({
                 <select className={fieldClass} value={block.accountId} onChange={(e) => setBlock(i, { accountId: e.target.value })} data-test="credit-account">
                   <option value="">Choose a Flow account…</option>
                   {options.map((a) => {
-                    const s = accountState(a, today);
+                    // Expired and "left" as of the day the clips were made — an account that has
+                    // expired since still took the clips made while it worked.
+                    const s = accountState(a, figureDay);
+                    const f = cycleFiguresOn(a, figureDay);
                     return (
                       <option key={a.id} value={a.id} disabled={s.expired && a.id !== entry?.accountId}>
-                        {a.email} — {s.expired ? "expired" : `${s.remaining} left`}{a.id === activeId ? " · using now" : ""}
+                        {a.email} — {s.expired ? "expired" : `${f.remaining} left`}{a.id === activeId ? " · using now" : ""}
                       </option>
                     );
                   })}
@@ -232,10 +265,15 @@ export default function CreditUsageDialog({
                 </button>
               </div>
 
-              {state ? (
+              {dayIssue ? (
+                <p className="mt-2 text-[11px] text-destructive" data-test="credit-day-issue">{dayIssue}</p>
+              ) : null}
+              {figures ? (
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                   <span>This account: <b className="text-foreground">{blockCredits}</b> credits</span>
-                  <span>{state.used} / {state.monthly} used this cycle</span>
+                  <span data-test="credit-cycle">
+                    {figures.used} / {figures.monthly} used in {isCurrentCycle ? "this cycle" : "the cycle"} ({shortDay(figures.cycleStart)} – {shortDay(figures.cycleEnd)})
+                  </span>
                   {left !== null && left < 0 ? (
                     <span className="text-destructive inline-flex items-center gap-1" data-test="credit-over">
                       <AlertTriangle className="h-3 w-3" /> {-left} more than it has left — put the rest on another account

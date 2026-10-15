@@ -1,3 +1,5 @@
+import { format } from "date-fns";
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -10,6 +12,18 @@ export function formatCurrency(amount: number): string {
 export function formatDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/**
+ * A moment as LOCAL `yyyy-MM-dd HH:mm` — for CSV exports a spreadsheet reads as a date and time.
+ *
+ * ── Why not `toISOString()` ──
+ * `toISOString()` writes UTC ("2026-10-05T19:30:00.000Z"), so a login at 01:00 IST on 6 October came
+ * out as the 5th at 19:30 in the session-history exports. People here read times in India time; this
+ * is the browser's local time, which for the team is IST.
+ */
+export function formatLocalDateTime(date: Date): string {
+  return format(date, "yyyy-MM-dd HH:mm");
 }
 
 export function formatTime(date: Date): string {

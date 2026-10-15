@@ -45,6 +45,36 @@ export function financialYearShort(startYear: number): string {
   return `${String(startYear % 100).padStart(2, "0")}-${String((startYear + 1) % 100).padStart(2, "0")}`;
 }
 
+/** `2026-27` → 2026, or null when the text is not a financial-year label. */
+export function financialYearStartOfLabel(label: string | null | undefined): number | null {
+  const m = /^(\d{4})-(\d{2})$/.exec((label || "").trim());
+  if (!m) return null;
+  const start = Number(m[1]);
+  return (start + 1) % 100 === Number(m[2]) ? start : null;
+}
+
+/**
+ * The financial year a printed number belongs to: `DTS/26-27/0042` → 2026 (this century), or null
+ * when the text is not one of this series' numbers.
+ */
+export function financialYearStartOfNumber(number: string | null | undefined): number | null {
+  const m = /^[A-Z]+\/(\d{2})-(\d{2})\/\d+$/i.exec((number || "").trim());
+  if (!m) return null;
+  const start = Number(m[1]);
+  return (start + 1) % 100 === Number(m[2]) ? 2000 + start : null;
+}
+
+/** The serial inside a printed number: `DTS/26-27/0042` → 42, or null. */
+export function sequenceOfNumber(number: string | null | undefined): number | null {
+  const m = /\/(\d+)$/.exec((number || "").trim());
+  return m ? Number(m[1]) : null;
+}
+
+/** First and last day of a financial year, as `yyyy-MM-dd`: 2026 → 2026-04-01 … 2027-03-31. */
+export function financialYearSpan(startYear: number): { from: string; to: string } {
+  return { from: `${startYear}-04-01`, to: `${startYear + 1}-03-31` };
+}
+
 /** The printed number. `seq` is 1-based and padded to four digits so a year sorts as text. */
 export function formatInvoiceNumber(startYear: number, seq: number): string {
   return `${INVOICE_NUMBER_PREFIX}/${financialYearShort(startYear)}/${String(Math.max(1, Math.floor(seq))).padStart(4, "0")}`;

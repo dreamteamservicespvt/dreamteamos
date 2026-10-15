@@ -1,5 +1,6 @@
 import { addMonths, isValid, startOfDay } from 'date-fns';
 import type { WorkAssignment } from '@/types';
+import { localDayOfInstant } from '@/utils/workDates';
 
 /**
  * The tech team's performance month is a fixed 10th → 9th cycle (e.g. 10 Jul → 9 Aug), not a
@@ -48,6 +49,8 @@ const stampToDate = (ts: any): Date | null => {
 export function workDayOf(a: WorkAssignment): Date | null {
   const assigned = dayToDate(a.date)
     ?? stampToDate(a.assignedAt)
-    ?? (a.assignedAtIso ? dayToDate(a.assignedAtIso.slice(0, 10)) : null);
+    // The LOCAL day of the UTC instant, as `workDates.workCountsOn` reads it — `slice(0, 10)` was the
+    // UTC day, the day before in India for work assigned between 00:00 and 05:30 IST.
+    ?? dayToDate(localDayOfInstant(a.assignedAtIso));
   return assigned ? startOfDay(assigned) : null;
 }

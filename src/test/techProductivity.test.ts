@@ -81,12 +81,24 @@ describe("what a member produced", () => {
     expect(p.workValue).toBe(0);
   });
 
-  it("ignores work delivered outside the pay period", () => {
+  /**
+   * One work-day rule (2026-10-15): a job counts on the day it was ASSIGNED (utils/workDates.workCountsOn),
+   * as on Work Reports and the dashboards — not the day it was handed in.
+   */
+  it("ignores work assigned outside the pay period, whenever it was handed in", () => {
     const p = memberProductivity({
       uid: "tech1", pay: 10000, filter: period,
-      assignments: [job({ id: "a1", completedDate: "2026-06-20" })],
+      assignments: [job({ id: "a1", date: "2026-07-08", completedDate: "2026-07-12" })],
     });
     expect(p.videos).toBe(0);
+  });
+
+  it("counts work assigned inside the pay period even when it was handed in after it ended", () => {
+    const p = memberProductivity({
+      uid: "tech1", pay: 10000, filter: period,
+      assignments: [job({ id: "a1", date: "2026-08-09", completedDate: "2026-08-11" })],
+    });
+    expect(p.videos).toBe(1);
   });
 });
 

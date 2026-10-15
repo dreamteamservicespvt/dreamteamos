@@ -20,6 +20,7 @@ import { sendNotification } from "@/services/notifications";
 import { alertClient, sendOrderChatMessage } from "@/services/orderChat";
 import DeclineWithReason from "@/components/order-chat/DeclineWithReason";
 import { useNotificationTap } from "@/hooks/useNotificationTap";
+import { usePopupClaim } from "@/hooks/usePopupClaim";
 import { getChatContactRoles, getMeetingRoute } from "@/utils/chatHelpers";
 import type { VideoCallDoc, AppUser } from "@/types";
 import { motion, AnimatePresence } from "framer-motion";
@@ -62,6 +63,8 @@ export default function VideoCallManager() {
   useNotificationTap();
 
   const [phase, setPhase] = useState<CallPhase>("idle");
+  // Ringing, calling or in a call: nothing the app opens by itself may cover it (store/popupStore).
+  usePopupClaim("call", phase !== "idle");
   const [callType, setCallType] = useState<CallType>("video");
   const [peerName, setPeerName] = useState("");
   const [peerAvatar, setPeerAvatar] = useState<string | undefined>();

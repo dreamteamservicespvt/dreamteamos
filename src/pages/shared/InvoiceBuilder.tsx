@@ -38,7 +38,7 @@ import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import { holdUpdates } from "@/services/appUpdate";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import {
-  fetchMyRecentInvoices, generateInvoice, newInvoiceId, saveInvoiceContent, setInvoiceStatus,
+  fetchIssuedDateRule, fetchMyRecentInvoices, generateInvoice, newInvoiceId, saveInvoiceContent, setInvoiceStatus,
   deleteInvoice, watchInvoice, type InvoiceActor,
 } from "@/services/invoices";
 import type { Order } from "@/types";
@@ -46,9 +46,10 @@ import type { InvoiceContent, InvoiceCustomer, InvoiceStatus } from "@/types/inv
 import { computeInvoice, formatPaise } from "@/utils/invoiceMath";
 import {
   blankItem, blockingIssues, buildNewInvoiceContent, deleteConfirmCopy, contentFingerprint, contentOf, displayStatusOf, DISPLAY_STATUS_LABEL,
-  duplicateContent, fillFromOrder, invoiceFileName, recentCustomers, validateInvoice,
+  duplicateContent, fillFromOrder, generateConfirmCopy, invoiceFileName, isoDate, issuedDateLimits, recentCustomers, validateInvoice,
+  withIssueDate, type IssuedDateRule,
 } from "@/utils/invoiceDraft";
-import { financialYearLabel, financialYearShort, financialYearStart, INVOICE_NUMBER_PREFIX } from "@/utils/invoiceNumber";
+import { financialYearStartOfNumber } from "@/utils/invoiceNumber";
 import { canDeleteInvoice, canEditInvoice, canEditInvoiceDefaults } from "@/utils/invoiceAccess";
 import { optimizeLogoFile } from "@/utils/signatureImage";
 import { downloadInvoicePdf, printInvoicePages } from "@/utils/invoicePdf";
@@ -181,6 +182,12 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<InvoiceCustomer[]>([]);
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine !== false);
+  /** An issued invoice's series rule — its year and the dates of the numbers either side — read on Edit. */
+  const [seriesRule, setSeriesRule] = useState<IssuedDateRule | null>(null);
+  /** The Generate confirmation (2026-10-15): the date it will carry, its series, and "Use today's date". */
+  const [generateAsk, setGenerateAsk] = useState<(ReturnType<typeof generateConfirmCopy> & { today: string }) | null>(null);
+  /** Why the last save failed — a refused date is shown in words, not as "try again". */
+  const lastSaveErrorRef = useRef<unknown>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
@@ -297,7 +304,32 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
 
   // ── Derived ─────────────────────────────────────────────────────────────────────────────────
   const totals = useMemo(() => (content ? computeInvoice(content) : null), [content]);
-  const issues = useMemo(() => (content && totals ? validateInvoice(content, totals) : []), [content, totals]);
+
+  // ── An issued invoice's date (2026-10-15) ──
+  // Once numbered, the date stays inside the number's financial year and between the dates of the
+  // numbers either side (`issuedDateProblem`). The year is known from the number at once; the
+  // neighbours are read when Edit is pressed. Checked only when the date is being CHANGED — exactly
+  // as the service does — so an older invoice already out of order can still have a typo fixed.
+  // `saveInvoiceContent` re-checks it all in a transaction; this is the reason shown while typing.
+  useEffect(() => {
+    if (!editingIssued || !meta.number) return;
+    let alive = true;
+    fetchIssuedDateRule(invoiceId)
+      .then((rule) => { if (alive) setSeriesRule(rule); })
+      .catch(() => { /* the year is still checked here; the save checks the neighbours itself */ });
+    return () => { alive = false; };
+  }, [editingIssued, meta.number, invoiceId]);
+  const dateRule = useMemo<IssuedDateRule | null>(() => {
+    if (!meta.number) return null;
+    if (seriesRule && seriesRule.number === meta.number) return seriesRule;
+    const fyStart = financialYearStartOfNumber(meta.number);
+    return fyStart === null ? null : { number: meta.number, fyStart };
+  }, [meta.number, seriesRule]);
+  const dateChanging = !!content && isIssued && editingIssued && content.issueDate !== baseContentRef.current?.issueDate;
+  const issues = useMemo(
+    () => (content && totals ? validateInvoice(content, totals, dateChanging ? dateRule : null) : []),
+    [content, totals, dateChanging, dateRule],
+  );
   const issueFor = useCallback((field: string): FieldIssue | null => {
     const found = issues.find((i) => i.field === field);
     if (!found) return null;
@@ -309,6 +341,8 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
       if (field === "seller.gstin") return !!c.seller.gstin.trim();
       if (field === "customer.gstin") return !!c.customer.gstin.trim();
       if (field === "dueDate") return !!c.dueDate;
+      // A date the series cannot hold is wrong as soon as it is picked; an empty one waits.
+      if (field === "issueDate") return !!c.issueDate;
       return false;
     })();
     return attempted || hasValue ? found : null;
@@ -320,7 +354,11 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
   const model = paper.model;
 
   // ── Saving ──────────────────────────────────────────────────────────────────────────────────
-  const save = useCallback(async (opts: { issued?: boolean } = {}): Promise<boolean> => {
+  /**
+   * `wait`: wait for the server's answer even when the device says it is offline — an issued invoice's
+   * date change is checked against the series in a transaction and can be REFUSED (2026-10-15).
+   */
+  const save = useCallback(async (opts: { issued?: boolean; wait?: boolean } = {}): Promise<boolean> => {
     const c = contentRef.current;
     // Never while a number is being taken (the transaction writes the content itself), and never
     // after a delete — the leave-the-page save would otherwise bring a deleted draft back.
@@ -336,7 +374,9 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
     const offline = navigator.onLine === false;
     setSaveState(offline ? "offline" : "saving");
 
+    lastSaveErrorRef.current = null;
     const failed = (err: unknown) => {
+      lastSaveErrorRef.current = err;
       if (seq === saveSeq.current) savingRef.current = false;
       if (isNew) persistedRef.current = false;
       if (baseFpRef.current === fp && prevBase) markBase(prevBase);
@@ -366,7 +406,7 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
     }, failed);
     // Offline, the write is already safe in this device's Firestore cache and goes up when the
     // connection is back — the person is not kept waiting on a network that isn't there.
-    return offline ? true : settled;
+    return offline && !opts.wait ? true : settled;
   }, [actor?.uid, invoiceId, markBase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Drafts save themselves.
@@ -552,19 +592,28 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
       });
       return;
     }
-    const fyStart = financialYearStart(c.issueDate);
-    const ok = await confirm({
-      title: "Generate this invoice?",
-      description: `It gets the next number in the ${financialYearLabel(fyStart)} series (${INVOICE_NUMBER_PREFIX}/${financialYearShort(fyStart)}/…). You can still edit it later — the number never changes.`,
-      confirmText: "Generate invoice",
-    });
-    if (!ok.confirmed) return;
+    // The confirmation names the date the invoice will carry and the series it lands in, and offers
+    // today's date when the draft was started on another day (`generateConfirmCopy`, 2026-10-15).
+    const today = isoDate();
+    setGenerateAsk({ ...generateConfirmCopy(c.issueDate, today), today });
+  }, [actor?.uid, jumpTo, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Generate, after the confirmation — with the draft's own date, or with today's. */
+  const runGenerate = useCallback(async (useDate: string | null) => {
+    setGenerateAsk(null);
+    const c = contentRef.current;
+    if (!c || !actor || generatingRef.current) return;
     generatingRef.current = true;
     clearTimeout(autosaveTimer.current);
     setGenerating(true);
     try {
-      const latest = contentRef.current || c;
+      let latest = contentRef.current || c;
+      if (useDate && useDate !== latest.issueDate) {
+        // Today's date, the due date moved with it — on screen and in the numbered invoice alike.
+        latest = withIssueDate(latest, useDate);
+        contentRef.current = latest;
+        setContent(latest);
+      }
       const result = await generateInvoice(invoiceId, latest, actor);
       persistedRef.current = true;
       markBase(latest);
@@ -604,20 +653,40 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
     const c = contentRef.current;
     if (!c) return;
     setAttempted(true);
-    const errors = blockingIssues(validateInvoice(c));
+    const dateChanged = c.issueDate !== baseContentRef.current?.issueDate;
+    const errors = blockingIssues(validateInvoice(c, undefined, dateChanged ? dateRule : null));
     if (errors.length) {
       jumpTo(errors[0].field);
       toast({ title: "Fix this before saving", description: errors[0].message, variant: "destructive" });
       return;
     }
     if (!dirty) { setEditingIssued(false); return; }
-    const ok = await save({ issued: true });
+    if (dateChanged && navigator.onLine === false) {
+      toast({
+        title: "You're offline",
+        description: "Changing an issued invoice's date needs a connection, so its place in the series can be checked. Your changes stay on this device.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const ok = await save({ issued: true, wait: dateChanged });
     if (ok) {
       setEditingIssued(false);
       setAttempted(false);
       toast({ title: "Changes saved", description: `The invoice keeps its number, ${meta.number}.` });
+    } else if ((lastSaveErrorRef.current as { name?: string } | null)?.name === "InvoiceDateRefusedError") {
+      // Refused by the service's own check (a neighbour's date changed since Edit was pressed, say).
+      jumpTo("issueDate");
+      fetchIssuedDateRule(invoiceId).then(setSeriesRule).catch(() => { /* keep the last rule */ });
+      toast({ title: "This date can't be used", description: friendlyError(lastSaveErrorRef.current), variant: "destructive" });
     } else {
-      toast({ title: "Couldn't save your changes", description: "They are kept on this device. Try again.", variant: "destructive" });
+      toast({
+        title: "Couldn't save your changes",
+        description: dateChanged
+          ? `${friendlyError(lastSaveErrorRef.current)} Your changes are kept on this device.`
+          : "They are kept on this device. Try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -821,7 +890,9 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
         <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/5 px-3.5 py-3" role="alert" data-test="issue-list">
           <p className="text-sm font-medium text-foreground flex items-center gap-2">
             <AlertTriangle size={15} className="text-destructive" />
-            {errorCount === 1 ? "One thing to fix before generating" : `${errorCount} things to fix before generating`}
+            {errorCount === 1
+              ? `One thing to fix before ${isIssued ? "saving" : "generating"}`
+              : `${errorCount} things to fix before ${isIssued ? "saving" : "generating"}`}
           </p>
           <ul className="mt-1.5 space-y-0.5">
             {blockingIssues(issues).slice(0, 6).map((i) => (
@@ -843,6 +914,7 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
         issueFor={issueFor}
         open={open}
         onToggle={(id) => setOpen((o) => ({ ...o, [id]: !o[id] }))}
+        issuedDateLimits={isIssued && editingIssued && dateRule ? issuedDateLimits(dateRule) : null}
         company={company}
         logoSrc={paper.logoSrc || content.seller.logoUrl || companyLogo}
         logoUploading={logoUploading}
@@ -942,6 +1014,36 @@ function InvoiceBuilder({ invoiceId }: { invoiceId: string }) {
           {actions}
         </div>
       )}
+
+      {/* Before the number: the date it will carry, its series, and today's date when that differs. */}
+      <Dialog open={!!generateAsk} onOpenChange={(v) => { if (!v) setGenerateAsk(null); }}>
+        <DialogContent className="max-w-sm" data-test="generate-confirm">
+          <DialogTitle className="text-lg">{generateAsk?.title}</DialogTitle>
+          <DialogDescription className="whitespace-pre-line">{generateAsk?.description}</DialogDescription>
+          <div className="mt-1 grid gap-2">
+            {generateAsk?.offerToday ? (<>
+              <button type="button" data-test="generate-use-today"
+                onClick={() => void runGenerate(generateAsk.today)}
+                className="h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 inline-flex items-center justify-center gap-2">
+                <FileCheck2 size={16} /> {generateAsk.todayLabel}
+              </button>
+              <button type="button" data-test="generate-keep-date"
+                onClick={() => void runGenerate(null)}
+                className="h-10 rounded-lg border border-border text-sm font-medium hover:bg-accent inline-flex items-center justify-center gap-2">
+                {generateAsk.keepLabel}
+              </button>
+            </>) : (
+              <button type="button" data-test="generate-confirm-yes"
+                onClick={() => void runGenerate(null)}
+                className="h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 inline-flex items-center justify-center gap-2">
+                <FileCheck2 size={16} /> {generateAsk?.keepLabel}
+              </button>
+            )}
+            <button type="button" onClick={() => setGenerateAsk(null)}
+              className="h-9 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* The invoice is numbered: one window, the number, and the final PDF. */}
       <Dialog open={!!justGenerated} onOpenChange={(v) => { if (!v) setJustGenerated(null); }}>

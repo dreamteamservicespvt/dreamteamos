@@ -23,8 +23,10 @@ import { db } from "@/services/firebase";
 import { sendNotification } from "@/services/notifications";
 import { createWorkAssignment, nextWorkUniqueId } from "@/services/workAssign";
 import { fetchOrder } from "@/services/orders";
-import { assertMayManageMonths, fetchCampaign, setCampaignTeam } from "@/services/smm";
+import { assertMayManageMonths, fetchCampaign, monthPromise, setCampaignTeam } from "@/services/smm";
 import { clipsPerVideoOf, isNoSaleMonth, jobsByMember, tracksFromTeam, videoDuration } from "@/utils/smmPackage";
+import { isoDay } from "@/utils/smmPlan";
+import { keepUsedExtension } from "@/utils/promiseSla";
 import type { ActivityActor } from "@/services/activityLog";
 import type { AppUser, OrderTrack, WorkAssignment } from "@/types";
 import type { SmmAssignee, SmmCampaign, SmmTeam } from "@/types/smm";
@@ -176,10 +178,30 @@ export async function assignSmmMonth(params: {
     id (a sold month's share the order's), and the order bookkeeping at the end is skipped: there is
     no order to keep.
   */
-  const order = campaign.orderId ? await fetchOrder(campaign.orderId) : null;
-  if (campaign.orderId && (!order || order.deleted || order.status === "deleted")) {
+  const fetched = campaign.orderId ? await fetchOrder(campaign.orderId) : null;
+  if (campaign.orderId && (!fetched || fetched.deleted || fetched.status === "deleted")) {
     throw new Error("This month's order has been removed. Set the sale up again from Add SMM sale.");
   }
+
+  /*
+    ── Every job carries the MONTH's deadline, and is dated when the month starts (2026-10-15) ──────
+    A job copies its deadline from its order (createWorkAssignment). Orders → Assign jobs on a month never
+    set up handed out the SALE's few-day promise — the month's work "overdue" two days after it was sold —
+    and a month with no order ("Create next renewal", a no-sale month) gave its jobs no deadline at all
+    when the month made them itself (`linkRenewal`). So the month's deadline (`monthPromise`, its last own
+    day) goes on its order here, before any job is made — keeping an extension already used
+    (`keepUsedExtension`) — and straight onto the jobs of a month with no order. A month that starts later
+    has its job cards dated on its first day, not the day they were handed out.
+  */
+  const promise = monthPromise(campaign.cycle);
+  let order = fetched;
+  if (order && order.promise?.presetKey !== "smm_month") {
+    const kept = keepUsedExtension(promise, order.promise);
+    await updateDoc(doc(db, "orders", order.id), { promise: kept }).catch(() => undefined);
+    order = { ...order, promise: kept };
+  }
+  const today = isoDay(new Date());
+  const jobDay = campaign.cycle?.startDate && campaign.cycle.startDate > today ? campaign.cycle.startDate : today;
   const monthRoom = order ? {} : {
     roomId: campaign.id,
     soldBy: isNoSaleMonth(campaign) ? { uid: campaign.soldBy, name: campaign.soldByName } : null,
@@ -216,6 +238,10 @@ export async function assignSmmMonth(params: {
         patch.duration = duration;
       }
       if (job.smmCampaignId !== campaign.id) patch.smmCampaignId = campaign.id;
+      // An open job still on the sale's few-day promise — or none (a month with no order) — takes the month's.
+      if (job.status !== "completed" && job.status !== "verified" && job.promise?.presetKey !== "smm_month") {
+        patch.promise = keepUsedExtension(order?.promise?.presetKey === "smm_month" ? order.promise : promise, job.promise);
+      }
       if (Object.keys(patch).length > 0) await updateDoc(doc(db, "work_assignments", job.id), patch);
       result.updated.push({ uid: w.uid, name: w.name, id: job.id });
       continue;
@@ -243,40 +269,20 @@ export async function assignSmmMonth(params: {
       smmCampaignId: campaign.id,
       // A month is worked from its own page, not My Work (2026-10-04) — the alert opens it there.
       memberLink: `/smm/${campaign.id}`,
+      // A job with an order copies the order's deadline (set above); one without gets the month's.
+      ...(order ? {} : { promise }),
+      date: jobDay,
       ...monthRoom,
       actor: actor ?? null,
     });
     result.created.push({ uid: w.uid, name: w.name, id: made.id, accessCode: made.accessCode });
   }
 
-  // Off the month. A job card does not carry its member's name; the month's seats did.
-  const previousNames = new Map<string, string>();
-  for (const who of [campaign.team?.creator, campaign.team?.publisher, campaign.team?.marketer, ...(campaign.team?.assistants || [])]) {
-    if (who?.uid) previousNames.set(who.uid, who.name);
-  }
-  const wantedUids = new Set(wanted.map((w) => w.uid));
-  const withdrawnIds = new Set<string>();
-  for (const job of jobs) {
-    if (wantedUids.has(job.assignedTo)) continue;
-    // Their part is done and checked — that card is a record of work, not work to take back.
-    if (job.status === "completed" || job.status === "verified") continue;
-    const name = previousNames.get(job.assignedTo) || "A member";
-    if (untouched(job)) {
-      await deleteDoc(doc(db, "work_assignments", job.id));
-      withdrawnIds.add(job.id);
-      result.withdrawn.push({ uid: job.assignedTo, name });
-      await sendNotification({
-        userId: job.assignedTo,
-        type: "work_unassigned",
-        title: "Taken off a social media month",
-        message: `${campaign.businessName || campaign.clientName}'s social media month has been given to someone else. Nothing you need to do.`,
-        link: "/smm",
-        dedupeKey: `smm_job_withdrawn_${job.id}`,
-      }).catch(() => undefined);
-    } else {
-      result.keptStarted.push({ uid: job.assignedTo, name, id: job.id });
-    }
-  }
+  // Off the month — the one withdrawal path (`withdrawMonthJobs`), shared with a month filed as history.
+  const off = await withdrawMonthJobs(campaign, jobs, new Set(wanted.map((w) => w.uid)));
+  result.withdrawn.push(...off.withdrawn);
+  result.keptStarted.push(...off.keptStarted);
+  const withdrawnIds = off.withdrawnIds;
 
   /*
     The order reads the same people. Its tracks are the seats; its "assigned to" is the maker's job,
@@ -309,6 +315,51 @@ export async function assignSmmMonth(params: {
 
   await setCampaignTeam(campaignId, team);
   return result;
+}
+
+/**
+ * Take a month's jobs back from everybody not in `keepUids` — the one way a month's work is withdrawn
+ * (assigning, and since 2026-10-15 a month filed as HISTORY by Add SMM sale, which used to leave its live
+ * jobs open on a month that is now a record). A job nobody has opened is deleted and its member told; one
+ * already started is KEPT and returned, so the caller says so and a person decides; a job handed in or
+ * checked is a record of work and is never touched. `jobs` defaults to the month's own (`fetchMonthJobs`).
+ */
+export async function withdrawMonthJobs(
+  campaign: Pick<SmmCampaign, "id" | "orderId" | "team" | "businessName" | "clientName">,
+  jobs?: WorkAssignment[],
+  keepUids: Set<string> = new Set(),
+  why: "reassigned" | "history" = "reassigned",
+): Promise<{ withdrawn: SmmAssignResult["withdrawn"]; keptStarted: SmmAssignResult["keptStarted"]; withdrawnIds: Set<string> }> {
+  // A job card does not carry its member's name; the month's seats did.
+  const previousNames = new Map<string, string>();
+  for (const who of [campaign.team?.creator, campaign.team?.publisher, campaign.team?.marketer, ...(campaign.team?.assistants || [])]) {
+    if (who?.uid) previousNames.set(who.uid, who.name);
+  }
+  const out = { withdrawn: [] as SmmAssignResult["withdrawn"], keptStarted: [] as SmmAssignResult["keptStarted"], withdrawnIds: new Set<string>() };
+  for (const job of jobs ?? await fetchMonthJobs(campaign)) {
+    if (keepUids.has(job.assignedTo)) continue;
+    // Their part is done and checked — that card is a record of work, not work to take back.
+    if (job.status === "completed" || job.status === "verified") continue;
+    const name = previousNames.get(job.assignedTo) || "A member";
+    if (untouched(job)) {
+      await deleteDoc(doc(db, "work_assignments", job.id));
+      out.withdrawnIds.add(job.id);
+      out.withdrawn.push({ uid: job.assignedTo, name });
+      await sendNotification({
+        userId: job.assignedTo,
+        type: "work_unassigned",
+        title: "Taken off a social media month",
+        message: why === "history"
+          ? `${campaign.businessName || campaign.clientName}'s social media month is now recorded as a past month, so its job was taken back. Nothing you need to do.`
+          : `${campaign.businessName || campaign.clientName}'s social media month has been given to someone else. Nothing you need to do.`,
+        link: "/smm",
+        dedupeKey: `smm_job_withdrawn_${job.id}`,
+      }).catch(() => undefined);
+    } else {
+      out.keptStarted.push({ uid: job.assignedTo, name, id: job.id });
+    }
+  }
+  return out;
 }
 
 /**

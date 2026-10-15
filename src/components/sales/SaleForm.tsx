@@ -24,11 +24,11 @@ import { useToast } from "@/hooks/use-toast";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { recordSale, updateSale, isSaleWriteError } from "@/services/sales";
 import { describeSaleChanges, saleHasWork } from "@/utils/saleEdit";
-import { saleIdOf } from "@/utils/saleIdentity";
+import { saleIdOf, timestampMs } from "@/utils/saleIdentity";
 import { logActivity, type ActivityActorRole } from "@/services/activityLog";
 import { applySaleFreeze, buildLeadFreezeFields, fetchNumberLock } from "@/services/numberLock";
 import { watchAdLanguages, rememberAdLanguage, mergeAdLanguages } from "@/services/adLanguages";
-import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender } from "@/services/characterPacks";
+import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, ownerPhotoSlots, packModelGender } from "@/services/characterPacks";
 import { formatCurrency } from "@/utils/formatters";
 import { normalizePhone } from "@/utils/phone";
 import {
@@ -62,6 +62,8 @@ import {
 } from "@/utils/smmPricing";
 import FieldHint from "@/components/common/FieldHint";
 import { DEFAULT_SMM_CLIPS_PER_VIDEO, dayLabel, normaliseClipsPerVideo } from "@/utils/smmPackage";
+import { saleMonthStartCheck, saleMonthStartDefault } from "@/utils/smmMonthDates";
+import { isoDay } from "@/utils/smmPlan";
 import type { AppUser, Lead, Order, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
 import type { SmmRenewalPrefill } from "@/types/smm";
 
@@ -250,6 +252,20 @@ export default function SaleForm({
   /** The member has touched the month's plan, so the package must stop re-seeding it under them. */
   const smmTouched = useRef(!!ed?.smm);
   /**
+   * "Month starts on" (owner, 2026-10-15: "the sale form asks when the month starts").
+   *
+   * A renewal opens on the renewed month's END DATE — always, even when the renewal is recorded late — and
+   * may not start before it (the two months would share days); a first month opens on the day of the sale.
+   * The salesperson changes it when the client really starts on another day. This value is what is saved
+   * (`SmmSaleSpec.startDate`) and what the renewal note above shows — it used to show a date worked out
+   * when the form opened, which was not necessarily the date the month got. An edit keeps the saved start:
+   * a month that exists has its dates on the tech side (Edit setup).
+   */
+  const renewalPreviousEnd = renewal ? (renewal.previousEnd || renewal.nextStart) : null;
+  const [monthStart, setMonthStart] = useState<string>(() => ed?.smm?.startDate
+    || saleMonthStartDefault({ previousEnd: renewalPreviousEnd, saleDay: isoDay(new Date()) }));
+  const monthStartCheck = saleMonthStartCheck(monthStart, renewalPreviousEnd);
+  /**
    * The discount on an ordinary sale, kept apart from the bulk ladder's.
    *
    * Deliberately its own state rather than sharing the bulk boxes above. They are seeded from the
@@ -320,9 +336,20 @@ export default function SaleForm({
    * resetting it to "paid in full" — which would silently wipe a pending balance on any edit.
    */
   const [advanceCollected, setAdvanceCollected] = useState<boolean>(!!ed?.partialPayment);
+  /*
+    The ADVANCE alone — the first payment (2026-10-15). It was seeded with everything collected so far, and
+    the save then wrote [that total as the advance, ...the balances again]: a ₹500 advance + ₹499 balance
+    saved back as 999 + 499 collected, counted twice in revenue and incentive.
+  */
   const [advanceAmount, setAdvanceAmount] = useState<number>(
-    () => (ed?.partialPayment ? collectedOf(ed) : 0),
+    () => (ed?.partialPayment ? (Array.isArray(ed.payments) && ed.payments[0] ? Number(ed.payments[0].amount) || 0 : collectedOf(ed)) : 0),
   );
+  /**
+   * Money collected AFTER the sale (balances recorded from Pending payments) — on their own days, in their
+   * own pay periods. The form shows them and keeps them exactly as they are; it never owns them.
+   */
+  const laterPayments: SalePayment[] = ed?.partialPayment && Array.isArray(ed.payments) ? ed.payments.slice(1) : [];
+  const laterCollected = laterPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const [screenshotUrl, setScreenshotUrl] = useState(ed?.paymentScreenshotUrl || "");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -602,7 +629,7 @@ export default function SaleForm({
    * showing a negative balance — and because "collected more than the price" is a typo, not a debt.
    */
   const advancePending = advanceCollected
-    ? Math.max(0, finalAmount - Math.min(advanceAmount, finalAmount))
+    ? Math.max(0, finalAmount - Math.min(advanceAmount, finalAmount) - laterCollected)
     : 0;
 
   /**
@@ -616,11 +643,17 @@ export default function SaleForm({
     if (!advanceCollected) return null;
     const prior = (ed?.partialPayment && Array.isArray(ed.payments)) ? ed.payments : [];
     const advance: SalePayment = {
-      id: prior[0]?.id || `pay_${Date.now()}`,
+      /*
+        An advance added on an EDIT of a sale recorded as paid in full is the money taken at the sale, which
+        until now went by the id "opening" — so it keeps that identity (an incentive already paid on it is
+        not paid again: utils/salesPay).
+      */
+      id: prior[0]?.id || (editing && !ed?.partialPayment ? "pay_opening" : `pay_${Date.now()}`),
       amount: Math.max(0, Math.min(advanceAmount, finalAmount)),
       // The advance was taken when the sale was made; keep its original stamp on an edit so the
-      // money does not silently move to a different day — and a different pay cycle.
-      collectedAt: prior[0]?.collectedAt || Timestamp.now(),
+      // money does not silently move to a different day — and a different pay cycle. Ticking "Advance
+      // collected" on an edit later dates it to the SALE, never to the moment of the edit (2026-10-15).
+      collectedAt: prior[0]?.collectedAt || (editing && ed?.submittedAt) || Timestamp.now(),
       note: "Advance at sale",
       screenshotUrl: screenshotUrl || null,
       ...(saleFormUser ? { byId: saleFormUser.uid, byName: saleFormUser.name } : {}),
@@ -798,6 +831,11 @@ export default function SaleForm({
       toast({ title: "Describe the character", description: "Say who or what the custom character is — the whole character is built from your description.", variant: "destructive" });
       return;
     }
+    // A social-media month needs the day it starts; a renewal never before the month it renews has ended.
+    if (category === "social_media_management" && !editing && monthStartCheck.problem) {
+      toast({ title: "When does the month start?", description: monthStartCheck.problem, variant: "destructive" });
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     /*
@@ -938,6 +976,10 @@ export default function SaleForm({
             clipsPerVideo: normaliseClipsPerVideo(smmValue.clipsPerVideo || DEFAULT_SMM_CLIPS_PER_VIDEO),
             // A renewal stays a renewal through every later edit of the sale.
             renewalOf: renewal?.campaignId ?? ed?.smm?.renewalOf ?? null,
+            // "Month starts on" (2026-10-15) — an edit keeps the start saved with the sale (absent on older ones).
+            ...(editing
+              ? (ed?.smm?.startDate ? { startDate: ed.smm.startDate } : {})
+              : { startDate: monthStart }),
           }
         : null,
       ...(isSmm && smmQuote.discountAmount > 0
@@ -1179,7 +1221,7 @@ export default function SaleForm({
       {renewal && !editing && (
         <div data-test="sale-renewal" className="rounded-md border border-success/40 bg-success/10 p-2 text-xs text-foreground">
           <b>Renewal</b> of {renewal.businessName}'s {renewal.monthLabel} month. The next month starts
-          {" "}<b>{dayLabel(renewal.nextStart)}</b> and the same team carries on. Change the package if the
+          {" "}<b>{dayLabel(monthStart)}</b> and the same team carries on. Change the package if the
           client is moving up or down.
         </div>
       )}
@@ -1289,6 +1331,37 @@ export default function SaleForm({
           value={smmValue}
           onChange={(next) => { smmTouched.current = true; setSmmValue(next); }}
         />
+      )}
+
+      {/* "Month starts on" (owner, 2026-10-15) — the day the month is made on, and the day its setup opens on.
+          A renewal opens on the old month's end date; an edit shows the start the sale was saved with. */}
+      {isSmm && !editing && (
+        <div data-test="sale-smm-start" className="space-y-1">
+          <label className="block text-xs font-medium text-muted-foreground">
+            Month starts on
+            <input
+              type="date"
+              value={monthStart}
+              min={renewalPreviousEnd || undefined}
+              data-test="sale-smm-start-date"
+              onChange={(e) => setMonthStart(e.target.value)}
+              className="mt-1 h-9 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-primary"
+            />
+          </label>
+          {monthStartCheck.problem ? (
+            <p data-test="sale-smm-start-problem" role="alert" className="text-[11px] font-medium text-destructive">{monthStartCheck.problem}</p>
+          ) : (
+            <p data-test="sale-smm-start-note" className="text-[11px] text-muted-foreground">
+              {monthStartCheck.note || (renewal ? "" : "The day of the sale — change it if the client starts on another day.")}
+            </p>
+          )}
+        </div>
+      )}
+      {isSmm && editing && ed?.smm?.startDate && (
+        <p data-test="sale-smm-start-saved" className="text-[11px] text-muted-foreground">
+          Month starts on <b className="text-foreground">{dayLabel(ed.smm.startDate)}</b> — as sold. Once the month is on the
+          board, its dates are changed in Social Media (Edit setup).
+        </p>
       )}
 
       {/* Bulk videos — quantity drives the price, and the ladder suggests a discount the member may
@@ -2055,7 +2128,7 @@ export default function SaleForm({
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 space-y-2">
             {salePack && (
               <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                <b>{salePack.label}</b> — {salePack.tagline}.{salePack.characters.length > 1 ? " Both characters speak in every clip." : ""} Same price as a normal ad.
+                <b>{salePack.label}</b> — {salePack.tagline}.{ownerPhotoSlots(salePack).length > 1 ? " Both owners speak in every clip." : salePack.characters.length > 1 ? " Both characters speak in every clip." : ""} Same price as a normal ad.
               </p>
             )}
             <div>
@@ -2083,7 +2156,15 @@ export default function SaleForm({
             {/* The face is not the background. On every other entry a client photo is a location
                 reference; here it is the identity the entire ad is built from, so the sales member
                 has to collect it while the client is still on the call — there is no ad without it. */}
-            {salePack?.usesClientFace && (
+            {/* The Real Owner Duo (2026-10-14): two owners, so two photos — one of EACH, each on its own. */}
+            {salePack && ownerPhotoSlots(salePack).length > 1 ? (
+              <p data-test="sale-owner-duo-note" className="text-[10px] font-medium leading-relaxed text-amber-700 dark:text-amber-300">
+                <b>Also collect a clear photo of EACH owner’s face — two photos, one per owner.</b>{" "}
+                {ownerPhotoSlots(salePack).map((s) => `${s.name} = the ${s.kind} (stands on the ${s.side}${s.index === 0 ? ", speaks first" : ""})`).join(" · ")}.
+                {" "}Both faces appear in every clip, so ask for straight-on, well-lit photos of each person on their own —
+                not a group photo and not a side angle.
+              </p>
+            ) : salePack?.usesClientFace && (
               <p className="text-[10px] font-medium leading-relaxed text-amber-700 dark:text-amber-300">
                 <b>Also collect a clear photo of the owner’s face.</b> This exact face appears in every
                 clip, so ask for a straight-on, well-lit one — not a group photo and not a side angle.
@@ -2214,6 +2295,19 @@ export default function SaleForm({
               checked={advanceCollected}
               data-test="advance-toggle"
               onChange={(e) => {
+                /*
+                  Unticking makes the sale "paid in full on the sale day" — which would drop the balances
+                  collected later and move their money to the sale's day and pay period. Refused, in plain
+                  words (2026-10-15); `services/sales.updateSale` refuses it too.
+                */
+                if (!e.target.checked && laterCollected > 0) {
+                  toast({
+                    title: "Can't switch to paid in full",
+                    description: `${formatCurrency(laterCollected)} was collected after the sale. Keep "Advance collected" ticked — if a payment was recorded by mistake, ask your sales admin.`,
+                    variant: "destructive",
+                  });
+                  return;
+                }
                 setAdvanceCollected(e.target.checked);
                 // Half is the common case and the one worth pre-filling; it stays editable.
                 if (e.target.checked && advanceAmount <= 0) setAdvanceAmount(Math.round(finalAmount / 2));
@@ -2256,8 +2350,19 @@ export default function SaleForm({
                   ? `Pending payment: ${formatCurrency(advancePending)} still to collect from the client.`
                   : "Nothing pending — the full amount has been collected."}
               </p>
+              {/* Balances collected after the sale stay exactly as recorded — their own days, their own pay periods. */}
+              {laterPayments.length > 0 && (
+                <p className="text-[11px] text-muted-foreground" data-test="advance-later-payments">
+                  Also collected after the sale:{" "}
+                  {laterPayments.map((p, i) => {
+                    const ms = timestampMs(p.collectedAt);
+                    const day = ms ? new Date(ms).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+                    return `${formatCurrency(Number(p.amount) || 0)}${day ? ` (${day})` : ""}${i < laterPayments.length - 1 ? ", " : ""}`;
+                  }).join("")} — kept as recorded.
+                </p>
+              )}
               <p className="text-[11px] text-muted-foreground">
-                Your revenue and incentives count {formatCurrency(advanceAmount)} today. The rest counts
+                Your revenue and incentives count {formatCurrency(advanceAmount)} {editing ? "on the day of the sale" : "today"}. The rest counts
                 on the day you collect it, and this sale will sit in <b>Pending payments</b> until then.
               </p>
             </div>

@@ -20,6 +20,7 @@ import { BellRing, Loader2, Lock, MessageSquare, PhoneCall, ShieldCheck, Sparkle
 import OrderChatPanel, { OrderChatCallButtons } from "@/components/order-chat/OrderChatPanel";
 import ClientCall, { type ClientCallType } from "@/components/order-chat/ClientCall";
 import ClientReviewCard from "@/components/order-chat/ClientReviewCard";
+import ClientSmmApprovals from "@/components/order-chat/ClientSmmApprovals";
 import InstallChatButton from "@/components/order-chat/InstallChatButton";
 import { useOrderChat } from "@/hooks/useOrderChat";
 import { useNotificationTap } from "@/hooks/useNotificationTap";
@@ -336,6 +337,7 @@ function Conversation({ chatId }: { chatId: string }) {
         onSend={send}
         emptyHint="Share photos, videos, your logo or any details here. You can also call the team directly."
         header={
+          <>
           <div className="flex items-center gap-3 bg-[#008069] px-3 py-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-white">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-bold">
               {(room?.businessName || "D").charAt(0).toUpperCase()}
@@ -362,6 +364,10 @@ function Conversation({ chatId }: { chatId: string }) {
               <OrderChatCallButtons onVoice={() => setCallRequest("voice")} />
             )}
           </div>
+          {/* A Social Media month (2026-10-15, SMM Delivery Control phase 7): the posts waiting for this
+              client's approval, answered with one tap. Shows nothing for any other chat. */}
+          <ClientSmmApprovals chatId={chatId} />
+          </>
         }
       />
 

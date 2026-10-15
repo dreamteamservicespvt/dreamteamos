@@ -74,7 +74,8 @@ export function PostRow({ entry, today, canOpen, onOpenItem, monthLabel, outside
         {outside && (
           <p data-test="smm-cal-entry-outside" className="mt-1 flex items-start gap-1 text-xs text-foreground/80">
             <AlertTriangle size={12} className="mt-px shrink-0 text-warning" aria-hidden />
-            Its date is outside {outside.name} ({rangeLabel(outside.startDate, outside.endDate)})
+            {/* The month's own days, so a post dated on its renewal day reads as outside too (2026-10-15). */}
+            Its date is outside {outside.name} ({rangeLabel(outside.startDate, outside.lastDay)})
           </p>
         )}
       </div>

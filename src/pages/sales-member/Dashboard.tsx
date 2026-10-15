@@ -41,6 +41,8 @@ export default function SalesMemberDashboard() {
     earningsOption: user?.earningsOption,
     // The 75% gate, so this figure is the one the member is actually owed.
     dailyTarget: dailyTargetOf(user),
+    // The salary, plan and target that applied in the period (utils/payTerms, 2026-10-15).
+    payHistory: user?.payHistory,
   });
 
   // Filter by date

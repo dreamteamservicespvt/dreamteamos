@@ -32,8 +32,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import SaleForm from "@/components/sales/SaleForm";
 import SmmSetupForm, {
-  AccountPicker, assignSummary, countsLine, setupInputOf, setupValueOf, type SmmSetupValue,
+  AccountPicker, MonthDatesAsk, assignSummary, countsLine, monthDatesVerdictOf, setupInputOf, setupValueOf, type SmmSetupValue,
 } from "@/components/smm/SmmSetupForm";
+import type { MonthDatesVerdict } from "@/utils/smmMonthDates";
 import { fetchAssignableMembers, fetchClientMonths, remindSellerToRenew } from "@/services/smm";
 import {
   SmmMonthClashError, addNoSaleMonth, canSetUpSale, fetchSalesPeople, findSmmSalesForPhone, leadForSeller, noSaleSetupProblem,
@@ -45,7 +46,7 @@ import { forgetClientMonths } from "@/hooks/useSmmClientMonths";
 import { isoDay, teamMembers } from "@/utils/smmPlan";
 import {
   NO_SALE_NOTE, canAddNoSaleMonth, canRecordSmmSaleForSeller, cyclePhase, cycleRangeLabel, dayLabel, isNoSaleMonth, isOnHold,
-  needsSetup, normaliseClipsPerVideo,
+  monthCycle, needsSetup, normaliseClipsPerVideo, saleDay,
 } from "@/utils/smmPackage";
 import { platformsForPackage, commitmentsForPackage } from "@/utils/smmPricing";
 import { PACKAGES } from "@/utils/serviceCatalog";
@@ -200,18 +201,29 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
       return m ? { campaign: m, sellerName: m.soldByName || "the salesperson" } : null;
     })();
 
+  /*
+    ── Where the setup's dates open (2026-10-15) ───────────────────────────────────────────────────
+    On the month the sale already has, in any state but deleted — removed with its order, or still on the
+    board — its OWN dates; else the sale's "Month starts on"; else (a sale recorded before that field) the
+    day it was sold. It used to open on the sale day whatever the month said, so setting a removed month
+    back up quietly moved it.
+  */
   const startSetup = (r: SmmSaleRecord) => {
     setChosen(chosenOf(r));
     const keepCurrent = r.state === "needs_setup" && r.campaign;
     const chosenSale = chosenOf(r);
+    const monthDates = r.campaign && r.campaign.status !== "deleted" && r.campaign.cycle?.startDate ? r.campaign.cycle : null;
+    const start = monthDates?.startDate || r.item.smm?.startDate || r.soldDay;
     const value = setupValueOf(
       keepCurrent ? r.campaign : null,
-      keepCurrent ? undefined : r.soldDay,
+      keepCurrent ? undefined : start,
       keepCurrent ? undefined : r.businessName,
       keepCurrent ? undefined : chosenSale.soldCommitments,
     );
+    const ownEnd = !keepCurrent && monthDates ? monthDates.endDate : null;
     setSetup({
       ...value,
+      ...(ownEnd ? { endDate: ownEnd, endTouched: ownEnd !== value.endDate } : {}),
       clipsPerVideo: normaliseClipsPerVideo(r.item.smm?.clipsPerVideo || value.clipsPerVideo),
       // The accounts are asked in the form — the month's own, else the ones the sale was made for.
       platforms: value.platforms?.length ? value.platforms : [...chosenSale.platforms],
@@ -242,7 +254,8 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     const chosenSale = chosenOf({ leadId: result.leadId, itemIndex: result.itemIndex, sellerName: seller.name, businessName: business, item: result.item });
     setChosen(chosenSale);
     setSetup({
-      ...setupValueOf(null, today, business, chosenSale.soldCommitments),
+      // On the sale's own "Month starts on" (2026-10-15) — not today.
+      ...setupValueOf(null, result.item.smm?.startDate || saleDay(result.item, today), business, chosenSale.soldCommitments),
       clipsPerVideo: normaliseClipsPerVideo(result.item.smm?.clipsPerVideo || 4),
       platforms: [...chosenSale.platforms],
     });
@@ -254,7 +267,17 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     const pkg = SMM_PACKAGE_NAMES[0] || "";
     setNoSalePackage(pkg);
     setNoSalePlatforms(platformsForPackage(pkg));
-    setSetup(setupValueOf(null, today, records?.find((r) => r.businessName)?.businessName || "", commitmentsForPackage(pkg)));
+    /*
+      A month that had no sale ran in the PAST: its first day is picked, never guessed (2026-10-15). It
+      opened on today, and a past month saved without anybody changing it became a month starting today.
+      Empty until picked — "Pick the day the month started" reads on the button.
+    */
+    setSetup({
+      ...setupValueOf(null, today, records?.find((r) => r.businessName)?.businessName || "", commitmentsForPackage(pkg)),
+      startDate: "",
+      endDate: "",
+      endTouched: false,
+    });
     setStep("nosale");
   };
   /** A package fills in its counts and accounts; "Custom" leaves whatever is typed. */
@@ -277,7 +300,9 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
   // A clash is about the dates it was refused for; new dates are a new question.
   const startDate = setup?.startDate;
   const endDate = setup?.endDate;
-  useEffect(() => { setClash(null); }, [startDate, endDate, step]);
+  /** What the dates check said when a recorded sale's month was set up (2026-10-15) — see `MonthDatesAsk`. */
+  const [datesAsk, setDatesAsk] = useState<MonthDatesVerdict | null>(null);
+  useEffect(() => { setClash(null); setDatesAsk(null); }, [startDate, endDate, step]);
 
   const saveNoSale = async () => {
     if (!setup || !seller || problem) return;
@@ -312,21 +337,37 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
     }
   };
 
-  const saveSetup = async () => {
+  const saveSetup = async (confirmedOutside?: string[]) => {
     if (!chosen || !setup || problem) return;
     setSaving(true);
     try {
-      const result = await setupSaleMonth({ leadId: chosen.leadId, itemIndex: chosen.itemIndex, setup: setupInputOf(setup), actor });
+      const result = await setupSaleMonth({
+        leadId: chosen.leadId, itemIndex: chosen.itemIndex, actor,
+        setup: { ...setupInputOf(setup), ...(confirmedOutside ? { confirmedOutside } : {}) },
+      });
       forgetClientMonths(phoneLockId(normalized));
+      /*
+        Said as it is (2026-10-15): "with its original dates" was said whatever dates were saved — the dates
+        typed here are the ones it has now — and nothing was said about the jobs it still had open.
+      */
+      const kept = result.historyJobs?.keptStarted || [];
+      const off = result.historyJobs?.withdrawn || [];
       toast({
         title: result.history ? "Recorded as history" : "Month set up",
         description: result.history
-          ? `${chosen.businessName || "The month"} is on the record with its original dates.`
+          ? [
+            `${chosen.businessName || "The month"} is on the record for ${cycleRangeLabel(monthCycle(setup.startDate, setup.endDate))} — no job cards.`,
+            off.length ? `${off.map((w) => w.name).join(", ")} taken off it.` : "",
+            kept.length ? `${kept.map((k) => k.name).join(", ")} already started — their job stays (take it back from Work Assign if needed).` : "",
+          ].filter(Boolean).join(" ")
           : assignSummary(result.assign) || "The month is on the board.",
       });
       onCreated(result.campaignId);
     } catch (err) {
-      toast({ title: "Not set up", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+      // The dates check answers here, with the posts listed or the month it overlaps (2026-10-15).
+      const verdict = monthDatesVerdictOf(err);
+      if (verdict) setDatesAsk(verdict);
+      else toast({ title: "Not set up", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
       setSaving(false);
     }
   };
@@ -608,12 +649,18 @@ export default function SmmAddSaleDialog({ user, onClose, onCreated }: {
           <div>
             <SmmSetupForm value={setup} onChange={setSetup} members={members}
               platforms={chosen.platforms} soldCommitments={chosen.soldCommitments} />
+            {datesAsk && (
+              <div className="mt-3">
+                <MonthDatesAsk verdict={datesAsk} busy={saving} onClose={onClose}
+                  onKeep={() => saveSetup(datesAsk.outside.map((p) => p.id))} />
+              </div>
+            )}
             <div className="mt-4 flex gap-2">
               <button onClick={() => setStep("number")} disabled={saving}
                 className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">
                 <ArrowLeft size={14} /> Back
               </button>
-              <button onClick={saveSetup} disabled={saving || !!problem} data-test="smm-add-sale-save"
+              <button onClick={() => saveSetup()} disabled={saving || !!problem} data-test="smm-add-sale-save"
                 className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                 {saving && <Loader2 size={14} className="animate-spin" />}
                 {saving ? "Setting up…" : problem || "Save the month"}

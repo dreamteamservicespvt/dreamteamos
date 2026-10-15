@@ -4,7 +4,7 @@ import { buttonClass, fieldClass } from "./AiModal";
 import SecretField from "./SecretField";
 import { prettyDate } from "./FlowAccountDialog";
 import type { FlowAccount } from "@/types/aiAccounts";
-import { accountState, todayStr } from "@/utils/flowCredits";
+import { accountState, addDays, shortDay, todayStr } from "@/utils/flowCredits";
 import { API_KEY_STATUS } from "@/utils/geminiKeys";
 import { cn } from "@/lib/utils";
 
@@ -105,7 +105,11 @@ export default function FlowAccountsList({
 
                 <div className="mt-3">
                   <div className="flex items-baseline justify-between text-xs">
-                    <span className="text-muted-foreground">This cycle <span className="text-foreground font-semibold" data-test="flow-used">{s.used}</span> / {s.monthly} used</span>
+                    <span className="text-muted-foreground">
+                      {/* Its own cycle, from its opening day — never the calendar month (2026-10-15). */}
+                      This cycle ({shortDay(s.cycleStart)} – {shortDay(addDays(s.nextReset, -1))}){" "}
+                      <span className="text-foreground font-semibold" data-test="flow-used">{s.used}</span> / {s.monthly} used
+                    </span>
                     <span className={cn("font-semibold", s.remaining === 0 || pct >= 90 ? "text-destructive" : pct >= 60 ? "text-warning" : "text-success")} data-test="flow-left">{s.remaining} left</span>
                   </div>
                   <div className="mt-1 h-2 rounded-full bg-muted overflow-hidden">

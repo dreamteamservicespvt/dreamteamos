@@ -25,7 +25,7 @@
  * Pure and Firestore-free: this decides whether somebody keeps their job, so it is testable.
  */
 import { withinPeriod, type PeriodFilter } from "./periodFilter";
-import { deliveryDate } from "./workDates";
+import { workCountsOn } from "./workDates";
 import { isBulkVideoOrder, bulkVideosOf } from "./bulkVideos";
 import type { Order, WorkAssignment } from "@/types";
 
@@ -139,10 +139,17 @@ export function memberProductivity(input: ProductivityInput): MemberProductivity
   let videos = 0;
   let workValue = 0;
 
+  /*
+    ── Which period a delivered job belongs to: the day it was ASSIGNED (2026-10-15) ──
+    The one work-day rule (`utils/workDates.workCountsOn`) Work Reports, My Team and the dashboards use. This
+    counted on the completion day, so a job assigned on the 9th and handed in on the 10th was this period's
+    work on every other screen and next period's here — and the ratio set it against the wrong salary.
+    Only delivered work still counts.
+  */
   for (const a of assignments) {
     if (a.assignedTo !== uid) continue;
     if (a.status !== "completed" && a.status !== "verified") continue;
-    if (!withinPeriod(deliveryDate(a) ?? undefined, filter)) continue;
+    if (!withinPeriod(workCountsOn(a), filter)) continue;
     videos += videosForAssignment(a, a.orderId ? orderById.get(a.orderId) : undefined, uid);
     workValue += a.totalPrice || 0;
   }
@@ -162,7 +169,9 @@ export function memberProductivity(input: ProductivityInput): MemberProductivity
 
     for (const slot of slots) {
       if (slot.assignedTo !== uid || slot.status !== "completed") continue;
-      if (!withinPeriod(dayOf(slot.completedAt), filter)) continue;
+      // The same rule for a bulk video: the day it was handed to them (the completion day only for a slot
+      // that never recorded its assignment).
+      if (!withinPeriod(dayOf(slot.assignedAt) ?? dayOf(slot.completedAt), filter)) continue;
       videos += 1;
       workValue += unit;
     }

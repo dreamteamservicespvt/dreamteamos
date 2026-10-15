@@ -40,6 +40,7 @@ import { overdueItemsFor } from "@/utils/smmReminders";
 import SmmCampaignCard from "@/components/smm/SmmCampaignCard";
 import SmmCalendarBoard from "@/components/smm/SmmCalendarBoard";
 import SmmAddSaleDialog from "@/components/smm/SmmAddSaleDialog";
+import SmmMonthsToCheck from "@/components/smm/SmmMonthsToCheck";
 import SmmTeamLeadPanel from "@/components/smm/SmmTeamLeadPanel";
 import SmmRenewalsCard from "@/components/smm/SmmRenewalsCard";
 import SmmMoneyView from "@/components/smm/money/SmmMoneyView";
@@ -48,6 +49,9 @@ import { canSeeSmmAttendance } from "@/utils/smmAttendance";
 import SmmDashboard, { type SmmBoardFilter } from "@/components/smm/SmmDashboard";
 import { SmmSetupDialog } from "@/components/smm/SmmSetupForm";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
+import { useSmmDeliverySettings } from "@/components/smm/control/useSmmDeliverySettings";
+import { lastSmmUi, rememberSmmUi } from "@/components/smm/control/smmUi";
+import { canSeeControlButton } from "@/utils/smmControlAccess";
 import type { SmmCampaign } from "@/types/smm";
 
 /** The status row: each a count and a filter. `icon` carries the colour; the words never do. */
@@ -109,6 +113,18 @@ export default function SocialMedia() {
   const [finished, setFinished] = useState<SmmCampaign[] | null>(null);
   const [finishedLoading, setFinishedLoading] = useState(false);
   const { renew, renewingId } = useSmmRenewal(user);
+  // SMM Delivery Control (2026-10-15): who sees its button, and the screen this browser used last (decisions 15–16).
+  const { settings: deliverySettings, loaded: deliveryLoaded } = useSmmDeliverySettings();
+  const deliveryMode = deliverySettings.mode;
+  const showControl = deliveryLoaded && canSeeControlButton(user, deliveryMode);
+  const reopened = useRef(false);
+  useEffect(() => {
+    // Back to Delivery Control when that was the last screen used here — only on a plain /smm (a link that
+    // names a view or a client stays on the classic page).
+    if (reopened.current || !showControl || params.toString()) return;
+    reopened.current = true;
+    if (lastSmmUi() === "control") navigate("/smm/control", { replace: true });
+  }, [showControl, params, navigate]);
   const [adminRenewingId, setAdminRenewingId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -297,12 +313,23 @@ export default function SocialMedia() {
               : "Every monthly client — how much is done, whether it is on track, and what is next."}
           </p>
         </div>
-        {canSetUp && (
-          <button data-test="smm-add-sale-open" onClick={() => setAdding(true)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
-            <Plus size={15} /> Add SMM sale
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* SMM Delivery Control (2026-10-15) — the classic page's ONLY change: the button to the new screen
+              (Preview: admins, team leaders, the Social Media Team Lead; Live: all six roles). */}
+          {showControl && (
+            <button data-test="smm-open-control" onClick={() => { rememberSmmUi("control"); navigate("/smm/control"); }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20">
+              ✨ Delivery Control
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">{deliveryMode === "live" ? "New" : "Preview"}</span>
+            </button>
+          )}
+          {canSetUp && (
+            <button data-test="smm-add-sale-open" onClick={() => setAdding(true)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+              <Plus size={15} /> Add SMM sale
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Who runs the whole side — appointed here by the tech admin (SmmTeamLeadPanel). */}
@@ -310,6 +337,9 @@ export default function SocialMedia() {
 
       {/* The salesperson's renewals and their money, first thing (2026-10-05). The page rings the bells. */}
       {user && isSeller && <SmmRenewalsCard user={user} ring={false} />}
+
+      {/* Months whose dates need a person's eye (2026-10-15) — from the live months, no read; the people who can fix them. */}
+      {view === "cards" && !loading && overseer && canSetUp && <SmmMonthsToCheck months={campaigns} today={today} />}
 
       {view === "cards" && !loading && (
         /* The statuses as counts — each one filters the cards below. Seven or eight of them (On hold, 2026-10-05,

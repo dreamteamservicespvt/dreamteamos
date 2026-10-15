@@ -31,10 +31,10 @@ cache recovery. `pages/auth/Login.tsx`, `hooks/useAuth.ts`, `store/authStore.ts`
 
 ## 12. BACKEND & API ARCHITECTURE
 
-The backend is Firestore (accessed directly from the client) plus **three Vercel serverless
+The backend is Firestore (accessed directly from the client) plus **four Vercel serverless
 functions** in `api/`. Each initialises `firebase-admin` from `FIREBASE_SERVICE_ACCOUNT_KEY` and
-accepts `POST` only (`OPTIONS` → 204). There is no Express server, no middleware stack, no
-background worker. `vite dev` does **not** serve `/api/*`; use `vercel dev` or the DEV-only
+accepts `POST` only (`OPTIONS` → 204) — except `smm-monitor` (GET or POST, behind `CRON_SECRET`). There is no Express
+server, no middleware stack; the one background job is the SMM server checker (2026-10-15, below). `vite dev` does **not** serve `/api/*`; use `vercel dev` or the DEV-only
 fallbacks.
 
 ### `POST /api/send-notification` (`api/send-notification.ts`)
@@ -59,8 +59,23 @@ fallbacks.
 | `notify-client` | staff participant | pushes to the client (message or call) |
 | `enquiry-target` | guest token | returns the seller's `businessWhatsapp` for "ask about another ad" |
 | `submit-review` | guest token | validates 1–5 stars, mirrors the review to `orders` and `clients` |
+| `smm-approvals` (2026-10-15) | guest token | the Social Media pieces waiting for this client's approval on the month whose id = the chat id (`utils/smmClientApproval.piecesAwaitingClient`) |
+| `smm-answer` (2026-10-15) | guest token | records the client's ✔ / changes on one piece in a transaction on `smm_campaigns/{chatId}` (as `recordApproval` does + `approvalProof` via the client chat; 409 with a sentence when already answered); alerts the publisher (approved) / maker (changes) and the salesperson, link `/smm/control/<id>` |
 CORS: production, `dreamteamos-*.vercel.app` previews, `https://localhost`, `http://localhost:*`.
 Notification links per recipient come from `homeFor(role)`.
+
+### `GET|POST /api/smm-monitor` (`api/smm-monitor.ts`, 2026-10-15, `maxDuration` 60)
+SMM Delivery Control's **server checker** — the supervisor (`utils/smmMonitor.monitorSmm`) run when every app is closed. **Auth:**
+`Authorization: Bearer <CRON_SECRET>` (what Vercel Cron sends) or `x-cron-secret: <CRON_SECRET>` (cron-job.org), constant-time
+compare (`utils/smmServerDelivery.cronAuthProblem`); no `CRON_SECRET` → 500, wrong → 401, nothing read before the check; takes no input.
+**Woken** by cron-job.org every 30 min 09:00–20:00 IST (to be set up by the owner) plus the Vercel daily cron at 04:30 UTC
+(`vercel.json` `crons`, the Hobby plan's once a day). **Reads** (Admin SDK): `app_settings/smm_delivery`, active `smm_campaigns`,
+`users` (name, role, smmLeader, isActive), `holidays`, today's `attendance` / `daily_checkins`, `leave_requests` with `toDate >= today`,
+`smm_alert_state`. **Writes** only `notifications/{key}` with `create()` (exists = already sent — the dedupe; types `smm_urgent` /
+`smm_notice`), the heartbeat `lastRunAt` + `lastRunSummary` (merge; a failed run writes none), and deletes dead FCM tokens. Pushes with
+`messaging().sendEach` directly (NOT `/api/send-notification`): data-only; urgent = high priority / 4 h TTL, channel `smm_urgent` only to
+tokens flagged `channels: "smm_urgent"` (else `default`); notice = normal / 24 h. Off → heartbeat only; Preview → computed, nothing
+sent; stops sending after 40 s (the rest next run). Its runtime imports of the alias-free utils end in `.js` (Node ESM on Vercel).
 
 ### `POST /api/onboarding` (`api/onboarding.ts`), `{ action, inviteId, code, ... }`
 Actions `open` · `accept-offer` (signature URL) · `accept-joining` (creates the account) ·
@@ -70,7 +85,11 @@ revoked or expired, 409 wrong state). `publicView()` names the fields that go ou
 `users/{uid}` (`createdBy` = inviting admin), `employee_profiles/{uid}`, two signed `hr_documents`,
 `member_credentials/{uid}`. It is idempotent via a claim transaction and rolls back to
 `offer_accepted` on failure (e.g. `email_taken`). DEV fallback: `services/onboardingGuest.ts`
-performs the same steps in the browser when `import.meta.env.DEV`.
+performs the same steps in the browser when `import.meta.env.DEV`. **Its "today" is the India day** (2026-10-15):
+`todayIso()` formats `Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" })`, because Vercel runs in UTC and
+`toISOString().slice(0, 10)` was yesterday between 00:00 and 05:30 IST — it dates `offerAcceptedOn`,
+`joiningAcceptedOn`, the starting stage (joining today → probation), both letters' `signedDate` and the offer-expiry
+check (`publicView.expired`). The DEV twin uses the local `hrPolicy.todayIso()`.
 
 ### Client-side "service layer" (the real API surface)
 Treat these exported functions as the internal API. Reuse them instead of writing parallel
@@ -124,7 +143,10 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   `smm_campaigns` got its first own rule (kept out of the catch-all) — the view-only Social Media Team Lead
   updates only months she is on and creates / deletes none; the same check runs in the browser before every
   month write (`services/smm.assertMayChangeMonth` / `assertMayManageMonths`, reading the signed-in user from
-  the auth store), so the screens, the services and the rule agree (`smm.md` §9.9).
+  the auth store), so the screens, the services and the rule agree (`smm.md` §9.9). **2026-10-15:** `app_settings`
+  got its own rule (kept out of the catch-all): staff read and write every document as before, except
+  `app_settings/smm_delivery` (SMM Delivery Control's switch), which only the main admin and the tech admin write — the
+  same check `services/smmDeliverySettings` makes from the auth store before writing.
 - **Secrets in source (values not reproduced here):** Firebase web config (public by design) in
   `services/firebase.ts` and duplicated in `services/secondaryAuth.ts`; a **Gemini API key** in
   `services/gemini.ts` (dead code); **Metered.ca TURN username/credential** in
@@ -183,8 +205,10 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   (tech member, sales member, team leader, and — for `sale_edited` — the tech admin).
   `useNotificationTap` handles taps.
 - **Push:** the same call fire-and-forgets `POST /api/send-notification` → FCM data message.
-  Web: `public/firebase-messaging-sw.js` renders it (call actions, vibration, tags). Native:
-  Capacitor PushNotifications + LocalNotifications (`services/fcm.ts`). Tokens live in
+  Web: `public/firebase-messaging-sw.js` renders it (call actions, vibration, tags; since 2026-10-15 `smm_urgent` with
+  `requireInteraction`, `renotify`, a long vibration and tag = the alert key). Native:
+  Capacitor PushNotifications + LocalNotifications (`services/fcm.ts`; 2026-10-15 an `smm_urgent` channel, importance high, and the
+  token saved with `channels: "smm_urgent"` — needs a new APK; a full-screen intent on a locked phone needs native code, not written). Tokens live in
   `fcmTokens` and are registered in `initFCM` (AppLayout). The web token needs
   `VITE_FIREBASE_VAPID_KEY`.
 - **Fan-outs:** `notifyTechTeamLeaders` (team leaders sharing `createdBy`),
@@ -201,7 +225,12 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   `work_unassigned`, `sale_approved`, `attendance_update`, `order_new_*`, `chat_message`,
   `voice_call` / `video_call`, SMM (incl. `smm_lead`, `smm_new_month`; 2026-10-03: `smm_sale_entered`,
   `smm_month_setup`, `smm_renewed`, `smm_renewal_due`, `smm_renewal_reminder`; 2026-10-05:
-  `smm_renewal_cancelled` — a renewal month removed, told to the tech admins and team leaders) and HR types, `ai_account`
+  `smm_renewal_cancelled` — a renewal month removed, told to the tech admins and team leaders; 2026-10-15:
+  `smm_delivery_off` — SMM Delivery Control turned off, with the reason, to every other active main admin, key
+  `smm_delivery_off_<ms>_<uid>`, link `/smm`; SMM Delivery Control (2026-10-15): `smm_urgent` / `smm_notice` — written ONLY by
+  `api/smm-monitor` (the apps only display them; `smm_urgent` is deliberately NOT an `UpdatePopup` popup type — the in-app full
+  screen is the alert host's, computed live), `smm_moved`, `smm_reassigned`, `smm_remind` (`once`), `smm_test`, and
+  `smm_approved` / `smm_changes` from the client chat) and HR types, `ai_account`
   (an AI account assigned to or moved from someone), `drive_folder_missing` (a tech member with no Drive folder asks their tech admin; link `/tech-admin/drive`).
 
 ## 20. THIRD-PARTY INTEGRATIONS
@@ -233,6 +262,7 @@ bundled into client JavaScript**.
 | `VITE_API_KEY` / `API_KEY` / `GEMINI_API_KEY` | `geminiService.ts` | Single-key fallback when no numbered key exists |
 | `VITE_FIREBASE_VAPID_KEY` | `services/fcm.ts` | Web Push VAPID key for FCM `getToken`. **Not in local `.env`**; Vercel value [NOT CONFIRMED] |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | `api/*.ts` (server only) | JSON service account for firebase-admin (Vercel project env) |
+| `CRON_SECRET` (2026-10-15) | `api/smm-monitor.ts` (server only; NOT `VITE_`-prefixed, never bundled) | protects the SMM server checker; Vercel Cron sends it as `Authorization: Bearer`, cron-job.org as `x-cron-secret`. **To be set by the owner** — until then the endpoint answers 500 and no server alerts go out |
 | `import.meta.env.DEV` | `onboardingGuest.ts`, `orderChatGuest.ts` | Enables in-browser fallbacks for `/api` flows during `vite dev` |
 | `__BUILD_ID__` (define, not env) | `services/appUpdate.ts` | Build identity compared with `/version.json` |
 
@@ -271,7 +301,7 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
   harness. Not checked against live Firebase, push, or the published rule for `notification_state`.
 
 **NOT IMPLEMENTED ❌** (referenced or planned, absent in code):
-- Server-side scheduler/cron; server-side authorization for most writes.
+- A general server-side scheduler (only SMM Delivery Control's checker runs on a cron since 2026-10-15); server-side authorization for most writes.
 - Self-registration; Firebase Auth account deletion when a member is deleted.
 - Firebase Analytics.
 

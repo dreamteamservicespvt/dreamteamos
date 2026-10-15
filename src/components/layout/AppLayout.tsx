@@ -28,6 +28,10 @@ const UpdatePopup = lazy(() => import("@/components/layout/UpdatePopup"));
 const BirthdayGreeting = lazy(() => import("@/components/BirthdayGreeting"));
 const SmmRenewalPopup = lazy(() => import("@/components/smm/SmmRenewalPopup"));
 const SmmStatusCheckPopup = lazy(() => import("@/components/smm/SmmStatusCheckPopup"));
+const SmmAlertHost = lazy(() => import("@/components/smm/alerts/SmmAlertHost"));
+import { UnlessCoveredByDelivery } from "@/components/smm/alerts/DeliveryCoverage";
+/** The six Social Media roles SMM Delivery Control can alert (the same as the `/smm` route's). */
+const SMM_ALERT_ROLES: string[] = ["main_admin", "tech_admin", "sales_admin", "tech_member", "sales_member", "tech_team_leader"];
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
 import { EXTERNAL_CREATOR_ROUTES } from "@/utils/roleHelpers";
@@ -123,6 +127,10 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
         style={{ marginLeft: isMobile ? 0 : collapsed ? 64 : 240 }}
       >
         <Topbar onMenuClick={() => setMobileOpen(true)} />
+        {/* SMM Delivery Control's red alert bar lands here (a portal from SmmAlertHost, 2026-10-15) — in the flow, under
+            the Topbar, so it pushes the page down instead of covering the menu, the bell or the page's title. Empty =
+            nothing. */}
+        <div id="smm-alert-bar-slot" />
         <main className="flex-1 p-4 md:p-6 overflow-x-hidden overflow-y-auto">
           {/* Above the page, not inside it: a birthday belongs to the whole company, so it shows
               wherever someone happens to be working. External creators are not colleagues. */}
@@ -167,9 +175,19 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
             {user.role === "sales_member" && <SmmRenewalPopup />}
             {/* 11 AM and 5 PM: everybody on a social-media month's team updates their posts (2026-10-05).
                 It decides for itself who holds a seat — see utils/smmStatusCheck. */}
-            {user.role.startsWith("tech_") && !user.externalCreator && <SmmStatusCheckPopup />}
+            {/* …except for the people SMM Delivery Control covers (Live, 2026-10-15): its alerts replace it. */}
+            {user.role.startsWith("tech_") && !user.externalCreator && <UnlessCoveredByDelivery><SmmStatusCheckPopup /></UnlessCoveredByDelivery>}
           </Suspense>
         </ErrorBoundary>
+        {/* SMM Delivery Control's urgent alerts (2026-10-15, phase 4) — its own boundary: a fault in it never
+            touches the popups above, and it renders nothing unless Delivery Control is Live for this person. */}
+        {SMM_ALERT_ROLES.includes(user.role) && !user.externalCreator && (
+          <ErrorBoundary fallback={null}>
+            <Suspense fallback={null}>
+              <SmmAlertHost />
+            </Suspense>
+          </ErrorBoundary>
+        )}
       </div>
     </div>
   );

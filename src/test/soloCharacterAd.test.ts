@@ -8,7 +8,6 @@ import {
 } from "@/services/prompts/characterAd";
 import {
   MAX_WORDS_PER_CLIP, MAX_WORDS_PER_LINE, MIN_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, wordBudgetFor,
-  MIN_WORDS_PER_DUO_CLIP, MAX_WORDS_PER_DUO_CLIP,
 } from "@/utils/dialogueFormat";
 
 /**
@@ -28,13 +27,15 @@ const script = (id: string) =>
   CHARACTER_VOICEOVER_SYSTEM_PROMPT(getCharacterPack(id)!, 32, 4, "commercial", "", "Telugu", "Bodhan");
 
 describe("the word budget", () => {
-  // Two speakers lose time to the hand-off, so a two-hander's clip band is lower than a single voice's.
-  it("splits a lower clip band between two speakers", () => {
+  // 2026-10-15: one contract for every cast — two speakers share the SAME 17–20 clip band, split between them.
+  it("gives two speakers the same clip band, split between them", () => {
     expect(wordBudgetFor(2)).toEqual({
-      minClip: MIN_WORDS_PER_DUO_CLIP, maxClip: MAX_WORDS_PER_DUO_CLIP,
+      minClip: MIN_WORDS_PER_CLIP, maxClip: MAX_WORDS_PER_CLIP,
       minLine: MIN_WORDS_PER_LINE, maxLine: MAX_WORDS_PER_LINE,
     });
-    expect(MAX_WORDS_PER_DUO_CLIP).toBeLessThan(MIN_WORDS_PER_CLIP);
+    expect([MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE]).toEqual([17, 20, 7, 12]);
+    // The children's old 13–15 band is gone: asking for it changes nothing.
+    expect(wordBudgetFor(2, { children: true })).toEqual(wordBudgetFor(2));
   });
 
   it("gives the whole clip to a lone speaker", () => {
@@ -90,9 +91,10 @@ describe("a solo script prompt", () => {
 
   it("quotes the solo budget, so the example and the rule agree", () => {
     const out = script(SOLO[0].id);
-    expect(out).toContain(`${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP}`);
-    // …and never the two-speaker line band, which a single line cannot meet.
-    expect(out).not.toContain(`between ${MIN_WORDS_PER_LINE} and ${MAX_WORDS_PER_LINE} words`);
+    expect(out).toContain(`The one speaker's line IS the clip: ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} words in a single complete sentence`);
+    // …and never the two-speaker split, which a single line has no use for.
+    expect(out).not.toContain("TWO lines TOGETHER");
+    expect(out).not.toContain(`each line ${MIN_WORDS_PER_LINE}–${MAX_WORDS_PER_LINE}`);
   });
 
   it("carries the same rules into the repair prompt", () => {
@@ -100,8 +102,9 @@ describe("a solo script prompt", () => {
     // the loop unable to ever succeed.
     for (const pack of SOLO.slice(0, 5)) {
       const out = CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT(pack, 32, 4, "Telugu", "Bodhan");
-      expect(out, pack.id).toContain(`${MIN_WORDS_PER_CLIP}-${MAX_WORDS_PER_CLIP} spoken words per clip`);
-      expect(out, pack.id).not.toContain(`each line ${MIN_WORDS_PER_LINE}-${MAX_WORDS_PER_LINE} words`);
+      expect(out, pack.id).toContain(`THE WORD BUDGET — ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} SPOKEN WORDS IN EVERY CLIP`);
+      expect(out, pack.id).toContain("The one speaker's line IS the clip");
+      expect(out, pack.id).not.toContain("TWO lines TOGETHER");
     }
   });
 });
@@ -110,7 +113,8 @@ describe("a duo script prompt is unchanged", () => {
   it("still asks for two lines and the two-speaker budget", () => {
     const out = script("duo_motu_patlu");
     expect(out).toContain("EXACTLY 2 lines");
-    expect(out).toContain(`between ${MIN_WORDS_PER_LINE} and ${MAX_WORDS_PER_LINE} words`);
+    expect(out).toContain(`each line ${MIN_WORDS_PER_LINE}–${MAX_WORDS_PER_LINE}`);
+    expect(out).toContain("A clip's TWO lines TOGETHER make the 17–20");
     expect(out).toContain("THE TWO CHARACTERS");
   });
 
@@ -161,14 +165,18 @@ describe("the frame prompt names the real cast", () => {
  * A PACE is fine and stays allowed — “two words per second” describes delivery, not length.
  */
 describe("the catalogue never sets its own word count", () => {
-  const RANGE = new RegExp(String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})[\s-]*(?:to|and|-|\u2013)[\s-]*(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})\s+words?\b`, "gi");
-  const CAP = new RegExp(String.raw`\b(?:under|below|max(?:imum)?|at most|no more than)\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})\s+words?\b`, "gi");
+  const RANGE = new RegExp(String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})[\s-]*(?:to|and|-|\u2013)[\s-]*(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})(?:\s+spoken)?\s+words?\b`, "gi");
+  const CAP = new RegExp(String.raw`\b(?:under|below|max(?:imum)?|at most|no more than)\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})(?:\s+spoken)?\s+words?\b`, "gi");
 
   it("states no clip or line length of its own", () => {
     const offences: string[] = [];
     for (const pack of CHARACTER_CATALOGUE) {
-      const fields: Record<string, unknown> = pack as unknown as Record<string, unknown>;
-      for (const key of Object.keys(fields)) {
+      // The entry's own fields and every character's (persona, voice, script role …).
+      const sources: [string, Record<string, unknown>][] = [
+        [pack.id, pack as unknown as Record<string, unknown>],
+        ...pack.characters.map((c) => [`${pack.id}.${c.key}`, c as unknown as Record<string, unknown>] as [string, Record<string, unknown>]),
+      ];
+      for (const [where, fields] of sources) for (const key of Object.keys(fields)) {
         const value = fields[key];
         if (typeof value !== "string") continue;
         for (const re of [RANGE, CAP]) {
@@ -177,8 +185,8 @@ describe("the catalogue never sets its own word count", () => {
           while ((m = re.exec(value))) {
             // “about four words per second” is a pace, not a length — allowed.
             const after = value.slice(m.index + m[0].length, m.index + m[0].length + 12);
-            if (/^s*(per|a)s+second/i.test(after)) continue;
-            offences.push(`${pack.id}.${key}: "${m[0]}"`);
+            if (/^\s*(per|a)\s+second/i.test(after)) continue;
+            offences.push(`${where}.${key}: "${m[0]}"`);
           }
         }
       }
@@ -188,8 +196,12 @@ describe("the catalogue never sets its own word count", () => {
 
   it("lets the prompt be the only place a clip length is stated", () => {
     const out = script("normal_female");
-    expect(out).toContain(`${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP}`);
+    expect(out).toContain(`${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} SPOKEN words`);
     expect(out).not.toContain("six to fourteen words");
+    // The deities' own sentence lengths (2026-10-15) are gone from every prompt they reached.
+    for (const pack of CHARACTER_CATALOGUE.filter((p) => p.family === "god")) {
+      expect(script(pack.id), pack.id).not.toMatch(/(six to nine|eight to twelve|nine to thirteen|eight to thirteen) spoken words/);
+    }
   });
 });
 

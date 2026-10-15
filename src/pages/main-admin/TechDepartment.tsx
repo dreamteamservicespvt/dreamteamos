@@ -4,6 +4,7 @@ import { db } from "@/services/firebase";
 import { getRoleLabel, getRoleColor, isActiveUser } from "@/utils/roleHelpers";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import type { AppUser } from "@/types";
+import { useToday } from "@/hooks/useToday";
 import { Code, Users, Video, CheckCircle, Clock, AlertCircle } from "lucide-react";
 
 export default function TechDepartment() {
@@ -12,7 +13,10 @@ export default function TechDepartment() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const today = new Date().toISOString().slice(0, 10);
+  // The LOCAL day: `work_assignments.date` is written with `format(new Date(), "yyyy-MM-dd")`, so the
+  // UTC day (`toISOString`) showed yesterday's jobs as "today" until 05:30 IST. `useToday` also turns
+  // over at midnight on a page left open.
+  const today = useToday();
 
   useEffect(() => {
     let loaded = 0;

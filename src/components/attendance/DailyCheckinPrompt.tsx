@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
+import { usePopupClaim } from "@/hooks/usePopupClaim";
 import { getTodayWorkStats, performCheckIn } from "@/utils/attendance";
 import SmmDueCard from "@/components/smm/SmmDueCard";
+import { UnlessCoveredByDelivery } from "@/components/smm/alerts/DeliveryCoverage";
 import type { WorkAssignment } from "@/types";
 import { LogIn, Loader2, Sun } from "lucide-react";
 
@@ -63,10 +65,15 @@ export default function DailyCheckinPrompt() {
 
   const stats = useMemo(() => getTodayWorkStats(assignments || [], todayStr), [assignments, todayStr]);
 
-  if (!user || user.role !== "tech_member") return null;
   // A day off keeps the platform open — see the note at the top of this file.
   const dayOff = isSunday || isHoliday === true;
   const show = !dayOff && isHoliday === false && hasCheckin === false && assignments !== null;
+  // On a working day the check-in comes first: until the member has checked in, the popup coordinator
+  // keeps every popup that waits its turn away — "pending" while the reads are still coming in, so the
+  // 11 AM check cannot slip in ahead of a gate that is about to appear (store/popupStore).
+  usePopupClaim("checkin", user?.role === "tech_member" && !dayOff && hasCheckin !== true, !show);
+
+  if (!user || user.role !== "tech_member") return null;
 
   const handleCheckIn = async () => {
     if (!user || checkingIn) return;
@@ -125,8 +132,15 @@ export default function DailyCheckinPrompt() {
 
             {/* What this member's monthly clients need in the next three days. There is no
                 scheduler on this stack, so the reminder is attached to the one screen a tech member
-                cannot get past — see components/smm/SmmDueCard. */}
-            <SmmDueCard />
+                cannot get past — see components/smm/SmmDueCard. SMM Delivery Control (Live, 2026-10-15) covers
+                some people instead: their week's tasks and alerts are there, so the card points to it. */}
+            <UnlessCoveredByDelivery covered={
+              <p data-test="checkin-smm-control" className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-[11px] text-foreground">
+                ✨ Your social media tasks for this week are in Social Media → Delivery Control (Today).
+              </p>
+            }>
+              <SmmDueCard />
+            </UnlessCoveredByDelivery>
 
             <p className="text-[11px] text-muted-foreground">
               Checking in is required to continue. It records your attendance and sends your work status to the admin on WhatsApp.

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { watchMemberReceipts, type SalaryReceipt } from "@/services/salaryReceipts";
+import { receiptPeriodText, watchMemberReceipts, type SalaryReceipt } from "@/services/salaryReceipts";
 import { isLinePaid, watchMemberPayrollHistory } from "@/services/payrollRun";
 import { payPeriodLabel } from "@/utils/payrollEngine";
 import type { PayrollLine } from "@/types/payroll";
@@ -29,7 +29,9 @@ export function mergeSalaryPayments(receipts: SalaryReceipt[], lines: PayrollLin
     id: `receipt_${r.id}`,
     source: "receipt",
     amount: r.amount || 0,
-    periodText: r.month || (r.period ? payPeriodLabel(r.period) : ""),
+    // The period it PAYS — an older receipt's label named the period running when it was sent, one
+    // after the one it paid (utils/receiptPeriod, 2026-10-15).
+    periodText: receiptPeriodText(r),
     note: r.note || undefined,
     fileUrl: r.fileUrl,
     fileName: r.fileName,

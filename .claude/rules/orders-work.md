@@ -60,7 +60,9 @@ Drive step returns there (`safeMonthReturn`: only a month page).
 Orders queue. Inputs: assignee, category, duration, clip count, price per unit, uniqueId
 (`nextWorkUniqueId`: W/P/C/PS/O + sequence), brief and ad spec (pre-filled from the order via
 `assignmentFormFromOrder`), optional tracks (SMM split: `ad_creation` / `social_upload` /
-`digital_marketing`). Side effects, in order:
+`digital_marketing`); since 2026-10-15 an optional `promise` (the deadline of a job with no order — an orderless SMM
+month's `monthPromise`; ignored when an order is linked, which carries its own) and `date` (the job's day; an SMM month's
+jobs are dated `max(today, month start)`, else today). Side effects, in order:
 1. adopt an unassigned order for the same phone if none was given;
 2. **one transaction (2026-10-08):** re-read the order — refuse with `AssignmentRefusedError` when it is
    gone ("This sale was deleted by the salesperson…", `sale_gone`), removed or cancelled (`order_closed`),
@@ -114,7 +116,13 @@ once a session; Orders toasts "Queue tidied").
 **Deadlines:** `PromiseDeadline` chosen at sale (`presetKey`, `hours`, `startAt` = sale time,
 `dueAt`). **One extension** allowed (`canExtendPromise`, `extendOrderPromise` writes the order and
 mirrors it onto the assignment, never the sale). `notifyDueOrdersOnOpen` (Orders page open) alerts
-the assignee, seller, tech admin and team leaders when a job is near or overdue.
+the assignee, seller, tech admin and team leaders when a job is near or overdue. **SMM months (2026-10-15):** an SMM
+month's order and jobs carry `monthPromise` (due at the end of the month's last own day — the day before its renewal day,
+`smm.md` §9.9); `assignSmmMonth` puts it on a sold month's order before making jobs when the order's promise is not
+`smm_month` (so Orders → Assign jobs / `AssignTracksDialog` get it too) and on open jobs that lack it; a setup save keeps
+a used extension (`promiseSla.keepUsedExtension`: the extension, `originalDueAt` = the new due date, whichever due date
+is later); the extend box opens on `promiseSla.defaultExtensionHours` — 72 h (`SMM_MONTH_EXTENSION_HOURS`) for a month,
+the promise's own hours (else 24) for anything else (`ExtendPromiseButton`, `extendPromise`'s default).
 
 **Multi-deliverable orders:** `OrderProgress` (targets/done counters `ads`, `posters`, `posted`,
 `stories`, `campaigns`; tracks and owners; log). Derived from the SMM plan when
@@ -133,6 +141,12 @@ Orders tabs (active / delivered history paged by `ORDER_HISTORY_PAGE = 300` / re
 
 **Task dashboards:** tech admin Dashboard, Work Assign (member workload cards,
 `MemberWorkloadCard`), Work Done & Reports, member analytics, `AdsStatusBoard`.
+**Days and ratios (2026-10-15):** a job counts on its assignment day (`workDates.workCountsOn`); a record with only an
+`assignedAtIso` instant now reads its LOCAL (India) day through `workDates.localDayOfInstant` (it took the UTC day, the
+day before for 00:00–05:30 IST) — also `performanceCycle.workDayOf` and `orders.findReconcilableOrders`. Work Done
+(`components/work/WorkDoneReport`) and Member History set revenue against the salary of the period shown
+(`payTerms.salaryFor(member, termsPeriodOn(last day shown))`; all time → the salary now), not today's `users.salary`
+(`people.md` §9.14).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
@@ -149,7 +163,8 @@ Orders tabs (active / delivered history paged by `ORDER_HISTORY_PAGE = 300` / re
   linking to the queue their role opens) — it was one shared document each recipient's write replaced.
 - **Delivery promise:** the countdown starts at the sale; exactly **one extension**, by team
   leader / tech admin / main admin, the assignee or the seller; recorded on the order and
-  assignment, never on the sale.
+  assignment, never on the sale. An SMM month's deadline is its last own day; its extension box opens on 3 days, and
+  a used extension stays used through later setup saves (2026-10-15).
 - **Work:** members cannot assign, including to themselves; a job needs its access code once
   per device; completing notifies the assigner and team leaders once per event; verifying
   records the client delivery.

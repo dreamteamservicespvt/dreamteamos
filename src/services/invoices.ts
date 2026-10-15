@@ -5,7 +5,8 @@
  *   invoices/{invoiceId}          one invoice, its lines embedded (types/invoice explains why)
  *   invoice_counters/{2026-27}    `{ seq }` — the last serial handed out in that financial year
  *   invoice_numbers/{DTS-26-27-0001}  the number register: created once, in the same transaction
- *                                 that gives the number to its invoice, never updated or deleted
+ *                                 that gives the number to its invoice, never deleted; updated only to
+ *                                 record its invoice's deletion or (2026-10-15) its invoice's `issueDate`
  *   invoice_settings/*            the team-leader switch and the defaults — services/invoiceSettings
  *
  * ── Why a number cannot be handed out twice ───────────────────────────────────────────────────
@@ -19,7 +20,7 @@
  * Every function either throws (the caller shows a toast) or returns; none fails silently.
  */
 import {
-  arrayUnion, collection, doc, getDocs, increment, limit, onSnapshot, orderBy, query,
+  arrayUnion, collection, doc, getDoc, getDocs, increment, limit, onSnapshot, orderBy, query,
   runTransaction, serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase";
@@ -28,8 +29,13 @@ import type {
   Invoice, InvoiceContent, InvoiceEvent, InvoiceEventAction, InvoiceStatus,
 } from "@/types/invoice";
 import { computeInvoice } from "@/utils/invoiceMath";
-import { contentOf, duplicateContent, totalsSnapshot } from "@/utils/invoiceDraft";
-import { financialYearLabel, financialYearStart, formatInvoiceNumber, invoiceNumberKey } from "@/utils/invoiceNumber";
+import {
+  contentOf, duplicateContent, issuedDateProblem, totalsSnapshot, type IssuedDateRule, type SeriesNeighbour,
+} from "@/utils/invoiceDraft";
+import {
+  financialYearLabel, financialYearStart, financialYearStartOfLabel, financialYearStartOfNumber, formatInvoiceNumber,
+  invoiceNumberKey, sequenceOfNumber,
+} from "@/utils/invoiceNumber";
 import { isInvoiceAdmin } from "@/utils/invoiceAccess";
 
 const INVOICES = "invoices";
@@ -172,8 +178,168 @@ export function saveInvoiceContent(
   if (opts.issued) {
     patch.revision = increment(1);
     patch.history = arrayUnion(event("edited", actor));
+    return { committed: saveIssuedContent(id, fields.issueDate, clean(patch)) };
   }
   return { committed: updateDoc(ref, clean(patch)) };
+}
+
+// ─── An issued invoice's date (2026-10-15) ──────────────────────────────────────────────────────
+
+/** Refused: the new date would take a numbered invoice out of its year or out of order. */
+export class InvoiceDateRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvoiceDateRefusedError";
+  }
+}
+
+/** How far either side of a number to look for a neighbour that is still on record. */
+const NEIGHBOUR_REACH = 10;
+
+type RegisterEntry = { invoiceId?: string; issueDate?: string; deleted?: boolean };
+type ReadDoc = (path: [string, string]) => Promise<{ exists: boolean; data: Record<string, unknown> | null }>;
+
+/**
+ * The nearest earlier and later numbers of the same series that are still on record, with their
+ * dates. A deleted number is skipped (it has no date to keep order with); the search stops at the
+ * first number never handed out (the end of the series) and after `NEIGHBOUR_REACH` numbers.
+ *
+ * A neighbour's date comes from its register entry's `issueDate` (written since 2026-10-15 by
+ * Generate and by every date change); an older entry has none, so `dateOfInvoice` reads that
+ * invoice — which a member may not be allowed to read (another person's invoice). Then that side
+ * is unknown and only the financial year is enforced on it.
+ */
+async function seriesNeighbours(
+  read: ReadDoc,
+  fyStart: number,
+  seq: number,
+  dateOfInvoice: (invoiceId: string) => Promise<string | null> | string | null,
+): Promise<{ prev: SeriesNeighbour | null; next: SeriesNeighbour | null }> {
+  const at = async (s: number): Promise<{ number: string; entry: RegisterEntry } | "missing"> => {
+    const number = formatInvoiceNumber(fyStart, s);
+    const snap = await read([NUMBERS, invoiceNumberKey(number)]);
+    return snap.exists ? { number, entry: (snap.data || {}) as RegisterEntry } : "missing";
+  };
+  const dated = async (found: { number: string; entry: RegisterEntry }): Promise<SeriesNeighbour | null> => {
+    const date = found.entry.issueDate || (found.entry.invoiceId ? await dateOfInvoice(found.entry.invoiceId) : null);
+    return date ? { number: found.number, date } : null;
+  };
+
+  let prev: SeriesNeighbour | null = null;
+  for (let s = seq - 1; s >= Math.max(1, seq - NEIGHBOUR_REACH); s--) {
+    const found = await at(s);
+    if (found === "missing" || found.entry.deleted) continue;
+    prev = await dated(found);
+    break;
+  }
+  let next: SeriesNeighbour | null = null;
+  for (let s = seq + 1; s <= seq + NEIGHBOUR_REACH; s++) {
+    const found = await at(s);
+    if (found === "missing") break;
+    if (found.entry.deleted) continue;
+    next = await dated(found);
+    break;
+  }
+  return { prev, next };
+}
+
+/** The year and the place in the series of a stored, numbered invoice — null for a draft. */
+function seriesPlaceOf(stored: Partial<Invoice> | null): { number: string; fyStart: number; seq: number } | null {
+  if (!stored?.number) return null;
+  const fyStart = financialYearStartOfLabel(stored.financialYear) ?? financialYearStartOfNumber(stored.number);
+  const seq = Number(stored.sequence) || sequenceOfNumber(stored.number);
+  return fyStart !== null && seq ? { number: stored.number, fyStart, seq } : null;
+}
+
+const plainRead: ReadDoc = async ([coll, id]) => {
+  const snap = await getDoc(doc(db, coll, id));
+  return { exists: snap.exists(), data: snap.exists() ? (snap.data() as Record<string, unknown>) : null };
+};
+
+/** An invoice's date, or null when it is gone or this person may not read it. */
+async function readInvoiceDate(invoiceId: string): Promise<string | null> {
+  try {
+    const snap = await getDoc(doc(db, INVOICES, invoiceId));
+    const date = snap.exists() ? (snap.data() as Partial<Invoice>).issueDate : null;
+    return typeof date === "string" && date ? date : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What an issued invoice's date must respect — for the builder to show while it is being edited
+ * (inline error, the date picker's min / max). Null for a draft. The same rule is checked again, in
+ * a transaction, when the date is saved (`saveInvoiceContent` → `saveIssuedContent`).
+ */
+export async function fetchIssuedDateRule(id: string): Promise<IssuedDateRule | null> {
+  const snap = await getDoc(doc(db, INVOICES, id));
+  const place = seriesPlaceOf(snap.exists() ? (snap.data() as Partial<Invoice>) : null);
+  if (!place) return null;
+  const { prev, next } = await seriesNeighbours(plainRead, place.fyStart, place.seq, readInvoiceDate);
+  return { number: place.number, fyStart: place.fyStart, prev, next };
+}
+
+/**
+ * Save an edit of an issued invoice.
+ *
+ * ── Why the date gets a transaction ──
+ * An issued invoice's date was saved like any other field, so it could leave its number's financial
+ * year (DTS/26-27/0042 dated 2 April 2027) or go before the number ahead of it. When the date is
+ * unchanged this is the plain update it always was (queued offline like before). When it CHANGES,
+ * one transaction re-reads the invoice and the register entries around its number, refuses a date
+ * outside the year or out of order (`InvoiceDateRefusedError`, with the reason in words), and
+ * otherwise writes the invoice and its register entry's `issueDate` together — so the next check of
+ * a neighbour sees this date. It needs a connection (15 s, like Generate): the series cannot be
+ * checked from a device's cache.
+ */
+async function saveIssuedContent(id: string, issueDate: string, patch: Record<string, unknown>): Promise<void> {
+  const ref = doc(db, INVOICES, id);
+  const before = await getDoc(ref);
+  const stored = before.exists() ? (before.data() as Partial<Invoice>) : null;
+  const place = seriesPlaceOf(stored);
+  if (!place || stored?.issueDate === issueDate) {
+    await updateDoc(ref, patch);
+    return;
+  }
+
+  // Older register entries carry no date: their invoices are read here, outside the transaction,
+  // because a read this person is not allowed would otherwise abort it.
+  const fallbackDates = new Map<string, string | null>();
+  const remember = async (invoiceId: string) => {
+    if (!fallbackDates.has(invoiceId)) fallbackDates.set(invoiceId, await readInvoiceDate(invoiceId));
+    return fallbackDates.get(invoiceId) ?? null;
+  };
+  await seriesNeighbours(plainRead, place.fyStart, place.seq, remember);
+
+  const run = runTransaction(db, async (tx) => {
+    const fresh = await tx.get(ref);
+    const now = seriesPlaceOf(fresh.exists() ? (fresh.data() as Partial<Invoice>) : null);
+    if (!now) throw new Error("This invoice no longer exists.");
+    const txRead: ReadDoc = async ([coll, docId]) => {
+      const snap = await tx.get(doc(db, coll, docId));
+      return { exists: snap.exists(), data: snap.exists() ? (snap.data() as Record<string, unknown>) : null };
+    };
+    const { prev, next } = await seriesNeighbours(txRead, now.fyStart, now.seq, (invoiceId) => fallbackDates.get(invoiceId) ?? null);
+    const problem = issuedDateProblem(issueDate, { number: now.number, fyStart: now.fyStart, prev, next });
+    if (problem) throw new InvoiceDateRefusedError(problem);
+    const ownEntry = doc(db, NUMBERS, invoiceNumberKey(now.number));
+    const own = await tx.get(ownEntry);
+    tx.update(ref, patch);
+    if (own.exists()) tx.update(ownEntry, { issueDate });
+  });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(
+      "Can't reach the server. Changing an issued invoice's date needs a connection, so its place in the series can be checked.",
+    )), GENERATE_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([run, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export interface GenerateResult {
@@ -218,8 +384,11 @@ export async function generateInvoice(id: string, content: InvoiceContent, actor
     if (!number) throw new Error("The invoice series is blocked — ask an admin to check the counter.");
 
     tx.set(counterRef, { seq, fy, updatedAt: serverTimestamp() }, { merge: true });
+    // `issueDate` (2026-10-15): the register is readable by everyone who makes invoices, so a later
+    // date change of a NEIGHBOUR can keep the series in order without reading this invoice (which a
+    // member may not). Kept current by `saveIssuedContent`.
     tx.set(doc(db, NUMBERS, invoiceNumberKey(number)), {
-      number, invoiceId: id, fy, sequence: seq, byUid: actor.uid, createdAt: serverTimestamp(),
+      number, invoiceId: id, fy, sequence: seq, byUid: actor.uid, issueDate: fields.issueDate, createdAt: serverTimestamp(),
     });
 
     const issued = clean({

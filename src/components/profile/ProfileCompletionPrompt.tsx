@@ -38,6 +38,7 @@ import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where }
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
+import { usePopupClaim } from "@/hooks/usePopupClaim";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import {
   addKycDocument, removeKycDocument, saveEmployeeProfile, watchEmployeeProfile,
@@ -493,6 +494,13 @@ export default function ProfileCompletionPrompt() {
       return () => clearTimeout(timer);
     }
   }, [completion.complete, profile, eligible, dismissed, sessionKeys]);
+
+  // On screen exactly when the checks below let it render — told to the popup coordinator, so a popup
+  // that waits its turn stays away while this one asks.
+  usePopupClaim(
+    "profile",
+    !!user && eligible && !!profile && bankLoaded && !!checkedIn && !dismissed && (!completion.complete || justFinished),
+  );
 
   if (!user || !eligible) return null;
   // Nothing is shown until the record has actually loaded — a prompt that flashes up and then

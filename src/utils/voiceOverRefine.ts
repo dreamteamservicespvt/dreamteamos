@@ -3,6 +3,7 @@
  * back into the untouched script, and telling a real regression from a problem that was already
  * there. Pure, so every guarantee the refine flow relies on is testable without a model.
  */
+import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, PREFERRED_WORDS_PER_CLIP, isWordCountIssue } from "./scriptContract";
 
 export interface RefinePlan {
   understood: string;
@@ -156,28 +157,45 @@ export function issuesForClip(issues: string[], index: number, clipCount: number
 /**
  * What to do about a clip's problems, in editor's terms.
  *
- * A bare "must be 18–20 words, has 16" was repeated to the repair model twice and it came back 16 both
- * times. Saying which direction and by how much — and with what, so it is not padding — is what gets
- * the count fixed without losing the line.
+ * A bare "must be 18–20 words, has 16" (the band before 2026-10-15) was repeated to the repair model twice and it came back 16 both
+ * times. Saying which direction and by EXACTLY how much — and with what, so it is not padding — is what
+ * gets the count fixed without losing the line. Non-count problems pass through as they are.
  */
-export function repairDirection(issues: string[], min: number, max: number): string {
+export function repairDirection(issues: string[], min: number = MIN_WORDS_PER_CLIP, max: number = MAX_WORDS_PER_CLIP): string {
   return issues.map((issue) => {
-    // Both validators' wording: "…, but it has 16." (single voice) and "… but has 6." (dialogue).
+    // Both validators' wording: "…, but it has 16." (the clip) and "… but has 6." (a speaker's line).
     const count = issue.match(/but (?:it )?has (\d+)/);
     if (!count) return issue;
     const has = Number(count[1]);
-    // A dialogue LINE carries its own band ("Motu's line must be 8-12 words"); use it, not the clip's.
+    // A dialogue LINE carries its own band ("Motu's line must be 7-12 words"); use it, not the clip's.
     const stated = issue.match(/(\d+)\s*[–-]\s*(\d+)/);
     const lo = stated ? Number(stated[1]) : min;
     const hi = stated ? Number(stated[2]) : max;
     const who = issue.match(/: (.+?)'s line/)?.[1];
-    const subject = who ? `${who}'s line has` : "It has";
+    /** A clip total (not one speaker's line) gets the preferred landing spot too. */
+    const clipTotal = !who && lo === MIN_WORDS_PER_CLIP && hi === MAX_WORDS_PER_CLIP;
+    const together = /across both lines/.test(issue);
+    const subject = who ? `${who}'s line has` : together ? "Its two lines together have" : "It has";
+    const plural = (n: number) => `${n} word${n === 1 ? "" : "s"}`;
     if (has < lo) {
-      return `${subject} ${has} spoken words; it needs ${lo}–${hi}. ADD ${lo - has} to ${hi - has} words by carrying one more real, `
-        + `specific fact from the business information in the same sentence — never filler, never a repeated word.`;
+      const aim = clipTotal ? ` (adding ${PREFERRED_WORDS_PER_CLIP.min - has} to ${PREFERRED_WORDS_PER_CLIP.max - has} lands it at the preferred ${PREFERRED_WORDS_PER_CLIP.min}–${PREFERRED_WORDS_PER_CLIP.max})` : "";
+      return `${subject} only ${has} spoken words — ${plural(lo - has)} under the ${lo}-word floor. ADD at least ${plural(lo - has)}${aim}, `
+        + `never more than ${plural(hi - has)}, by carrying one more real, specific detail from the business information inside the same sentence`
+        + `${together ? ", in whichever line is shorter" : ""} — never filler, a repeated adjective, empty praise or a greeting.`;
     }
-    return `${subject} ${has} spoken words; it needs ${lo}–${hi}. CUT ${has - hi} to ${has - lo} words by tightening the sentence — `
-      + `keep the business name, the promise and every fact, drop only the words that carry nothing.`;
+    const aim = clipTotal ? ` (removing ${has - PREFERRED_WORDS_PER_CLIP.max} to ${has - PREFERRED_WORDS_PER_CLIP.min} lands it at the preferred ${PREFERRED_WORDS_PER_CLIP.min}–${PREFERRED_WORDS_PER_CLIP.max})` : "";
+    /*
+      ── Which words may go (2026-10-15, found live) ──────────────────────────────────────────────
+      This used to say "keep … every fact; drop only the words that carry nothing". A Telugu final clip has to
+      keep the 9-word closing call line and the 5-word address word for word, which leaves 3–6 words — and the
+      writer had put the free-fall offer there too. Told to keep every fact, the editor could never get under
+      22 words and the run stopped. The 20-word ceiling wins over a SECONDARY detail: the words the clip must
+      say stay, and an extra offer or detail that does not fit is left out (another clip carries the selling).
+    */
+    return `${subject} ${has} spoken words — ${plural(has - hi)} over the ${hi}-word ceiling. REMOVE at least ${plural(has - hi)}${aim} `
+      + `by tightening the sentence${together ? ", mostly from the longer line, keeping both lines whole and in their own speakers' mouths" : ""} — `
+      + `keep what this clip must say (its hook or core message, the business name, and the address and closing call line where they belong); `
+      + `drop the words that carry nothing first, and if it still does not fit, leave out a secondary offer or detail — never squeeze it in.`;
   }).join(" ");
 }
 
@@ -187,20 +205,25 @@ export function repairDirection(issues: string[], min: number, max: number): str
  * A repair that takes a 14-word clip to 17 has not cleared the issue, but it is closer — rejecting it
  * because the issue count did not drop threw away real progress in the first live runs.
  */
-export function wordBandDistance(counts: number[], min: number, max: number): number {
+export function wordBandDistance(counts: number[], min: number = MIN_WORDS_PER_CLIP, max: number = MAX_WORDS_PER_CLIP): number {
   return counts.reduce((sum, n) => sum + (n < min ? min - n : n > max ? n - max : 0), 0);
 }
 
 /**
- * Whether a repaired script is better than the one it replaces: fewer problems, or the same number of
- * problems with clips nearer the word band.
+ * Whether a repaired script is better than the one it replaces.
+ *
+ * ── Why the word band ranks first (2026-10-15) ─────────────────────────────────────────────────────
+ * It used to be "fewer problems wins": a rewrite that fixed a hard word and a call-to-action leak while
+ * pushing a clip from 20 to 22 words had fewer problems and was KEPT — a language fix bought with a clip
+ * that cannot be spoken in eight seconds. A candidate that moves any clip further from 17–20 is now never
+ * better; among candidates equally near the band, fewer problems wins.
  */
 export function isBetterRepair(
   before: { issues: string[]; distance: number },
   after: { issues: string[]; distance: number },
 ): boolean {
-  if (after.issues.length !== before.issues.length) return after.issues.length < before.issues.length;
-  return after.distance < before.distance;
+  if (after.distance !== before.distance) return after.distance < before.distance;
+  return after.issues.length < before.issues.length;
 }
 
 /**
@@ -221,4 +244,22 @@ export function numberedWords(words: string[]): string {
 export function introducedIssues(before: string[], after: string[]): string[] {
   const existing = new Set(before);
   return after.filter((issue) => !existing.has(issue));
+}
+
+/**
+ * What counts against an edit: every problem it CREATED, plus any word-count problem left in a clip it
+ * EDITED (2026-10-15). An untouched clip's old fault is not the edit's — but a clip the editor rewrote is
+ * new text, and new text obeys the 17–20 contract: a 21-word clip refined into another 21-word clip used to
+ * pass as "nothing new broke".
+ */
+export function editProblems(before: string[], after: string[], editedClips: number[]): string[] {
+  const introduced = introducedIssues(before, after);
+  const edited = new Set(editedClips);
+  const leftInEdited = after.filter((issue) => {
+    if (introduced.includes(issue)) return false;
+    const clip = issue.match(/^Clip (\d+)\b/);
+    if (!clip || !edited.has(Number(clip[1]) - 1)) return false;
+    return isWordCountIssue(issue) || /'s line must be \d+[–-]\d+ words/.test(issue);
+  });
+  return [...introduced, ...leftInEdited];
 }

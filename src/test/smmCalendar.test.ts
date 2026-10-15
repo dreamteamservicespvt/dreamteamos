@@ -5,8 +5,10 @@
  *
  * One client across three months, today Monday 5 Oct 2026: Month 1 (5 Aug → 5 Sep, renewed) with a post
  * marked posted two days after its upload date, one posted with no stamp, one never posted and one never
- * given a day; Month 2 (5 Sep → 5 Oct, last day today) with a late post, one due today and one with no day
- * yet; Month 3 starting today.
+ * given a day; Month 2 (5 Sep → 5 Oct) with a late post, one dated today and one with no day yet; Month 3
+ * starting today. Since 2026-10-15 a month's end date is its RENEWAL DAY, not one of its own days: today is
+ * Month 2's renewal day, so Month 2 has ended (its last own day was yesterday, where "Month 2 ends" is
+ * written) and its post dated today is outside it — today belongs to Month 3.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -108,7 +110,8 @@ describe("which months, and whose", () => {
 
 describe("the client's run", () => {
   it("gathers every month and post, and how far the arrows reach", () => {
-    expect(RUN.months.map((m) => `${m.name} ${m.phase}`)).toEqual(["Month 1 ended", "Month 2 running", "Month 3 running"]);
+    // Today is Month 2's renewal day — it has ended; only Month 3 runs (2026-10-15).
+    expect(RUN.months.map((m) => `${m.name} ${m.phase}`)).toEqual(["Month 1 ended", "Month 2 ended", "Month 3 running"]);
     expect(RUN.entries).toHaveLength(9);
     expect(RUN.first).toBe("2026-08");
     expect(RUN.last).toBe("2026-11");
@@ -162,6 +165,7 @@ describe("the client's run", () => {
     expect(clientMonthOn(RUN.months, "2026-08-20")?.id).toBe("m1");
     expect(clientMonthOn(RUN.months, "2026-09-05")?.id).toBe("m2");
     expect(clientMonthOn(RUN.months, TODAY)?.id).toBe("m3");
+    expect(clientMonthOn(RUN.months, "2026-10-04")?.id).toBe("m2"); // Month 2's last own day
     expect(clientMonthOn(RUN.months, "2026-11-06")).toBeNull();
   });
 });
@@ -172,13 +176,19 @@ describe("one calendar month, laid out", () => {
     expect(oct.title).toBe("October 2026");
     expect(oct.days[0]).toBe("2026-09-28");
     expect(oct.days).toHaveLength(35);
-    expect(oct.counts).toEqual({ posted: 0, notPosted: 1, coming: 2 }); // p6 late; p7, p10 to come
-    expect(entry(RUN, "p6").state).toBe("late");
-    expect(dayMarks(oct.byDay.get(TODAY)!)).toEqual([{ mark: "coming", count: 1 }]);
+    // Month 2 is over today (its renewal day): p6 and p7 were never posted in it; p10 is still to come.
+    expect(oct.counts).toEqual({ posted: 0, notPosted: 2, coming: 1 });
+    expect(entry(RUN, "p6").state).toBe("missed");
+    expect(dayMarks(oct.byDay.get(TODAY)!)).toEqual([{ mark: "notPosted", count: 1 }]);
+    // Dated on Month 2's renewal day — the next month's day, so outside Month 2 (2026-10-15).
+    expect(outsideItsMonth(RUN, entry(RUN, "p7"))?.id).toBe("m2");
+    expect(outsideItsMonth(RUN, entry(RUN, "p6"))).toBeNull();
     expect(oct.byDay.has("2026-09-28")).toBe(false); // a day of September is drawn empty
     expect(oct.months.map((m) => m.id)).toEqual(["m2", "m3"]);
     expect(ids(oct.undated)).toEqual(["p8"]); // Month 1's undated post is not October's
-    expect(oct.markers.get(TODAY)!.map((m) => `${m.kind} ${m.month.id}`)).toEqual(["end m2", "start m3"]);
+    // "Month 2 ends" on its last own day, "Month 3 starts" on the renewal day — two days, not one (2026-10-15).
+    expect(oct.markers.get("2026-10-04")!.map((m) => `${m.kind} ${m.month.id}`)).toEqual(["end m2"]);
+    expect(oct.markers.get(TODAY)!.map((m) => `${m.kind} ${m.month.id}`)).toEqual(["start m3"]);
     expect(oct.markers.has("2026-11-05")).toBe(false); // November's page says that
   });
 
@@ -205,7 +215,8 @@ describe("one calendar month, laid out", () => {
 
 describe("where it opens", () => {
   it("on today's page while the month it is about runs, else the page holding the middle of it", () => {
-    expect(openingMonth(RUN, TODAY, "m2")).toBe("2026-10"); // Month 2's last day is today
+    // Month 2 ended yesterday (today is its renewal day): its page holding most of its posts, September.
+    expect(openingMonth(RUN, TODAY, "m2")).toBe("2026-09");
     expect(openingMonth(RUN, TODAY, "m1")).toBe("2026-08"); // 5 Aug – 5 Sep: its middle is 20 Aug
     expect(openingMonth(RUN, TODAY)).toBe("2026-10"); // the month running today
     expect(openingMonth(buildClientRun([M1], TODAY)!, TODAY)).toBe("2026-08"); // the latest, finished
@@ -234,7 +245,8 @@ describe("where it opens", () => {
   });
 
   it("says where a month is in two words", () => {
-    expect(phaseLabel(RUN.months[1], TODAY)).toBe("Running now");
+    expect(phaseLabel(RUN.months[2], TODAY)).toBe("Running now");
+    expect(phaseLabel(RUN.months[1], TODAY)).toBe("Finished"); // today is its renewal day (2026-10-15)
     expect(phaseLabel(RUN.months[0], TODAY)).toBe("Finished");
     const early = buildClientRun([M3], "2026-10-02")!;
     expect(phaseLabel(early.months[0], "2026-10-02")).toBe("Starts in 3 days");
@@ -249,9 +261,13 @@ describe("a post in plain words", () => {
     expect(entryNote(entry(RUN, "p3"), TODAY)).toBe("Not posted — it was due on 25 Aug");
     expect(entryNote(entry(RUN, "p4"), TODAY)).toBe("Not posted — no date was given");
     expect(entryNote(entry(RUN, "p6"), TODAY)).toBe("Not posted — it was due on 1 Oct");
-    expect(entryNote(entry(RUN, "p7"), TODAY)).toBe("To be posted today");
+    // Its month is over today — its renewal day (2026-10-15).
+    expect(entryNote(entry(RUN, "p7"), TODAY)).toBe("Not posted — it was due on 5 Oct");
     expect(entryNote(entry(RUN, "p10"), TODAY)).toBe("To be posted on 20 Oct");
-    expect(entryNote(entry(RUN, "p8"), TODAY)).toBe("No date given yet");
+    // Month 2 is over (today is its renewal day): its undated post was never posted in it.
+    expect(entryNote(entry(RUN, "p8"), TODAY)).toBe("Not posted — no date was given");
+    const running = buildClientRun([{ ...M3, items: [item("p9")] }], TODAY)!;
+    expect(entryNote(entry(running, "p9"), TODAY)).toBe("No date given yet");
     const run = buildClientRun([{ ...M2, items: [
       item("marked", { status: "posted", postedAt: at(2026, 9, 20) }),
       item("bare", { status: "posted" }),

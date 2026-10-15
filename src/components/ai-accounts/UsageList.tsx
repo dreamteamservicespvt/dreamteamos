@@ -1,6 +1,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { buttonClass } from "./AiModal";
 import type { FlowUsageEntry } from "@/types/aiAccounts";
+import { shortDay } from "@/utils/flowCredits";
 
 /**
  * Credit entries for a month, newest first — each ad's clips, the account charged and who entered it.
@@ -18,14 +19,14 @@ export default function UsageList({
   onDelete: (entry: FlowUsageEntry) => void;
 }) {
   if (entries.length === 0) {
-    return <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">No credits recorded this month.</div>;
+    return <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">No credits recorded for clips made in this calendar month.</div>;
   }
   const total = entries.reduce((sum, e) => sum + e.credits, 0);
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="flex items-center justify-between border-b border-border px-4 py-2 text-xs text-muted-foreground">
         <span>{entries.length} entr{entries.length === 1 ? "y" : "ies"}</span>
-        <span>Total <b className="text-foreground" data-test="usage-total">{total}</b> credits</span>
+        <span>Total <b className="text-foreground" data-test="usage-total">{total}</b> credits this calendar month</span>
       </div>
       <ul className="divide-y divide-border">
         {entries.map((e) => {
@@ -38,7 +39,9 @@ export default function UsageList({
                   {e.businessName || e.uniqueId ? <span className="text-muted-foreground"> — {e.businessName || e.uniqueId}</span> : <span className="text-muted-foreground"> — manual entry</span>}
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate">
-                  {e.date} · <span className="font-mono">{e.accountEmail}</span>{showUser ? <> · {e.userName}</> : null}
+                  {/* The day the clips were made (2026-10-15) and the account's cycle it counts in. */}
+                  {e.date}{e.cycleStart ? <span data-test="usage-cycle"> · cycle from {shortDay(e.cycleStart)}</span> : null}
+                  {" "}· <span className="font-mono">{e.accountEmail}</span>{showUser ? <> · {e.userName}</> : null}
                   {e.editedByName ? <> · edited by {e.editedByName}</> : null}
                 </p>
               </div>

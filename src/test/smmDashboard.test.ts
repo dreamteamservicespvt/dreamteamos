@@ -45,8 +45,9 @@ const month = (over: Partial<SmmCampaign>): SmmCampaign => ({
   E (history) and F (completed) are not in play.
 */
 function fixture() {
+  // Each its own client (2026-10-15): "Clients running" counts a client once, by number.
   const A = month({
-    id: "A", businessName: "Annapurna Sweets", amount: 10000,
+    id: "A", businessName: "Annapurna Sweets", amount: 10000, clientPhoneId: "91000000001",
     cycle: { month: "2026-09", startDate: "2026-09-20", endDate: "2026-10-20" },
     commitments: { poster: 4, ai_ad: 2, real_video: 0 },
     team: { creator: { uid: "u1", name: "Arjun" }, publisher: { uid: "u2", name: "Divya" }, marketer: null, assistants: [] },
@@ -69,7 +70,7 @@ function fixture() {
     }],
   });
   const B = month({
-    id: "B", businessName: "Bharat Motors", amount: 20000,
+    id: "B", businessName: "Bharat Motors", amount: 20000, clientPhoneId: "91000000002",
     cycle: { month: "2026-09", startDate: "2026-09-06", endDate: "2026-10-06" },
     commitments: { poster: 0, ai_ad: 4, real_video: 0 },
     team: { creator: { uid: "u1", name: "Arjun" }, publisher: null, marketer: null, assistants: [] },
@@ -83,13 +84,13 @@ function fixture() {
     ads: [{ id: "r2", name: "Plan", scope: { kind: "all", itemIds: [] }, startDate: "2026-10-10", days: 5, dailyBudget: 300, status: "planned", reports: [] }],
   });
   const C = month({
-    id: "C", businessName: "Chandra Textiles", amount: 5000,
+    id: "C", businessName: "Chandra Textiles", amount: 5000, clientPhoneId: "91000000003",
     cycle: { month: "2026-09", startDate: "2026-09-01", endDate: "2026-10-01" },
     commitments: { poster: 2, ai_ad: 0, real_video: 0 },
     items: [posted("2026-09-28"), item({ status: "planned", uploadDate: "2026-09-30" })],
   });
   const D = month({
-    id: "D", businessName: "Durga Hospital", amount: 8000,
+    id: "D", businessName: "Durga Hospital", amount: 8000, clientPhoneId: "91000000004",
     cycle: { month: "2026-10", startDate: "2026-10-10", endDate: "2026-11-10" },
     commitments: { poster: 2, ai_ad: 0, real_video: 0 },
   });
@@ -107,10 +108,20 @@ describe("dashboardMonths", () => {
 describe("dashboardKpis", () => {
   it("adds up the headline numbers", () => {
     const k = dashboardKpis(fixture().all, TODAY, NOW);
+    // Running = on one of its own days today (2026-10-15): A and B. D starts on 10 Oct — not running yet.
     expect(k).toEqual({
-      running: 3, awaitingRenewal: 1, monthlyValue: 38000, dueThisWeek: 2, late: 2, lateMonths: 2,
+      running: 2, awaitingRenewal: 1, monthlyValue: 30000, dueThisWeek: 2, late: 2, lateMonths: 2,
       waiting: 1, waitDays: 3 + 1, renewalsDue: 2, renewalsValue: 25000, needsSetup: 1,
     });
+  });
+
+  it("counts a client once — on the renewal day, and when renewed early (owner's rule, 2026-10-15)", () => {
+    const old = month({ id: "old", amount: 9000, clientPhoneId: "91555", cycle: { month: "2026-09", startDate: "2026-09-06", endDate: "2026-10-06" } });
+    const next = month({ id: "next", amount: 9500, clientPhoneId: "91555", cycle: { month: "2026-10", startDate: "2026-10-06", endDate: "2026-11-06" } });
+    // On 6 Oct the old month has ended (its renewal day): one client, the new month's amount.
+    expect(dashboardKpis([old, next], "2026-10-06", NOW)).toMatchObject({ running: 1, monthlyValue: 9500, awaitingRenewal: 1 });
+    // On 5 Oct the renewed month has not started: one client, the old month's amount.
+    expect(dashboardKpis([old, next], "2026-10-05", NOW)).toMatchObject({ running: 1, monthlyValue: 9000, awaitingRenewal: 0 });
   });
 });
 
@@ -119,9 +130,11 @@ describe("deliverySummary", () => {
     const d = deliverySummary(fixture().all, TODAY);
     expect(d).toMatchObject({
       committed: 14, posted: 7, percent: 50,
-      // A floor(6 × 15/31) = 2 · B floor(4 × 29/31) = 3 (finished early, still only its calendar) · C all 2 · D none
-      expected: 7, expectedPercent: 50,
-      behindBy: 1, monthsBehind: 1, monthsOnTrack: 2, monthsTotal: 4,
+      // Over each month's OWN days (2026-10-15 — the end date is the renewal day): A floor(6 × 15/30) = 3 ·
+      // B floor(4 × 29/30) = 3 (finished early, still only its calendar) · C all 2 · D none
+      expected: 8, expectedPercent: 57,
+      // A: 2 posted of the 3 due → behind 1 · C ended 1 short · B done.
+      behindBy: 2, monthsBehind: 2, monthsOnTrack: 1, monthsTotal: 4,
     });
   });
 
@@ -141,8 +154,10 @@ describe("deliverySummary", () => {
 });
 
 describe("postedDay", () => {
-  it("prefers the posted stamp, then the planned day", () => {
-    expect(postedDay({ postedAt: { toMillis: () => Date.parse("2026-10-02T09:00:00") }, uploadDate: "2026-10-01" })).toBe("2026-10-02");
+  it("prefers the upload date, then the posted stamp (2026-10-15 — the calendar's rule)", () => {
+    // Marked posted on 2 Oct, dated 1 Oct: it went up on 1 Oct.
+    expect(postedDay({ postedAt: { toMillis: () => Date.parse("2026-10-02T09:00:00") }, uploadDate: "2026-10-01" })).toBe("2026-10-01");
+    expect(postedDay({ postedAt: { toMillis: () => Date.parse("2026-10-02T09:00:00") }, uploadDate: null })).toBe("2026-10-02");
     expect(postedDay({ postedAt: null, uploadDate: "2026-10-01" })).toBe("2026-10-01");
     expect(postedDay({ postedAt: null, uploadDate: null })).toBeNull();
   });
@@ -181,8 +196,9 @@ describe("pacePoints and byUrgency", () => {
   it("places each client by time gone and work out, and names its health", () => {
     const points = pacePoints(fixture().all, TODAY);
     const by = Object.fromEntries(points.map((p) => [p.id, p]));
-    expect(by.A).toMatchObject({ health: "bad", late: 1, posted: 2, committed: 6, expected: 2, waiting: 1 });
-    expect(by.A.elapsed).toBeCloseTo(15 / 31, 5);
+    // A's own days: 20 Sep … 19 Oct, 30 of them (20 Oct is the renewal day — 2026-10-15).
+    expect(by.A).toMatchObject({ health: "bad", late: 1, posted: 2, committed: 6, expected: 3, waiting: 1 });
+    expect(by.A.elapsed).toBeCloseTo(15 / 30, 5);
     expect(by.B).toMatchObject({ health: "good", delivered: 1 });
     expect(by.C).toMatchObject({ health: "bad", elapsed: 1, behindBy: 1, timeLabel: "Ended 3 days ago" });
     expect(by.D).toMatchObject({ health: "idle", elapsed: 0, expected: 0 });

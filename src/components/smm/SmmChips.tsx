@@ -9,15 +9,7 @@ import type { LucideIcon } from "lucide-react";
 import { Instagram, Facebook, Youtube, Linkedin, Hash, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { SMM_ITEM_STATUSES, SMM_PLATFORMS, type SmmItemStatus, type SmmPlatform } from "@/types/smm";
 import { daysUntilDue, isPosted } from "@/utils/smmPlan";
-
-/** Epoch ms from whichever timestamp shape a stored `postedAt` happens to carry. */
-function tsToMs(ts: unknown): number {
-  if (ts === null || ts === undefined) return 0;
-  if (typeof ts === "number") return ts;
-  const t = ts as { toMillis?: () => number; seconds?: number };
-  if (typeof t.toMillis === "function") return t.toMillis();
-  return typeof t.seconds === "number" ? t.seconds * 1000 : 0;
-}
+import { postedUpLabel } from "@/utils/smmGlance";
 import type { SmmContentItem } from "@/types/smm";
 
 /*
@@ -78,12 +70,11 @@ export function DueChip({ item, today }: { item: SmmContentItem; today: string }
     something is up is WHEN it went up — and whether that was the day it was promised.
   */
   if (isPosted(item)) {
-    const ms = tsToMs(item.postedAt);
-    const ago = ms ? Math.max(0, Math.round((Date.parse(`${today}T00:00:00`) - ms) / 86_400_000)) : null;
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-success">
+      <span data-test="smm-due-up" className="inline-flex items-center gap-1 text-[11px] text-success">
         <CheckCircle2 size={11} />
-        {ago === null ? "Up" : ago === 0 ? "Up today" : ago === 1 ? "Up yesterday" : `Up ${ago}d ago`}
+        {/* From its upload date (+ time), the press of Posted only when there is none (2026-10-15). */}
+        {postedUpLabel(item, today)}
       </span>
     );
   }

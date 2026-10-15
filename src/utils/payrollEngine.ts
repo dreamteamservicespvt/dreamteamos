@@ -129,11 +129,63 @@ export function salaryMonthDue(today: Date = new Date()): string {
   return shiftPayMonth(`${today.getFullYear()}-${pad(today.getMonth() + 1)}`, -1);
 }
 
+/**
+ * The days of a period that have not been worked yet on `todayStr` — today included, since today is not
+ * over — or null once the period has ended.
+ *
+ * ── Why (owner, 2026-10-15: "open on due, warn early pay") ──────────────────────────────────────
+ * Payroll opened on the period RUNNING, so on payday (10 Oct) it showed 10 Oct → 9 Nov with every day
+ * still to come. A day still to come costs nothing (only absences are deducted), so the net was the full
+ * salary, and "Mark paid" paid a month nobody had worked while the September salary actually due stayed
+ * unpaid. Payroll now opens on the period due (`salaryMonthDue`); paying one that has not ended is
+ * allowed — someone leaving mid-period — but only after a confirmation naming these days, because they
+ * are paid as if worked. On 3 Oct, paying September (10 Sep → 9 Oct) names 3 → 9 Oct.
+ */
+export function daysNotWorkedYet(
+  period: PayPeriod,
+  todayStr: string,
+): { from: string; to: string; days: number; workingDays: number } | null {
+  if (todayStr > period.end) return null;
+  const dates = periodDates(period).filter(d => d >= todayStr);
+  if (dates.length === 0) return null;
+  return {
+    from: dates[0],
+    to: dates[dates.length - 1],
+    days: dates.length,
+    workingDays: dates.filter(d => !isSundayDate(d)).length,
+  };
+}
+
+/**
+ * What the early-payment confirmation says, in one place for Payroll and Sales Payroll: the period has not
+ * ended, which days are not worked yet, that they are paid as if worked, and what to do for a leaver.
+ */
+export function earlyPayWarning(
+  name: string,
+  periodText: string,
+  notWorked: { from: string; to: string; days: number; workingDays: number },
+): string {
+  const span = notWorked.from === notWorked.to ? shortDay(notWorked.from) : `${shortDay(notWorked.from)} – ${shortDay(notWorked.to)}`;
+  const working = notWorked.workingDays === notWorked.days
+    ? `${notWorked.days} ${notWorked.days === 1 ? "day" : "days"}`
+    : `${notWorked.workingDays} working ${notWorked.workingDays === 1 ? "day" : "days"}`;
+  return `${periodText} has not ended yet: ${span} (${working}) ${notWorked.days === 1 ? "is" : "are"} not worked yet, `
+    + `and paying now pays ${notWorked.days === 1 ? "it" : "them"} as if worked. `
+    + `If ${name} is leaving, mark those days on the attendance grid first.`;
+}
+
 /** Step a pay-period label by whole months, e.g. the ‹ › buttons on a salary screen. */
 export function shiftPayMonth(month: string, delta: number): string {
   const [y, m] = month.split("-").map(Number);
   const next = new Date(y, m - 1 + delta, 1);
   return `${next.getFullYear()}-${pad(next.getMonth() + 1)}`;
+}
+
+/** Whole months from one pay-period label to another (`to` − `from`). */
+export function payMonthsBetween(from: string, to: string): number {
+  const [fy, fm] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  return (ty * 12 + tm) - (fy * 12 + fm);
 }
 
 const MONTH_NAMES = [
@@ -716,6 +768,15 @@ export function deductionsFor(c: SalaryComputation): { rows: DeductionRow[]; tot
  */
 export function netPayable(c: SalaryComputation): number {
   return Math.max(0, c.monthlySalary - deductionsFor(c).total + (c.adjustmentTotal || 0));
+}
+
+/**
+ * Has this salary actually been paid? The ONE test — `completed` (what `markSalaryPaid` writes) or
+ * `transferred`. Lives here, pure, since 2026-10-15 so the P&L can read payment records without Firestore;
+ * `services/payrollRun.isLinePaid` is this.
+ */
+export function isLinePaid(line: { paymentStatus?: string } | null | undefined): boolean {
+  return !!line && (line.paymentStatus === "completed" || line.paymentStatus === "transferred");
 }
 
 /**

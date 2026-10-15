@@ -10,7 +10,7 @@ paths:
   - "src/pages/tech-member/CreateAd.tsx"
   - "src/pages/shared/Tools.tsx"
   - "docs/video-category-*"
-  - "src/utils/{adPipeline,adRequirement,adSpec,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
+  - "src/utils/{adPipeline,adRequirement,adSpec,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptContract,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
 ---
 
 # AI ad generation (AI Ads Platform video + poster, Cinematic Ads, Gemini pipeline) — DTS-OS module context
@@ -23,12 +23,13 @@ paths:
 
 **9.7 AI Ads Platform (ad generation)** ✅. `components/ai-platform/*`, `services/geminiService.ts`,
 `services/prompts.ts`, `services/prompts/*`, `services/characterPacks.ts` +
-`characterCatalogue.ts` (35 special-category entries incl. three human duos), `services/posterStyles.ts`,
+`characterCatalogue.ts` (41 special-category entries incl. three human duos and the three Real Owner Duos), `services/posterStyles.ts`,
 `utils/posterAdType.ts` + `services/prompts/posterConcept.ts` (both poster systems: one ad type, the owner's structure),
 `services/adLanguages.ts`, `components/ai-platform/adgen.css` (the studio's design system, §11),
 `utils/businessFacts.ts` (verified contact numbers and address), `utils/castSheet.ts` +
 `utils/castWardrobe.ts` + `services/prompts/castWardrobe.ts` (the invented cast and its wardrobe stylist), `utils/scriptQa.ts` +
-`services/prompts/scriptQa.ts` (the voice-over quality gate), `utils/finalScript.ts` (a pasted final
+`services/prompts/scriptQa.ts` (the voice-over quality gate), `utils/scriptContract.ts` + `services/prompts/wordContract.ts`
+(THE word contract: 17–20 spoken words a clip, the one counter, the one prompt block — 2026-10-15), `utils/finalScript.ts` (a pasted final
 script), `utils/assignmentFormSpec.ts` (what a job decides on the form).
 Collection `ai_generations`. See §17.
 
@@ -53,7 +54,8 @@ upload or deliver the results.
 | **Cinematic Ads** 7-step pipeline | `/tech-admin/cinematic-ads` | tech admin |
 
 Also: Tools → **Script Duration Checker** (`extractScriptFromImage`, `convertToVoiceOverScript`,
-`suggestClipCount`), `formatAgreementWithAI` (HR), `readMetaAdsReport` (SMM ad-report
+`suggestClipCount` — since 2026-10-15 on the one word contract: clips made speakable before they are counted, a
+whole-script repair kept only when better, then the same clip-by-clip repair as the generator, `repairClipsByEdit`), `formatAgreementWithAI` (HR), `readMetaAdsReport` (SMM ad-report
 screenshot → leads/spend/cost-per-result/reach).
 
 ### 17.2 Video Ad flow (`AIPlatformApp` → `geminiService.generateAdAssets` → prompts)
@@ -66,7 +68,9 @@ screenshot → leads/spend/cost-per-result/reach).
 - aspect ratio `9:16` / `16:9`;
 - language (Telugu default);
 - no-logo name board (also used automatically when no logo FILE is attached, see below);
-- special category `characterPack` (38 entries: human "Normal Ad", owner face, **human duos**
+- special category `characterPack` (41 entries: human "Normal Ad", owner face, the **Real Owner Duo** (`owner_duo_male` /
+  `owner_duo_female` / `owner_duo_mixed`, family `owner_duo`, 2026-10-14 — the business's two real owners, see step 6),
+  **human duos**
   (`human_duo_female` / `human_duo_male` / `human_duo_mixed`, family `human_duo`, speakers
   speakers "Girl"/"Boy" on the mixed duo and "Friend"/"Host" on the same-gender ones — role labels
   that are never spoken, now ENFORCED by `validateDialogueClips` `forbiddenNames` against each
@@ -93,7 +97,9 @@ screenshot → leads/spend/cost-per-result/reach).
   BACKGROUND INSTRUCTIONS** box (`frameInstructions`, highest priority for backgrounds); when empty,
   the visiting card and other files fill in;
 - optional custom script;
-- files: logo, **owner image** (`ownerImage`, own slot, required for Real Owner Face), visiting
+- files: logo, **owner image** (`ownerImage`, own slot, required for Real Owner Face; a Real Owner Duo has TWO labelled
+  slots — `ownerImage` = Owner 1, `secondOwnerImage` = Owner 2, both required, read through
+  `characterPacks.ownerPhotoFile`, in memory only), visiting
   card, store images, product images, flyers, voice recording. There is **no document upload**:
   `FileUpload` refuses PDF, documents, text files, video, non-images on image slots and images over
   10 MB, and the platform shows a highlighted "extract it in Gemini, paste into BUSINESS CONTENT"
@@ -150,9 +156,34 @@ cached; small images and anything the browser cannot redraw go as they are).
    one or ending a sentence goes, and a text left with only a label ("Call", "📞 WhatsApp:") becomes "" (an overlay
    that was only an unverified number is dropped). Pincodes, prices and years are never touched.
 2. Decide the core message (`prompts/coreMessage.ts`).
-3. Write the voice-over (`VOICEOVER_SYSTEM_PROMPT`, language-aware, 18–20 words per clip; a
-   two-speaker clip is **15–17**, 7–9 per line, `dialogueFormat.wordBudgetFor`). Mechanical repair
-   (≤2 passes), native-speaker quality review (AI scripts only), second repair. Checks include
+3. Write the voice-over (`VOICEOVER_SYSTEM_PROMPT`, language-aware). **THE WORD CONTRACT (owner, 2026-10-15 —
+   "EVERY GENERATED CLIP MUST CONTAIN 17–20 SPOKEN WORDS, WITH A HARD MAXIMUM OF 20"):** `utils/scriptContract` is the
+   only place a band is defined or a word counted — `MIN/MAX_WORDS_PER_CLIP` 17 / 20, `PREFERRED_WORDS_PER_CLIP` 18–19,
+   `TARGET_WORDS_PER_CLIP` 18.5 (estimates), a two-person clip's two lines TOGETHER (`MIN/MAX_WORDS_PER_LINE` 7 / 12 each,
+   8–10 preferred), the same for one presenter, the Real Owner Face / Duo, the human duos, the Kids, cartoon solos and
+   duos, deities and the Custom Character, for commercial and festival ads, in every language (`wordBudgetFor` returns
+   the same clip band for every cast; `validateDialogueClips` ignores a caller's clip band and `finalClipSlack` moves only
+   the line split). The old bands are gone: 18–20 (one voice), 15–17 (a pair, 2026-09-22) and the unused 13–15 (Kids);
+   `dialogueFormat` re-exports the contract. **One counter** (`spokenWordsOf` / `countSpokenWords`): punctuation, symbols,
+   emoji, dashes, ellipses and the danda never make a word, an apostrophe inside a word keeps it one ("don't"), "&" is the
+   spoken "and", Telugu vowel signs / virama / ZWNJ stay inside their word, labels and clip headers are stripped
+   (`spokenTextOf`). geminiService's own tokenizer (it counted "—" as a word) and the dialogue counter (it split "don't")
+   are gone. **What is counted is what ships:** every line is made speakable (`speakableLine`: "₹999" = five spoken words)
+   BEFORE it is checked (`normalizeVoiceOverSegments(…, language)`, the cast's `DialogueTools.finish`) — it used to run
+   after the checks and change the count. **One prompt block** (`prompts/wordContract.wordContractBlock`): the writer, the
+   whole-script repair, the native-speaker review, the refine / clip editor and the character writer and repair all state
+   the budget in the same words, the closing sentence counted in code (the Telugu call line `TELUGU_SCREEN_CTA` is 9 words,
+   so the rest of the final clip has 8–11, the address among them), a per-cast register note (children, deity, cartoon) and
+   "never pad, never cut a sentence in half". The worked examples in `prompts/characterAd` print counts COMPUTED by the
+   counter (three solo lines labelled "(18 words)" were 14–16 words, every duo clip 15–17). The six deity catalogue entries
+   that set their own sentence length ("six to nine spoken words" …) no longer do (TS + JSON). **Repairs:** a failing clip
+   is repaired clip by clip (`repairClipsByEdit`, shared with the Script Duration Checker) with the exact direction
+   (`voiceOverRefine.repairDirection`: "It has 23 spoken words — 3 words over the 20-word ceiling. REMOVE at least 3 words
+   (removing 4 to 5 lands it at the preferred 18–19) …"; a cast: "Its two lines together have …") and its words numbered by
+   the counter; a whole-script repair runs only for a problem no clip owns (a lost clip, a name said twice) and — like every
+   repair — is kept only when `isBetterRepair` (never further from 17–20 words, THEN fewer problems; "fewer problems" alone
+   used to keep a language fix that pushed a clip to 22). The cast's checks and spelling passes are built once per run
+   (`dialogueTools`; the town's spelling used to be asked again on every draft). Other checks include
    everyday speech, festival wish, and `utils/speakingPosition` (a line that sends the viewer
    "elsewhere" while the speaker stands inside the business). **Address (2026-10-01):** when the
    verified facts carry an address, the LAST clip says it in spoken form
@@ -194,16 +225,43 @@ cached; small images and anything the browser cannot redraw go as they are).
    share one name rule (`dialogueNameRules`: role labels never spoken, a named character once — a solo one "at most
    once", `CharacterNameTokens.optional`), and the repair prompt states the real cast (it told human pairs to SAY
    "Girl"/"Boy", called every entry a cartoon and asked solos for two lines); the unused pack refine prompt was removed.
-   **Quality gate (every generated script, single voice or a cast; never a member's own):** a separate
-   judge (`prompts/scriptQa.ts`) never rewrites — it checks every claim against the business facts and
-   scores facts, language (educated, well-spoken, natural register), persuasion, clarity, relevance and
-   speakability; `utils/scriptQa` decides in code: pass (overall ≥ 8, each ≥ 7, facts ≥ 9, no
-   unsupported claim) ships; `polish` sends the judge's exact problems to the native-speaker editor;
-   `rewrite` writes a NEW draft told what failed. Every draft is judged again; the best of up to three
-   ships (`isBetterDraft`: no invented facts first, then score). Extra drafts are written AT THE SAME
-   TIME and judged together (one for a polish, every remaining draft for a rewrite), with a 60 s
-   deadline (`SCRIPT_GATE_DEADLINE_MS`) after which the best so far ships. The result is `scriptQa` on the kit
-   ("Script QA 8.6/10" on row 4). A judge that cannot run never blocks the ad.
+   **Quality gate — generate → validate → repair → judge → improve → judge again (every generated script, single voice
+   or a cast; never a member's own; rebuilt 2026-10-15).** A separate judge (`prompts/scriptQa.ts`) never rewrites: it
+   scores EIGHT rubric dimensions with written anchors (10 = nothing would make it better; a problem listed against a
+   dimension means it is not a 10; "award a 10 when it is true and only then") — facts, language, persuasion, clarity,
+   relevance, speakability & timing, **cast** (the right people, in their own voice, a real exchange, the category's tone)
+   and **originality & flow** — and ties each problem to its clip, dimension and fix. It is told the cast's identity
+   (`characterAd.castNoteFor`: the entry, its family, each speaker's role, its script style), the word counts CODE measured
+   (it no longer counts), the fixed closing sentence, and the verified address (it was never passed, so a correct last
+   clip was marked as inventing one). A reply that is not JSON or misses a score is asked once more, then counts as no
+   report (never a 10). In code (`utils/scriptQa`): the overall is computed from the dimensions (the judge sends none); the
+   judge's own problems cap their dimension at 9 and an unsupported claim facts at 4; code's mechanical findings on the
+   exact text cap theirs (`withMechanicalChecks` / `mechanicalCaps`: a clip outside 17–20 → speakability ≤ 5, a lost
+   speaker or role label said → cast ≤ 5, Latin letters / digits → language ≤ 6, a hard word → language ≤ 8, a call to
+   action leaked or missing → persuasion ≤ 8, the address → clarity ≤ 7, a duplicate → originality ≤ 5 …); **10/10
+   (`isPerfect`) only when every dimension is 10, no claim is unsupported, no problem is listed and code found nothing.**
+   The loop (`runQualityLoop` in `generateAdAssets`, steps decided by the pure `nextImprovement`) improves the BEST
+   draft: a broken cast or a script weak at its core (`QA_REWRITE_BELOW`, cast < 5 included) is written again — two drafts
+   side by side on the first round — with what failed (cast, word budget, the judge's report); anything else is POLISHED —
+   the clips the problems name are edited one by one (`repairFailingClips` / `repairDialogueClips` with the judge's
+   "Clip N: …" findings), a problem about the whole script goes to the native-speaker editor (single voice) or a new
+   draft (a cast). Every candidate is checked and judged again and replaces the best only when `isBetterDraft`: the cast
+   first, then the word contract (fewer violations, then nearer the band — a polished draft with a 23-word clip used to
+   beat a valid one on score), then judged at all, no invented facts, the computed score, fewer mechanical problems. An
+   edit that changed nothing is not judged. It stops at a genuine 10/10 (`perfect`), after `SCRIPT_IMPROVEMENT_PASSES` = 5
+   (`passes`), after `SCRIPT_IMPROVEMENT_STALLS` = 2 rounds in a row with nothing better (`stalled`), at
+   `SCRIPT_GATE_DEADLINE_MS` = 120 s (`deadline`), or when the judge cannot run and code finds nothing to fix
+   (`unscored` — the native-speaker review then still polishes it, kept only inside the contract). When even the best draft
+   breaks the contract, ONE contract-only fit is tried, judged like any draft. **THE FINAL ACCEPTANCE GATE:** after every
+   rewrite, repair, review, speakable pass and formatting step, the EXACT shipped text is counted again
+   (`contractViolations`: a clip outside 17–20, empty or repeated, or the wrong clip count) and a generated script that
+   fails STOPS the run before any frame — "The voice-over could not be fitted to 17–20 spoken words in every clip … Press
+   Generate" (like the cast guardrail); a member's own script is never held to it. The kit's `scriptQa` carries the real
+   score, `passed` (= a genuine 10/10 since 2026-10-15; ≥ 8 before), the eight scores, `drafts`, `passes`, `stopReason`,
+   `clipWords` (spoken words per clip) and `checkedScript` (the exact text judged and shipped); `unscored` when no judge
+   could score it. Row 4 shows "Quality check 10/10" / "best draft" / "not scored", the passes, the eight scores, and a
+   **Words per clip** row counted live from the script as it stands (green 17–20, amber outside); when the script was
+   changed after the check (a refine, a final script) it says so ("these scores are for the generated version").
 4. For real locations: review the client's photos and assign them to clips round-robin (a photo is
    reused, never replaced by an invented zone); each is the clip's **background plate**
    (`utils/locationAssignment.backgroundPlateRule` / `withBackgroundPlate`, `prompts/realLocation`):
@@ -375,6 +433,48 @@ cached; small images and anything the browser cannot redraw go as they are).
    writer is told the owner says each line to the camera with natural gestures, and each frame is stamped
    `COMPOSITION FOR THE VIDEO` (`withRealPersonComposition`: standing in place, mid-gesture, never mid-step; a
    client photo keeps its framing).
+   **The Real Owner Duo — Real Owner Face for TWO owners (2026-10-14, the owner: Male + Male, Female + Female, Male +
+   Female; sales picks the configuration, the tech side uploads the two photos).** Family `owner_duo` (picker group
+   "Real Owner Face — Duo", after Human Model; catalogue TS + JSON), `usesClientFace: true`, speakers `owner1` "Owner 1"
+   and `owner2` "Owner 2" with `PackCharacter.gender`; role labels, never spoken (`labelSpellings`). **One map, everywhere —
+   `characterPacks.ownerPhotoSlots(pack)`:** Owner 1 = owner photo 1 = `FileStore.ownerImage`, stands on the LEFT and
+   speaks first; Owner 2 = owner photo 2 = `secondOwnerImage`, on the RIGHT; on Male + Female the MAN is Owner 1 (the
+   owner's answer). The slot, the studio check, the frame writer's request, the 📎 line, the face lock, the wardrobe and
+   the Veo prompt all read it, so no step can pair one photo with the other side. The configuration (`characterPack`) is
+   the only source: sale → order → job → kit `spec`. No cast sheet and no wardrobe stylist (`castSheet.kindsOf` → null);
+   no motion plan, no director call. **Studio:** two slots in Assets & Files (`data-test="owner-photo-1"` / `-2`,
+   labelled `ownerSlotLabel` — "Owner 1 photo — Man · LEFT", "Owner 2 photo — Woman · RIGHT"), a note under the picker,
+   and Start refuses a run missing either photo, naming it ("Owner 2 photo missing … Owner 2 (the woman who stands on the
+   RIGHT)"); `generateAdAssets` refuses the same run itself before any call. The AI Guide says attach both photos in
+   every tab, in order (`RunFacts.ownerPhotos`). **Script:** the two owners ARE the business — "we", "our shop", "come to
+   us", never visitors ("the business's two real owners stand in their own business"; its own worked example
+   `ownersWorkedExample`; the repair contract keeps the first person plural). **Frames:** both photos go to the frame
+   writer, each with a sentence tying it to one side ("This is OWNER PHOTO 1 — a photograph of Owner 1, the man who stands
+   on the LEFT…"); the frame prompt names each owner ONLY by photograph ("the man from owner photo 1") — POSITION LOCK,
+   the shot plan's POSITIONS and the continuation line ("the same two owners … and their own photographs") — never by
+   the labels the image tool cannot see; they stand in place side by side. Each finished frame is stamped with the
+   two-shot composition (`withRealPersonComposition(…, { pair })`), the duo `FACE LOCK` (`frameBrand.withOwnerDuoFaceLock`:
+   each side is the person in its own photograph — never blended, swapped or one face — forehead as photographed,
+   nothing added) and the 📎 line "ATTACH OWNER PHOTO 1 (the man, LEFT) and OWNER PHOTO 2 (the woman, RIGHT), in that
+   order" (`withOwnerImageDirective(prompt, slots)`); a main-frame refine re-stamps both. The entry's scale anchor is
+   stamped as on any pair. WARDROBE: `ownerDuoWardrobeDirective` — each owner dressed for themselves by side from one
+   attire choice (Male + Female takes the mixed-duo attires), never the same main colour, the clothes only.
+   **Video:** the owner's template, for two (`assembleRealPersonDuoVeoPrompt`): "Two people stand side by side: the man
+   on the LEFT and the woman on the RIGHT. Both stay in frame, in their places, for the whole clip." (two men / two women:
+   "one on the LEFT and one on the RIGHT") · "With a very sweet voice the man on the LEFT needs to say :-" + the line ·
+   "Then, with a very sweet voice the woman on the RIGHT needs to say :-" + the line · "with appropriate gestures — only
+   the one speaking moves their lips; the other listens and reacts." · "Negative prompt :-" / "No text on the screen, no
+   third person, the two never swap places or voices". Each line's side is its SPEAKER's (`packVeoSubject` position), so a
+   clip a member's script gives to one owner says "only the woman on the RIGHT speaks; the man on the LEFT keeps his mouth
+   closed". `spokenLinesIn` reads both lines, so a Veo refine cannot change them.
+   **The studio's attach line knows the owners (2026-10-15, found by the browser check):** `utils/promptAttachments` read
+   only "IMAGE #n", so EVERY Real Owner Face frame — the single owner's too — showed "Nothing to attach" and "no photo"
+   while its prompt asked for the face(s). `PromptAttachment.ownerPhotos` now carries them (read from the 📎 line
+   `frameBrand` writes): `AttachmentBanner` says "📎 Attach both owner photos, in this order — 1. Owner photo 1 — the man,
+   LEFT · 2. Owner photo 2 — the woman, RIGHT" (single: "📎 Attach the owner's photo"), under the store photo's banner on
+   location; the tab chips show "👤 1·2" / "👤" (and "+👤" beside a store thumbnail); the copy toast and tooltip say
+   "then attach owner photo 1, then owner photo 2". A store photo's zone stops at the "  +  " join (it used to swallow
+   the owner text).
    **Frames are composed for the move, caught mid-movement** (`withMotionComposition`, `compositionFor`): a
    walking clip's still is caught MID-STEP (one foot forward, arms in a natural swing, clear floor in the
    direction of the walk; a pair both mid-step side by side at one distance; a deity mid-blessing in place), and
@@ -465,7 +565,9 @@ the row title's language; the form stays for the NEXT run (the Configuration cus
 A job changed after its kit still shows the "made for … / the job now says …" banner; Generate makes the new kit.
 
 **Editing / refine:** per-section refine (`refineSection`, "change only what was asked"),
-`refineVoiceOver` (plan → clip edits → validation; `RefineRevisionBanner` offers undo),
+`refineVoiceOver` (plan → clip edits → validation; `RefineRevisionBanner` offers undo; since 2026-10-15 a clip the editor
+rewrote must land in 17–20 spoken words even when it was outside before — `voiceOverRefine.editProblems` — or nothing is
+applied and the member is told the count),
 `refineVeoPrompts` (plan → JSON edit → check: `VEO_REFINE_PLAN_SYSTEM_PROMPT` understands the request
 and compares it with each prompt — it knows both the 2026-10-05 five-part prompt and the older headed one a
 saved kit may hold, and the dynamic-pass rules: one move, never backward, a pair only sideways, walks on the
@@ -602,6 +704,9 @@ before shows its old concepts as it did. The mission guide opens ONE Gemini tab;
   judge). `utils/geminiModels.thinkingFor`: gemini-2.5-flash a budget 0 / 768 / 1536; the Gemini 3 Flash models a
   level MINIMAL / LOW / MEDIUM (3.8-flash and flash-latest refuse MINIMAL → LOW); lite models none; a call with no
   effort keeps the model default. 2.5 refuses a level and 3.x defaults to medium thinking (both measured live).
+  SMM Delivery Control (2026-10-15, `services/smmAi`, `smm.md` §9.9 phase 5) goes through the same call layer: the titles /
+  ideas / captions call is `standard`; the week brief, morning brief, reasons summary and client-update lines are `fast`;
+  each has a screen time limit (75 s titles, 40 s the others) and a plain fallback, and is loaded only on first use.
 - **Errors:** the UI shows `status.error` (the error modal) — now always a plain sentence from the call layer.
   Many parsers are defensive (JSON repair, clip-number coercion). No server-side proxy, no retry queue.
 - **Live testing:** run `generateAdAssets` with vite-node and text-only `formData`, timing each request by
@@ -651,6 +756,17 @@ attribution (`Clip.voScript` is one string).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
+- **AI ads — 17–20 spoken words in every clip (owner, 2026-10-15):** every clip of every voice-over the platform WRITES
+  holds 17–20 spoken words — 18–19 preferred, exactly 20 allowed, 21 never — for every cast (one presenter, the real
+  owner or two owners, a human pair, two children, a cartoon solo or pair, a deity, a custom character), for commercial
+  and festival ads, in every language. In a two-person clip the two lines together make the 17–20 (about 8–10 each).
+  Only spoken words count — never labels, timestamps or punctuation — and the fixed closing call line and the address
+  count inside their clip. A clip is fitted by writing (one idea, said simply), never by padding or cutting a sentence;
+  a secondary detail that does not fit is left out, never squeezed in. The text that ships is counted again after every
+  change; a generated script that still breaks the rule stops the run with a message (Press Generate) instead of
+  shipping. Every script is improved toward a genuine 10/10 within a fixed budget (5 passes, 2 empty rounds, 2 minutes)
+  and the kit shows its REAL score — never a 10/10 it did not earn. A member's own script is used word for word and is
+  only counted. A refine never returns an edited clip outside 17–20.
 - **AI ads — contact numbers (owner, 2026-10-13):** the poster and the footer (Video Bottom Label) print exactly the
   unique contact numbers the business gave — the ones typed in the brief, the voice note's, or ones a card / flyer /
   premises photo shows — each once, as written, never invented, changed or added: none given → no number at all (the
@@ -698,6 +814,14 @@ attribution (`Clip.voScript` is one string).
   shows stays), and the ordered outfit changes the clothes only. Its video prompt is only the owner's template —
   "With a very sweet voice she (he) needs to say :- <the line> with appropriate gestures · Negative prompt :- No
   text on the screen" — by the video's gender; its frames show the owner standing, mid-gesture, ready to speak.
+- **AI ads — two real owners (owner, 2026-10-14):** a Real Owner Duo ad (Male + Male, Female + Female, Male + Female)
+  shows the business's two owners, each exactly as in their own photograph, in every clip: Owner 1 always on the LEFT
+  and speaking first (on Male + Female the man), Owner 2 on the RIGHT — never swapped, blended, given one face,
+  duplicated, replaced by an invented person or left out, and nothing added to either face. Sales picks the
+  configuration; the tech side uploads one clear photo of EACH owner, and no run starts without both. They speak as
+  the owners ("we", "our shop"), stand side by side and speak with gestures (no walking), and the video prompt is the
+  owner's real-person template for two, each line voiced by its own owner named by side. The single Real Owner Face,
+  the Human Duos and every other category are unchanged.
 - **AI ads — దసరా (owner, 2026-10-08):** a Telugu script always spells the festival దసరా.
 
 - **AI ads — what the invented cast wears (2026-10-05, the owner's answers):** the ordered attire is the
@@ -741,8 +865,8 @@ attribution (`Clip.voScript` is one string).
   sides and scale anchor. B-roll and overlay
   images are part of every video run, not a button pressed afterwards.
 - **AI ads (2026-09-22):** a custom script is used word for word (only emoji/decoration stripped;
-  numbers become words); a two-speaker category needs `[Speaker]:` lines; a two-speaker clip is
-  15–17 words (7–9 a line); human casts' role labels (Friend/Host) are never spoken; the Custom
+  numbers become words); a two-speaker category needs `[Speaker]:` lines; a two-speaker clip was
+  15–17 words (7–9 a line) — replaced on 2026-10-15 by the one 17–20 rule above; human casts' role labels (Friend/Host) are never spoken; the Custom
   Character needs a description (sale, Work Assign and platform) and Real Owner Face needs the
   owner image; no PDF/document uploads anywhere in the generator; every spoken number is words,
   never digits; the word for "and" is written `mariyu` in Latin letters and explained nowhere; a human
@@ -762,6 +886,11 @@ attribution (`Clip.voScript` is one string).
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- Real Owner Duo (2026-10-14): the two photos live only in the studio's memory, like every upload — a kit reopened
+  from Saved keeps its prompts (and a frame refine re-stamps the duo lock and the two-photo line without them), but a
+  new Generate needs both photos uploaded again. Who is who is fixed by order (photo 1 = LEFT = speaks first); there is
+  no "swap owners" control — the member uploads the photos into the matching slots. A member's script may give a clip to
+  one owner (allowed, as on every duo); the generated script always gives both owners a line in every clip.
 - Contact numbers (2026-10-13): what labels a typed number is read from word lists (`CONTACT_LABEL`, `OTHER_LABEL` in
   `utils/businessFacts`) — English plus a few Telugu / Hindi words. An unlabelled number that is not phone-shaped (an
   8-digit landline without its STD code, a 10-digit number starting 1–5 without "+") is left out; the member labels it
@@ -771,9 +900,8 @@ attribution (`Clip.voScript` is one string).
 - Cast consistency (2026-10-08): a kit saved before 2026-10-08 has no `spec`; its stored settings stand in, and
   those were written from the form at each save — a kit whose script is not that cast's is refused (not
   rebuilt) and has to be generated again or given a final script. An unknown speaker label in a MODEL's script is
-  placed by its position (reported, not refused); a member's is refused. The Kids' 13–15-word budget in
-  `dialogueFormat` (`MIN/MAX_WORDS_PER_KIDS_CLIP`, `wordBudgetFor(…, { children })`) is unused — left over from the
-  implementation dropped on 2026-10-02; the Kids use the duo band (15–17).
+  placed by its position (reported, not refused); a member's is refused. (The Kids' unused 13–15-word
+  budget was removed on 2026-10-15 — every cast has the one 17–20 contract, `utils/scriptContract`.)
 - Number spelling (`utils/spokenNumbers`) covers Telugu and English only; Hindi, Tamil, Kannada and
   Malayalam scripts rely on the prompt rule and the digit validator.
 - Motion staging comes from the scene plan's choices or a keyword reading of each line; when the
@@ -801,9 +929,19 @@ attribution (`Clip.voScript` is one string).
   unusual phrase on it walks one clip. With AI backgrounds the scene planner's `walk` decides (it handles any
   language); a plan without it falls back to the list. A kit made before 2026-10-10 keeps its mid-step frames — a
   Veo regenerate or Input Final Script on it now plans those clips standing; Generate makes matching frames.
-- The script quality gate's thresholds (pass ≥ 8, each ≥ 7, facts ≥ 9) are set from the rubric, not
-  measured against live Gemini scores; a final script with a different clip count than the kit is
-  refused rather than re-framed (it has to go through Configuration → custom script and a new run).
+- The script quality gate (2026-10-15): 10/10 is a genuine, rare result — in the first live runs (gemini-2.5-flash /
+  3.6-flash judges) scripts shipped at 9.4–9.8 after 3–4 passes, stopped "stalled", reported as "best draft". The
+  rubric's anchors, the mechanical caps (`MECHANICAL_CAPS`, matched on the validators' wording) and the rewrite
+  thresholds (`QA_REWRITE_BELOW`) are set from the rubric, not measured over many live runs; two judges (2.5 vs 3.x)
+  score the same script differently, so a pass can "improve" on judge noise. A deity whose catalogue name is part of
+  the business's name (Ganesha / Sri Ganesh Sweets) is counted as a second name mention (a mechanical issue that
+  caps cast at 5). A final script with a different clip count than the kit is refused rather than re-framed (it has
+  to go through Configuration → custom script and a new run).
+- The word contract (2026-10-15) counts what is written: a long Telugu compound or an English abbreviation counts as
+  one word however long it takes to say (the prompts ask for everyday words and easy rhythm; the judge scores
+  speakability). Numbers are counted as spoken only in Telugu and English (`spokenNumbers`); in Hindi, Tamil, Kannada
+  and Malayalam a digit is a validation issue the repair removes. `utils/wordTiming` (the overlays' word timing) still
+  has its own word splitter — it times words, it does not enforce the contract.
 - Character catalogue regeneration from JSON has no committed generator script.
 - Header prompts in no-logo mode may still reference a logo container (noted 2026-07, [NOT CONFIRMED] current). The
   poster's no longer can: its Format line never names a logo without one (2026-10-12).
@@ -844,6 +982,14 @@ attribution (`Clip.voScript` is one string).
   whether Veo, given only the template, keeps the frame's face and moves naturally (the template has no keep
   sentence and no camera, by the owner's choice). A Veo refine of these prompts keeps the line (spokenLinesIn) but
   the refine planner was written for the five-part prompt.
+- **The Real Owner Duo (2026-10-14) has not been seen on a generated image or video.** It is checked by unit tests
+  (`realOwnerDuoOct14`: all three configurations — slots, stamps, the template, the script prompt, the sales notes, the
+  full pipeline on a faked Gemini, the missing-photo refusal, the refine re-stamp, a one-owner clip; `castConsistencyOct08`
+  over every entry; the studio's two slots and check in `aiPlatformInputs`) and a real-browser run of the studio — but no
+  frame was made in ChatGPT / Gemini from two owner photos and no clip in Flow. Watch: an image tool given two reference
+  photos can blend the faces, swap them or use one face twice (the duo FACE LOCK names each side's photo, and the 📎 line
+  asks for photo 1 FIRST — attached in the other order, the sides swap); and whether Veo, given only the template, keeps
+  both faces and moves only the speaker's lips. The face lock's mark list is the single lock's, for both people at once.
 - దసరా (2026-10-08) is fixed by a list of misspellings: a transliteration not on it stays as written (the prompt
   now names దసరా, so the writer should not produce one). Other festivals' Telugu spellings are not fixed.
 
@@ -891,8 +1037,21 @@ attribution (`Clip.voScript` is one string).
   every profile snapshot re-reads `ai_generations` (read-quota; a test mock with an unstable user
   made it loop).
 - A frame run with no logo FILE now uses the name board even when "No logo" is not ticked.
-- The script quality gate adds a judge call per draft and up to two more drafts: 1 extra call on a
-  script that passes, up to ~6 on one that is rewritten twice (more quota and latency; not measured).
+- **The 10/10 loop costs quota and time (2026-10-15).** A script that is not perfect gets up to 5 improvement passes
+  (each a clip edit or a new draft, plus a judge call) within 120 s, then at most one contract fit; two empty rounds
+  in a row end it. Live: a 2-clip Telugu duo took 239 s (4 drafts, 4 passes) and a 2-clip Ganesha festival ad 147 s
+  — longer than the ~100 s before — and bursts of clip edits hit Google's PER-MINUTE limit on every key (the call
+  layer waits and retries; 251 rejected requests in one run, not counted against the daily quota). If members find
+  runs too slow, lower `SCRIPT_IMPROVEMENT_PASSES` / `SCRIPT_GATE_DEADLINE_MS` in `utils/scriptQa` — the contract and
+  the final gate do not depend on them.
+- **A two-person clip now carries 17–20 words (2026-10-15), not 15–17.** 15–17 was chosen on 2026-09-22 because at
+  18–20 the second speaker ran out of time and Veo finished the line in the wrong mouth. The owner set one rule for
+  every cast; the prompts now split it evenly (8–10 a line, each 7–12) and every duo Veo prompt still gives each
+  speaker their own half. Not yet seen in Flow: watch the second line of a duo clip for clipping or a voice swap.
+- **A run can now stop on the word contract** (the final acceptance gate) after every repair and draft failed — it
+  costs the member a Generate. Before the 2026-10-15 fix of the repair direction one live Telugu ad did (its final
+  clip had to keep a 9-word call line and a 5-word address and the editor was told to keep "every fact"); the re-run
+  after the fix is recorded in docs/DEVELOPMENT-HISTORY.md.
 - Contact numbers (2026-10-13): checked by `contactNumbersOct13.test.ts` (18 scenarios × the label, the video poster,
   Poster Creation end to end, the label refine, the overlays and a frame refine on a fake Gemini that keeps adding,
   repeating and dropping numbers) and in a real browser on the studio itself (Poster Creation with 0–3 numbers,

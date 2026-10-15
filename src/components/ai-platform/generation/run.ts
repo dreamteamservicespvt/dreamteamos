@@ -29,6 +29,11 @@ export interface RunFacts {
    * because the whole identity is copied from it. Optional so older snapshots still read.
    */
   ownerFace?: boolean;
+  /**
+   * A Real Owner Duo (2026-10-14): the two owner photos in the order they go into every tab —
+   * "Owner 1 photo — Man · LEFT", "Owner 2 photo — Woman · RIGHT". Absent on every other ad.
+   */
+  ownerPhotos?: string[];
 }
 
 export interface GenerationRun {

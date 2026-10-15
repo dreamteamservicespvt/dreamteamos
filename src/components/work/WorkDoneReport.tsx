@@ -6,7 +6,8 @@ import { BarChart3, ChevronLeft, ChevronRight, Trophy, Video, X } from 'lucide-r
 import DashboardDateRangePicker from '@/components/dashboard/DateRangePicker';
 import { normalizeDateRange } from '@/utils/dateRange';
 import { formatCurrency } from '@/utils/formatters';
-import { DONE_STATUSES, workDayOf, cycleForDate } from '@/utils/performanceCycle';
+import { DONE_STATUSES, workDayOf, cycleForDate, CYCLE_START_DAY } from '@/utils/performanceCycle';
+import { salaryFor, termsPeriodOn } from '@/utils/payTerms';
 import { categoryLabel } from '@/utils/serviceCatalog';
 import type { AppUser, WorkAssignment } from '@/types';
 import { isPosterCategory, assignmentSizeLabel } from '@/utils/posterSpec';
@@ -78,6 +79,16 @@ export default function WorkDoneReport({
   }, [mode, cycle, customRange, day]);
 
   /**
+   * The pay period whose salary the revenue is set against: the one the range shown ends in (the cycle,
+   * the day, a custom range's last day), and for "All time" the period running now.
+   */
+  const salaryPeriod = useMemo(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const lastDay = mode === 'career' || !activeRange ? null : format(activeRange.to, 'yyyy-MM-dd');
+    return termsPeriodOn(lastDay, todayStr, CYCLE_START_DAY);
+  }, [mode, activeRange]);
+
+  /**
    * Per-member totals for the active range.
    *
    * Ranked by the **revenue** each person delivered rather than the raw video count: a member
@@ -114,7 +125,10 @@ export default function WorkDoneReport({
           revenue += a.totalPrice || 0;
           if (a.category in byCategory) byCategory[a.category] += 1;
         }
-        const salary = m.salary || 0;
+        // The salary that applied in the period shown (`utils/payTerms`), not today's `users.salary` — a
+        // raise saved today must not make an earlier cycle look worse, nor a raise agreed for next
+        // period re-price this one.
+        const salary = salaryFor(m, salaryPeriod);
         return {
           uid: m.uid,
           name: m.name,
@@ -133,7 +147,7 @@ export default function WorkDoneReport({
       .filter(r => r.videos > 0)
       // Ranked by whatever the viewer can actually see: revenue for an admin, volume for a lead.
       .sort((a, b) => (showRevenue ? b.revenue - a.revenue : b.videos - a.videos));
-  }, [members, activeRange, doneByMember, showRevenue]);
+  }, [members, activeRange, doneByMember, showRevenue, salaryPeriod]);
 
   /** The member whose day-by-day record is open, if any. */
   const [detailUid, setDetailUid] = useState<string | null>(null);

@@ -11,7 +11,8 @@ import type { LucideIcon } from "lucide-react";
 import { AlertTriangle, CheckCircle2, Clock, Hourglass, TrendingDown, TrendingUp } from "lucide-react";
 import { daysBetween } from "@/utils/smmPlan";
 import {
-  SMM_TONE_LEGEND, cycleElapsed, cyclePhase, cycleTimeLabel, paceLabel, shortDayLabel, toneOf,
+  SMM_TONE_LEGEND, cycleElapsed, cyclePhase, cycleTimeLabel, datedOutsideLine, isOwnDay, itemDatedOutside, ownDayCount,
+  paceLabel, shortDayLabel, toneOf,
   type SmmPace, type SmmSegment, type SmmTone,
 } from "@/utils/smmPackage";
 import type { SmmContentItem, SmmCycle } from "@/types/smm";
@@ -90,8 +91,8 @@ export function KindBar({ label, icon: Icon, segments, committed, posted, note, 
   testId?: string;
 }) {
   const missing = Math.max(0, committed - segments.length);
-  const blocks: { key: string; tone: SmmTone; title: string }[] = [
-    ...segments.map((s) => ({ key: s.id, tone: s.tone, title: s.title })),
+  const blocks: { key: string; tone: SmmTone; title: string; outside?: boolean }[] = [
+    ...segments.map((s) => ({ key: s.id, tone: s.tone, title: s.title, outside: s.outside })),
     ...Array.from({ length: missing }, (_, i) => ({ key: `missing-${i}`, tone: "idle" as SmmTone, title: "Not planned yet" })),
   ];
   return (
@@ -109,7 +110,10 @@ export function KindBar({ label, icon: Icon, segments, committed, posted, note, 
         {blocks.length === 0
           ? <span className="h-2 flex-1 rounded-sm bg-muted" />
           : blocks.map((b) => (
-            <span key={b.key} title={b.title} data-tone={b.tone} className={`h-2 min-w-[3px] flex-1 rounded-sm ${TONE_BG[b.tone]}`} />
+            /* A piece dated outside the month (2026-10-15) is drawn outlined in grey whatever its stage —
+               it is not this month's, so a green block would count it twice over the eye. */
+            <span key={b.key} title={b.title} data-tone={b.tone} data-outside={b.outside ? "true" : undefined}
+              className={`h-2 min-w-[3px] flex-1 rounded-sm ${b.outside ? "bg-viz-ink/30 ring-1 ring-inset ring-viz-ink" : TONE_BG[b.tone]}`} />
           ))}
       </div>
     </div>
@@ -119,6 +123,13 @@ export function KindBar({ label, icon: Icon, segments, committed, posted, note, 
 /**
  * The month's dates as a bar: the part already gone shaded, today marked, and — when the items are
  * given — every dated post as a dot on its day, coloured by the most urgent piece due that day.
+ *
+ * ── One scale for the shading, today and the dots (2026-10-15) ───────────────────────────────
+ * The bar is the month's OWN days (start … the day before the end date, the renewal day), each an equal
+ * slot. The shaded part runs to the END of today (today counts as gone, as `cycleElapsed` says) and the
+ * today marker sits exactly on that edge — it used to sit at the START of today while the shading
+ * reached its end, so the two disagreed by a day. A post's dot sits in the middle of its day. A post
+ * dated outside the month used to be dropped without a word; it is now counted under the bar.
  */
 export function MonthTimeline({ cycle, today, items, size = "sm", showLabels = true }: {
   cycle: SmmCycle;
@@ -127,14 +138,15 @@ export function MonthTimeline({ cycle, today, items, size = "sm", showLabels = t
   size?: "sm" | "lg";
   showLabels?: boolean;
 }) {
-  const span = Math.max(1, daysBetween(cycle.startDate, cycle.endDate));
-  const at = (iso: string) => Math.max(0, Math.min(100, (daysBetween(cycle.startDate, iso) / span) * 100));
+  const span = ownDayCount(cycle);
+  const at = (iso: string) => Math.max(0, Math.min(100, ((daysBetween(cycle.startDate, iso) + 0.5) / span) * 100));
   const phase = cyclePhase(cycle, today);
   const gone = phase === "upcoming" ? 0 : cycleElapsed(cycle, today) * 100;
+  const outside = (items || []).filter((i) => !i.extra && itemDatedOutside(i, cycle)).length;
 
   const byDay = new Map<string, { tone: SmmTone; count: number; titles: string[] }>();
   for (const item of items || []) {
-    if (!item.uploadDate || item.uploadDate < cycle.startDate || item.uploadDate > cycle.endDate) continue;
+    if (!item.uploadDate || !isOwnDay(cycle, item.uploadDate)) continue;
     const tone = toneOf(item, today);
     const cur = byDay.get(item.uploadDate);
     const title = item.title?.trim() || "Untitled";
@@ -181,7 +193,7 @@ export function MonthTimeline({ cycle, today, items, size = "sm", showLabels = t
             data-test="smm-timeline-today"
             title="Today"
             className="absolute -bottom-1 -top-1 w-0.5 -translate-x-1/2 rounded bg-foreground"
-            style={{ left: `${at(today)}%` }}
+            style={{ left: `${gone}%` }}
           />
         )}
       </div>
@@ -193,6 +205,11 @@ export function MonthTimeline({ cycle, today, items, size = "sm", showLabels = t
           </span>
           <span>{shortDayLabel(cycle.endDate)}</span>
         </div>
+      )}
+      {outside > 0 && (
+        <p data-test="smm-timeline-outside" className="mt-1 text-[10px] font-medium text-amber-800 dark:text-warning">
+          {datedOutsideLine(outside, cycle)} — not on this bar, not counted for this month.
+        </p>
       )}
     </div>
   );

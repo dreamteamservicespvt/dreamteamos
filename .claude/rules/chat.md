@@ -29,7 +29,11 @@ paths:
 `api/order-chat.ts`. Collections `order_chats` (+`messages` subcollection), `calls`. The room opens
 at **sale** time (team-only, `clientReady:false`), becomes client-accessible on assignment, locks on
 completion (`delivered`), and reopens on undo or edits. Sales members read their rooms at
-`/sales/client-chats`.
+`/sales/client-chats`. **Social Media approvals in the chat (2026-10-15, SMM Delivery Control phase 7, `smm.md`):** for a Social
+Media month the chat id IS the month id, so `ClientChat` shows under its header "n posts are waiting for your approval"
+(`components/order-chat/ClientSmmApprovals`, refreshed every 2 minutes and on return) with ✔ Approve / ✎ Changes (what to change);
+`orderChatGuest.fetchSmmApprovals` / `answerSmmPiece` → `api/order-chat` `smm-approvals` / `smm-answer` (guest token; recorded on the
+month in a transaction by the server — a guest still writes nothing but their room). Nothing shows for any other chat.
 
 **9.12 Team chat, video calls, meetings, chat monitor** ✅. `pages/shared/Chat.tsx`, `Meeting.tsx`,
 `AdminChatMonitor.tsx`; `components/chat/*` (`ChatRoom`, `ChatSidebar`, `VideoCallManager`,
@@ -42,7 +46,8 @@ everyone (`CHATTABLE_ROLES`). Tech and sales admins can read their department me
 
 - **Client chat:** opens at sale (team-only), the client is admitted after assignment, locks on
   delivery, reopens on undo or edits; guests may only update presence, unread counts, last
-  message and their review.
+  message and their review. On a Social Media month's chat the client may approve or ask changes on a post the team sent
+  (2026-10-15) — through the server, recorded as the client's approval "via the client chat".
 
 ## 27. POTENTIAL RISKS (need verification)
 

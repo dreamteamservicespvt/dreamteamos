@@ -43,6 +43,8 @@ export default function SalesMySalary() {
     month,
     // The 75% gate, so this figure is the one the member is actually owed.
     dailyTarget: dailyTargetOf(user),
+    // The salary, plan and target that applied in the period viewed (utils/payTerms, 2026-10-15).
+    payHistory: user?.payHistory,
   });
 
   const { salary, salaryPayable, salaryDeduction, commission, totalEarnings } = earnings;
@@ -211,9 +213,15 @@ export default function SalesMySalary() {
                 {formatCurrency(earnings.incentiveWithheld ? (earnings.commissionBeforeTarget || 0) : commission)}
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {earnings.rate}% of {formatCurrency(earnings.salesBase)} in verified sales
+                {earnings.rate}% of {formatCurrency(earnings.salesBase - earnings.settledBase)} in verified sales
                 {earnings.incentiveWithheld && " · settled at 75% of target"}
               </p>
+              {/* One rule, two payout channels (2026-10-15): what Settlements already paid is not paid again here. */}
+              {earnings.settledBase > 0 && (
+                <p data-test="incentive-settled-note" className="mt-1 text-[11px] text-muted-foreground">
+                  The incentive on {formatCurrency(earnings.settledBase)} of this period's sales was already paid in Settlements.
+                </p>
+              )}
 
               <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm">
                 <div className="flex items-center justify-between">
@@ -253,7 +261,8 @@ export default function SalesMySalary() {
               hint={format(salary.payDay.date, "dd MMM")} />
           </section>
 
-          <LeavePanel month={month} config={salary.config} computation={c} />
+          {/* The LIVE count, not the paid snapshot — leave approved after payday uses the allowance (2026-10-15). */}
+          <LeavePanel month={month} config={salary.config} computation={salary.liveComputation} />
 
           <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">

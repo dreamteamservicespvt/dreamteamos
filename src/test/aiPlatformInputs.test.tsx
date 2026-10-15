@@ -166,4 +166,58 @@ describe("the AI platform inputs", () => {
     expect(format).toContain("[Friend]:");
     expect(format).toContain("[Host]:");
   });
+
+  /*
+    The Real Owner Duo (2026-10-14): two owners, two labelled photo slots — Owner 1 (LEFT, speaks first) and
+    Owner 2 (RIGHT) — both required, the missing one named, and each file sent as its own owner's photo.
+  */
+  const upload = (testId: string, name: string) =>
+    fireEvent.change(screen.getByTestId(testId).querySelector("input[type=file]")!, {
+      target: { files: [new File([new Uint8Array([1, 2, 3])], name, { type: "image/jpeg" })] },
+    });
+  const passOtherGates = () => {
+    fireEvent.click(screen.getByLabelText(/NO LOGO/));
+    fireEvent.change(screen.getByPlaceholderText("BUSINESS NAME"), { target: { value: "Sharma Electronics" } });
+    fireEvent.click(screen.getByText("🏙️ AI — build the location"));
+    fireEvent.change(screen.getByTestId("business-content"), { target: { value: "Sharma Electronics, Kakinada — TVs and washing machines." } });
+  };
+
+  for (const [id, left, right] of [
+    ["owner_duo_male", "Man", "Man"], ["owner_duo_female", "Woman", "Woman"], ["owner_duo_mixed", "Man", "Woman"],
+  ] as const) {
+    it(`asks for BOTH owners' photos on ${id}, each slot labelled with its owner, kind and side`, () => {
+      open();
+      choosePack(id);
+      expect(screen.getByTestId("owner-photo-1").textContent).toMatch(new RegExp(`Owner 1 photo — ${left} · LEFT`, "i"));
+      expect(screen.getByTestId("owner-photo-2").textContent).toMatch(new RegExp(`Owner 2 photo — ${right} · RIGHT`, "i"));
+      expect(screen.getByTestId("owner-image-slot").textContent).not.toMatch(/UPLOAD OWNER IMAGE/i);
+      expect(screen.getByTestId("owner-duo-note").textContent).toMatch(/Both are required/);
+    });
+  }
+
+  it("refuses a Real Owner Duo run missing a photo, names the missing one, then sends each file as its own owner's", async () => {
+    vi.mocked(gemini.generateAdAssets).mockClear();
+    vi.mocked(gemini.generateAdAssets).mockResolvedValue({
+      businessInfo: {}, mainFramePrompts: [], headerPrompt: "", posterPrompt: "", voiceOverScript: "", veoPrompts: [],
+      hasProductImages: false, productImageCount: 0, stockImagePrompts: null,
+    } as any);
+    open();
+    choosePack("owner_duo_mixed");
+    passOtherGates();
+    upload("owner-photo-1", "him.jpg");
+    fireEvent.click(screen.getByText("Start Generation"));
+    expect(await screen.findByText("Owner 2 photo missing")).toBeTruthy();
+    expect(document.body.textContent).toContain("Owner 2 (the woman who stands on the RIGHT)");
+    expect(gemini.generateAdAssets).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("OK"));
+
+    upload("owner-photo-2", "her.jpg");
+    fireEvent.click(screen.getByText("Start Generation"));
+    await vi.waitFor(() => expect(gemini.generateAdAssets).toHaveBeenCalled());
+    const [formData, files] = vi.mocked(gemini.generateAdAssets).mock.calls[0];
+    expect(formData).toMatchObject({ characterPack: "owner_duo_mixed" });
+    expect(files.ownerImage?.name).toBe("him.jpg");
+    expect(files.secondOwnerImage?.name).toBe("her.jpg");
+    vi.mocked(gemini.generateAdAssets).mockClear();
+  });
 });

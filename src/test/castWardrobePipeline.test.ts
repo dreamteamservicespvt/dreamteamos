@@ -158,9 +158,9 @@ describe("who the stylist dresses", () => {
 
     calls.length = 0;
     dialogue = [
-      "0-8|motu: These kits teach the stories of our gods!",
+      "0-8|motu: These kits teach the stories of our gods to children!",
       "0-8|patlu: IconoIQ makes temple art simple for every child.",
-      "8-16|motu: Can I build a temple too?",
+      "8-16|motu: Can I build a whole temple at home too?",
       "8-16|patlu: Yes, every kit comes with simple steps for every age.",
     ].join("\n");
     await run(form({ characterPack: "duo_motu_patlu" }));

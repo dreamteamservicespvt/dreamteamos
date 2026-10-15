@@ -17,7 +17,7 @@
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { packagePlatforms } from "@/utils/serviceCatalog";
 import { attireLabel } from "@/utils/adRequirement";
-import { getCharacterPack, isHumanPack, packHighlight } from "@/services/characterPacks";
+import { getCharacterPack, isHumanPack, ownerPhotoSlots, packHighlight } from "@/services/characterPacks";
 import { formatCurrency } from "@/utils/formatters";
 import { formatPhoneDisplay } from "@/utils/phone";
 import type { Lead, SaleDetail } from "@/types";
@@ -83,7 +83,8 @@ export function buildClientSaleMessage(lead: Lead, item: SaleDetail): string {
       // True of a duo and false of the twenty-three single-speaker entries. A confirmation that
       // promises the client two characters in a one-deity ad is a promise the ad cannot keep.
       pack ? (pack.characters.length > 1
-        ? `   ✨ Both characters speak in every clip`
+        // The Real Owner Duo's two are the client's own owners, not characters (2026-10-14).
+        ? ownerPhotoSlots(pack).length > 1 ? `   ✨ Both owners speak in every clip` : `   ✨ Both characters speak in every clip`
         : `   ✨ ${pack.characters[0].name} presents your business throughout`) : null,
       !pack && r.modelGender ? `👤 *Model:* ${r.modelGender === "male" ? "Male" : "Female"}` : null,
       (!pack || isHumanPack(pack)) && r.attireType ? `👔 *Attire:* ${attireLabel(r.attireType, r.customAttire, r.specialCategory)}` : null,
@@ -102,7 +103,16 @@ export function buildClientSaleMessage(lead: Lead, item: SaleDetail): string {
         `📸 *One small thing:* please send us photos of your shop / office — inside, outside, counter, product area. The more angles you send, the better your ad looks.`,
       );
     }
-    if (pack?.usesClientFace) {
+    // The Real Owner Duo (2026-10-14): two owners, so a photo of EACH — sent separately, never one group photo.
+    const owners = pack ? ownerPhotoSlots(pack) : [];
+    if (owners.length > 1) {
+      const who = owners[0].kind !== owners[1].kind ? "the gentleman and the lady"
+        : owners[0].kind === "man" ? "both gentlemen" : "both ladies";
+      lines.push(
+        `🙂 *And a clear photo of EACH owner's face* — two photos, one of ${who}, each person on their own, straight on and well lit. `
+          + `Both exact faces appear in every clip.`,
+      );
+    } else if (pack?.usesClientFace) {
       lines.push(
         `🙂 *And one clear photo of the owner's face* — straight on and well lit. This exact face appears in every clip.`,
       );

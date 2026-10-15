@@ -58,6 +58,9 @@ export default function FlowAccountDialog({
     accounts,
   });
 
+  // Filled when the dialog opens (or opens on another account) — not on every snapshot: the pages now
+  // pass the LIVE account (2026-10-15), so "Fixed — credits are already recorded" appears the moment a
+  // credit is recorded on it, and a live update must not wipe what is being typed.
   useEffect(() => {
     if (!open) return;
     setErrors({});
@@ -65,7 +68,8 @@ export default function FlowAccountDialog({
     setForm(account
       ? { email: account.email, password: "", phone: account.phone, createdOn: account.createdOn, notes: account.notes || "", ownerId: account.ownerId }
       : { email: "", password: "", phone: "", createdOn: today, notes: "", ownerId: actor.uid });
-  }, [open, account, actor.uid, today]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, account?.id, actor.uid]);
 
   useEffect(() => {
     if (open) setKeySteps(!accounts.some((a) => a.apiKey && a.addedBy === actor.uid));
@@ -153,11 +157,22 @@ export default function FlowAccountDialog({
             onChange={(e) => set({ phone: e.target.value })} placeholder="10-digit Jio number" data-test="flow-phone" />
         </label>
         <div className="grid grid-cols-2 gap-3">
+          {/* ── Why the label says "opened in Flow" (2026-10-15) ──
+              It said "Account created on" and quietly started on today, so an account opened days earlier
+              and added later kept today's date — its credits then refreshed on the wrong day every month
+              and it expired late. Today stays the default; the label and the line under it ask for the
+              day the Google account was actually opened. */}
           <label className="block min-w-0">
-            {label("Account created on", errors.createdOn)}
+            {label("Day the Flow account was opened", errors.createdOn)}
             <input className={fieldClass} type="date" max={today} value={form.createdOn} disabled={dateLocked}
               onChange={(e) => set({ createdOn: e.target.value })} data-test="flow-created" />
-            {dateLocked ? <span className="mt-1 block text-[10px] text-muted-foreground">Fixed — credits are already recorded on it.</span> : null}
+            {dateLocked ? <span className="mt-1 block text-[10px] text-muted-foreground">Fixed — credits are already recorded on it.</span>
+              : (
+                <span className="mt-1 block text-[10px] text-muted-foreground" data-test="flow-created-hint">
+                  {!editing && form.createdOn === today ? "Today — change it if the account was opened earlier. " : ""}
+                  Its credits refresh on this day every month.
+                </span>
+              )}
           </label>
           <div className="min-w-0">
             {label("Expires on (automatic)")}

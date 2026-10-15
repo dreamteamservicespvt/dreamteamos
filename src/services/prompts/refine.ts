@@ -15,10 +15,10 @@
  * Code then puts the edited clips back into the untouched script, so every other clip is byte-for-
  * byte what it was, and validates the result before anything is saved.
  */
-import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, wordBudgetFor } from "@/utils/dialogueFormat";
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { wishAudienceRule } from "./festivalWish";
+import { TELUGU_SCREEN_CTA, wordContractBlock, type WordContractRegister } from "./wordContract";
 
 export interface RefineSpeaker {
   key: string;
@@ -75,6 +75,10 @@ export const VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT = (options: {
   brief?: CoreMessageBrief | null;
   /** Present for a special-category two-hander or solo character script. */
   speakers?: RefineSpeaker[];
+  /** How the cast speaks (children, a deity, a cartoon…) — only to keep the budget natural for it. */
+  register?: WordContractRegister;
+  /** The address the final clip says, in its spoken form — counted inside that clip's budget. */
+  address?: string;
 }) => {
   const { language, clipCount, adType, brief, speakers } = options;
   const lang = (language || "Telugu").trim() || "Telugu";
@@ -83,11 +87,17 @@ export const VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT = (options: {
   const messageClip = adType === "festival" && clipCount > 1 ? 2 : 1;
   const dialogue = !!speakers?.length;
   const solo = (speakers?.length ?? 0) === 1;
-  // A two-hander refines to its own, lower band — see utils/dialogueFormat.wordBudgetFor.
-  const budget = wordBudgetFor(speakers?.length || 1);
   const finalCta = isTelugu
-    ? `"మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి."`
+    ? `"${TELUGU_SCREEN_CTA}"`
     : `a natural ${lang} sentence meaning "For more details, call the number shown on screen now"`;
+  /** The same budget, in the same words, as the writer that wrote the script (prompts/wordContract). */
+  const budget = wordContractBlock({
+    speakers: speakers?.length || 1,
+    names: speakers?.map((s) => s.name),
+    closingLine: isTelugu && !dialogue ? finalCta : "",
+    address: options.address,
+    register: options.register,
+  });
 
   return `You are a precise ${lang} advertising script EDITOR. You are NOT writing a new script.
 
@@ -105,13 +115,14 @@ HOW TO EDIT:
 
 ${everydaySpeechRules(lang)}
 
+${budget}
+A clip you return outside the budget is rejected by code and the edit is not applied — count each edited clip before you return it.
+
 RULES THE EDITED CLIPS MUST STILL OBEY:
 ${dialogue
   ? `• Each clip is ${solo ? `ONE line from ${speakers![0].name}` : `exactly ${speakers!.length} lines, ${speakers!.map((s) => s.name).join(" then ")}, in that order`}. ${solo ? "" : `Never merge them into one voice, never drop or reorder a character.`}
-• ${budget.minClip}–${budget.maxClip} spoken words per clip${solo ? "" : `, each line ${budget.minLine}–${budget.maxLine} words`}.
 • Each line belongs to the speaker named on it — never move a line, or part of one, to the other character.`
-  : `• Between ${MIN_WORDS_PER_CLIP} and ${MAX_WORDS_PER_CLIP} spoken words per clip — tighten or complete the thought, never pad and never cut a sentence in half.
-• ONE short spoken sentence per clip — never two sentences, never a long run-on line.`}
+  : `• ONE short spoken sentence per clip — never two sentences, never a long run-on line.`}
 • ${isLatin ? "No digits in spoken content." : `No Latin letters and no digits in spoken content.`}
 • Never speak a phone number or contact number.
 • A call to action ("call", "visit", "contact") only in the FINAL clip (clip ${clipCount}).${isTelugu && !dialogue ? ` The final clip must still end with ${finalCta}` : ""}

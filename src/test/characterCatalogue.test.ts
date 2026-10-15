@@ -20,7 +20,7 @@ import {
 describe("the catalogue", () => {
   it("offers every family the sales team sells", () => {
     const families = new Set(CHARACTER_CATALOGUE.map((p) => p.family));
-    expect([...families].sort()).toEqual(["custom", "duo", "god", "human", "human_duo", "kids", "solo"]);
+    expect([...families].sort()).toEqual(["custom", "duo", "god", "human", "human_duo", "kids", "owner_duo", "solo"]);
   });
 
   it("has no duplicate ids", () => {
@@ -64,12 +64,13 @@ describe("the catalogue", () => {
 
   it("only the Real Owner Face entries are built from the client's own face", () => {
     const faces = CHARACTER_CATALOGUE.filter((p) => p.usesClientFace).map((p) => p.id).sort();
-    expect(faces).toEqual(["owner_face_female", "owner_face_male"]);
+    // The single owner, and the Real Owner Duo's three (2026-10-14).
+    expect(faces).toEqual(["owner_duo_female", "owner_duo_male", "owner_duo_mixed", "owner_face_female", "owner_face_male"]);
   });
 
   it("gives duos exactly two speakers and everything else exactly one", () => {
     for (const p of CHARACTER_CATALOGUE) {
-      expect(p.characters.length, p.id).toBe(p.family === "duo" || p.family === "human_duo" || p.family === "kids" ? 2 : 1);
+      expect(p.characters.length, p.id).toBe(p.family === "duo" || p.family === "human_duo" || p.family === "kids" || p.family === "owner_duo" ? 2 : 1);
     }
   });
 

@@ -26,6 +26,7 @@ import { discountAwaitingApproval } from "@/utils/saleDiscount";
 import { promiseDueMs, deadlineState, canExtendPromise, extendPromise } from "@/utils/promiseSla";
 import { initialProgress, isProgressComplete, isTrackComplete, TRACK_FIELDS } from "@/utils/orderProgress";
 import { penaltyAmount, totalPenalties } from "@/utils/penalty";
+import { localDayOfInstant } from "@/utils/workDates";
 import {
   timestampMs, orderIdOfSale, saleIdOf, saleIdOfOrderId, findSaleIndex, leadSaleItems, withSaleIds,
 } from "@/utils/saleIdentity";
@@ -292,6 +293,13 @@ export async function afterOrderWrite(params: {
   saleFields: OrderSaleFields;
   soldByName: string;
   salesAdminId: string | null;
+  /**
+   * Make the social-media month when it does not exist yet (default). False when the tech side rebuilds
+   * an older sale's order to set its month up (`upsertOrderForSale` with `announce: false`, 2026-10-15):
+   * the setup makes the month itself, on the dates typed there — made here first, a renewal sale's month
+   * linked itself, handed out jobs and rang "renewed" bells before those dates were applied.
+   */
+  createMonth?: boolean;
 }): Promise<void> {
   const { orderId: id, lead, item, saleFields, soldByName, salesAdminId } = params;
   /**
@@ -343,7 +351,7 @@ export async function afterOrderWrite(params: {
       },
       item,
       soldByName,
-    }));
+    }), { create: params.createMonth !== false });
   }
 }
 
@@ -370,7 +378,9 @@ export async function upsertOrderForSale(params: {
   /**
    * Ring the tech side's "new order" bell when the order is created (default). The tech side setting
    * an older sale's month up again (services/smmSetup) passes false — they are the tech side, and an
-   * order rebuilt for a sale made weeks ago is not news to anybody.
+   * order rebuilt for a sale made weeks ago is not news to anybody. Since 2026-10-15 false also leaves a
+   * missing social-media month to that setup (`afterOrderWrite` `createMonth`), which makes it on its
+   * own dates without a renewal's live side effects (links, jobs, "renewed" bells).
    */
   announce?: boolean;
 }): Promise<void> {
@@ -420,8 +430,9 @@ export async function upsertOrderForSale(params: {
       }
     }
 
-    // The client's chat and, for a social-media month, its plan (see `afterOrderWrite`).
-    await afterOrderWrite({ orderId: id, lead, item, saleFields, soldByName, salesAdminId });
+    // The client's chat and, for a social-media month, its plan (see `afterOrderWrite`) — not the plan when
+    // the tech side is rebuilding this order to set the month up on its own dates (`announce: false`).
+    await afterOrderWrite({ orderId: id, lead, item, saleFields, soldByName, salesAdminId, createMonth: params.announce !== false });
   } catch (err) {
     console.error("[orders] upsertOrderForSale failed:", err);
   }
@@ -730,7 +741,8 @@ export function findReconcilableOrders(orders: Order[], assignments: WorkAssignm
   const assignedMs = (a: WorkAssignment): number => {
     const stamp = (a.assignedAt as { seconds?: number } | undefined)?.seconds;
     if (stamp) return stamp * 1000;
-    const day = a.date || a.assignedAtIso?.slice(0, 10);
+    // The local day of the UTC `assignedAtIso` (its first ten characters are the UTC day).
+    const day = a.date || localDayOfInstant(a.assignedAtIso);
     const parsed = day ? Date.parse(`${day}T12:00:00`) : NaN;
     return Number.isFinite(parsed) ? parsed : 0;
   };

@@ -13,17 +13,20 @@
  * somebody picks it — so every field saves itself a moment after it stops changing, and the header
  * says when it last did. Debounced rather than per-keystroke so a title costs one write, not forty.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  X, Loader2, Send, Check, Trash2, Phone, Link2, CloudUpload, ChevronDown,
+  X, Loader2, Send, Check, Trash2, Phone, Link2, CloudUpload, ChevronDown, MoveRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
-  addApprovalChase, assignItem, recordApproval, removeItem, requestApproval, setItemStatus,
+  addApprovalChase, assignItem, movePieceToMonth, recordApproval, removeItem, requestApproval, setItemStatus,
   updateItem,
 } from "@/services/smm";
-import { approvalWaitDays, canPublish, postLinks } from "@/utils/smmPlan";
-import { clipsPerVideoOf, videoLengthLabel } from "@/utils/smmPackage";
+import { approvalWaitDays, canPublish, isOwnDay, postLinks } from "@/utils/smmPlan";
+import { canSetUpSmm, clipsPerVideoOf, itemDatedOutside, ownDaysLabel, videoLengthLabel } from "@/utils/smmPackage";
+import { moveTargetFor, moveTargetLabel, pieceDayOf } from "@/utils/smmMonthDates";
+import { clientKeyOf } from "@/utils/smmCalendar";
+import { useSmmClientMonths } from "@/hooks/useSmmClientMonths";
 import { approvalRequestMessage, postingUpdateMessage } from "@/utils/smmMessages";
 import { SMM_CONTENT_KINDS, SMM_PLATFORMS } from "@/types/smm";
 import type { SmmCampaign, SmmContentItem, SmmItemStatus, SmmPlatform, SmmTemplateKind } from "@/types/smm";
@@ -194,6 +197,43 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
     setPlatforms((list) => (list.includes(p) ? list.filter((x) => x !== p) : [...list, p]));
   };
 
+  /*
+    ── A post dated in another month of this client (2026-10-15) ─────────────────────────────────
+    Only for the people who manage months (the admins and team leaders — `canSetUpSmm`; never the view-only
+    lead), only when the post's day is outside this month — and only then are the client's other months read.
+  */
+  const mayMove = canEdit && canSetUpSmm(user);
+  const asDated = { ...item, uploadDate: uploadDate || null };
+  const pieceDay = pieceDayOf(asDated);
+  const outsideDay = mayMove && !!pieceDay && !!campaign.cycle && !isOwnDay(campaign.cycle, pieceDay);
+  const liveMonths = useMemo(() => [campaign], [campaign]);
+  const { months: clientMonths } = useSmmClientMonths({
+    clientKey: clientKeyOf(campaign),
+    live: liveMonths,
+    viewer: { uid: user.uid, role: user.role },
+    fetchHistory: outsideDay,
+    keepId: campaign.id,
+  });
+  const moveTarget = outsideDay ? moveTargetFor(asDated, campaign, clientMonths) : null;
+  const moveToTarget = () => {
+    if (!moveTarget) return;
+    run("move", async () => {
+      // What was typed goes first, so the post moves with the date that sent it there.
+      const patch = unsaved.current;
+      unsaved.current = null;
+      if (patch) await updateItem(campaign.id, item.id, patch);
+      const done = await movePieceToMonth(campaign.id, moveTarget.id, item.id, user);
+      toast({
+        title: `Moved to ${done.toLabel}`,
+        description: [
+          done.replacedBlank ? "It took the place of an empty post of its kind there." : "Added to that month.",
+          item.extra ? "" : "This month gets an empty post of its kind back — it still owes that post.",
+        ].filter(Boolean).join(" "),
+      });
+      onClose();
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onClick={() => !busy && onClose()}>
       <div
@@ -281,6 +321,31 @@ export default function SmmItemDialog({ campaign, item, user, members, onClose, 
               />
             </div>
           </div>
+          {/*
+            Said the moment the date is picked, never blocking (2026-10-15): a post counts toward its month
+            only on one of the month's own days — the renewal day (its end date) is the next month's first.
+            A date really can belong elsewhere (a post brought forward), so it is saved all the same.
+          */}
+          {itemDatedOutside({ uploadDate: uploadDate || null }, campaign.cycle) && (
+            <p data-test="smm-item-date-outside" className="-mt-1 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-[11px] text-foreground">
+              <b className="text-amber-800 dark:text-warning">This date is outside this month ({ownDaysLabel(campaign.cycle)}).</b> It will not count toward this month.
+            </p>
+          )}
+          {/*
+            Its date is in ANOTHER month of the same client (2026-10-15): offer to put it there — posted or not,
+            with its stage, links and approval (services/smm `movePieceToMonth`). The admins and team leaders only;
+            the client's other months are read only when this question arises (`useSmmClientMonths`, kept 5 min).
+          */}
+          {moveTarget && (
+            <div data-test="smm-item-move" className="-mt-1 flex flex-wrap items-center gap-2 rounded-md border border-info/40 bg-info/10 px-2.5 py-1.5 text-[11px] text-foreground">
+              <span className="min-w-[10rem] flex-1">That date is in this client's {moveTarget.monthNumber ? `Month ${moveTarget.monthNumber}` : "other month"} ({ownDaysLabel(moveTarget.cycle)}).</span>
+              <button type="button" data-test="smm-item-move-button" disabled={!!busy}
+                onClick={moveToTarget}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {busy === "move" ? <Loader2 size={11} className="animate-spin" /> : <MoveRight size={11} />} {moveTargetLabel(moveTarget)}
+              </button>
+            </div>
+          )}
 
           <div>
             <label className="text-[11px] font-medium text-muted-foreground">Accounts</label>

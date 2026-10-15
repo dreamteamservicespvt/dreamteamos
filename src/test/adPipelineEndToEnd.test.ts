@@ -186,7 +186,7 @@ describe("a human duo is one fixed pair of people (problem 1)", () => {
         "0-8|friend: Have you seen how many washing machines are here?",
         "0-8|host: Sharma Electronics keeps every brand under one roof.",
         "8-16|friend: Do they really deliver all of this home?",
-        "8-16|host: Yes, free home delivery comes with every purchase.",
+        "8-16|host: Yes, free home delivery comes with every single purchase here.",
       ].join("\n"),
     };
     const out = await run(form({ characterPack: "human_duo_female" }));
@@ -222,7 +222,7 @@ describe("a human duo is one fixed pair of people (problem 1)", () => {
         "8-16|friend: Can we really trust them with such big machines?",
         "8-16|host: Yes, they have served this town for twenty years.",
         "16-24|friend: Do they really deliver all of this home?",
-        "16-24|host: Yes, free home delivery comes with every purchase.",
+        "16-24|host: Yes, free home delivery comes with every single purchase here.",
       ].join("\n"),
     };
     const out = await run(form({ characterPack: "human_duo_female", duration: 24 }));
@@ -245,9 +245,9 @@ describe("the Kids are dressed for the ad", () => {
     script = {
       dialogue: [
         "0-8|girl: Have you seen our new school library today?",
-        "0-8|boy: Yes, every class here has smart boards too.",
+        "0-8|boy: Yes, and every single class here has smart boards too.",
         "8-16|girl: Admissions are open now for the new year.",
-        "8-16|boy: Come and visit our school with your parents.",
+        "8-16|boy: Come and visit our school with your parents this week.",
       ].join("\n"),
     };
     extracted = { businessName: "Sri Chaitanya School", businessType: "school", services: ["classes 1 to 10"] };
@@ -275,7 +275,7 @@ describe("Motu and Patlu keep their heights (problem 3)", () => {
         "0-8|motu: Patlu, why is this shop always so very full?",
         "0-8|patlu: Motu, Sharma Electronics keeps every brand right here.",
         "8-16|motu: Do they deliver all these machines home too?",
-        "8-16|patlu: Yes, free home delivery comes with every purchase.",
+        "8-16|patlu: Yes, free home delivery comes with every single purchase here.",
       ].join("\n"),
     };
     const out = await run(form({ characterPack: "duo_motu_patlu" }));
@@ -305,7 +305,7 @@ describe("Motu and Patlu keep their heights (problem 3)", () => {
         "0-8|motu: Patlu, why is this shop always so very full?",
         "0-8|patlu: Motu, Sharma Electronics keeps every brand right here.",
         "8-16|motu: Do they deliver all these machines home too?",
-        "8-16|patlu: Yes, free home delivery comes with every purchase.",
+        "8-16|patlu: Yes, free home delivery comes with every single purchase here.",
       ].join("\n"),
     };
     const out = await run(form({ characterPack: "duo_motu_patlu" }));

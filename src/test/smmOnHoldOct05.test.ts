@@ -87,7 +87,9 @@ describe("the rules of On hold", () => {
 
   it("is a month past its last day with no renewal decision", () => {
     expect(pkg.isOnHold(base, "2026-10-05")).toBe(true);
-    expect(pkg.isOnHold(base, "2026-10-04")).toBe(false); // its last day — still running
+    // 2026-10-15: on hold from the end date itself — the renewal day ("On hold starts on 6 Oct if not renewed").
+    expect(pkg.isOnHold(base, "2026-10-04")).toBe(true);
+    expect(pkg.isOnHold(base, "2026-10-03")).toBe(false); // its last own day — still running
     expect(pkg.isOnHold({ ...base, renewal: { state: "pitched" } }, "2026-10-05")).toBe(true); // a pitch is no decision
     expect(pkg.isOnHold({ ...base, renewal: { state: "won", nextCampaignId: "n" } }, "2026-10-05")).toBe(false);
     expect(pkg.isOnHold({ ...base, renewal: { state: "lost" } }, "2026-10-05")).toBe(false);

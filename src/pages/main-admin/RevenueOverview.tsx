@@ -4,6 +4,7 @@ import { db } from "@/services/firebase";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { getRoleLabel, isActiveUser } from "@/utils/roleHelpers";
 import type { AppUser } from "@/types";
+import { salesBookedByDay, salesBookedByOwner } from "@/utils/salesRevenue";
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Filter } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -29,10 +30,16 @@ export default function RevenueOverview() {
   }, []);
 
   const verifiedAssignments = assignments.filter((a) => a.status === "verified");
-  const salesWithDone = leads.filter((l: any) => l.saleDone && l.saleDetails);
+  /*
+    Sales on their own day (2026-10-15): every sale in `saleItems` and the legacy `saleDetails`, its amount on
+    the local day it was made (utils/salesRevenue.salesBookedByDay) — it read the legacy field alone, dated by
+    the lead's last-touched time in UTC.
+  */
+  const salesByDay = salesBookedByDay(leads);
+  const salesByOwner = salesBookedByOwner(leads);
 
   const totalTechRevenue = verifiedAssignments.reduce((s, a) => s + (a.totalPrice || 0), 0);
-  const totalSalesRevenue = salesWithDone.reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
+  const totalSalesRevenue = [...salesByDay.values()].reduce((s, v) => s + v, 0);
   const totalRevenue = totalTechRevenue + totalSalesRevenue;
 
   const revenueByDate: Record<string, { date: string; tech: number; sales: number }> = {};
@@ -43,12 +50,9 @@ export default function RevenueOverview() {
     revenueByDate[d].tech += a.totalPrice || 0;
   });
 
-  salesWithDone.forEach((l: any) => {
-    const d = l.lastUpdated?.toDate?.()
-      ? l.lastUpdated.toDate().toISOString().slice(0, 10)
-      : "unknown";
+  salesByDay.forEach((amount, d) => {
     if (!revenueByDate[d]) revenueByDate[d] = { date: d, tech: 0, sales: 0 };
-    revenueByDate[d].sales += l.saleDetails?.amount || 0;
+    revenueByDate[d].sales += amount;
   });
 
   const chartData = Object.values(revenueByDate)
@@ -61,9 +65,7 @@ export default function RevenueOverview() {
       const techRev = verifiedAssignments
         .filter((a) => a.assignedTo === m.uid)
         .reduce((s, a) => s + (a.totalPrice || 0), 0);
-      const salesRev = salesWithDone
-        .filter((l: any) => l.assignedTo === m.uid)
-        .reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
+      const salesRev = salesByOwner.get(m.uid) ?? 0;
       return { ...m, techRev, salesRev, total: techRev + salesRev };
     })
     .filter((m) => m.total > 0)

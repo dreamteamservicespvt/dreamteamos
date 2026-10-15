@@ -5,7 +5,10 @@ export interface Festival {
   note?: string;
 }
 
-// Extracted from official 2026 calendar
+// Extracted from official 2026 calendar. One entry per name: the sales admin's Settings and the sales
+// scripts list it in a dropdown keyed and valued by NAME (and `findFestival` reads the first match), so a
+// second year in this array would repeat every name there. Later years are `FESTIVALS_2027` below, and
+// everything that works by DATE reads `FESTIVAL_CALENDAR` (every year).
 export const FESTIVALS: Festival[] = [
   { date: "2026-01-13", name: "Lohri", cat: "Regional", note: "Punjab harvest festival" },
   { date: "2026-01-14", name: "Makar Sankranti", cat: "Hindu", note: "Sun enters Capricorn" },
@@ -71,6 +74,89 @@ export const FESTIVALS: Festival[] = [
   { date: "2026-12-25", name: "Christmas", cat: "Christian", note: "National holiday" },
   { date: "2026-12-31", name: "New Year's Eve", cat: "Regional" },
 ];
+
+/**
+ * 2027 — added 2026-10-15 for SMM Delivery Control (phase 5): the AI places a festival post inside a client's
+ * week from the dated calendar (`utils/posterOccasions` → `FESTIVAL_CALENDAR`), and months that run into
+ * January 2027 had nothing to place. Same festivals, same names, same shape as 2026 (the poster calendar's
+ * Bathukamma is dated from "Sharad Navratri begins" and "Durga Ashtami …", so those names must match).
+ *
+ * The lunar dates are the TELUGU STATES' dates: Drik Panchang computed for Hyderabad (drikpanchang.com
+ * festivals by month and its Telugu calendar, geoname-id 1269843), cross-checked against the Government of
+ * India 2027 holiday list (DoPT O.M. F.No.12/2/2023-JCA of 16-07-2026, gazetted + restricted),
+ * officeholidays.com (AP / Telangana), calendarific.com and hindupad.com. No AP / Telangana government order
+ * for 2027 was out yet on 2026-10-15 — check these against it when it is published. Where the sources
+ * disagreed the note says so and gives the other date; Islamic dates depend on the moon (tentative).
+ */
+export const FESTIVALS_2027: Festival[] = [
+  { date: "2027-01-14", name: "Lohri", cat: "Regional", note: "Punjab harvest festival — eve of Sankranti (some calendars say 13 Jan)" },
+  { date: "2027-01-15", name: "Makar Sankranti", cat: "Hindu", note: "Telugu states 15 Jan (Bhogi 14, Kanuma 16); the central list says 14 Jan" },
+  { date: "2027-01-15", name: "Pongal", cat: "Regional", note: "Tamil Nadu harvest festival" },
+  { date: "2027-01-15", name: "Uttarayan / Kite Festival", cat: "Regional", note: "Gujarat — kites are flown on 14–15 Jan" },
+  { date: "2027-01-23", name: "Subhas Chandra Bose Jayanti", cat: "National" },
+  { date: "2027-01-26", name: "Republic Day", cat: "National", note: "National holiday" },
+  { date: "2027-02-11", name: "Basant Panchami / Saraswati Puja", cat: "Hindu" },
+  { date: "2027-02-14", name: "Valentine's Day", cat: "Regional" },
+  { date: "2027-02-19", name: "Chhatrapati Shivaji Maharaj Jayanti", cat: "National" },
+  { date: "2027-03-06", name: "Maha Shivaratri", cat: "Hindu", note: "Night of Lord Shiva" },
+  { date: "2027-03-08", name: "International Women's Day", cat: "National" },
+  { date: "2027-03-10", name: "Eid ul-Fitr", cat: "Islamic", note: "Tentative – moon sighting" },
+  { date: "2027-03-21", name: "Holika Dahan", cat: "Hindu", note: "Telugu states 21 Mar; the central list says 22 Mar" },
+  { date: "2027-03-22", name: "Holi", cat: "Hindu", note: "Festival of Colors — Telugu states 22 Mar; the central list says 23 Mar" },
+  { date: "2027-03-26", name: "Good Friday", cat: "Christian", note: "National holiday" },
+  { date: "2027-03-28", name: "Easter Sunday", cat: "Christian" },
+  { date: "2027-04-07", name: "Gudi Padwa", cat: "Regional", note: "Maharashtrian New Year" },
+  { date: "2027-04-07", name: "Ugadi", cat: "Regional", note: "Telugu & Kannada New Year" },
+  { date: "2027-04-14", name: "Baisakhi / Vaisakhi", cat: "Sikh", note: "Punjabi New Year" },
+  { date: "2027-04-14", name: "Dr. Ambedkar Jayanti", cat: "National" },
+  { date: "2027-04-15", name: "Ram Navami", cat: "Hindu", note: "Birth of Lord Ram" },
+  { date: "2027-04-15", name: "Vishu", cat: "Regional", note: "Kerala New Year" },
+  { date: "2027-04-15", name: "Bihu", cat: "Regional", note: "Assam New Year" },
+  { date: "2027-04-19", name: "Mahavir Jayanti", cat: "Jain", note: "Birth of Mahavira (some calendars say 18 Apr)" },
+  { date: "2027-04-20", name: "Hanuman Jayanti", cat: "Hindu", note: "Chaitra Purnima — the Telugu states keep Hanuman Jayanti on 31 May" },
+  { date: "2027-05-09", name: "Akshaya Tritiya", cat: "Hindu", note: "Most auspicious day" },
+  { date: "2027-05-09", name: "Maharana Pratap Jayanti", cat: "National" },
+  { date: "2027-05-09", name: "Mother's Day", cat: "Regional", note: "2nd Sunday of May" },
+  { date: "2027-05-17", name: "Eid ul-Adha (Bakrid)", cat: "Islamic", note: "Tentative – moon sighting" },
+  { date: "2027-05-20", name: "Buddha Purnima", cat: "Buddhist", note: "Birth of Gautama Buddha" },
+  { date: "2027-06-16", name: "Muharram / Ashura", cat: "Islamic", note: "Tentative – moon sighting" },
+  { date: "2027-06-18", name: "Kabirdas Jayanti", cat: "Hindu" },
+  { date: "2027-06-21", name: "International Yoga Day", cat: "National" },
+  { date: "2027-07-05", name: "Jagannath Rath Yatra", cat: "Hindu", note: "Puri, Odisha" },
+  { date: "2027-07-18", name: "Guru Purnima", cat: "Hindu", note: "Honour to teachers & gurus" },
+  { date: "2027-07-26", name: "Kargil Vijay Diwas", cat: "National" },
+  { date: "2027-08-01", name: "Friendship Day", cat: "Regional", note: "1st Sunday of August" },
+  { date: "2027-08-15", name: "Independence Day", cat: "National", note: "National holiday" },
+  { date: "2027-08-15", name: "Parsi New Year (Navroz)", cat: "Regional" },
+  { date: "2027-08-15", name: "Milad-un-Nabi", cat: "Islamic", note: "Prophet's birthday — tentative, moon sighting (may be 16 Aug)" },
+  { date: "2027-08-17", name: "Raksha Bandhan", cat: "Hindu", note: "Sibling bond festival" },
+  { date: "2027-08-25", name: "Krishna Janmashtami", cat: "Hindu", note: "Birth of Lord Krishna — Telugu states 25 Aug (some panchangs 24 Aug)" },
+  { date: "2027-09-04", name: "Ganesh Chaturthi", cat: "Hindu", note: "10-day festival begins" },
+  { date: "2027-09-12", name: "Onam", cat: "Regional", note: "Kerala harvest festival" },
+  { date: "2027-09-14", name: "Ganesh Visarjan", cat: "Hindu", note: "Immersion ceremony" },
+  { date: "2027-09-30", name: "Sharad Navratri begins", cat: "Hindu", note: "9 nights of Durga" },
+  { date: "2027-10-02", name: "Gandhi Jayanti", cat: "National", note: "National holiday" },
+  { date: "2027-10-07", name: "Durga Ashtami / Maha Ashtami", cat: "Hindu" },
+  { date: "2027-10-09", name: "Dussehra / Vijayadashami", cat: "Hindu", note: "Victory of good over evil" },
+  { date: "2027-10-15", name: "Valmiki Jayanti", cat: "Hindu" },
+  { date: "2027-10-18", name: "Karva Chauth", cat: "Hindu" },
+  { date: "2027-10-27", name: "Dhanteras", cat: "Hindu", note: "Diwali begins" },
+  { date: "2027-10-29", name: "Diwali / Lakshmi Puja", cat: "Hindu", note: "Festival of Lights — Telugu states 29 Oct (Naraka Chaturdashi 28 Oct)" },
+  { date: "2027-10-30", name: "Govardhan Puja", cat: "Hindu" },
+  { date: "2027-10-31", name: "Bhai Dooj", cat: "Hindu" },
+  { date: "2027-11-04", name: "Chhath Puja", cat: "Hindu", note: "Sun God worship" },
+  { date: "2027-11-14", name: "Guru Nanak Jayanti", cat: "Sikh", note: "Some calendars say 13 Nov; Karthika Pournami 14 Nov" },
+  { date: "2027-11-14", name: "Children's Day / Nehru Jayanti", cat: "National" },
+  { date: "2027-12-01", name: "Hornbill Festival", cat: "Regional", note: "Nagaland tribal heritage" },
+  { date: "2027-12-11", name: "Karthigai Deepam", cat: "Regional", note: "Tamil festival of lights (one source — confirm)" },
+  { date: "2027-12-24", name: "Christmas Eve", cat: "Christian" },
+  { date: "2027-12-25", name: "Christmas", cat: "Christian", note: "National holiday" },
+  { date: "2027-12-31", name: "New Year's Eve", cat: "Regional" },
+];
+
+/** Every dated festival the app knows, all years, sorted by date — for everything that works by date. */
+export const FESTIVAL_CALENDAR: readonly Festival[] = [...FESTIVALS, ...FESTIVALS_2027]
+  .sort((a, b) => a.date.localeCompare(b.date));
 
 /** Returns the day-of-week abbreviation: Mon, Tue … Sun */
 function dayAbbr(date: Date): string {

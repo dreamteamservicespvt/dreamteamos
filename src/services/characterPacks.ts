@@ -316,6 +316,23 @@ export function ownerPhotoSlots(pack?: CharacterPack | null): OwnerPhotoSlot[] {
   });
 }
 
+/**
+ * The photograph uploaded for one owner slot — slot 0 is `FileStore.ownerImage` (also the single owner's),
+ * slot 1 `FileStore.secondOwnerImage` (2026-10-14). The studio's slots, its check and the generator all read
+ * it here, so the file shown in "Owner 2 photo" is the one sent as owner photo 2.
+ */
+export function ownerPhotoFile<T>(
+  files: { ownerImage?: T | null; secondOwnerImage?: T | null },
+  slot: Pick<OwnerPhotoSlot, "index">,
+): T | null {
+  return (slot.index === 1 ? files.secondOwnerImage : files.ownerImage) ?? null;
+}
+
+/** How a slot is labelled for the member — "Owner 1 photo — Man · LEFT". */
+export function ownerSlotLabel(slot: OwnerPhotoSlot): string {
+  return `${slot.name} photo — ${slot.kind === "man" ? "Man" : "Woman"} · ${slot.side}`;
+}
+
 /** The Kids entries — two real children. Dressed, cast and voiced as children everywhere. */
 export function isKidsPack(pack?: CharacterPack | null): boolean {
   return !!pack && pack.family === "kids";

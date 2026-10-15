@@ -13,6 +13,7 @@
  */
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
+import { usePopupClaim } from "@/hooks/usePopupClaim";
 import { fetchTeamForBirthdays, notifyBirthdaysOnOpen } from "@/services/birthdays";
 import { birthdaysOn, birthdaySeenKey, isBirthdayOn, isoDay } from "@/utils/birthdays";
 import { BirthdayGreetingCard, BirthdayTeamStrip } from "@/components/birthday/BirthdayCards";
@@ -68,6 +69,8 @@ export default function BirthdayGreeting() {
   }, [user?.uid, mine, day]);
 
   const others = birthdaysOn(team, today).filter((p) => p.uid !== user?.uid);
+  // Their own greeting is a popup: told to the coordinator so a popup that waits its turn stays away.
+  usePopupClaim("birthday", !!user && greetingOpen);
 
   if (!user) return null;
 

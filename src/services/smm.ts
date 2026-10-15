@@ -30,11 +30,14 @@ import {
 } from "@/utils/smmPlan";
 import { useAuthStore } from "@/store/authStore";
 import {
-  canAdminRenewSmm, cleanPlatforms, closingStatus, cycleRangeLabel, cyclePhase, hasTeam, historyFiling, historyMonthsFollowed, isMonthLocked, isOnHold,
-  itemsForAccounts, monthCycle, monthLabel, normaliseClipsPerVideo, renewalStartDate, saleDay, videosLine,
+  canAdminRenewSmm, canSetUpSmm, cleanPlatforms, closingStatus, cyclePhase, hasTeam, historyFiling, historyMonthsFollowed, isOnHold,
+  itemsForAccounts, lastOwnDay, monthCycle, monthLabel, nextCycleAfter, normaliseClipsPerVideo, renewalStartDate,
+  renewalWhenLabel, saleDay, shortDayLabel, videosLine,
 } from "@/utils/smmPackage";
 import { dueItemsFor, dueLabel, dueNotificationKey, renewalsDueFor } from "@/utils/smmReminders";
+import { isUntouchedRow, monthDatesCheck, moveTargetFor, type MonthDatesVerdict } from "@/utils/smmMonthDates";
 import { isGoneMonth, leadIdOfOrderId, renewalLinksToCheck, renewalRelinkPatch, renewalUnlinkPatch } from "@/utils/smmRenewalLink";
+import { revisionStamp, statusStamps } from "@/utils/smmDeliveryActions";
 import { commitmentsForPackage, platformsForPackage } from "@/utils/smmPricing";
 import { POSTABLE_STATUSES } from "@/types/smm";
 import type {
@@ -105,8 +108,14 @@ export interface CreateCampaignInput {
   soldBy: string;
   soldByName: string;
   salesAdminId?: string | null;
-  /** `yyyy-MM-dd` the month runs from. Defaults to today — the day it was sold. */
+  /**
+   * `yyyy-MM-dd` the month runs from — the sale's "Month starts on" (`SmmSaleSpec.startDate`, 2026-10-15).
+   * Absent: a renewal starts on the end date of the month it renews (its renewal day), anything else on
+   * the day it was sold (`soldOn`). Never "today" for a renewal recorded late (owner, 2026-10-15).
+   */
   startDate?: string;
+  /** `yyyy-MM-dd` the sale was made — a first month's start when the sale names none. */
+  soldOn?: string;
   /** Clips in each AI video, as agreed on the sale. Absent reads as 4 (see utils/smmPackage). */
   clipsPerVideo?: number | null;
   /** The month this sale renews, when the salesperson pressed Renew on it. */
@@ -125,6 +134,8 @@ export function buildSoldCampaign(
   options: {
     startDate: string;
     endDate?: string | null;
+    /** The client's billing day (`SmmCycle.anchorDay`), when the caller worked the cycle out itself. */
+    anchorDay?: number | null;
     team?: SmmTeam;
     renewalOf?: SmmCampaign | null;
     clipsPerVideo?: number | null;
@@ -134,6 +145,13 @@ export function buildSoldCampaign(
   const team = options.team || { creator: null, publisher: null, marketer: null, assistants: [] };
   const prev = options.renewalOf || null;
   const clips = options.clipsPerVideo ?? input.clipsPerVideo ?? prev?.clipsPerVideo ?? null;
+  /*
+    A renewal with no end given ends on the client's billing day (2026-10-15, `nextCycleAfter`): a month
+    sold on 31 Jan ends 28 Feb, and its renewal runs 28 Feb → 31 Mar, not 28 Mar.
+  */
+  const cycle = !options.endDate && prev?.cycle
+    ? nextCycleAfter(prev.cycle, options.startDate)
+    : monthCycle(options.startDate, options.endDate, options.anchorDay);
   return {
     id: input.orderId,
     orderId: input.orderId,
@@ -147,7 +165,7 @@ export function buildSoldCampaign(
     packageKey: input.packageKey,
     packageLabel: input.packageLabel,
     amount: input.amount,
-    cycle: monthCycle(options.startDate, options.endDate),
+    cycle,
     platforms: input.platforms,
     commitments: input.commitments,
     items: withSeatHolders(buildInitialItems(input.commitments, input.platforms), team),
@@ -197,15 +215,19 @@ export function buildNoSaleCampaign(
  * an SMM order was "overdue" a day after it was sold. Promising the month's own last day makes the
  * queue's deadline alerts mean something — the month's work is due when the month ends. Set when the
  * tech side sets a month up (services/smmSetup) and when a renewal sets itself up (`linkRenewal`).
+ *
+ * ── Due at the end of the LAST OWN DAY (2026-10-15) ───────────────────────────────────────────
+ * The end date is the renewal day — the next month's first day — so "6 Sep → 6 Oct" owes its work by
+ * 5 Oct, 23:59:59 ("by 5 Oct"), not by the end of 6 Oct, when the next month's work is already running.
  */
 export function monthPromise(cycle: SmmCycle): PromiseDeadline {
   const start = dayToDate(cycle.startDate) ?? new Date();
-  const end = dayToDate(cycle.endDate) ?? new Date();
+  const end = dayToDate(lastOwnDay(cycle)) ?? new Date();
   const due = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59);
   const hours = Math.max(24, Math.round((due.getTime() - start.getTime()) / 3_600_000));
   return {
     presetKey: "smm_month",
-    label: `by ${cycleRangeLabel(cycle).split(" → ")[1]}`,
+    label: `by ${shortDayLabel(lastOwnDay(cycle))}`,
     hours,
     source: "custom",
     startAt: Timestamp.fromMillis(start.getTime()),
@@ -228,8 +250,19 @@ export function monthPromise(cycle: SmmCycle): PromiseDeadline {
  * client's page links, and is counted as month N+1 — and the old month is marked renewed, linked
  * forward, and closed once its own last day passes. The same people are given their jobs straight
  * away (services/smmAssign), because the whole point of a renewal is that nothing stops.
+ *
+ * ── Where it starts (owner, 2026-10-15: "the sale form asks when the month starts") ─────────────
+ * On the sale's "Month starts on" (`input.startDate`). A sale without one (recorded before the field):
+ * a renewal starts on the old month's END DATE — its renewal day, even when the renewal is recorded
+ * late — and a first month on the day it was sold. A renewal never starts before the month it renews
+ * has ended (the two would share days): such a start is moved to the old end date.
+ *
+ * `create: false` (the tech side rebuilding an older sale's order, `upsertOrderForSale` with
+ * `announce: false`): an existing month is refreshed as always, but a missing one is NOT made here —
+ * `smmSetup.setupSaleMonth` makes it with the dates typed in its setup. Made here, a renewal sale's month
+ * linked itself, gave out jobs and rang "renewed" bells before the setup's dates were even applied.
  */
-export async function ensureCampaignForOrder(input: CreateCampaignInput): Promise<void> {
+export async function ensureCampaignForOrder(input: CreateCampaignInput, opts: { create?: boolean } = {}): Promise<void> {
   try {
     const ref = campaignRef(input.orderId);
     const snap = await getDoc(ref);
@@ -270,11 +303,16 @@ export async function ensureCampaignForOrder(input: CreateCampaignInput): Promis
       }
       return;
     }
+    if (opts.create === false) return;
 
     const prevRaw = input.renewalOf ? await fetchCampaign(input.renewalOf).catch(() => null) : null;
     const prev = prevRaw && prevRaw.status !== "deleted" && prevRaw.status !== "removed" ? prevRaw : null;
     const today = isoDay(new Date());
-    const startDate = prev ? renewalStartDate(prev.cycle, today) : (input.startDate || today);
+    const asked = input.startDate && dayToDate(input.startDate) ? input.startDate : "";
+    const startDate = prev
+      // Never before the month it renews has ended; the old end date when the sale names no start.
+      ? (asked && asked > prev.cycle.endDate ? asked : renewalStartDate(prev.cycle))
+      : (asked || input.soldOn || today);
     const team = prev ? carriedTeam(prev.team) : undefined;
     const campaign = buildSoldCampaign(input, { startDate, team, renewalOf: prev });
 
@@ -398,9 +436,17 @@ export async function createRenewalMonth(params: {
     }
   }
 
-  const today = isoDay(new Date());
-  const startDate = params.startDate || (prev.cycle?.endDate && prev.cycle.endDate >= today ? prev.cycle.endDate : renewalStartDate(prev.cycle, today));
-  const cycle = monthCycle(startDate, params.endDate);
+  /*
+    Starts on the old month's end date (its renewal day) — always, also when it is made late (owner,
+    2026-10-15: nothing uses "today" as a month's start); the next month never shares a day with it. A
+    later start is the caller's to give (`params.startDate`), never an earlier one.
+  */
+  const startDate = params.startDate || renewalStartDate(prev.cycle);
+  if (startDate < prev.cycle.endDate) {
+    throw new Error(`The next month can't start before ${shortDayLabel(prev.cycle.endDate)} — the month it renews runs until the day before.`);
+  }
+  // No end given: the client's billing day carries over a short month (2026-10-15, `nextCycleAfter`).
+  const cycle = params.endDate ? monthCycle(startDate, params.endDate) : nextCycleAfter(prev.cycle, startDate);
   const team = carriedTeam(prev.team);
   const newRef = doc(collection(db, SMM_CAMPAIGNS));
   const newId = newRef.id;
@@ -433,6 +479,7 @@ export async function createRenewalMonth(params: {
     ? buildNoSaleCampaign(newId, input, {
         startDate: cycle.startDate,
         endDate: cycle.endDate,
+        anchorDay: cycle.anchorDay,
         clipsPerVideo: prev.clipsPerVideo,
         pageLinks: prev.pageLinks,
         team,
@@ -442,6 +489,7 @@ export async function createRenewalMonth(params: {
         ...buildSoldCampaign(input, {
           startDate: cycle.startDate,
           endDate: cycle.endDate,
+          anchorDay: cycle.anchorDay,
           clipsPerVideo: prev.clipsPerVideo,
           pageLinks: prev.pageLinks,
           team,
@@ -617,8 +665,9 @@ async function techSideUids(): Promise<string[]> {
  * Lives here rather than in `services/orders` so the shape of a campaign is decided in one file.
  * The sale carries the add-on count and the committed accounts under `smm`; a sale recorded before
  * that section existed falls back to the package's own quota and platforms, which is exactly what
- * those months were sold as. The month starts on the day the sale was made — which is today for a
- * sale being recorded now, and the original day for an older sale whose order is being rebuilt.
+ * those months were sold as. The month starts on the sale's "Month starts on" (2026-10-15); a sale
+ * recorded before that field carries the day it was made (`soldOn`) for a first month, and a renewal
+ * follows on from the month it renews (`ensureCampaignForOrder`).
  */
 export function campaignInputFromSale(params: {
   order: { id: string; leadId: string; saleItemKey: string; clientPhone: string; clientPhoneId: string; clientName?: string; businessName: string; soldBy: string; salesAdminId?: string | null };
@@ -644,7 +693,10 @@ export function campaignInputFromSale(params: {
     soldBy: order.soldBy,
     soldByName,
     salesAdminId: order.salesAdminId ?? null,
-    startDate: saleDay(item, isoDay(new Date())),
+    // The sale's "Month starts on" (2026-10-15); a sale without one starts by the rules in
+    // `ensureCampaignForOrder` — a renewal on the old end date, a first month on the day it was sold.
+    ...(sold?.startDate && dayToDate(sold.startDate) ? { startDate: sold.startDate } : {}),
+    soldOn: saleDay(item, isoDay(new Date())),
     clipsPerVideo: sold?.clipsPerVideo ?? null,
     renewalOf: sold?.renewalOf ?? null,
   };
@@ -783,8 +835,10 @@ function assertMayCreateRenewalMonth(): void {
  * saw it, which is what makes two people editing two different posts safe. Returning `null` aborts
  * without a write, so a no-op (ticking a box that is already ticked) costs nothing. The view-only
  * Social Media Team Lead is refused here on a month she is not on (2026-10-12, `assertMayChangeMonth`).
+ * Exported for SMM Delivery Control (2026-10-15, `services/smmDelivery`): its answers are item changes
+ * like any other, so they go through this one transaction rather than a second copy of it.
  */
-async function mutateCampaign(
+export async function mutateCampaign(
   id: string,
   apply: (current: SmmCampaign) => Partial<SmmCampaign> | null,
 ): Promise<SmmCampaign | null> {
@@ -897,6 +951,8 @@ export async function setItemStatus(
 
     const items = withItem(c, itemId, (it) => ({
       ...it,
+      // SMM Delivery Control (2026-10-15): the first time a piece is started / sent, stamped once (ms).
+      ...statusStamps(it, status, Date.now()),
       status,
       postedAt: status === "posted" ? Timestamp.now() : it.postedAt ?? null,
       publisherUid: status === "posted" ? it.publisherUid || actor.uid : it.publisherUid ?? null,
@@ -987,6 +1043,7 @@ export async function requestApproval(campaignId: string, itemId: string): Promi
   await mutateCampaign(campaignId, (c) => {
     const items = withItem(c, itemId, (it) => ({
       ...it,
+      ...statusStamps(it, "awaiting_approval", Date.now()),
       status: "awaiting_approval" as SmmItemStatus,
       approval: {
         ...it.approval,
@@ -1009,6 +1066,8 @@ export async function recordApproval(
   const next = await mutateCampaign(campaignId, (c) => {
     const items = withItem(c, itemId, (it) => ({
       ...it,
+      // SMM Delivery Control (2026-10-15): changes asked = one more revision (the 3rd warns the salesperson).
+      ...revisionStamp(it, outcome.approved),
       status: (outcome.approved ? "approved" : "changes_requested") as SmmItemStatus,
       approval: {
         ...it.approval,
@@ -1290,15 +1349,103 @@ async function notifySellerOfExtraWork(campaign: SmmCampaign, item: SmmContentIt
 
 /* ── Cycle, renewal, closing the month ──────────────────────────────────────────────────────── */
 
-export async function setCycle(campaignId: string, startDate: string, days: number): Promise<void> {
+/* ── A month's dates: one guarded way to change them (2026-10-15) ─────────────────────────────── */
+
+/**
+ * A change of a month's dates refused by the dates check (`utils/smmMonthDates.monthDatesCheck`) — it
+ * overlaps another month of the client, the month is locked, or posts would fall outside the new dates
+ * without the person having said so. Carries the verdict, so a screen can list those posts and ask.
+ */
+export class SmmMonthDatesError extends Error {
+  constructor(readonly verdict: MonthDatesVerdict) {
+    super(verdict.problem);
+    this.name = "SmmMonthDatesError";
+  }
+}
+
+/** What a date change carries past the check. */
+export interface MonthDatesGuard {
+  /**
+   * The pieces the person agreed to leave outside the new dates — by id, exactly the list the screen
+   * showed, so a piece dated outside since then is asked about again rather than slipping through.
+   */
+  confirmedOutside?: readonly string[] | null;
+  /** The client's months when the caller has just read them (`fetchClientMonths`) — else read here. */
+  clientMonths?: SmmCampaign[];
+}
+
+/**
+ * The one service guard on a month's dates: `monthDatesCheck` against the month as given (as stored —
+ * inside the write's transaction where there is one) and the client's other months. Throws
+ * `SmmMonthDatesError`; returns the verdict when the dates may be saved.
+ *
+ * ── Why the client's months are read before the transaction ───────────────────────────────────────
+ * A Firestore transaction in the browser reads documents, not queries, so the client's months (one
+ * equality query, `fetchClientMonths`) are read just before it. The month itself — its dates and its
+ * posts — is read inside it, which is what changes under a person's hands.
+ */
+export function assertMonthDates(
+  month: Parameters<typeof monthDatesCheck>[0]["month"],
+  next: Pick<SmmCycle, "startDate" | "endDate">,
+  others: SmmCampaign[],
+  today: string,
+  confirmedOutside?: readonly string[] | null,
+): MonthDatesVerdict {
+  const verdict = monthDatesCheck({ month, next, others, today, confirmedOutside });
+  if (verdict.problem) throw new SmmMonthDatesError(verdict);
+  return verdict;
+}
+
+/** The client's months for the dates check — the ones given, else one read by the month's number. */
+async function clientMonthsOf(month: Pick<SmmCampaign, "clientPhoneId"> | null, given?: SmmCampaign[]): Promise<SmmCampaign[]> {
+  if (given) return given;
+  return month?.clientPhoneId ? fetchClientMonths(month.clientPhoneId) : [];
+}
+
+/**
+ * The dates check before anything is written (a setup also renames, recounts and moves accounts, and a
+ * refused date must not leave those half done). The same check runs again inside the write.
+ */
+export async function checkMonthDates(
+  campaignId: string,
+  next: Pick<SmmCycle, "startDate" | "endDate">,
+  guard: MonthDatesGuard = {},
+): Promise<{ verdict: MonthDatesVerdict; clientMonths: SmmCampaign[] }> {
+  const month = await fetchCampaign(campaignId);
+  if (!month) throw new Error("This month no longer exists.");
+  const clientMonths = await clientMonthsOf(month, guard.clientMonths);
+  return { verdict: assertMonthDates(month, next, clientMonths, isoDay(new Date()), guard.confirmedOutside), clientMonths };
+}
+
+/**
+ * Legacy (no caller): a month's dates from a start and a number of days. Through the same dates check as
+ * every other change of a month's dates (2026-10-15).
+ */
+export async function setCycle(campaignId: string, startDate: string, days: number, guard: MonthDatesGuard = {}): Promise<void> {
   assertMayManageMonths();
-  await mutateCampaign(campaignId, () => ({ cycle: cycleFromStart(startDate, days) }));
+  const cycle = cycleFromStart(startDate, days);
+  const clientMonths = await clientMonthsOf(await fetchCampaign(campaignId), guard.clientMonths);
+  const today = isoDay(new Date());
+  await mutateCampaign(campaignId, (c) => {
+    assertMonthDates(c, cycle, clientMonths, today, guard.confirmedOutside);
+    return { cycle };
+  });
 }
 
 /**
  * The tech side's setup of a month — its dates, its video length and the client's page links —
  * stamped with who did it. The team is written separately by services/smmAssign, together with the
  * jobs it implies. Returns the month as saved.
+ *
+ * ── THE write of a month's dates (2026-10-15) ───────────────────────────────────────────────────
+ * Every path that changes a month's dates writes them here — Set up / Edit setup (`applyMonthSetup`),
+ * Manage historical record (`applyHistorySetup`), and Add SMM sale on a sale whose month already exists
+ * (`setupSaleMonth`, which used to write `cycle` straight onto the document) — and here the dates pass
+ * `assertMonthDates` inside the transaction, against the month as the database holds it: no overlap with
+ * the client's other months, no post left outside the new dates unless `guard.confirmedOutside` names it,
+ * and a locked month only within the past — on its first setup too (it was skipped while `setupAt` was
+ * missing). The owner's Dhana lakshmi month (posts 13 Aug – 9 Sep) was moved to 6 Oct → 6 Nov with
+ * none of these asked.
  */
 export async function saveMonthSetup(
   campaignId: string,
@@ -1309,15 +1456,13 @@ export async function saveMonthSetup(
     setupByName: string;
     setupByUid: string;
   },
+  guard: MonthDatesGuard = {},
 ): Promise<SmmCampaign | null> {
   assertMayManageMonths();
   const today = isoDay(new Date());
+  const clientMonths = guard.clientMonths ?? await clientMonthsOf(await fetchCampaign(campaignId));
   return mutateCampaign(campaignId, (c) => {
-    if (isMonthLocked(c, today) && c.setupAt) {
-      if (setup.cycle && setup.cycle.endDate >= today) {
-        throw new Error("This completed month is locked to preserve its history and cannot be edited to represent a renewal. Create a new month for the next period.");
-      }
-    }
+    if (setup.cycle) assertMonthDates(c, setup.cycle, clientMonths, today, guard.confirmedOutside);
     return {
       cycle: setup.cycle,
       clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
@@ -1339,9 +1484,7 @@ export async function setCommitments(
 }
 
 /** A row nobody has touched: no title, no date, not started, never sent to the client, not carried in. */
-const untouchedRow = (i: SmmContentItem) =>
-  !i.extra && !i.carriedFrom && i.status === "planned" && !i.title?.trim() && !i.uploadDate
-  && (!i.approval || i.approval.state === "not_sent") && !i.notes?.trim();
+const untouchedRow = isUntouchedRow;
 
 /**
  * Change how many videos, posters and real videos the month owes (2026-10-03) — the tech side's call
@@ -1615,6 +1758,24 @@ export async function fetchClientMonths(clientPhoneId: string): Promise<SmmCampa
 }
 
 /**
+ * A piece carried into the next month (2026-10-15): it keeps where it came from (`carriedFrom`) and every
+ * other field, but NOT its old upload date and time — dated in the month it left, it was "late" and
+ * "Outside this month" on the new month's first day. The old date is kept in its notes, so nobody loses
+ * what was planned; the team gives it a new date in the new month.
+ */
+function carriedIntoNextMonth(p: SmmContentItem, fromId: string, label: string): SmmContentItem {
+  const was = p.uploadDate ? `Moved from ${label} — it was dated ${shortDayLabel(p.uploadDate)}${p.uploadTime ? `, ${p.uploadTime}` : ""}.` : "";
+  return {
+    ...p,
+    carriedFrom: { campaignId: fromId, label },
+    uploadDate: null,
+    uploadTime: null,
+    notes: was ? [p.notes?.trim(), was].filter(Boolean).join("\n") : (p.notes ?? null),
+    updatedAt: Timestamp.now(),
+  };
+}
+
+/**
  * Move pieces a month owed and never posted into the next month.
  *
  * ── Why move, and why they count ──────────────────────────────────────────────────────────────
@@ -1665,7 +1826,7 @@ export async function moveUnpostedToMonth(
         commitments,
         items: [
           ...to.items,
-          ...pieces.map((p) => ({ ...p, carriedFrom: { campaignId: from.id, label }, updatedAt: Timestamp.now() })),
+          ...pieces.map((p) => carriedIntoNextMonth(p, from.id, label)),
         ],
       }),
       updatedAt: serverTimestamp(),
@@ -1680,6 +1841,95 @@ export async function moveUnpostedToMonth(
     if (to) await syncOrderProgress(to).catch(() => undefined);
   }
   return moved;
+}
+
+/**
+ * Moving a piece between a client's months is a managing write: the tech admin, a team leader or the main
+ * admin (`canSetUpSmm`) — not a member, not the salesperson, not the view-only Social Media Team Lead
+ * (who `assertMayManageMonths` refuses in her own words). Nobody signed in (a script, a test) passes.
+ */
+function assertMayMovePieces(): void {
+  assertMayManageMonths();
+  const user = useAuthStore.getState().user;
+  if (user && !canSetUpSmm(user)) {
+    throw new Error("Only the tech admin, a team leader or the main admin can move a post to another month.");
+  }
+}
+
+/**
+ * Put a post dated in ANOTHER month of the same client into that month (2026-10-15) — "Move to Month 3
+ * (6 Oct – 5 Nov)" in the post dialog.
+ *
+ * ── Why it exists ────────────────────────────────────────────────────────────────────────────────
+ * The owner's Dhana lakshmi month held a "Dussehra offers" post dated 9 Oct — October's work typed into
+ * September's plan. Changing its date would make the record false; leaving it counts it nowhere (it is
+ * outside September's days, and October never sees it). It belongs to the month whose days hold its date.
+ *
+ * ── What moves, and what each month owes after ───────────────────────────────────────────────────
+ * The piece moves WHOLE — posted or not, with its stage, links, approval and history; only a line in its
+ * notes says where it came from. In the target it takes the place of an untouched blank row of its kind
+ * when there is one (that month's promise now has this piece in it), else it is added (the month shows
+ * one row more than it owes — as `setMonthCommitments` allows, never hidden). The month it left gets a
+ * blank row of that kind back (not for extra work): it still owes that piece — the post it had was not
+ * its own. Both documents in one transaction, then both orders' counters (`syncOrderProgress`).
+ */
+export async function movePieceToMonth(
+  fromId: string,
+  toId: string,
+  itemId: string,
+  actor: SmmActor,
+): Promise<{ replacedBlank: boolean; toLabel: string }> {
+  assertMayMovePieces();
+  if (fromId === toId) throw new Error("The post is already on this month.");
+  const fromRef = campaignRef(fromId);
+  const toRef = campaignRef(toId);
+  const result = await runTransaction(db, async (tx) => {
+    const [fromSnap, toSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
+    if (!fromSnap.exists() || !toSnap.exists()) throw new Error("One of the two months no longer exists.");
+    const from = { ...(fromSnap.data() as SmmCampaign), id: fromSnap.id };
+    const to = { ...(toSnap.data() as SmmCampaign), id: toSnap.id };
+    if (isGoneMonth(from) || isGoneMonth(to)) throw new Error("One of the two months no longer exists.");
+    if (!from.clientPhoneId || from.clientPhoneId !== to.clientPhoneId) {
+      throw new Error("A post can only move to another month of the same client.");
+    }
+    assertMayChangeMonth(from);
+    assertMayChangeMonth(to);
+    const piece = from.items.find((i) => i.id === itemId);
+    if (!piece) throw new Error("This post is no longer on this month.");
+    // Its day must be one of the target's own days — the reason it is moving at all.
+    if (moveTargetFor(piece, from, [to])?.id !== to.id) {
+      throw new Error(`Its date is not inside ${monthLabel(to.cycle.startDate)}'s days — fix the date, or pick the month that covers it.`);
+    }
+
+    const fromLabel = monthLabel(from.cycle.startDate);
+    const moved: SmmContentItem = {
+      ...piece,
+      notes: [piece.notes?.trim(), `Moved from ${fromLabel} by ${actor.name} — its date is in this month.`].filter(Boolean).join("\n"),
+      updatedAt: Timestamp.now(),
+    };
+    const blank = piece.extra ? undefined : to.items.find((i) => i.kind === piece.kind && untouchedRow(i));
+    const toItems = blank ? to.items.map((i) => (i.id === blank.id ? moved : i)) : [...to.items, moved];
+    const fromItems = from.items.filter((i) => i.id !== piece.id);
+    if (!piece.extra) {
+      fromItems.push({
+        ...blankItem(piece.kind, from.platforms),
+        makerUid: from.team?.creator?.uid ?? null,
+        makerName: from.team?.creator?.name ?? null,
+        publisherUid: from.team?.publisher?.uid ?? null,
+        publisherName: from.team?.publisher?.name ?? null,
+        createdAt: Timestamp.now(),
+      });
+    }
+    tx.update(fromRef, { ...clean({ items: fromItems }), updatedAt: serverTimestamp() });
+    tx.update(toRef, { ...clean({ items: toItems }), updatedAt: serverTimestamp() });
+    return { replacedBlank: !!blank, toLabel: monthLabel(to.cycle.startDate) };
+  });
+
+  // Both orders' counters follow their plans.
+  const [fromAfter, toAfter] = await Promise.all([fetchCampaign(fromId), fetchCampaign(toId)]);
+  if (fromAfter) await syncOrderProgress(fromAfter).catch(() => undefined);
+  if (toAfter) await syncOrderProgress(toAfter).catch(() => undefined);
+  return result;
 }
 
 /** An overseer nudging the salesperson about a renewal that is due — once a day, however many clicks. */
@@ -1708,13 +1958,19 @@ export async function notifyRenewalsDueOnOpen(
   today: string,
 ): Promise<void> {
   for (const r of renewalsDueFor(campaigns, user.uid, today).slice(0, 5)) {
+    /*
+      Worded from the same count as the card's "Last day" and its "Renewal tomorrow" chip (2026-10-15 —
+      `daysLeft` is days to the renewal day): on the month's last day the bell no longer says "1 day
+      left" while the chip says the renewal is today, and on the renewal day the month has ended.
+    */
+    const when = renewalWhenLabel(r.daysLeft).toLowerCase();
     await sendNotification({
       userId: user.uid,
       type: "smm_renewal_due",
       title: r.daysLeft > 0 ? "Social media renewal due" : "Social media month has ended",
       message: r.daysLeft > 0
-        ? `${r.businessName} — ${r.daysLeft} day${r.daysLeft === 1 ? "" : "s"} left (${r.postedOfCommitted} posted). Press Renew to continue next month.`
-        : `${r.businessName} — the month has ended (${r.postedOfCommitted} posted). Renew it, or mark that they are not renewing.`,
+        ? `${r.businessName} — ${r.daysLeft === 1 ? `last day of the month, ${when}` : when} (${r.postedOfCommitted} posted). Press Renew to continue next month.`
+        : `${r.businessName} — the month has ended, ${when} (${r.postedOfCommitted} posted). Renew it, or mark that they are not renewing.`,
       link: `/smm/${r.campaignId}`,
       dedupeKey: `smm_renewal_due_${r.campaignId}_${user.uid}_${today}`,
       once: true,

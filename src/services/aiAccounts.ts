@@ -17,8 +17,8 @@ import type {
   AccountEvent, AccountSecret, ApiKeySummary, FlowAccount, FlowClipRow, FlowSettings, FlowUsageEntry, GeminiApiKey, PaidAccount, PaidProvider,
 } from "@/types/aiAccounts";
 import {
-  creditsFor, cycleStartOf, expiryOf, hasRecordedCredits, normaliseEmail, normalisePhone, teamAdminIdOf, todayStr, visibilityOf,
-  type FlowAccountInput,
+  creditsFor, cycleStartOf, expiryOf, hasRecordedCredits, normaliseEmail, normalisePhone, teamAdminIdOf, todayStr, usageDateProblem,
+  visibilityOf, type FlowAccountInput,
 } from "@/utils/flowCredits";
 import { apiKeyFingerprint, keyCheckFrom, normaliseApiKey, type KeyCheck } from "@/utils/geminiKeys";
 
@@ -117,35 +117,49 @@ export interface FlowAccountPatch {
   password?: string;
 }
 
-/** Edits an account. A new creation date moves its expiry; a new password replaces the old one. */
+/**
+ * Edits an account. A new creation date moves its expiry; a new password replaces the old one.
+ *
+ * ── Why a transaction (2026-10-15) ──
+ * "A creation date is fixed once credits are recorded" was checked on the copy of the account the
+ * Edit dialog was opened with, and the write was a plain batch. Credits recorded while the dialog
+ * stood open were invisible to it: the new creation date moved every cycle, and the credits just
+ * recorded sat in a cycle nothing reads any more. The check now reads the account AS STORED in the
+ * same transaction that writes the change (and `recordFlowUsage` reads the creation day in its own),
+ * so whichever runs second sees the other.
+ */
 export async function updateFlowAccount(account: FlowAccount, patch: FlowAccountPatch, actor: Actor, settings: FlowSettings): Promise<void> {
-  const changes: Record<string, unknown> = { updatedAt: serverTimestamp() };
-  const events: AccountEvent[] = [];
-  if (patch.phone !== undefined) changes.phone = normalisePhone(patch.phone);
-  if (patch.notes !== undefined) changes.notes = patch.notes.trim();
-  if (patch.monthlyCredits !== undefined && patch.monthlyCredits > 0) changes.monthlyCredits = Math.round(patch.monthlyCredits);
-  if (patch.createdOn && patch.createdOn !== account.createdOn) {
-    if (hasRecordedCredits(account)) throw new Error("Credits are already recorded on this account, so its creation date can't change.");
-    changes.createdOn = patch.createdOn;
-    changes.expiresOn = expiryOf(patch.createdOn, settings.validityMonths);
-  }
-  if (Object.keys(changes).length > 1) events.push(event(actor, "edited"));
-  if (patch.status && patch.status !== account.status) {
-    changes.status = patch.status;
-    events.push(event(actor, patch.status === "disabled" ? "disabled" : "enabled"));
-  }
-  if (patch.password?.trim()) events.push(event(actor, "password_changed"));
-  if (events.length === 0) return;
-  // Appended, not rewritten: the dialog's copy of the account may be minutes old, and writing the
-  // whole array back would drop an event someone else added since.
-  changes.history = arrayUnion(...events);
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, FLOW_ACCOUNTS, account.id);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error(`${account.email} is no longer in the list.`);
+    const stored = { ...(snap.data() as FlowAccount), id: account.id };
 
-  const batch = writeBatch(db);
-  batch.update(doc(db, FLOW_ACCOUNTS, account.id), changes);
-  if (patch.password?.trim()) {
-    batch.set(doc(db, FLOW_SECRETS, account.id), { password: patch.password, updatedAt: serverTimestamp(), updatedById: actor.uid } satisfies AccountSecret);
-  }
-  await batch.commit();
+    const changes: Record<string, unknown> = { updatedAt: serverTimestamp() };
+    const events: AccountEvent[] = [];
+    if (patch.phone !== undefined) changes.phone = normalisePhone(patch.phone);
+    if (patch.notes !== undefined) changes.notes = patch.notes.trim();
+    if (patch.monthlyCredits !== undefined && patch.monthlyCredits > 0) changes.monthlyCredits = Math.round(patch.monthlyCredits);
+    if (patch.createdOn && patch.createdOn !== stored.createdOn) {
+      if (hasRecordedCredits(stored)) throw new Error("Credits are already recorded on this account, so its creation date can't change.");
+      changes.createdOn = patch.createdOn;
+      changes.expiresOn = expiryOf(patch.createdOn, settings.validityMonths);
+    }
+    if (Object.keys(changes).length > 1) events.push(event(actor, "edited"));
+    if (patch.status && patch.status !== stored.status) {
+      changes.status = patch.status;
+      events.push(event(actor, patch.status === "disabled" ? "disabled" : "enabled"));
+    }
+    if (patch.password?.trim()) events.push(event(actor, "password_changed"));
+    if (events.length === 0) return;
+    // Appended, not rewritten: writing the whole array back would drop an event someone else added.
+    changes.history = arrayUnion(...events);
+
+    tx.update(ref, changes);
+    if (patch.password?.trim()) {
+      tx.set(doc(db, FLOW_SECRETS, account.id), { password: patch.password, updatedAt: serverTimestamp(), updatedById: actor.uid } satisfies AccountSecret);
+    }
+  });
 }
 
 /**
@@ -345,7 +359,17 @@ export interface UsageDraft {
 
 /**
  * Records the credits an ad used — one ledger entry per account (an ad may run across two when the
- * first runs out) — and adds them to each account's running total for its current cycle, in one batch.
+ * first runs out) — and adds them to each account's running total for the cycle of the day the clips
+ * were made, all in one transaction.
+ *
+ * ── Why the day the clips were made, and why a transaction (2026-10-15) ──
+ * The entry was dated, and its cycle chosen, by the day Mark Complete was pressed — clips made the
+ * evening before an account's renewal day landed in the new cycle. `meta.madeOn` (the dialog's "Day
+ * the clips were made", default today) now sets `date`, `month` and `cycleStart`. The cycle is worked
+ * out from each account's creation day AS STORED, read in the same transaction that adds the credits:
+ * the dialog's copy can be older than an edit of that day, and a cycle computed from an old creation
+ * day is a total nothing would ever read again. A day after today or before the account was opened is
+ * refused (`usageDateProblem`). Needs a connection, like every transaction.
  */
 export async function recordFlowUsage(
   drafts: UsageDraft[],
@@ -356,43 +380,62 @@ export async function recordFlowUsage(
     assignment?: (Pick<WorkAssignment, "id"> & Partial<Pick<WorkAssignment, "uniqueId" | "businessName">>) | null;
     note?: string;
     source?: FlowUsageEntry["source"];
+    /** The day the clips were made (yyyy-MM-dd) — the entry's date and cycle. Absent = today. */
+    madeOn?: string;
   } = {},
   today = todayStr(),
 ): Promise<number> {
-  const batch = writeBatch(db);
-  let total = 0;
-  for (const { account, rows } of drafts) {
-    const kept = rows.filter((r) => r.count > 0);
-    const credits = creditsFor(kept, settings);
-    if (credits <= 0) continue;
-    total += credits;
-    const cycleStart = cycleStartOf(account.createdOn, today);
-    const entry: Omit<FlowUsageEntry, "id"> = {
-      accountId: account.id,
-      accountEmail: account.email,
-      userId: actor.uid,
-      userName: actor.name || "",
-      teamAdminId: account.teamAdminId || teamAdminIdOf(actor),
-      ...(meta.assignment?.id ? { assignmentId: meta.assignment.id } : {}),
-      ...(meta.assignment?.uniqueId ? { uniqueId: meta.assignment.uniqueId } : {}),
-      ...(meta.assignment?.businessName ? { businessName: meta.assignment.businessName } : {}),
-      rows: kept,
-      credits,
-      cycleStart,
-      date: today,
-      month: today.slice(0, 7),
-      source: meta.source || (meta.assignment ? "completion" : "manual"),
-      ...(meta.note?.trim() ? { note: meta.note.trim() } : {}),
-    };
-    batch.set(doc(collection(db, FLOW_USAGE)), { ...entry, createdAt: serverTimestamp() });
-    batch.update(doc(db, FLOW_ACCOUNTS, account.id),
-      new FieldPath("usedByCycle", cycleStart), increment(credits),
-      "lastUsedAt", Date.now(),
-      "lastUsedByName", actor.name || "",
-      "updatedAt", serverTimestamp());
-  }
-  if (total > 0) await batch.commit();
-  return total;
+  const madeOn = meta.madeOn || today;
+  const dateIssue = usageDateProblem(madeOn, today);
+  if (dateIssue) throw new Error(dateIssue);
+  const plans = drafts
+    .map(({ account, rows }) => {
+      const kept = rows.filter((r) => r.count > 0);
+      return { account, kept, credits: creditsFor(kept, settings) };
+    })
+    .filter((p) => p.credits > 0);
+  if (plans.length === 0) return 0;
+
+  await runTransaction(db, async (tx) => {
+    // Every read first (a transaction's rule), then every write.
+    const stored: FlowAccount[] = [];
+    for (const { account } of plans) {
+      const snap = await tx.get(doc(db, FLOW_ACCOUNTS, account.id));
+      if (!snap.exists()) throw new Error(`${account.email} is no longer in the list — choose another account.`);
+      const now = { ...(snap.data() as FlowAccount), id: account.id };
+      const problem = usageDateProblem(madeOn, today, now);
+      if (problem) throw new Error(problem);
+      stored.push(now);
+    }
+    plans.forEach(({ kept, credits }, i) => {
+      const account = stored[i];
+      const cycleStart = cycleStartOf(account.createdOn, madeOn);
+      const entry: Omit<FlowUsageEntry, "id"> = {
+        accountId: account.id,
+        accountEmail: account.email,
+        userId: actor.uid,
+        userName: actor.name || "",
+        teamAdminId: account.teamAdminId || teamAdminIdOf(actor),
+        ...(meta.assignment?.id ? { assignmentId: meta.assignment.id } : {}),
+        ...(meta.assignment?.uniqueId ? { uniqueId: meta.assignment.uniqueId } : {}),
+        ...(meta.assignment?.businessName ? { businessName: meta.assignment.businessName } : {}),
+        rows: kept,
+        credits,
+        cycleStart,
+        date: madeOn,
+        month: madeOn.slice(0, 7),
+        source: meta.source || (meta.assignment ? "completion" : "manual"),
+        ...(meta.note?.trim() ? { note: meta.note.trim() } : {}),
+      };
+      tx.set(doc(collection(db, FLOW_USAGE)), { ...entry, createdAt: serverTimestamp() });
+      tx.update(doc(db, FLOW_ACCOUNTS, account.id),
+        new FieldPath("usedByCycle", cycleStart), increment(credits),
+        "lastUsedAt", Date.now(),
+        "lastUsedByName", actor.name || "",
+        "updatedAt", serverTimestamp());
+    });
+  });
+  return plans.reduce((sum, p) => sum + p.credits, 0);
 }
 
 /**
@@ -406,33 +449,63 @@ export async function usageForAssignment(uid: string, assignmentId: string): Pro
 }
 
 /**
- * Corrects an entry — its clips, or the account it was charged to. The old amount comes off the old
- * account's cycle and the new amount goes on the new one's, with the entry, in one batch.
+ * Corrects an entry — its clips, the account it was charged to, or (2026-10-15) the day the clips
+ * were made. The old amount comes off the old account's cycle and the new amount goes on the cycle of
+ * the entry's day on the new account, with the entry, in one transaction.
+ *
+ * ── Why a transaction, and the creation day as stored ──
+ * Moving an entry to another account placed it in that account's cycle for the entry's date — but
+ * from the dialog's copy of the account, and an entry dated before that account was even opened was
+ * accepted, landing in a cycle that does not exist. The new account is read in the transaction; a day
+ * before it was opened (or a day still to come) is refused. An entry left on its own account and day
+ * keeps the cycle it was recorded in.
  */
 export async function editFlowUsage(
   entry: FlowUsageEntry,
-  next: { account: FlowAccount; rows: FlowClipRow[] },
+  next: { account: FlowAccount; rows: FlowClipRow[]; date?: string },
   actor: Actor,
   settings: FlowSettings,
+  today = todayStr(),
 ): Promise<void> {
   const kept = next.rows.filter((r) => r.count > 0);
   const credits = creditsFor(kept, settings);
   const sameAccount = next.account.id === entry.accountId;
-  const cycleStart = sameAccount ? entry.cycleStart : cycleStartOf(next.account.createdOn, entry.date);
-  const batch = writeBatch(db);
-  batch.update(doc(db, FLOW_ACCOUNTS, entry.accountId), new FieldPath("usedByCycle", entry.cycleStart), increment(-entry.credits), "updatedAt", serverTimestamp());
-  batch.update(doc(db, FLOW_ACCOUNTS, next.account.id), new FieldPath("usedByCycle", cycleStart), increment(credits), "updatedAt", serverTimestamp());
-  batch.update(doc(db, FLOW_USAGE, entry.id), {
-    accountId: next.account.id,
-    accountEmail: next.account.email,
-    rows: kept,
-    credits,
-    cycleStart,
-    updatedAt: serverTimestamp(),
-    editedById: actor.uid,
-    editedByName: actor.name || "",
+  const date = next.date || entry.date;
+  const moved = !sameAccount || date !== entry.date;
+  if (moved) {
+    const dateIssue = usageDateProblem(date, today);
+    if (dateIssue) throw new Error(dateIssue);
+  }
+  await runTransaction(db, async (tx) => {
+    const oldRef = doc(db, FLOW_ACCOUNTS, entry.accountId);
+    const newRef = doc(db, FLOW_ACCOUNTS, next.account.id);
+    const oldSnap = await tx.get(oldRef);
+    const newSnap = sameAccount ? oldSnap : await tx.get(newRef);
+    if (!newSnap.exists()) throw new Error(`${next.account.email} is no longer in the list — choose another account.`);
+    const target = { ...(newSnap.data() as FlowAccount), id: next.account.id };
+    if (moved) {
+      const problem = usageDateProblem(date, today, target);
+      if (problem) throw new Error(problem);
+    }
+    const cycleStart = moved ? cycleStartOf(target.createdOn, date) : entry.cycleStart;
+    // An entry on an account deleted since keeps nothing to give back to.
+    if (oldSnap.exists()) {
+      tx.update(oldRef, new FieldPath("usedByCycle", entry.cycleStart), increment(-entry.credits), "updatedAt", serverTimestamp());
+    }
+    tx.update(newRef, new FieldPath("usedByCycle", cycleStart), increment(credits), "updatedAt", serverTimestamp());
+    tx.update(doc(db, FLOW_USAGE, entry.id), {
+      accountId: next.account.id,
+      accountEmail: target.email || next.account.email,
+      rows: kept,
+      credits,
+      cycleStart,
+      date,
+      month: date.slice(0, 7),
+      updatedAt: serverTimestamp(),
+      editedById: actor.uid,
+      editedByName: actor.name || "",
+    });
   });
-  await batch.commit();
 }
 
 /** Removes an entry and gives its credits back to the account's cycle. */

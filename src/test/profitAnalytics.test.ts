@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { computeProfit, salaryMonthsFor, type ExpenseRecord } from "@/utils/profitAnalytics";
+import { computeProfit, periodsInWindow, type ExpenseRecord } from "@/utils/profitAnalytics";
 import { defaultPeriodFilter, type PeriodFilter } from "@/utils/periodFilter";
 import type { AppUser, Lead, WorkAssignment } from "@/types";
 
 const secondsFor = (date: string) => ({ seconds: new Date(`${date}T12:00:00`).getTime() / 1000 });
 
 const july: PeriodFilter = { mode: "month", month: "2026-07", day: "2026-07-15" };
+/** The July PAY PERIOD, 10 Jul → 9 Aug — one whole period, so salary is exactly one month (2026-10-15). */
+const julyCycle: PeriodFilter = { mode: "month", month: "2026-07", day: "2026-07-15", monthBasis: "cycle" };
 
 const user = (fields: Partial<AppUser>): AppUser => ({
   uid: "u1", email: "", name: "Someone", role: "tech_member", createdBy: "admin",
@@ -19,7 +21,7 @@ const lead = (amount: number, date: string, status: "verified" | "pending" = "ve
 } as unknown as Lead);
 
 const assignment = (price: number, date: string, status: WorkAssignment["status"] = "verified"): WorkAssignment => ({
-  id: `a-${Math.random()}`, assignedTo: "t1", status, totalPrice: price, completedDate: date,
+  id: `a-${Math.random()}`, assignedTo: "t1", status, totalPrice: price, completedDate: date, date,
 } as unknown as WorkAssignment);
 
 const expense = (amount: number, date: string, category = "Software/Tools"): ExpenseRecord =>
@@ -86,14 +88,14 @@ describe("computeProfit — costs", () => {
   ];
 
   it("splits salary by department", () => {
-    const p = computeProfit({ filter: july, users: team, leads: [], assignments: [], expenses: [] });
+    const p = computeProfit({ filter: julyCycle, users: team, leads: [], assignments: [], expenses: [] });
     expect(p.techSalary).toBe(18000);
     expect(p.salesSalary).toBe(6000);
   });
 
   it("excludes inactive people from salary cost", () => {
     const p = computeProfit({
-      filter: july, leads: [], assignments: [], expenses: [],
+      filter: julyCycle, leads: [], assignments: [], expenses: [],
       users: [...team, user({ uid: "t3", role: "tech_member", salary: 99999, isActive: false })],
     });
     expect(p.techSalary).toBe(18000);
@@ -134,10 +136,10 @@ describe("computeProfit — costs", () => {
 describe("computeProfit — the bottom line", () => {
   it("computes net profit and margin", () => {
     const p = computeProfit({
-      filter: july,
+      filter: julyCycle,
       users: [user({ uid: "t1", role: "tech_member", salary: 10000 })],
       leads: [lead(50000, "2026-07-15")],
-      assignments: [], expenses: [expense(5000, "2026-07-05")],
+      assignments: [], expenses: [expense(5000, "2026-07-15")],
     });
     // 50,000 income − (10,000 tech salary + 2,500 commission + 5,000 expenses)
     expect(p.totalCost).toBe(17500);
@@ -163,7 +165,7 @@ describe("computeProfit — the bottom line", () => {
 
   it("reports how much delivered value each rupee of tech salary produced", () => {
     const p = computeProfit({
-      filter: july,
+      filter: julyCycle,
       users: [user({ uid: "t1", role: "tech_member", salary: 10000 })],
       leads: [], expenses: [],
       assignments: [assignment(25000, "2026-07-18")],
@@ -172,34 +174,62 @@ describe("computeProfit — the bottom line", () => {
   });
 });
 
-describe("salaryMonthsFor — salary must match the length of the period", () => {
-  it("charges a full month for a month view", () => {
-    expect(salaryMonthsFor({ ...defaultPeriodFilter(), mode: "month" })).toBe(1);
+describe("salary cost — pay period by pay period (2026-10-15)", () => {
+  it("counts each pay period for the share of its days inside the window", () => {
+    expect(periodsInWindow("2026-07-10", "2026-08-09")).toEqual([{ month: "2026-07", share: 1, end: "2026-08-09" }]);
+    const day = periodsInWindow("2026-07-15", "2026-07-15");
+    expect(day).toHaveLength(1);
+    expect(day[0].share).toBeCloseTo(1 / 31, 5);
+    // A calendar month straddles two pay periods.
+    expect(periodsInWindow("2026-07-01", "2026-07-31").map(p => p.month)).toEqual(["2026-06", "2026-07"]);
   });
 
-  it("charges roughly a thirtieth for a single day", () => {
-    // Without this a one-day P&L would bill a whole month of salary against one day of revenue.
-    expect(salaryMonthsFor({ ...defaultPeriodFilter(), mode: "day" })).toBeCloseTo(1 / 30, 5);
+  it("charges a single day one day of its period, not a month", () => {
+    const users = [user({ uid: "t1", role: "tech_member", salary: 31000 })];
+    const month = computeProfit({ filter: julyCycle, users, leads: [], assignments: [], expenses: [] });
+    const day = computeProfit({ filter: { ...julyCycle, mode: "day", day: "2026-07-15" }, users, leads: [], assignments: [], expenses: [] });
+    expect(month.techSalary).toBe(31000);
+    expect(day.techSalary).toBe(1000);
   });
 
-  it("scales with the length of a custom range", () => {
-    const months = salaryMonthsFor({
-      ...defaultPeriodFilter(), mode: "range",
-      range: { from: new Date(2026, 6, 1), to: new Date(2026, 6, 15) },
+  it("uses the salary that applied IN the period — a later raise leaves it alone", () => {
+    const raised = user({
+      uid: "t1", role: "tech_member", salary: 18000,
+      payHistory: [{ from: "2026-09", salary: 18000, previous: { salary: 15000 }, at: 1 }],
     });
-    expect(months).toBeCloseTo(15 / 30, 5);
+    expect(computeProfit({ filter: julyCycle, users: [raised], leads: [], assignments: [], expenses: [] }).techSalary).toBe(15000);
+    const sept: PeriodFilter = { ...julyCycle, month: "2026-09" };
+    expect(computeProfit({ filter: sept, users: [raised], leads: [], assignments: [], expenses: [] }).techSalary).toBe(18000);
   });
 
-  it("spans the whole history in career mode", () => {
-    const months = salaryMonthsFor({ ...defaultPeriodFilter(), mode: "career" }, "2026-01-01");
-    expect(months).toBeGreaterThan(1);
+  it("charges a paid period what was paid — the salary part of a sales payment — even for someone gone since", () => {
+    const gone = user({ uid: "t9", role: "tech_member", salary: 20000, isActive: false });
+    const seller = user({ uid: "s1", role: "sales_member", salary: 10000 });
+    const p = computeProfit({
+      filter: julyCycle, users: [gone, seller], leads: [], assignments: [], expenses: [],
+      payrollLines: [
+        { id: "2026-07_t9", month: "2026-07", memberId: "t9", netSalary: 17500, paymentStatus: "completed" },
+        { id: "2026-07_s1", month: "2026-07", memberId: "s1", netSalary: 11500, paymentStatus: "completed",
+          incentive: { salesBase: 30000, rate: 5, amount: 1500 } },
+      ] as never,
+    });
+    expect(p.techSalary).toBe(17500);
+    expect(p.salesSalary).toBe(10000);
   });
 
-  it("prorated salary actually reduces the cost", () => {
-    const users = [user({ uid: "t1", role: "tech_member", salary: 30000 })];
-    const monthly = computeProfit({ filter: july, users, leads: [], assignments: [], expenses: [], salaryMonths: 1 });
-    const daily = computeProfit({ filter: july, users, leads: [], assignments: [], expenses: [], salaryMonths: 1 / 30 });
-    expect(monthly.techSalary).toBe(30000);
-    expect(daily.techSalary).toBe(1000);
+  it("charges nobody for a period before they joined", () => {
+    const joiner = user({ uid: "t2", role: "tech_member", salary: 12000, createdAt: secondsFor("2026-09-01") });
+    expect(computeProfit({ filter: julyCycle, users: [joiner], leads: [], assignments: [], expenses: [] }).techSalary).toBe(0);
+  });
+});
+
+describe("commission — the payroll rule (2026-10-15)", () => {
+  it("is withheld for a period under 75% of its target", () => {
+    const seller = user({ uid: "s1", role: "sales_member", salary: 0, dailyTarget: 1000 });
+    const p = computeProfit({
+      filter: julyCycle, users: [seller], assignments: [], expenses: [],
+      leads: [lead(10000, "2026-07-15", "verified", "s1")], // 10,000 of a 31,000 target
+    });
+    expect(p.salesCommission).toBe(0);
   });
 });

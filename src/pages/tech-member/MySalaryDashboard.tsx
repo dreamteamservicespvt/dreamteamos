@@ -61,6 +61,8 @@ export default function MySalaryDashboard() {
   } = useSalaryMonth({
     memberId: user?.uid,
     monthlySalary: user?.salary || 0,
+    // The salary that applied in the period viewed — a raise from a later period leaves it alone (2026-10-15).
+    payHistory: user?.payHistory,
     month,
   });
 
@@ -399,7 +401,9 @@ export default function MySalaryDashboard() {
             </section>
           </div>
 
-          <LeavePanel month={month} config={config} computation={c} />
+          {/* The LIVE count, not the paid snapshot: leave approved after payday must use the allowance
+              (2026-10-15 — a paid period kept reading "0 of 2 used" and previewed requests wrongly). */}
+          <LeavePanel month={month} config={config} computation={liveComputation} />
 
           {/* ── Payout details ──────────────────────────────────────────────
               Deliberately the loudest card on the page. This is the one thing on the salary

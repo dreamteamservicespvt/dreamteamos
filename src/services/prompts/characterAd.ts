@@ -1,8 +1,9 @@
-import { ownerPhotoSlots, packAdKind, packNameSpellings, type CharacterPack, type OwnerPhotoSlot } from "@/services/characterPacks";
+import { CHARACTER_FAMILY_LABELS, ownerPhotoSlots, packAdKind, packNameSpellings, type CharacterPack, type OwnerPhotoSlot } from "@/services/characterPacks";
 import {
-  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, wordBudgetFor,
+  countSpokenWords,
 } from "@/utils/dialogueFormat";
 import { CLIP_SECONDS } from "@/utils/voiceOverFormat";
+import { wordContractBlock, type WordContractRegister } from "./wordContract";
 import { packLocationSubject, packStagingRole, realLocationFormula } from "./realLocation";
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
@@ -27,8 +28,8 @@ import {
  *     produces a generic cartoon that merely matches the words, so the prompts say "Motu and Patlu"
  *     and stop. This also keeps every prompt short. (See the note in services/characterPacks.)
  *
- *  2. THE 8-SECOND TWO-HANDER. Both characters speak inside the same clip, so the word budget is
- *     split and exact (see utils/dialogueFormat).
+ *  2. THE 8-SECOND TWO-HANDER. Both characters speak inside the same clip, so the clip's 17–20 words
+ *     are split between them, about 8–10 each (the one contract: utils/scriptContract, prompts/wordContract).
  *
  *  3. CARTOON SUBJECT, PHOTOREAL WORLD. The characters are drawn; the shop is photographed. The
  *     most common failure is the model "helpfully" cartoonifying the whole frame, so that is a
@@ -36,6 +37,29 @@ import {
  */
 
 // ── Shared building blocks ────────────────────────────────────────────────────────────────────
+
+/**
+ * How this cast meets the word budget naturally — children with simple words, a deity unhurried, a
+ * cartoon in its own rhythm. Only HOW; the budget itself (17–20 a clip) is the same for every cast.
+ */
+export const contractRegisterFor = (pack: CharacterPack): WordContractRegister => {
+  if (pack.family === "kids") return "children";
+  if (pack.family === "owner_duo") return "owners";
+  if (pack.family === "human" || pack.family === "human_duo") return "people";
+  return packPerformer(pack) === "deity" ? "deity" : packPerformer(pack) === "cartoon" ? "cartoon" : "people";
+};
+
+/**
+ * Who the cast IS, for the quality judge (prompts/scriptQa castNote): the entry, its family, each speaker's
+ * job in the script and how the entry is written — so a deity is held to a blessing, two children to simple
+ * words and the two owners to "we", instead of every script being judged as a generic presenter's.
+ */
+export const castNoteFor = (pack: CharacterPack): string => {
+  const family = pack.family ? CHARACTER_FAMILY_LABELS[pack.family] : "Special category";
+  const who = pack.characters.map((c) => `${c.name} — ${c.scriptRole}`).join(" ");
+  const style = (pack.scriptStyle || "").trim();
+  return `${pack.label} (${family}). ${who}${style ? ` How it is written: ${style}` : ""}`.replace(/\s+/g, " ").trim().slice(0, 1600);
+};
 
 /**
  * Who is on screen — names only.
@@ -578,8 +602,8 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
    * format a model obeys far more literally than any prose above it. So it is built from the cast.
    */
   const solo = pack.characters.length === 1;
-  /** 18-20 words an 8-second clip, split between the cast. See wordBudgetFor. */
-  const budget = wordBudgetFor(pack.characters.length);
+  /** The one word contract (17–20 a clip, split between the cast), in the shared words — prompts/wordContract. */
+  const budget = wordContractBlock({ speakers: pack.characters.length, names: pack.characters.map((c) => c.name), register: contractRegisterFor(pack) });
 
   const contract = Array.from({ length: segmentCount }, (_, i) => {
     const start = i * CLIP_SECONDS;
@@ -590,43 +614,75 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   }).join(String.fromCharCode(10));
 
   /**
-   * The worked example for the Real Owner Duo (2026-10-14) — the role-label example's shape, spoken as the
-   * business's own two owners ("our shop", "we stock"), because the visitors' example ("Do THEY have…")
-   * is the one a model copies most literally. Every clip stays inside the two-speaker budget (15–17).
+   * THE WORKED EXAMPLE — the part of this prompt a model copies most literally, so its word counts are
+   * COMPUTED by the one counter (utils/scriptContract), never typed by hand.
+   *
+   * ── Why (2026-10-15) ──────────────────────────────────────────────────────────────────────────────
+   * The hand-typed counts had drifted: three solo lines marked "(18 words)" were 14, 15 and 16 words, and
+   * every two-person clip totalled 15–17. A model shown "a 14-word line is 18 words" writes short clips.
+   * Every clip here now totals 17–20 (two speakers about 8–10 each), says the business from INSIDE it
+   * ("is right here", never "do they have"), and each example line is one complete sentence.
    */
-  const ownersWorkedExample = (): string => {
-    const named = place
-      ? `"We are Sharma Electronics in ${place} — everyone shops here."   (9 words)`
-      : `"We are Sharma Electronics — the whole town shops here."   (9 words)`;
-    const hook = `  ${first.name}:  "Why is our shop always so full?"            (7 words)\n  ${second.name}: ${named}`;
-    const proof = `  ${first.name}:  "We stock the latest washing machines too."   (7 words)\n  ${second.name}: "Every brand, every model, with free home delivery."   (8 words)`;
-    const proof2 = `  ${first.name}:  "Repairs cost a fortune at big showrooms."   (7 words)\n  ${second.name}: "Here, we give one full year of free service."   (9 words)`;
-    const close = `  ${first.name}:  "Everything your family needs is right here."   (7 words)\n  ${second.name}: "Come to Sharma Electronics today and see for yourself."   (9 words)`;
-    const named2 = `clip-2 (the TURN — the festival is over; the hook, then the business${place ? " and its town are" : " is"} named)`;
-    return isFestival
-      ? `clip-1 (the WISH — the business sends it, and nothing at all is sold)
-  ${first.name}:  "Our whole family is celebrating ${exampleOccasion} tonight!"   (7 words)
-  ${second.name}: "Happy ${exampleOccasion} to your family from Sharma Electronics!"   (8 words)
-
-${named2}
-${hook}
-
-clip-3 (proof — a real, specific offering)
-${proof}
-
-clip-4 (close — it ends, and it tells you what to do)
-${close}`
-      : `clip-1 (the hook — curiosity gap, then the business${place ? " and its town are" : " is"} named)
-${hook}
-
-clip-2 (proof — a real, specific offering)
-${proof}
-
-clip-3 (proof — a DIFFERENT one, never a repeat)
-${proof2}
-
-clip-4 (close — it ends, and it tells you what to do)
-${close}`;
+  const workedExample = (): string => {
+    const occ = exampleOccasion;
+    const said = (name: string, text: string) => `  ${name}: "${text}"   (${countSpokenWords(text)} words)`;
+    const clip = (title: string, lines: [string, string][]) => {
+      const total = lines.reduce((sum, [, text]) => sum + countSpokenWords(text), 0);
+      return `${title}${lines.length > 1 ? `   — clip total ${total} words` : ""}\n${lines.map(([name, text]) => said(name, text)).join("\n")}`;
+    };
+    const named = place ? " and its town are" : " is";
+    const titles = {
+      wish: "clip-1 (the WISH — the business sends it, and nothing at all is sold)",
+      turn: `clip-2 (the TURN — the festival is over; the hook, then the business${named} named)`,
+      hook: `clip-1 (the hook — curiosity gap, then the business${named} named)`,
+      proof: (n: number) => `clip-${n} (proof — a real, specific offering)`,
+      proof2: "clip-3 (proof — a DIFFERENT one, never a repeat)",
+      close: "clip-4 (close — it ends, and it tells you what to do)",
+    };
+    if (solo) {
+      const wish = roleLabels
+        ? `Wishing you and your whole family a very happy ${occ} from all of us here at Sharma Electronics.`
+        : `${first.name} here, wishing you and your whole family a very happy ${occ} from all of us at Sharma Electronics.`;
+      const hook = place
+        ? `Everyone in ${place} asks why this shop is always full — it is Sharma Electronics, and everyone buys here.`
+        : "Everyone asks why this shop is always full — it is Sharma Electronics, and the whole town buys here.";
+      const proof = "Every single brand and every model of washing machine is right here, and home delivery is completely free.";
+      const proof2 = "Repairs would cost a fortune at the big showrooms, but here one full year of service is completely free.";
+      const close = "Come to Sharma Electronics today and see every one of these machines for yourself before the week ends.";
+      return (isFestival
+        ? [clip(titles.wish, [[first.name, wish]]), clip(titles.turn, [[first.name, hook]]), clip(titles.proof(3), [[first.name, proof]]), clip(titles.close, [[first.name, close]])]
+        : [clip(titles.hook, [[first.name, hook]]), clip(titles.proof(2), [[first.name, proof]]), clip(titles.proof2, [[first.name, proof2]]), clip(titles.close, [[first.name, close]])]
+      ).join("\n\n");
+    }
+    const A = first.name;
+    const B = second.name;
+    // The two owners speak as the business ("we", "our shop"); visitors and cartoons speak about it from inside it.
+    const lines = owners
+      ? {
+          wish: [[A, `Our whole family is celebrating ${occ} with you tonight!`], [B, `Happy ${occ} to your whole family from Sharma Electronics!`]],
+          hook: [[A, "Do you know why our shop is always so full?"], [B, place ? `We are Sharma Electronics in ${place} — everyone shops here.` : "We are Sharma Electronics — the whole town shops here."]],
+          proof: [[A, "We stock the latest washing machines from every brand."], [B, "Every model is here, and home delivery is completely free."]],
+          proof2: [[A, "Repairs cost a fortune at the big showrooms, don't they?"], [B, "Here, we give one full year of free service."]],
+          close: [[A, "Everything your family needs is right here with us."], [B, "Come to Sharma Electronics today and see for yourself."]],
+        }
+      : {
+          wish: roleLabels
+            ? [[A, "Look at all the lights in every home tonight!"], [B, `Happy ${occ} to you and every family, from Sharma Electronics!`]]
+            // Names are spoken here, and some are two words (Grandpa Max) — the lines leave room so the clip stays ≤ 20.
+            : [[A, `${B}, look at the lights in every home tonight!`], [B, `Happy ${occ} to your family from Sharma Electronics, ${A}!`]],
+          // A cartoon pair is named once, in clip 1 — so in a festival ad (clip 1 is the wish) the hook names nobody.
+          hook: roleLabels || isFestival
+            ? [[A, "Why is this shop always so full of happy families?"], [B, place ? `This is Sharma Electronics in ${place} — everyone shops here.` : "This is Sharma Electronics — the whole town shops here."]]
+            : [[A, `${B}, why is this shop always so full of people?`], [B, place ? `Sharma Electronics in ${place}, ${A} — everyone shops here.` : `This is Sharma Electronics, ${A} — everyone shops here.`]],
+          proof: [[A, "Are the latest washing machines really here too?"], [B, "Every brand, every model, and home delivery is completely free."]],
+          proof2: [[A, "Repairs cost a fortune at the big showrooms, don't they?"], [B, "Not here — one full year of service is free."]],
+          close: [[A, "So everything our whole family needs is right here!"], [B, "Visit Sharma Electronics today and see it for yourself."]],
+        };
+    const L = lines as Record<keyof typeof lines, [string, string][]>;
+    return (isFestival
+      ? [clip(titles.wish, L.wish), clip(titles.turn, L.hook), clip(titles.proof(3), L.proof), clip(titles.close, L.close)]
+      : [clip(titles.hook, L.hook), clip(titles.proof(2), L.proof), clip(titles.proof2, L.proof2), clip(titles.close, L.close)]
+    ).join("\n\n");
   };
 
   return `You are a WORLD-CLASS ${lang.toUpperCase()} AD SCRIPTWRITER writing a ${duration}-second
@@ -820,75 +876,7 @@ The scripts that fail do so in the same two ways — half-sentences, and an endi
 This is shown in English so the STRUCTURE is unmistakable. Write yours in ${lang}, about the real
 business you were given. Word counts are marked to show how a complete thought fits the budget.
 
-${owners ? ownersWorkedExample() : isFestival ? (solo ? `clip-1 (the WISH — the business sends it, and nothing at all is sold)
-  ${first.name}: ${roleLabels
-    ? `"Wishing you and your whole family a very happy ${exampleOccasion} from all of us here at Sharma Electronics."  (18 words)`
-    : `"${first.name} here, wishing you and your whole family a very happy ${exampleOccasion} from all of us at Sharma Electronics."  (19 words)`}
-
-clip-2 (the TURN — the festival is over; the hook, then the business${place ? " and its town are" : " is"} named)
-  ${first.name}: ${place
-    ? `"Why is there a queue outside this shop? That is Sharma Electronics here in ${place} — everyone buys here."  (18 words)`
-    : `"Why is there a queue outside this shop? That is Sharma Electronics — the whole town buys here."  (18 words)`}
-
-clip-3 (proof — a real, specific offering)
-  ${first.name}: "They keep every single brand and every model of washing machine here, and home delivery is completely free."  (18 words)
-
-clip-4 (close — it ends, and it tells you what to do)
-  ${first.name}: "Come to Sharma Electronics today and see every one of these machines for yourself before the week ends."  (18 words)` : `clip-1 (the WISH — the business sends it, and nothing at all is sold)
-${roleLabels
-    // Role labels are never spoken (NO NAMES FOR THE SPEAKERS), so a human cast's example names nobody.
-    ? `  ${first.name}:  "Look at all the lights in every home tonight!"   (9 words)
-  ${second.name}: "Happy ${exampleOccasion} to every family from Sharma Electronics!"   (8 words)`
-    : `  ${first.name}:  "${second.name}, look at the lights in every home tonight!"   (9 words)
-  ${second.name}: "Happy ${exampleOccasion} from Sharma Electronics to you, ${first.name}!"   (8 words)`}
-
-clip-2 (the TURN — the festival is over; the hook, then the business${place ? " and its town are" : " is"} named)
-  ${first.name}:  "Why is this shop always so full?"                            (7 words)
-  ${second.name}: ${place
-    ? `"This is Sharma Electronics in ${place} — everyone shops here."   (9 words)`
-    : `"This is Sharma Electronics — the whole town shops here."   (9 words)`}
-
-clip-3 (proof — a real, specific offering)
-  ${first.name}:  "Do they have the latest washing machines too?"             (8 words)
-  ${second.name}: "Every brand, every model, with free home delivery."        (8 words)
-
-clip-4 (close — it ends, and it tells you what to do)
-  ${first.name}:  "So everything we need is right here!"                         (7 words)
-  ${second.name}: "Visit Sharma Electronics today and see it yourself."        (8 words)`) : solo ? `clip-1 (the hook — curiosity gap, then the business and its town are named)
-  ${first.name}: ${place
-    ? `"Why is this shop always full of customers? This is Sharma Electronics here in ${place} — everyone buys here."  (19 words)`
-    : `"Why is this shop always full of customers? This is Sharma Electronics — the whole town buys here."  (18 words)`}
-
-clip-2 (proof — a real, specific offering)
-  ${first.name}: "They keep every brand and every model of washing machine, with free home delivery included."  (18 words)
-
-clip-3 (proof — a DIFFERENT one, never a repeat)
-  ${first.name}: "Repairs would cost a fortune elsewhere, but here one full year of service is free."  (18 words)
-
-clip-4 (close — it ends, and it tells you what to do)
-  ${first.name}: "Visit Sharma Electronics today and see the festival offers for yourself before they finish."  (18 words)`
-  : `clip-1 (the hook — curiosity gap, then the business and its town are named)
-${roleLabels
-    ? `  ${first.name}:  "Why is this shop always so full?"            (7 words)
-  ${second.name}: ${place
-    ? `"This is Sharma Electronics in ${place} — everyone shops here."   (9 words)`
-    : `"This is Sharma Electronics — the whole town shops here."   (9 words)`}`
-    : `  ${first.name}:  "${second.name}! Why is this shop always so full?"            (8 words)
-  ${second.name}: ${place
-    ? `"Sharma Electronics in ${place}, ${first.name} — everyone shops here."   (8 words)`
-    : `"This is Sharma Electronics, ${first.name} — everyone shops here."   (8 words)`}`}
-
-clip-2 (proof — a real, specific offering)
-  ${first.name}:  "Do they have the latest washing machines too?"             (8 words)
-  ${second.name}: "Every brand, every model, with free home delivery."        (8 words)
-
-clip-3 (proof — a DIFFERENT one, never a repeat)
-  ${first.name}:  "Repairs must cost a fortune at big showrooms."            (8 words)
-  ${second.name}: "Here, one full year of service is free."                  (8 words)
-
-clip-4 (close — it ends, and it tells you what to do)
-  ${first.name}:  "So everything we need is right here!"                         (7 words)
-  ${second.name}: "Visit Sharma Electronics today and see the offers yourself."  (9 words)`}
+${workedExample()}
 
 ${isFestival
   ? `Notice: clip 1 sells nothing and only wishes, ${occasion} is never spoken of again after it,
@@ -918,12 +906,7 @@ GROUND EVERY SINGLE LINE IN THE DATA YOU WERE GIVEN:
 ${contract}
 
 3. WORD BUDGET (this is a timing rule, not a style preference): each clip is
-   ${CLIP_SECONDS} seconds${solo ? "" : " shared by two speakers with a short hand-off pause between them"}.
-   Each clip must total between ${budget.minClip} and ${budget.maxClip} spoken words${solo ? "" : " across both characters"} — never fewer, never more.
-   ${solo
-     ? `That single line therefore carries the whole clip: ${budget.minLine}-${budget.maxLine} words.`
-     : `Each character's single line must be between ${budget.minLine} and ${budget.maxLine} words.`}
-   Count every clip carefully before you output it.
+   ${CLIP_SECONDS} seconds${solo ? "" : " shared by two speakers with a short hand-off pause between them"} — see THE WORD BUDGET below.
 4. Each line is ONE complete spoken sentence ending in . ! or ?
 5. Do NOT output a FULL SCRIPT section. Do NOT repeat the same line twice anywhere.
 
@@ -985,6 +968,8 @@ ${festivalTurn ? `• Is it free of any call to action — no "visit", no "call"
 • Is it free of the town "${place}", which belongs in clip ${hookClip}?` : ""}${festivalTurn ? `
 • Does the ad then TURN at clip ${hookClip}, and is ${occasion} absent from every clip after clip 1?` : ""}
 ` : ""}
+${budget}
+
 Write the ${segmentCount} clips now, in the exact format above and nothing else.`;
 };
 
@@ -1027,8 +1012,8 @@ export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   const second = pack.characters[1] ?? first;
   /** True when this ad has one voice in it. Prose that describes a two-hander is branched on it. */
   const solo = pack.characters.length === 1;
-  /** Same cast-derived budget as the writer — otherwise the repair re-imposes the impossible pair. */
-  const repairBudget = wordBudgetFor(pack.characters.length);
+  /** The same budget, in the same words, as the writer — prompts/wordContract. */
+  const repairBudget = wordContractBlock({ speakers: pack.characters.length, names: pack.characters.map((c) => c.name), register: contractRegisterFor(pack) });
   const spellings = packNameSpellings(pack, language);
   const place = (placeName || "").trim();
   /** A human entry's speaker names are roles ("Girl", "Host", "Presenter", "Owner 1") — never spoken. See the writer. */
@@ -1053,7 +1038,7 @@ NON-NEGOTIABLE CONTRACT:
 • ${solo
   ? `${first.name} carries every clip alone — never a second voice`
   : `${first.name} speaks first in every clip, ${second.name} answers — never merge the two into one voice, never drop or swap a character, never move one character's words into the other's line${pack.family === "owner_duo" ? `. They are the business's two owners: every line stays in their own first person plural — "we", "our shop" — never "they" about their own business` : ""}`}
-• ${repairBudget.minClip}-${repairBudget.maxClip} spoken words per clip; ${solo ? `that single line carries the clip: ${repairBudget.minLine}-${repairBudget.maxLine} words` : `each line ${repairBudget.minLine}-${repairBudget.maxLine} words`}
+• Every clip obeys THE WORD BUDGET below; a clip that already fits it is returned exactly as it is
 • Each line is one complete sentence ending in . ! or ?
 • Output format exactly: ${solo ? `\`<start>-<end>|${first.key}: <line>\`` : `\`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\``}
 • Keep the original meaning and the business facts — change only what is broken
@@ -1073,6 +1058,8 @@ ${isFestival
   ? `\n• A spoken character name is written EXACTLY as: ${spellings.map((s) => `${s.name} → ${s.spelling}`).join(", ")}`
   : ""}
 • When a problem names a hard word, swap it for the everyday word it gives
+
+${repairBudget}
 
 ${everydaySpeechRules(language)}
 
@@ -1224,6 +1211,11 @@ function clipShotPlan(
   photoClips: string[] = [],
   /** Invented people with a cast sheet: they are described by it, never by their labels. */
   hasCastSheet = false,
+  /**
+   * The Real Owner Duo (2026-10-14): `cast` names the two owners by their photographs ("the man from owner
+   * photo 1 and the woman from owner photo 2") — "Owner 1" is a label the image tool cannot see.
+   */
+  owners = false,
 ): string {
   return shots.map((shot, i) => {
     const n = i + 1;
@@ -1252,7 +1244,9 @@ function clipShotPlan(
    Write a COMPLETE standalone prompt for this frame, about 90–120 words, as one flowing paragraph.
    Open by naming the photograph or generated zone this clip uses, then ${hasCastSheet
      ? `${solo ? "the person" : "the two people"} exactly as the CAST SHEET describes them (their positions, faces, hair and outfits, word for word)`
-     : `${solo ? cast : `the two characters`} by name only`}, then the real fixtures and stock actually visible around them, then the light in that
+     : owners
+       ? `the two owners by their photographs only — ${cast}`
+       : `${solo ? cast : `the two characters`} by name only`}, then the real fixtures and stock actually visible around them, then the light in that
    space, then the ${aspectRatio} ${orientation} framing.${hasLogo ? " Place the attached logo where it would really be installed in this zone." : ""}${motionPlan[i] ? `
    Compose it for this clip's in-place animation: ${composition}.` : ""}
    This frame sets the look for the whole ad — the grade, the light and the finish that every later
@@ -1263,8 +1257,8 @@ function clipShotPlan(
 
    ⚠️ CONTINUATION FRAME — clip 1's frame is attached as the reference. Do NOT re-describe the
    characters, the style, the grade or the business identity: they are LOCKED by that reference.
-   Write ONE line referring to it — "the same ${hasCastSheet ? (solo ? "person" : "two people") : cast} exactly as in the attached reference
-   frame${hasCastSheet ? " and the cast sheet" : ""}, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
+   Write ONE line referring to it — "the same ${hasCastSheet ? (solo ? "person" : "two people") : owners ? "two owners" : cast} exactly as in the attached reference
+   frame${hasCastSheet ? " and the cast sheet" : owners ? " and their own photographs" : ""}, unchanged" — and then spend the rest of the prompt ONLY on what genuinely changes:
    ${plate
     ? "the photograph this clip stands in (kept exactly as photographed — only enhanced to 8K), and the new staging and gestures. Never a new camera angle or a new layout: the photograph's own framing is the frame."
     : "the new zone and the real objects in it, the new staging and gestures, the new camera angle, and how the light differs in this part of the premises."}${motionPlan[i] ? `
@@ -1304,6 +1298,11 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
    */
   const ownerSlots = pack.usesClientFace && !solo ? ownerPhotoSlots(pack) : [];
   const ownerRef = (i: number) => `the ${ownerSlots[i].kind} from ${ownerSlots[i].photo}`;
+  const ownerDuo = ownerSlots.length > 1;
+  /** Who the shot plan names: the two owners by their photographs, never by labels the image tool cannot see. */
+  const shotCast = ownerDuo ? ownerSlots.map((_, i) => ownerRef(i)).join(" and ") : cast;
+  /** "characters" everywhere else; two real owners are people (2026-10-14). */
+  const pairNoun = ownerDuo ? "owners" : "characters";
   const shots = shotsForClipCount(segmentCount);
   /**
    * Motu and Patlu walk only where a clip's words take them somewhere (CharacterPack.walksOnlyWhenNeeded,
@@ -1355,7 +1354,7 @@ ${locationPlan}`;
 photographed business locations for television commercials.
 
 YOUR TASK: Write ${segmentCount} image-generation prompts — one per ${CLIP_SECONDS}-second
-clip — each showing ${solo ? `${cast} alone` : "BOTH characters together"} inside this business.
+clip — each showing ${solo ? `${cast} alone` : `BOTH ${pairNoun} together`} inside this business.
 
 ===== AD CONFIGURATION (WHAT WAS ORDERED) =====
 
@@ -1364,7 +1363,7 @@ clip — each showing ${solo ? `${cast} alone` : "BOTH characters together"} ins
 • Ad type: ${adType === "festival" ? `festival greeting for ${festivalName || "the festival"} — layer the festival cues naturally over the real premises, never replace them` : "commercial — the business and what it sells must be unmistakable"}.
 
 Every prompt must state the ${aspectRatio} ${orientation} framing explicitly, and stage
-${solo ? `${cast}` : "the two characters"} and the business zone to fill that shape properly — no composition borrowed from a
+${solo ? `${cast}` : `the two ${pairNoun}`} and the business zone to fill that shape properly — no composition borrowed from a
 different aspect ratio.
 
 ${characterCastBlock(pack, wardrobe, castSheet)}
@@ -1392,7 +1391,15 @@ animate what the frame shows, so each frame must already contain what its clip n
 hand mid-gesture, never a stiff, posed stance, because the video continues the pose it starts from: for a product, the
 product in view a few steps away or within reach; for a walk, clear open floor where they walk${solo ? "" : ", both at the same distance from the camera"};
 clear space around the bodies; every object fully in view. Where the direction above describes walking somewhere,
-arriving or leading the way, the 🎬 note decides instead. Everything else in that direction still applies.` : pack.usesClientFace ? `
+arriving or leading the way, the 🎬 note decides instead. Everything else in that direction still applies.` : ownerDuo ? `
+
+Each clip's video starts from THIS still: the two owners say the clip's lines to the camera in turn, with natural,
+appropriate gestures — the clients' own faces, filmed as they are (2026-10-14). So every frame catches both standing in
+place side by side, ${ownerRef(0)} on the LEFT and ${ownerRef(1)} on the RIGHT, at the same distance from the camera,
+turned slightly toward each other and open to the camera, relaxed, the speaker's hand mid-gesture and the other listening —
+never mid-step and never a stiff, posed stance; both faces large and clear, neither hidden by or overlapping the other;
+clear space around the arms; every object fully in view. The variety of the ad comes from YOUR frames: each clip is a
+different real part of the business.` : pack.usesClientFace ? `
 
 Each clip's video starts from THIS still: ${cast} says the clip's line to the camera with natural, appropriate
 gestures — the client's own face, filmed as it is (2026-10-08). So every frame catches ${solo ? "them" : "both"} standing in
@@ -1428,7 +1435,7 @@ CONSISTENCY (WHAT KEEPS IT ONE AD):
 • Never repeat a background, a zone or a framing, and never pick a zone at random.${sceneBackgrounds.length ? `
 • The 📍 ZONE given for each clip below is its planned background. Use it.` : ""}
 
-===== ${solo ? `STAGING ${cast.toUpperCase()}` : "STAGING BOTH CHARACTERS"} =====
+===== ${solo ? `STAGING ${cast.toUpperCase()}` : `STAGING BOTH ${pairNoun.toUpperCase()}`} =====
 
 ${solo
   ? `• ${cast} is the ONLY character in the frame. Nobody else appears — no second figure, no
@@ -1436,7 +1443,7 @@ ${solo
   frame is WRONG.
 • Stage them open to camera, addressing the viewer directly rather than anyone in the room.
 • They must be the focus, but the business must be unmistakable behind them.`
-  : `• BOTH characters visible in every frame, clearly separated, neither hidden or cropped.
+  : `• BOTH ${pairNoun} visible in every frame, clearly separated, neither hidden or cropped.
 • POSITION LOCK: ${castSheet ? "the CAST SHEET's LEFT person" : ownerSlots.length > 1 ? ownerRef(0) : pack.characters[0].name} ALWAYS stands on the LEFT of the frame and ${castSheet ? "its RIGHT person" : ownerSlots.length > 1 ? ownerRef(1) : pack.characters[1].name} ALWAYS on the
   RIGHT, in every single clip. Write it into every prompt. The video tells who is speaking by where they
   stand, so the two must never swap sides.
@@ -1462,7 +1469,7 @@ ${solo
 
 ===== THE SHOT PLAN — WRITE THESE ${segmentCount} PROMPTS =====
 
-${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, cast, solo, motionPlan, sceneBackgrounds, photoClips, !!castSheet)}
+${clipShotPlan(segmentCount, clipSummaries, shots, hasLogo, aspectRatio, orientation, shotCast, solo, motionPlan, sceneBackgrounds, photoClips, !!castSheet, ownerDuo)}
 
 ===== OUTPUT FORMAT =====
 
@@ -1555,7 +1562,8 @@ export const packVeoSubject = (
   const solo = pack.characters.length === 1;
   const cartoon = pack.family === "duo" || pack.family === "solo";
   const person = pack.family === "human";
-  const people = pack.family === "human_duo" || pack.family === "kids";
+  // The Real Owner Duo's two real owners are two people too (2026-10-14) — never "characters exactly as drawn".
+  const people = pack.family === "human_duo" || pack.family === "kids" || pack.family === "owner_duo";
   /** The name a speaker is given in this video prompt. */
   const spoken = (c: CharacterPack["characters"][number]) => castNames[pack.characters.indexOf(c)] || c.name;
   const identityLock = person

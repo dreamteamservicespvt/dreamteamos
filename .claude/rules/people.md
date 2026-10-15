@@ -30,7 +30,8 @@ paths:
 
 **9.13 Attendance, check-in/out, leave** ✅. Tech: `components/attendance/*` (`DailyCheckinPrompt`,
 mandatory for tech members on working days — **not shown on Sundays or on an announced
-`holidays/{date}`**, so the platform opens directly; `CheckoutModal` with a Drive-upload declaration and, since 2026-10-03, today's finished jobs marked in the Drive or not (`todaysDriveUploads`, one-tap "Uploaded"); `MyDayCalendar`),
+`holidays/{date}`**, so the platform opens directly; until the member has checked in on a working day it holds the popup
+coordinator, so the SMM post check waits for it — 2026-10-15, `smm.md`; `CheckoutModal` with a Drive-upload declaration and, since 2026-10-03, today's finished jobs marked in the Drive or not (`todaysDriveUploads`, one-tap "Uploaded"); since 2026-10-15, for a member SMM Delivery Control covers (Live, pilot group if any), the report step lists each social-media piece of theirs due today, late or behind a checkpoint and Submit waits for a one-tap reason for each (`components/smm/alerts/CheckoutSmmReasons`, saved first by `smmDelivery.saveCheckoutReasons`; never blocks leaving if the save fails) in place of the due card, and the check-in prompt shows a line pointing to Delivery Control instead of the due card — `smm.md` §9.9; `MyDayCalendar`),
 `services/techAttendance.ts` (statuses `full|half|absent|leave|half_leave|holiday` + comp-off's two; overrides and holidays
 persisted, Full/Absent derived from check-ins). Sales: `services/salesCheckin.ts`,
 `components/sales/AttendanceCard.tsx`. Shared grid `pages/shared/TeamAttendance.tsx` (with the
@@ -127,6 +128,54 @@ being paid now (`payrollEngine.salaryMonthDue` = last calendar month's cycle —
 when Payroll already paid, shows "Paid in Payroll" for this cycle; Payroll rows list the period's receipts
 (`watchPeriodReceipts`) and the Mark-paid confirm names them; `hooks/useSalaryPayments` merges both records for the
 member's Payment history and Salary History.
+**Periods priced on their own terms (owner, 2026-10-15 — "solve all the problems"; decisions "open on the period due, warn
+before paying early" and "Payroll's rule everywhere").** The same family as the SMM dates (`smm.md` §9.9): a period
+priced or counted with TODAY's values. (1) **Payroll and Sales Payroll open on the period DUE** (`salaryMonthDue`; ‹ goes
+back, › only as far as the running period — `payMonthsBetween`), with "Due now" / "Not ended yet — paying it is early" /
+"Past period" under the label (`payroll-period-state`); they opened on the running period, which on payday had every day
+still to come (full salary) while the period due stayed unpaid. **Paying a period that has not ended asks first** ("Pay
+<name> before the period ends?", destructive "Pay early", text from `payrollEngine.earlyPayWarning` naming the days not
+worked yet, today included — `daysNotWorkedYet`); Upload receipt on an unpaid row asks the same. `payrollRun.markSalaryPaid`
+refuses a new early payment without `earlyPayConfirmed` (`EarlyPaymentError`) and stores `payroll_lines.earlyPay {from, to,
+workingDays}`; a paid-early row shows "Paid early" (`payroll-paid-early`, `sales-payroll-paid-early`). On days 1–9 of a month
+the period due IS the running one, so paying it then asks. `isLinePaid` is now pure in `payrollEngine`. (2) **Receipts'
+period** — 2026-08-01 → 10-10 Salary Management pre-filled the RUNNING period and receipts had no `period`, so the 10 Sep
+receipt for August read as September. `utils/receiptPeriod.receiptPeriodOf`: `period` when present; else the label's
+period, except a bracketed label ("September 2026 (10 Sep – 09 Oct)", only ever from that default) sent BEFORE that
+period's last day → the period before. `watchPeriodReceipts(period, cb, cycleStartDay?)` (signature changed) runs three
+equality queries and keeps what `receiptPeriodOf` places in the period; read by `useMonthPayroll`, `useSalesMemberPay`,
+`useSalaryPayments` and Salary Management. Nothing is rewritten. (3) **Pay terms with an effective period** —
+`users.payHistory[]` (`PayTermsChange`: `from` = the first pay period it applies to, `salary`, `dailyTarget`,
+`earningsOption`, `previous`, `at`, `byUid`, `byName`); the top-level fields keep the LATEST terms. Resolver
+`utils/payTerms` (`payTermsFor(user, period)`, `salaryFor`, `commissionTermsFor`, `termsPeriodOn(day, today)` — the period a
+day falls in, never later than the running one): of the changes with `from ≤ P` the most recently saved wins; before
+every change → the first one's `previous`; no history → the stored fields. Writer `services/payroll.savePayTerms` (one
+transaction; appends only when salary / target / plan changed; audit `pay_terms_changed`; `assignSalaryPackage` uses it
+for the running period). **"Applies from pay period"** (running −2 … +3, `applyFromChoices`) in `EditMemberModal`
+(`pay-terms-from`, shown only when the terms changed) and Salary Management (`salary-applies-from`). Read through the
+resolver: `useMonthPayroll`, `useSalesMemberPay`, `useSalaryMonth` / `useSalesEarnings` (option `payHistory`),
+`payrollRun.computeMemberSalary` / `priceMemberForPeriod`, `profitAnalytics`, Settlements, My Performance, Leaderboard,
+the renewals card, **Work Done** (`WorkDoneReport`: the salary of the period the range ends in, all-time → now) and
+**Member History** (the day shown's period). "Now ₹X" compares a paid line with the terms of ITS period (a later raise
+no longer flags it). (4) **One commission rule** — `utils/salesPay`: `collectionsOf(leads, owner?)` (one entry per
+payment received, key `<saleId>#<payment id>` — `salePayments.collectionKey`, the money taken at the sale = `opening`,
+recorded or not), `periodOfDay`, `periodIncentive` (the 75% gate on ALL verified money collected in the period,
+commission on what is not excluded), `settlementCoverage` (what settlements already paid: `paidKeys`, or for older ones
+the first settlement at/after the sale's FIRST approval that the collection precedes), `commissionByPeriod` (rows newest
+first, status payroll / running / due / withheld / settled / none; only ENDED periods are due), `commissionInWindow`
+(each period's gate on its whole money, its rate on the part inside the window). Sales Payroll (`useSalesMemberPay`, + a
+listener on `commission_settlements`) leaves out collections Settlements paid and records them on the payment
+(`incentive.settledBase` / `settledKeys`; note `sales-payroll-settled`); a paid row is compared with what its own payment
+left out. Settlements (admin modal rewritten, member page) pay or request the due periods through
+`CommissionPeriodList`, confirm first, and never pay a period with a paid `payroll_lines`;
+`settlements.createSettlement({ member, admin, rows, note })` (signature changed) writes `periods`, `paidKeys`,
+`breakdown` (`settlementRecord`); the notification links `/sales/settlements`. Removed from `services/settlements`:
+`computeCommissionInRange`, `computeUnpaidCommission`, `countPendingInRange`, `paidThrough`. P&L commission and
+`priceMemberForPeriod` use the same rule. (5) **Leave panel** — My Salary (tech and sales) give `LeavePanel` the LIVE
+computation (it read the paid snapshot, so leave approved after payday was missing). (6) **Salary Management per period** —
+a period stepper (`salary-period-stepper`, due by default, forward to the running period); the receipt column says for
+THAT period "✓ Receipt sent · ₹X", "Paid in Payroll" (`paid-in-payroll`) or "Not sent", plus "n sent in all"; Send
+Receipt opens on the period looked at; the history modal shows the period each receipt pays.
 
 **9.15 HR & documents** ✅. `pages/shared/HrCenter.tsx` (tabs: All documents / Missing paperwork /
 Agreements), `pages/shared/SendAgreement.tsx`, `components/hr/*`, `components/agreement/*`
@@ -140,18 +189,49 @@ and print), `agreementPdf.ts`, `agreementPrint.ts`, `agreementTokens.ts`, `docum
 `company_settings/main`, `public_badges`, `onboarding_invites`. 14 document types
 (`HR_DOCUMENT_ORDER` is load-bearing; do not sort alphabetically). Both officers (CEO + CTO) sign
 every type. Employment stages: `offer_issued → offer_accepted → probation → confirmed →
-notice_period → exited`.
+notice_period → exited`. **India day (2026-10-15):** `api/onboarding.ts`' `todayIso()` is the Asia/Kolkata day (Vercel runs
+in UTC, so between 00:00 and 05:30 IST it was yesterday): `offerAcceptedOn`, `joiningAcceptedOn`, the starting stage
+(joining today → probation), both letters' `signedDate` and the offer-expiry check; the DEV twin
+(`services/onboardingGuest`) uses the local `hrPolicy.todayIso()`.
 
 **9.16 Finance** ✅ (basic). `pages/accounts-admin/*`, `pages/main-admin/Accounts.tsx`,
 `RevenueOverview.tsx`, `pages/shared/Profit.tsx`, `utils/profitAnalytics.ts`. Collections
 `expenses` (CRUD), `other_income` (read only; **nothing in the code writes it**), `salary_receipts`.
 Client invoices (GST, numbered `DTS/26-27/0001`, PDF) are their own module since 2026-10-08 — the accounts admin
 uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to revenue or P&L.
+**Periods and days (2026-10-15).** **P&L salary cost** (`profitAnalytics.computeProfit`; input `salaryMonths` and
+`salaryMonthsFor` removed, new optional `payrollLines`, `earliestDate`, `todayStr`, `cycleStartDay`): each pay period the
+window touches × the share of its days inside (`periodsInWindow`) — a PAID period (a paid `payroll_lines`) costs what was
+paid (the salary part: `netSalary − incentive.amount`; an older sales line `netPayable(computation)`), inactive people
+included; an UNPAID period costs `salaryFor(user, period)` for people active whose account existed by its end, and a
+running one only its days so far, today included (`shareToDate`; a period not started costs 0). Tech = tech members +
+team leaders, sales = sales members, external creators out; commission per salesperson by `commissionInWindow`.
+`pages/shared/Profit.tsx` listens to `payroll_lines` and starts the career view on the first SALE's local day (it used the
+UTC day of `lead.createdAt`). **Accounts Dashboard** (`accounts-admin/Dashboard.tsx`): the four cards are `computeProfit` for
+ONE pay period, the running one (`accounts-period`) — Revenue (verified sales), Expenses, Salaries & incentives, Net Profit,
+which add up; before, all-time revenue (sales + the tech side's delivered value — the same work twice) − all-time expenses −
+one month of today's salaries. **Revenue charts** (`utils/salesRevenue.salesBookedByDay` / `salesBookedByOwner`; Accounts
+Dashboard, Revenue Summary, Revenue Overview): each sale's agreed `amount` on its own local day (`submittedAt`, else
+`lead.createdAt`), `saleItems` + legacy `saleDetails`, rejected left out, pending counted (booked) — they read legacy
+`saleDetails` only, dated `lead.lastUpdated` in UTC, rejected included. **Expense date** (Daily Expenses, main admin
+Accounts): defaults to `useToday()` (local, turns over at midnight); a picked date is cleared after each entry (it was the
+UTC day, set once when the page opened). The main admin's Dashboard and Tech Department use `useToday()` too (the Dashboard
+re-subscribes at midnight). **Tech delivered value** (P&L, `techProductivity.memberProductivity`) counts a job on its
+assignment day (`workDates.workCountsOn`; a bulk slot on `slot.assignedAt`, else `completedAt`).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
 - **Commission:** 5% standard, 10% for `incentive_10`; penalties never count toward commission;
-  partial payments count on the day collected. Settlements cover sequential date ranges.
+  partial payments count on the day collected. **One rule everywhere (owner, 2026-10-15):** commission counts in the
+  pay period the money was COLLECTED, at the rate that applied in that period, only when that period reached 75% of its
+  target — Sales Payroll, Settlements, My Salary, My Performance, the Leaderboard and the P&L alike. Settlements pays
+  only ENDED periods, never a period Sales Payroll paid nor a collection already settled; Sales Payroll leaves out every
+  collection Settlements paid. (Settlements used to cover "everything verified since the last one", by date range.)
+- **Pay periods (owner, 2026-10-15):** Payroll opens on the salary that is DUE; paying a period that has not ended
+  needs a confirmation naming the days not worked yet, which are paid as if worked. A salary, target or plan change
+  applies from the pay period chosen (default the running one) — earlier periods keep their own terms, in pay, P&L,
+  ratios and "Now ₹X". A receipt belongs to the period it pays. A P&L charges a paid salary what was paid, an unpaid
+  one its terms, and a running period only its days so far. Every stored or compared day is the India day.
 - **Sales targets:** only `dailyTarget` is stored; monthly is derived across the pay cycle.
 - **Tech performance month:** 10th → 9th; work counts on its **assignment** date.
 - **Tech productivity:** pay/work-value ratio target 5%, watch up to 10%, over 10% flagged.
@@ -175,7 +255,9 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
   of leave that finds only half a day of allowance left is half paid. Approve, reject, undo, the grid, the calendars,
   the salary, the payslip and the Social Media board all show and count it as half a day.
 - **Check-out** requires the Drive-upload declaration first; the daily check-in prompt cannot be
-  dismissed on a working day, and does not appear on a Sunday or an announced holiday.
+  dismissed on a working day, and does not appear on a Sunday or an announced holiday. A member SMM Delivery Control
+  covers (Live) gives a reason for each social-media piece of theirs that is due, late or behind before checking out
+  (owner, 2026-10-15, decision 8).
 - **HR:** 14 document types in lifecycle order; both officers sign all types (falls back to the
   issuing admin); references `DTS/<TYPE>/<year>/<seq>` are allocated in a transaction with a 6s
   timeout; unsigned agreements trigger a non-closable signing gate; bulk sends tokenise personal
@@ -188,7 +270,7 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
   written by the app.
 - Pay Salary (2026-10-09): a salary paid and then corrected is settled by hand (undo + pay again) — there is no
   "pay the difference" record. A receipt and a Payroll payment for the same period are two records (both warn
-  before the second is made; old receipts without `period` are matched on their printed label); the member's
+  before the second is made; old receipts without `period` are placed by `receiptPeriodOf` since 2026-10-15); the member's
   "Total received" adds both. Undoing a leave approval does not re-settle the member's other approved requests (a
   later request's absence days stay absent). Per-employee weekly offs from HR (`workingDays`, e.g. "Monday to
   Friday") are printed on letters but the engine only knows Sunday. The cycle start and leave allowance come from
@@ -202,6 +284,19 @@ uses them at `/invoices`; see `invoices.md` §9.22. They are not yet linked to r
   tally at factors 0.5 and 0.75, deductions, the payslip text, LeavePanel and LeaveApprovalsPanel, approval / reject /
   undo on the in-memory Firestore; every older payroll / attendance / leave suite unchanged) and a real-browser harness
   — not against live Firebase.
+
+- Pay periods and the commission rule (2026-10-15): behaviour the owner should confirm — Settlements pays ended periods
+  only (a member can no longer request a running one); the Accounts Dashboard shows ONE pay period and no longer adds the
+  tech side's delivered value to revenue; revenue charts count booked sales (pending included) while the Accounts
+  Dashboard's Revenue card counts verified only. Open: a sale revoked and re-approved before 2026-10-15 has no
+  `firstVerifiedAt`, so legacy settlement coverage can miss it; no claw-back when a settled sale is rejected later; the
+  renewals card and My Performance's Option 1 / 2 are estimates; a receipt sent ON its labelled period's last day keeps
+  that label's period; "most recently saved" pay change wins for a period (same as "latest from" when saved in order);
+  Salary Management's "Total monthly salary", team lists and profiles still show today's salary. `users` stays under the
+  catch-all rule, so a member could still write their own `payHistory` / `salary` (pre-existing gap). Checked by jsdom
+  page tests and the services on the in-memory Firestore (`payPeriodsOct15`, `commissionRuleOct15`, `collectedOnOct15`,
+  `payLeftoversOct15`, `datesIstOct15`, rewritten `settlements`, `salePayments`, `profitAnalytics`, `techProductivity`
+  tests) — not against live Firebase; the real-browser check (Payroll's due period and early-pay confirmation) is in the 2026-10-15 history entry.
 
 **NOT IMPLEMENTED ❌** (referenced or planned, absent in code):
 - CTC breakup annexure on offer letters (needs salary-structure percentages).

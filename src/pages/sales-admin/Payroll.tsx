@@ -11,10 +11,12 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { formatCurrency } from "@/utils/formatters";
 import { uploadToCloudinary } from "@/services/cloudinary";
 import { isBankComplete, isBankVerified, payoutMethodOf, payoutSummary, verifyEmployeeBank } from "@/services/payroll";
-import { isLinePaid, markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
+import { earlyPayDays, isLinePaid, markSalaryPaid, undoSalaryPayment } from "@/services/payrollRun";
 import { downloadPayslip } from "@/utils/payslipPdf";
 import { useSalesMemberPay, type SalesPayRow } from "@/hooks/useSalesMemberPay";
-import { currentPayMonth, formatDayCount, payPeriodLabel, shiftPayMonth } from "@/utils/payrollEngine";
+import {
+  currentPayMonth, earlyPayWarning, formatDayCount, payMonthsBetween, payPeriodLabel, salaryMonthDue, shiftPayMonth,
+} from "@/utils/payrollEngine";
 import { isActiveUser } from "@/utils/roleHelpers";
 import { applyCompOff } from "@/services/techAttendance";
 import CompOffPanel from "@/components/payroll/CompOffPanel";
@@ -40,10 +42,17 @@ export default function SalesPayroll() {
   );
 
   const [monthOffset, setMonthOffset] = useState(0);
-  // The pay period we are IN, stepped by the ‹ › buttons. The calendar month names a period that
-  // has not started for the first nine days of every month — see payrollEngine.currentPayMonth.
-  const month = shiftPayMonth(currentPayMonth(), monthOffset);
+  /*
+    Opens on the period DUE (owner, 2026-10-15: "open on due, warn early pay") — a cycle is paid after it
+    ends; opening on the running one put payday on a period with every day still to come, paid in full.
+    Steps back through history and forward only as far as the period running now (early pay, with a warning).
+  */
+  const dueMonth = salaryMonthDue();
+  const maxOffset = Math.max(0, payMonthsBetween(dueMonth, currentPayMonth()));
+  const month = shiftPayMonth(dueMonth, monthOffset);
   const monthLabel = payPeriodLabel(month);
+  /** Asked before the receipt picker opens, when uploading a receipt would pay a running period. */
+  const earlyConfirmedForReceipt = useRef(false);
 
   const [search, setSearch] = useState("");
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -54,6 +63,7 @@ export default function SalesPayroll() {
   const pendingRow = useRef<SalesPayRow | null>(null);
 
   const { loading, error, rows, period, payDay, totals } = useSalesMemberPay(members, month);
+  const periodRunning = earlyPayDays(month, { periodStart: period.start, periodEnd: period.end }) !== null;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -64,10 +74,16 @@ export default function SalesPayroll() {
     });
   }, [rows, search, unpaidOnly]);
 
-  /** What a payment of this row records — the incentive frozen with it, so the slip can itemise it. */
-  const payInput = (row: SalesPayRow) => ({
-    month, member: row.member, netSalary: row.totalEarnings, computation: row.computation,
-    incentive: { salesBase: row.salesBase, rate: row.rate, amount: row.commission, withheld: row.incentiveWithheld },
+  /**
+   * What a payment of this row records — the incentive frozen with it, so the slip can itemise it, and
+   * (2026-10-15) the collections Settlements had already paid and this payment therefore left out.
+   */
+  const payInput = (row: SalesPayRow, earlyPayConfirmed = false) => ({
+    month, member: row.member, netSalary: row.totalEarnings, computation: row.computation, earlyPayConfirmed,
+    incentive: {
+      salesBase: row.salesBase, rate: row.rate, amount: row.commission, withheld: row.incentiveWithheld,
+      ...(row.settledKeys.length > 0 ? { settledBase: row.settledBase, settledKeys: row.settledKeys } : {}),
+    },
   });
 
   const handleMarkPaid = async (row: SalesPayRow) => {
@@ -76,10 +92,18 @@ export default function SalesPayroll() {
     const receiptNote = row.receipts.length
       ? ` Accounts has already recorded ${row.receipts.map(r => formatCurrency(r.amount)).join(" + ")} for this period in Salary Management.`
       : "";
+    const settledNote = row.settledBase > 0
+      ? ` The incentive on ${formatCurrency(row.settledBase)} of these sales was already paid in Settlements and is not paid again.`
+      : "";
+    // A period that has not ended is paid only after naming the days not worked yet (2026-10-15).
+    const early = earlyPayDays(month, row.computation);
     const { confirmed, inputValue } = await confirm({
-      title: `Pay ${row.member.name}?`,
-      description: `${formatCurrency(row.totalEarnings)} for ${monthLabel} — ${formatCurrency(row.salaryPayable)} salary + ${formatCurrency(row.commission)} incentive.${receiptNote} You can undo this afterwards.`,
-      confirmText: "Mark as paid",
+      title: early ? `Pay ${row.member.name} before the period ends?` : `Pay ${row.member.name}?`,
+      description: `${formatCurrency(row.totalEarnings)} for ${monthLabel} — ${formatCurrency(row.salaryPayable)} salary + ${formatCurrency(row.commission)} incentive.${settledNote}${receiptNote}`
+        + (early ? ` ${earlyPayWarning(row.member.name, monthLabel, early)}` : "")
+        + " You can undo this afterwards.",
+      confirmText: early ? "Pay early" : "Mark as paid",
+      variant: early ? "destructive" : undefined,
       withInput: true,
       inputPlaceholder: "Transaction ID (optional)",
     });
@@ -88,7 +112,7 @@ export default function SalesPayroll() {
     setBusyUid(row.member.uid);
     try {
       await markSalaryPaid(
-        payInput(row),
+        payInput(row, !!early),
         { uid: user.uid, name: user.name },
         { transactionId: inputValue?.trim() || undefined, paidVia: payoutMethodOf(row.bank) },
       );
@@ -144,6 +168,23 @@ export default function SalesPayroll() {
     }
   };
 
+  /** Uploading a receipt on an unpaid row records the payment — the same early-pay question first. */
+  const handlePickReceipt = async (row: SalesPayRow) => {
+    const early = isLinePaid(row.line) ? null : earlyPayDays(month, row.computation);
+    if (early) {
+      const { confirmed } = await confirm({
+        title: `Pay ${row.member.name} before the period ends?`,
+        description: `Uploading a receipt records ${formatCurrency(row.totalEarnings)} as paid for ${monthLabel}. ${earlyPayWarning(row.member.name, monthLabel, early)}`,
+        confirmText: "Pay early",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    earlyConfirmedForReceipt.current = !!early;
+    pendingRow.current = row;
+    fileInputRef.current?.click();
+  };
+
   const handleReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     const row = pendingRow.current;
@@ -154,7 +195,7 @@ export default function SalesPayroll() {
     try {
       const url = await uploadToCloudinary(file);
       await markSalaryPaid(
-        payInput(row),
+        payInput(row, earlyConfirmedForReceipt.current),
         { uid: user.uid, name: user.name },
         { receiptUrl: url, receiptName: file.name, paidVia: payoutMethodOf(row.bank) },
       );
@@ -238,8 +279,15 @@ export default function SalesPayroll() {
               className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-[8.5rem] text-center text-sm font-semibold text-foreground">{monthLabel}</span>
-            <button onClick={() => setMonthOffset(o => Math.min(0, o + 1))} disabled={monthOffset >= 0}
+            <span className="min-w-[8.5rem] text-center text-sm font-semibold text-foreground">
+              {monthLabel}
+              <span data-test="payroll-period-state" className={`block text-[10px] font-medium ${
+                periodRunning ? "text-warning" : month === dueMonth ? "text-success" : "text-muted-foreground"
+              }`}>
+                {periodRunning ? "Not ended yet — paying it is early" : month === dueMonth ? "Due now" : "Past period"}
+              </span>
+            </span>
+            <button onClick={() => setMonthOffset(o => Math.min(maxOffset, o + 1))} disabled={monthOffset >= maxOffset}
               aria-label="Next month"
               className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40">
               <ChevronRight className="h-4 w-4" />
@@ -410,8 +458,19 @@ export default function SalesPayroll() {
                             row.computation.unpaidHalfLeaveDays ? ` · ${row.computation.unpaidHalfLeaveDays}HL unpaid` : ""})`}
                             value={`−${formatCurrency(row.salaryDeduction)}`} negative />
                         )}
-                        <Row label={`Incentives · ${row.rate}% of ${formatCurrency(row.salesBase)}${row.incentiveWithheld ? " · withheld, under 75% of target" : ""}`}
+                        <Row label={`Incentives · ${row.rate}% of ${formatCurrency(row.salesBase - row.settledBase)}${row.incentiveWithheld ? " · withheld, under 75% of target" : ""}`}
                           value={`+${formatCurrency(row.commission)}`} positive />
+                        {/* One rule, two payout channels (2026-10-15): never the same money twice. */}
+                        {row.settledBase > 0 && (
+                          <p data-test="sales-payroll-settled" className="mt-1 text-[11px] text-muted-foreground">
+                            The incentive on {formatCurrency(row.settledBase)} of this period's sales was already paid in Settlements — not paid again here.
+                          </p>
+                        )}
+                        {isPaid && row.line?.earlyPay && (
+                          <p data-test="sales-payroll-paid-early" className="mt-1 text-[11px] text-warning">
+                            Paid before the period ended — {row.line.earlyPay.from} to {row.line.earlyPay.to} were not worked yet.
+                          </p>
+                        )}
                         <div className="mt-2.5 flex items-center justify-between border-t border-border pt-2.5">
                           <span className="font-semibold text-foreground">{isPaid ? "Paid" : "Total payable"}</span>
                           <span className="font-display text-lg font-bold tabular-nums text-success">
@@ -476,7 +535,7 @@ export default function SalesPayroll() {
                           </button>
                         )}
 
-                        <button onClick={() => { pendingRow.current = row; fileInputRef.current?.click(); }} disabled={busy}
+                        <button onClick={() => handlePickReceipt(row)} disabled={busy}
                           className="flex h-9 items-center gap-1.5 rounded-xl border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50">
                           {uploadingFor === row.member.uid ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                           {row.line?.receiptUrl ? "Replace receipt" : "Upload receipt"}

@@ -102,7 +102,7 @@ function MonthPicker({ run, ym, onGo, big }: { run: ClientRun; ym: string; onGo:
       const { first, last } = monthBounds(m);
       // The same months the page names: those running in it, and those with a post dated in it.
       const names = run.months
-        .filter((c) => (c.startDate <= last && c.endDate >= first) || owners.get(m)?.has(c.id))
+        .filter((c) => (c.startDate <= last && c.lastDay >= first) || owners.get(m)?.has(c.id))
         .map((c) => c.name).join(", ");
       out.push({ ym: m, names, counts: counts.get(m) });
     }

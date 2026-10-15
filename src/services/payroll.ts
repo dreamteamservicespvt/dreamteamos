@@ -1,5 +1,5 @@
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query,
+  addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, runTransaction,
   serverTimestamp, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "./firebase";
@@ -8,7 +8,9 @@ import {
   DEFAULT_PAYROLL_CONFIG, PAYOUT_METHOD_LABELS, REQUIRED_BANK_FIELDS,
   type EmployeeBank, type PayoutAccount, type PayoutMethod, type PayrollConfig, type SalaryPackage,
 } from "@/types/payroll";
-import type { AppUser } from "@/types";
+import type { AppUser, PayTermsChange, PayTermsSnapshot } from "@/types";
+import { payTermsChange } from "@/utils/payTerms";
+import { currentPayMonth } from "@/utils/payrollEngine";
 
 /**
  * Payroll setup data: salary packages, company policy, and employee payout details.
@@ -74,19 +76,68 @@ export async function updateSalaryPackage(
 }
 
 /**
+ * Save a person's pay terms — salary, and for a sales member the daily target and the earnings plan — with
+ * the pay period they apply FROM (2026-10-15), plus any other fields the same form saves.
+ *
+ * ── Why one writer ──
+ * A raise used to overwrite `users.salary`, which every period read, so it re-priced the unpaid months
+ * before it and flagged the paid ones (see `utils/payTerms`). Every screen that edits these fields comes
+ * here: the stored fields become the new terms (they always hold the latest), and the change — with the
+ * terms it replaced and who made it — is appended to `payHistory`, which `payTermsFor` reads per period.
+ * In a transaction, so the "before" is the record as it is now and two admins saving at once cannot lose
+ * a change. A save that changes none of the three appends nothing.
+ */
+export async function savePayTerms(
+  uid: string,
+  next: Partial<PayTermsSnapshot>,
+  from: string,
+  actor: { uid: string; name?: string },
+  otherFields: Record<string, unknown> = {},
+): Promise<{ change: PayTermsChange | null }> {
+  const ref = doc(db, "users", uid);
+  const change = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const current = (snap.exists() ? snap.data() : {}) as Partial<AppUser>;
+    const made = payTermsChange({ current, next, from, at: Date.now(), by: { uid: actor.uid, name: actor.name ?? null } });
+    tx.update(ref, {
+      ...otherFields,
+      // The stored fields are written as the form gave them, changed or not — exactly as before (a legacy
+      // monthly target is turned into the daily one here, while `otherFields` clears the old field).
+      ...(next.salary !== undefined ? { salary: Math.max(0, Math.round(Number(next.salary) || 0)) } : {}),
+      ...(next.dailyTarget !== undefined ? { dailyTarget: Math.max(0, Math.round(Number(next.dailyTarget) || 0)) } : {}),
+      ...(next.earningsOption ? { earningsOption: next.earningsOption } : {}),
+      ...(made ? { payHistory: [...(Array.isArray(current.payHistory) ? current.payHistory : []), made] } : {}),
+      updatedAt: serverTimestamp(),
+    });
+    return made;
+  });
+  if (change) {
+    await recordAudit({
+      action: "pay_terms_changed",
+      actor,
+      target: { id: uid, name: typeof otherFields.name === "string" ? otherFields.name : undefined },
+      month: from,
+      summary: `Pay terms from ${from}: ₹${change.salary.toLocaleString("en-IN")}/month`
+        + (change.previous ? ` (was ₹${change.previous.salary.toLocaleString("en-IN")})` : ""),
+      before: change.previous ?? undefined,
+      after: { salary: change.salary, dailyTarget: change.dailyTarget ?? null, earningsOption: change.earningsOption ?? null, from },
+    });
+  }
+  return { change };
+}
+
+/**
  * Put an employee on a package. Writes the package id and mirrors the amount onto `users.salary`
- * so every existing screen that reads `user.salary` keeps working unchanged.
+ * so every existing screen that reads `user.salary` keeps working unchanged — through `savePayTerms`, so
+ * the new amount applies from the period running now and earlier periods keep theirs (2026-10-15).
  */
 export async function assignSalaryPackage(
   member: Pick<AppUser, "uid" | "name" | "salary">,
   pkg: SalaryPackage,
   actor: { uid: string; name?: string },
+  from: string = currentPayMonth(),
 ): Promise<void> {
-  await updateDoc(doc(db, "users", member.uid), {
-    salaryPackageId: pkg.id,
-    salary: pkg.monthlyAmount,
-    updatedAt: serverTimestamp(),
-  });
+  await savePayTerms(member.uid, { salary: pkg.monthlyAmount }, from, actor, { salaryPackageId: pkg.id });
 
   await recordAudit({
     action: "salary_package_assigned",

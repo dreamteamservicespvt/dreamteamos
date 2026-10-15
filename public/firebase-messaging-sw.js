@@ -42,6 +42,10 @@ self.addEventListener("push", (event) => {
   const data = payload.data || payload;
   const title = data.title || "DTS Manager";
   const isCall = data.type === "voice_call" || data.type === "video_call";
+  // SMM Delivery Control's urgent alert (2026-10-15, phase 6 — sent by api/smm-monitor.ts): late work the
+  // person must act on. Like a call it stays until it is acted on and vibrates hard; unlike a call it has no
+  // Answer/Decline, and each alert keeps its own banner (`tag` = the alert's once key, never merged).
+  const isSmmUrgent = data.type === "smm_urgent";
   const options = {
     body: data.body || "You have a new notification",
     icon: data.icon || APP_ICON,
@@ -49,10 +53,10 @@ self.addEventListener("push", (event) => {
     data: data,
     // A ringing phone has to demand attention and has to be actionable in one tap. A chat message
     // does not, and coalesces per conversation so twenty replies are not twenty notifications.
-    requireInteraction: isCall,
-    renotify: isCall,
-    vibrate: isCall ? [400, 200, 400, 200, 400] : [180],
-    tag: isCall ? `call-${data.callDocId || "x"}` : `chat-${data.link || "x"}`,
+    requireInteraction: isCall || isSmmUrgent,
+    renotify: isCall || isSmmUrgent,
+    vibrate: isCall ? [400, 200, 400, 200, 400] : isSmmUrgent ? [600, 250, 600, 250, 600, 250, 600] : [180],
+    tag: isCall ? `call-${data.callDocId || "x"}` : isSmmUrgent ? (data.tag || `smm-${data.link || "x"}`) : `chat-${data.link || "x"}`,
     actions: isCall
       ? [{ action: "accept", title: "Answer" }, { action: "decline", title: "Decline" }]
       : [],

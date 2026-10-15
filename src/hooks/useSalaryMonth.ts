@@ -14,6 +14,8 @@ import {
 import {
   DEFAULT_PAYROLL_CONFIG, type PayrollConfig, type PayrollLine, type ResolvedDay, type SalaryComputation,
 } from "@/types/payroll";
+import { salaryFor } from "@/utils/payTerms";
+import type { AppUser } from "@/types";
 
 /**
  * Live salary for one employee for one month.
@@ -62,14 +64,21 @@ export interface SalaryMonthState {
 
 export interface UseSalaryMonthOptions {
   memberId: string | undefined;
+  /** The salary on the member's record — the latest one. */
   monthlySalary: number;
+  /**
+   * The member's `payHistory` (2026-10-15): with it, the period is priced at the salary that applied IN
+   * that period (`utils/payTerms`), so a raise from October leaves September and August as they were.
+   * Absent = `monthlySalary` for every period (legacy).
+   */
+  payHistory?: AppUser["payHistory"];
   /** `yyyy-MM`; defaults to the current month. */
   month?: string;
 }
 
 const READ_FAILED = "Attendance could not be loaded, so this salary cannot be shown right now. Check the connection and reload.";
 
-export function useSalaryMonth({ memberId, monthlySalary, month }: UseSalaryMonthOptions): SalaryMonthState {
+export function useSalaryMonth({ memberId, monthlySalary: latestSalary, payHistory, month }: UseSalaryMonthOptions): SalaryMonthState {
   const todayStr = useToday();
 
   const [overrides, setOverrides] = useState<Map<string, AttendanceStatus>>(new Map());
@@ -91,6 +100,8 @@ export function useSalaryMonth({ memberId, monthlySalary, month }: UseSalaryMont
     () => payPeriodForMonth(targetMonth, config.payDayOfMonth),
     [targetMonth, config.payDayOfMonth],
   );
+  // The salary that applied in the period being viewed.
+  const monthlySalary = salaryFor({ salary: latestSalary, payHistory }, targetMonth);
 
   const failed = (error: unknown) => {
     console.error("[salary] attendance read failed:", error);

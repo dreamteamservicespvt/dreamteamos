@@ -25,6 +25,9 @@ paths:
   - "android/**"
   - "public/**"
   - "src/store/sidebarStore.ts"
+  - "src/store/popupStore.ts"
+  - "src/hooks/usePopupClaim.ts"
+  - "src/utils/popupCoordinator.ts"
   - "src/services/{appUpdate,capacitor-plugins,birthdays}.ts"
   - "src/hooks/{use-mobile,use-toast,useViewMode,useConfirm,useNow}.ts"
   - "src/utils/{dateRange,periodFilter,formatters,platform,profileCompletion,birthdays,awaitRendered}.ts"
@@ -150,14 +153,14 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
        │ Firebase JS SDK       │ @google/genai     │ XHR upload          │ fetch /api/*
        ▼                       ▼                   ▼                     ▼
  Firestore + Auth + FCM    Gemini API         Cloudinary          Vercel serverless (firebase-admin)
- (rules pasted in console)  (keys in bundle)   (unsigned preset)    send-notification · order-chat · onboarding
+ (rules pasted in console)  (keys in bundle)   (unsigned preset)    send-notification · order-chat · onboarding · smm-monitor (cron)
 ```
 
 Key architectural facts:
 - **Thick client, no custom CRUD backend.** Pages and services read and write Firestore directly.
-  Business rules live in `src/services/*` (Firestore-aware) and `src/utils/*` (pure). Only three
-  jobs run on the server (§12): push sending, client-chat guest tokens and alerts, and hiring-link
-  provisioning.
+  Business rules live in `src/services/*` (Firestore-aware) and `src/utils/*` (pure). Only four
+  jobs run on the server (§12): push sending, client-chat guest tokens and alerts (and, since 2026-10-15, a client's
+  Social Media approval), hiring-link provisioning, and the SMM Delivery Control checker (`api/smm-monitor`, on a cron).
 - **Authorization is mostly client-side.** Route guards and in-page checks decide what people see.
   The Firestore rules in `docs/firestore-rules.md` are coarse (any signed-in staff can read and
   write almost everything), and were **recorded as not yet published** (§14, §27).
@@ -165,7 +168,8 @@ Key architectural facts:
   orders" listener in `AppLayout`, team-scoped queries (`services/teamLeads.ts`), denormalized
   mirrors on orders, and on-demand history pages. The project exceeded the 50K reads/day quota in
   the past (352K in one day, fixed 2026-09-12).
-- **No scheduler or cron.** Time-based behaviour runs when someone opens a page ("on-open sweeps"):
+- **No scheduler or cron — except one** (2026-10-15: `api/smm-monitor`, SMM Delivery Control's checker, woken by
+  cron-job.org every 30 min 09–20 IST + Vercel's daily cron; `smm.md` §9.9). Otherwise time-based behaviour runs when someone opens a page ("on-open sweeps"):
   deadline alerts in the Orders page, number-pool release in the Sales Admin Dashboard, SMM due
   reminders in check-in/check-out, birthday pushes from `BirthdayGreeting`.
 - **Realtime everywhere.** Most screens subscribe with `onSnapshot`. Firestore uses a persistent
@@ -188,7 +192,8 @@ DTS-OS/
 ├── api/                       ← Vercel serverless functions (Node, firebase-admin)
 │   ├── send-notification.ts   ← FCM multicast push to a user's tokens
 │   ├── order-chat.ts          ← client-chat guest token, push registration, alerts, review mirror
-│   └── onboarding.ts          ← hiring-link actions; creates the employee account
+│   ├── onboarding.ts          ← hiring-link actions; creates the employee account
+│   └── smm-monitor.ts         ← SMM Delivery Control's server checker (cron, CRON_SECRET; 2026-10-15)
 ├── src/
 │   ├── main.tsx               ← entry: Capacitor init, service-worker registration, PWA install prompt
 │   ├── App.tsx                ← ALL routes + role guards (AppLayout allowedRoles)
@@ -252,7 +257,11 @@ Each entry lists: purpose · key files · collections · roles.
 `pages/sales-admin/Analytics.tsx`; `components/analytics/MemberAnalyticsDashboard.tsx`;
 `pages/shared/WorkReports.tsx`; activity feeds (`services/activityLog.ts` → `activityLogs`; sales
 and tech ActivityHistory pages); session history (`sessions`); payroll audit (`services/auditLog.ts`
-→ `audit_logs`).
+→ `audit_logs`). **India day (2026-10-15):** the three SessionHistory pages export Login / Logout as local
+`yyyy-MM-dd HH:mm` (`utils/formatters.formatLocalDateTime`; they wrote UTC ISO); the main admin's Dashboard and Tech
+Department take "today" from `hooks/useToday` (local, turns over at midnight); the finance dashboards' periods and
+revenue charts are in `people.md` §9.16. Every stored or compared day is the India day — the local day in the browser,
+`Asia/Kolkata` on the server (CLAUDE.md §28).
 
 **9.20 Platform & engagement** ✅. PWA install button, update banner and popup (`components/layout/*`),
 Capacitor plugins (`services/capacitor-plugins.ts`), Android back button, `BirthdayGreeting`
@@ -268,10 +277,20 @@ tech admin too).
 - **Shell (`AppLayout`):** `Sidebar` (role navigation from `getNavItems`, collapsible groups,
   mobile drawer, logout) + `Topbar` (notification bell, profile) + `<Suspense><Outlet/></Suspense>`
   + lazy overlays: `VideoCallManager`, `DailyCheckinPrompt` (tech members only),
-  `ProfileCompletionPrompt`, `MandatoryAgreementGate`, `UpdatePopup`, `BirthdayGreeting`, `SmmRenewalPopup` (sales members, z-[42]). It also
+  `ProfileCompletionPrompt`, `MandatoryAgreementGate`, `UpdatePopup`, `BirthdayGreeting`, `SmmRenewalPopup` (sales members, z-[42]),
+  `SmmStatusCheckPopup` (tech roles — not for people SMM Delivery Control covers, 2026-10-15), and in its own error boundary
+  `SmmAlertHost` (the six SMM roles; a light gate that lazy-loads `LiveAlertHost` only while Delivery Control is Live for the
+  person: the full-screen SMM alerts, the red bar / studio strip — through the popup coordinator, `urgent` for a critical). It also
   mounts `useMyLeadsSync()` / `useMyOrdersSync()` (sales members) and `initFCM` once per user.
+- **Popup coordinator (2026-10-15):** every overlay above that the app opens by itself reports itself while on screen
+  (`hooks/usePopupClaim(kind, active, pending?)` → `store/popupStore`), as do a call (`VideoCallManager`) and the AI studio
+  (`AIPlatformApp`); they show exactly as before. A popup that waits its turn (the SMM post-status check; the SMM alerts
+  later) opens only through `tryOpenPopup(kind)` — rules in `utils/popupCoordinator.popupVerdict`: never over a call,
+  another claim, the studio or a window the person opened, and ten minutes after a different popup closed. A NEW
+  self-opening popup must report itself (`usePopupClaim`) or the waiting ones can open on top of it (`smm.md` §9.9).
 - **State:** zustand stores. `authStore` (user, loading), `sidebarStore` (collapsed),
-  `callStore` (active call UI), `salesLeadsStore` / `salesOrdersStore` (session-long sales data;
+  `callStore` (active call UI), `popupStore` (what holds the screen — the popup coordinator, 2026-10-15),
+  `salesLeadsStore` / `salesOrdersStore` (session-long sales data;
   read with `useMyLeads()` / `useMyOrders()`, never open a second listener), `cinematicAdsStore`
   (the whole cinematic project plus debounced autosave). Everything else is page-local `useState`
   fed by `onSnapshot`.
@@ -341,7 +360,7 @@ tech admin too).
 | `AppLayout` | `components/layout/` | Guard + shell + global overlays + session listeners (§11). Props `allowedRoles` |
 | `Sidebar` / `Topbar` | `components/layout/` | Role nav with groups (flattened when collapsed), logout; bell, avatar |
 | `AppUpdateBanner`, `UpdatePopup`, `InstallAppButton` | `components/layout/` | Self-update, work popups, PWA install |
-| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates while open; restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-24): root `.adgen`; one screen — a 72px header (mark │ product name, Ready/Generating chip, Project History, Mark Complete, the signed-in member, Close project) over a 4/8 grid. LEFT: `1. Assets & Files` and `2. Configuration` as two `ag-sec` sections of which only one is open (`leftPanel`, morphed through `.ag-morph`); shut, Assets shows a six-tile summary of what has been uploaded and Configuration shows the run's settings; Start/Stop sits below both. RIGHT, by stage: welcome → Generation Status (progress, step, countdown, `MissionStepper`) + AI Guide card → Status + a 72px AI Guide strip + the Deliverables card of seven numbered `ag-row`s, every one always drawn with its state. A 36px **job strip** under the header (`data-test="job-strip"`: business, category / occasion, special category, clips + EC, ratio, language, job id) at every width; a stale-kit banner when the job changed after the kit was made; the Input Final Script strip on row 4 (`OutputSection` `footer`) |
+| `AIPlatformApp` | `components/ai-platform/` | Props `assignment?`, `assignmentId?`, `onClose`, `onComplete?`, `completing?`, `onBusinessNameExtracted?`. Full-screen (`fixed inset-0 z-50`); holds updates and the popup coordinator's `studio` claim while open (2026-10-15); restores saved generation; locks spec from assignment. Children: `FileUpload`, `GeneratedCard`, `SavedItems`, `PosterConceptsPanel`, `generation/MissionWorkspace` (waiting screen with ETA from `utils/generationEta`), `AIGuideSheet`, `SpecUpdateDialog`, `RefineRevisionBanner`, `CodeVerificationModal`. Renders the owner-image slot, BUSINESS CONTENT / FRAME / BACKGROUND INSTRUCTIONS boxes, the Gemini document-route box, the Custom Character field, the duo custom-script format, a "what we understood / background plan" panel (`voiceBrief`, `sceneContext`), the 2. VIDEO BOTTOM LABEL and 7. Overlay Text Image Generator sections. `FileUpload` refuses PDFs/documents/video and supports drag & drop. Chrome (2026-09-24): root `.adgen`; one screen — a 72px header (mark │ product name, Ready/Generating chip, Project History, Mark Complete, the signed-in member, Close project) over a 4/8 grid. LEFT: `1. Assets & Files` and `2. Configuration` as two `ag-sec` sections of which only one is open (`leftPanel`, morphed through `.ag-morph`); shut, Assets shows a six-tile summary of what has been uploaded and Configuration shows the run's settings; Start/Stop sits below both. RIGHT, by stage: welcome → Generation Status (progress, step, countdown, `MissionStepper`) + AI Guide card → Status + a 72px AI Guide strip + the Deliverables card of seven numbered `ag-row`s, every one always drawn with its state. A 36px **job strip** under the header (`data-test="job-strip"`: business, category / occasion, special category, clips + EC, ratio, language, job id) at every width; a stale-kit banner when the job changed after the kit was made; the Input Final Script strip on row 4 (`OutputSection` `footer`) |
 | `SaleForm` | `components/sales/` | The one sale form (new, edit, upsell): packages, bulk, discounts, SMM fields, promise, requirement, payments; saves through `services/sales` (`recordSale` / `updateSale`, in-flight guard; a started sale's service locked, 2026-10-08) |
 | `FinalScriptPanel` (default export `FinalScriptInput`) | `components/ai-platform/` | "Input Final Script" on row 4 (`OutputSection` `footer` slot, visible with the row shut): the highlighted strip, then three steps — copy the format / the ChatGPT-Gemini instruction, paste or load the current script with a live reading, update 5 · 6 · 7 with per-section progress and Retry |
 | `AssignmentBriefFields` | `components/work/` | Occasion (wishes) + business info + address + client's notes, in all three assignment edit dialogs |
@@ -350,6 +369,7 @@ tech admin too).
 | `StaffOrderChat`, `SalesOrderChat`, `OrderChatPanel`, `ClientCall`, `ShareChatModal`, `ClientReviewCard` | `components/order-chat/` | Client chat for staff and guest |
 | `VideoCallManager`, `ChatRoom`, `ChatSidebar`, `MeetingRoom` | `components/chat/` | Team chat, WebRTC calls and meetings (VideoCallManager's TS error was fixed in `5ca75b0`) |
 | `SmmItemDialog` (autosave ~900ms), `SmmContentTable` (+ `SmmCalendar` → the client calendar `calendar/ClientCalendar` + `CalendarDayPanel` + `marks` + `kindIcons`; also on the Report tab), `SmmCalendarBoard` (Social Media → Calendar: client picker + calendar), `SmmStageBar`, `SmmAdsPanel`, `SmmMoneyPanel`, `SmmBudgetPaymentForm`, `SmmReportPanel`, `SmmMessageComposer`, `SmmDueCard`, `SmmAddSaleDialog`, `SmmSetupForm`/`SmmSetupDialog`, `SmmVisuals`, `SmmCampaignCard` (the one-card glance), `SmmGlance` (status pill, ring, legend, kind bars, time, next post), `SmmRenewalsCard`, `SmmRenewalPopup`, `SmmMyJobPanel`, `useSmmRenewal`, `SmmDashboard` (Insights; + `dashboard/`: `chartKit`, `Headline`, `PaceViews`, `WorkViews`, `RenewalRunway`, `TeamAndAds`, `MonthViews`) | `components/smm/` | SMM month UI, client cards, Insights and the client calendar (§9.9) |
+| SMM Delivery Control (2026-10-15): `pages/shared/SmmDeliveryControl` + `control/` (`useDeliveryData`, `useSmmDeliverySettings`, `smmUi`, `context`, `kit` — marks / tiles, `TodayTab` + `TaskRow`, `WeeksTab`, `PlanTab`, `TeamTab`, `StartLogTabs`, `SettingsTab`, `PieceSheet`, `CreditForecast`, `ai/` — `AiTitlesPanel`, `BriefCard`, `ClientUpdateDialog`, `ReasonsSummary`) and `alerts/` (`SmmAlertHost` → `LiveAlertHost`, `AlertScreen`, `DeliveryCoverage`, `CheckoutSmmReasons`); `order-chat/ClientSmmApprovals` | `components/smm/control`, `components/smm/alerts` | The weekly-task screen, the piece sheet, the full-screen alerts, the check-out step, the client's one-tap approval (`smm.md` §9.9) |
 | `AgreementView`, `SignaturePad`, `MandatoryAgreementGate`, `Letterhead` | `components/agreement/` | Document rendering, signing, forced signing gate |
 | `IssueDocumentDialog`, `AllDocumentsPanel`, `EmploymentTermsCard`, `KycPanel`, `IdCardView`, `CompanyDocumentsCard`, `ProbationPanel`, `SeparationPanel`, `AssetsPanel` | `components/hr/` | HR centre and profile panels |
 | `DailyCheckinPrompt` (mandatory), `CheckoutModal`, `MyDayCalendar` | `components/attendance/` | Tech attendance |

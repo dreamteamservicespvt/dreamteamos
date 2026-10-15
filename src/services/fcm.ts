@@ -107,12 +107,50 @@ function followNotificationLink(link: unknown, delayMs: number): void {
 
 let nativeListenersRegistered = false;
 
+/**
+ * SMM Delivery Control's urgent alerts (2026-10-15, phase 6 — sent by `api/smm-monitor.ts`) get a channel of
+ * their own: the loudest Android allows (importance MAX → heads-up, sound, vibration, shown on the lock screen).
+ *
+ * ── Why the token says it has it ──────────────────────────────────────────────────────────────
+ * The other channels ("default", "messages", "calls") are created natively in `MainActivity`; this one is
+ * created here, so only a phone running this build has it — and Android 8+ silently DROPS a notification
+ * posted to a channel the phone does not have (the native background handler posts to whatever `channelId`
+ * the push names). So the token is saved with `channels: "smm_urgent"` only once the channel exists, and the
+ * server names `smm_urgent` only to such tokens; every other phone gets "default" and still hears the alert.
+ */
+export const SMM_URGENT_CHANNEL = "smm_urgent";
+let smmUrgentChannelReady = false;
+
+async function ensureSmmUrgentChannel(): Promise<boolean> {
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    await LocalNotifications.createChannel({
+      id: SMM_URGENT_CHANNEL,
+      name: "Urgent work alerts",
+      description: "Social Media work that is late or due now — stays until you act on it.",
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      lights: true,
+      lightColor: "#FF0000",
+    });
+    return true;
+  } catch (err) {
+    // Not fatal: the alerts still arrive on the default channel.
+    console.error("SMM urgent channel not created:", err);
+    return false;
+  }
+}
+
 async function initFCMNative(userId: string): Promise<void> {
   const { PushNotifications } = await import("@capacitor/push-notifications");
 
   // Request permission (Android 13+ requires runtime prompt)
   const permResult = await PushNotifications.requestPermissions();
   if (permResult.receive !== "granted") return;
+
+  // Before the token is saved, so a token never claims a channel the phone does not have.
+  smmUrgentChannelReady = smmUrgentChannelReady || (await ensureSmmUrgentChannel());
 
   // Register for push — triggers the 'registration' event
   await PushNotifications.register();
@@ -124,7 +162,7 @@ async function initFCMNative(userId: string): Promise<void> {
     PushNotifications.addListener("registration", async (tokenResult) => {
       const token = tokenResult.value;
       if (!token) return;
-      await saveToken(userId, token, "android");
+      await saveToken(userId, token, "android", smmUrgentChannelReady ? { channels: SMM_URGENT_CHANNEL } : {});
     });
 
     PushNotifications.addListener("registrationError", (err) => {
@@ -149,7 +187,10 @@ async function initFCMNative(userId: string): Promise<void> {
 
       // Use the Capacitor LocalNotifications plugin to display a heads-up notification
       import("@capacitor/local-notifications").then(({ LocalNotifications }) => {
-        const channelId = data.channelId || (type === "chat_message" ? "messages" : "default");
+        // An urgent SMM alert goes on its own loud channel whenever this phone has it (see above).
+        const channelId = type === "smm_urgent" && smmUrgentChannelReady
+          ? SMM_URGENT_CHANNEL
+          : data.channelId || (type === "chat_message" ? "messages" : "default");
 
         LocalNotifications.schedule({
           notifications: [{

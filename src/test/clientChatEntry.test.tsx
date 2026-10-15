@@ -31,6 +31,8 @@ const {
 
 vi.mock("@/services/orderChatGuest", () => ({
   hasGuestSession, openOrderChat, enableGuestPush, pushState, guestUid, alertTeam, guestDb,
+  // SMM Delivery Control phase 7 (2026-10-15): a chat that is not a Social Media month has nothing to approve.
+  fetchSmmApprovals: vi.fn(async () => []), answerSmmPiece: vi.fn(async () => undefined),
 }));
 vi.mock("@/hooks/useOrderChat", () => ({ useOrderChat }));
 vi.mock("@/hooks/useNotificationTap", () => ({ useNotificationTap: () => {} }));

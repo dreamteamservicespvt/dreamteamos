@@ -144,7 +144,13 @@ legacy users without the field active.
 | "Create next renewal" — Month N+1 directly, no sale (`canAdminRenewSmm`; also refused in `createRenewalMonth`) | ✅ | ✅ | (2026-10-12 only; Remind instead since 10-13) | | | Renew (the sale) instead | |
 | Social Media → Money: company renewals in ₹ (`canSeeSmmMoney`, 2026-10-05) | ✅ | ✅ | | | ✅ | own card only | |
 | Social Media → Attendance: today's board of the Social Media team (days view only) + Edit team (`canSeeSmmAttendance` / `canEditSmmTeam`, 2026-10-08) | ✅ | ✅ | smmLeader | smmLeader | | | |
-| 11 AM / 5 PM "update your posts" popup (`SmmStatusCheckPopup`, 2026-10-05) | | if on a month's team | if on a month's team | if on a month's team | | | |
+| 11 AM / 5 PM "update your posts" popup (`SmmStatusCheckPopup`, 2026-10-05; waits its turn through the popup coordinator since 2026-10-15) | | if on a month's team | if on a month's team | if on a month's team | | | |
+| SMM Delivery Control: switch Off / Preview / Live (off needs a reason; the other main admins are told) and its numbers (`canManageSmmDelivery`, 2026-10-15 — service + `app_settings` rule; Delivery Control → Settings) | ✅ | ✅ | see only (`canViewSmmDeliverySettings`) | | | | |
+| SMM Delivery Control: the ✨ button + `/smm/control` (`smmControlAccess.canSeeControlButton`, 2026-10-15) — Off: the two admins; Preview: + team leaders + the Social Media Team Lead; Live: all six | ✅ | ✅ | Preview / Live | smmLeader Preview / Live; member Live | Live | Live | |
+| SMM Delivery Control: switch a month on, re-plan, move out of a month, move a late piece, reassign, decide the Starting line (`isDeliveryManager`; 3rd reassign tech / main admin only) | ✅ | ✅ | ✅ (not the 3rd reassign) | | | | |
+| SMM Delivery Control: answer for a piece (Do it now / Need more time / Blocked / Why late / move within the month / approval / posted links) — Live, on the month (`mayAnswerForPiece`) | ✅ | ✅ | ✅ | if on the month (the lead too) | ✅ (client's side) | own months | |
+| SMM Delivery Control: on-time % on the Team tab (owner's decision 13) | ✅ | ✅ | | | | | |
+| SMM full-screen alerts + check-out reasons (Live, pilot group if any — `coveredByDelivery`; replaces the 11 AM / 5 PM check and the due card for them) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | |
 | Delete an SMM month | ✅ | ✅ | ✅ (2026-10-03) | (smmLeader until 2026-10-12) | | | |
 | Appoint / remove the Social Media Team Lead | ✅ | ✅ | | | | | |
 | Work an SMM month — posts, approvals, ads, money, client messages (`canEditCampaign`; also in the services and the `smm_campaigns` rule since 2026-10-12) | ✅ | ✅ | ✅ | if on the month (watcher / seat) — the Team Lead too, view-only elsewhere | ✅ | if seller/watcher | |
@@ -196,6 +202,8 @@ is lazy. Chunk loading shows `PageFallback` inside the shell (app pages) or `Rou
 ### Shared by six roles (all except `accounts_admin`)
 | `/smm` | `shared/SocialMedia.tsx` | One card per client month the viewer can see (`useSmmCampaigns`): status in words, a ring of every post, worst first, status counts that filter; Insights (charts) one switch away; **Calendar** (2026-10-05) — pick a client, see every month we ran for them day by day (`?view=calendar&client=<phone digits>` deep-links it; `?view=` also takes `cards` / `insights`); Add SMM sale for the tech side |
 |---|---|---|
+| `/smm/control` (2026-10-15) | `shared/SmmDeliveryControl.tsx` | SMM Delivery Control — the client months as WEEKLY tasks: Today (one card per client-week), Weeks, Client plan, Team, Starting line, Alerts log, Settings (tabs per role, `utils/smmDeliveryView.tabsFor`; `?tab=`); who may open it: `smmControlAccess.canOpenControl` (the button's audience); a static segment, so it wins over `/smm/:campaignId`. The server checker's notifications link here (every SMM role can open it) |
+| `/smm/control/:monthId` (2026-10-15) | `shared/SmmDeliveryControl.tsx` | The same page on one month's Client plan (links from the piece moves, reassigns, reminders, client-chat approvals) |
 | `/smm/:campaignId` | `shared/SmmCampaignPage.tsx` | One month: content table (List, or Calendar = the client's whole run as a normal calendar, ‹ month › + Today, opened on this month), item dialog, ads, money, reports (with the same calendar), messages; `?tab=report` (or `ads` / `money`) opens on that tab |
 
 ### Invoice Builder — main, tech, sales and accounts admin, sales member; team leader while the switch is on (2026-10-08)

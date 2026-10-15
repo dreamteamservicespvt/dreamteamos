@@ -11,7 +11,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { discountEditLabel, discountSummary } from "@/utils/bulkDiscount";
 import { EARNED_REASON_LABEL, MEMBER_DISCOUNT_LIMIT_PERCENT, earnedReasons, saleDiscountOf } from "@/utils/saleDiscount";
-import { decidedAtMs } from "@/utils/saleDecision";
+import { decidedAtMs, keepFirstApproval } from "@/utils/saleDecision";
 import { bulkCategoryLabel, categoryLabel } from "@/utils/serviceCatalog";
 import { useNow } from "@/hooks/useNow";
 import { applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, clearSaleFreeze } from "@/services/numberLock";
@@ -127,6 +127,8 @@ export default function SalesApprovals() {
     ...item,
     verificationStatus: "verified",
     verifiedAt: Timestamp.now(),
+    // Set at the FIRST approval, never moved (2026-10-15) — see utils/saleDecision.keepFirstApproval.
+    ...keepFirstApproval(item, Timestamp.now()),
     ...(item.discountNeedsApproval
       ? {
           discountApproval: "approved" as const,
@@ -198,7 +200,7 @@ export default function SalesApprovals() {
     if (!row) return;
     try {
       const { lead, changed } = await mutateSaleItems(leadId, [row.saleId], (it) => ({
-        ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now(),
+        ...it, ...keepFirstApproval(it), verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now(),
       }));
       const done = changed[0];
       if (!done) {
@@ -243,7 +245,7 @@ export default function SalesApprovals() {
       // Back to undecided: both decision stamps go, or the row would still date itself by a
       // decision that has been taken back.
       const { lead, changed } = await mutateSaleItems(leadId, [row.saleId], (it) => ({
-        ...it, verificationStatus: "pending" as const, verifiedAt: null, rejectedAt: null,
+        ...it, ...keepFirstApproval(it), verificationStatus: "pending" as const, verifiedAt: null, rejectedAt: null,
       }));
       const done = changed[0];
       if (!done) {
@@ -371,7 +373,7 @@ export default function SalesApprovals() {
         if (!cItems.some((it) => it.verificationStatus !== "rejected")) continue; // already all rejected
         const ids = cItems.map((it, i) => saleIdOf(c.id, it, i));
         const { lead: freshC, changed: cChanged } = await mutateSaleItems(c.id, ids, (it) => (
-          it.verificationStatus === "rejected" ? it : { ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now() }
+          it.verificationStatus === "rejected" ? it : { ...it, ...keepFirstApproval(it), verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now() }
         ));
         rejectedLeads.set(c.id, freshC.saleItems || []);
         // Any previously-verified competing sale must drop out of the tech queue too.
@@ -539,7 +541,7 @@ export default function SalesApprovals() {
     try {
       for (const [leadId, saleIds] of byLead) {
         const { lead, changed } = await mutateSaleItems(leadId, saleIds, (it) => ({
-          ...it, verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now(),
+          ...it, ...keepFirstApproval(it), verificationStatus: "rejected" as const, verifiedAt: null, rejectedAt: Timestamp.now(),
         }));
         if (changed.length === 0) continue;
         // Each rejected sale → pull its Order from the tech queue.

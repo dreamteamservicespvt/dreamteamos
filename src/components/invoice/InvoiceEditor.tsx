@@ -55,6 +55,11 @@ interface Props {
   issueFor: (field: string) => FieldIssue | null;
   open: Record<SectionId, boolean>;
   onToggle: (id: SectionId) => void;
+  /**
+   * While an ISSUED invoice is edited: the earliest and latest date it can carry — its number's
+   * financial year, narrowed by the dates of the numbers either side (2026-10-15). Null otherwise.
+   */
+  issuedDateLimits?: { min: string; max: string } | null;
   company: ResolvedCompany;
   logoSrc: string | null;
   logoUploading: boolean;
@@ -81,7 +86,7 @@ export default function InvoiceEditor(props: Props) {
   const {
     content, update, totals, number, status, readOnly, compact, issueFor, open, onToggle,
     company, logoSrc, logoUploading, onLogoFile, qrSrc, qrUploading, onQrFile, canChangeStatus, statusBusy, onStatusChange,
-    canEditDefaults, focusItemId, onFocusDone, onAddItem, fillFromSale,
+    canEditDefaults, focusItemId, onFocusDone, onAddItem, fillFromSale, issuedDateLimits,
   } = props;
   const c = content;
   const gstOn = c.tax.mode === "gst";
@@ -127,12 +132,17 @@ export default function InvoiceEditor(props: Props) {
               </div>
             )}
           </Field>
-          <Field label="Invoice date" htmlFor="inv-issue" field="issueDate" issue={issueFor("issueDate")} className="col-span-2">
+          <Field label="Invoice date" htmlFor="inv-issue" field="issueDate" issue={issueFor("issueDate")} className="col-span-2"
+            hint={!readOnly && issuedDateLimits
+              ? `${formatInvoiceDate(issuedDateLimits.min)} to ${formatInvoiceDate(issuedDateLimits.max)} — its number's year and place in the series.`
+              : undefined}>
             <input
               id="inv-issue"
               disabled={readOnly}
               type="date"
               value={c.issueDate}
+              min={!readOnly && issuedDateLimits ? issuedDateLimits.min : undefined}
+              max={!readOnly && issuedDateLimits ? issuedDateLimits.max : undefined}
               onChange={(e) => {
                 const v = e.target.value;
                 // Moving the invoice date moves the due date with it — the terms did not change.

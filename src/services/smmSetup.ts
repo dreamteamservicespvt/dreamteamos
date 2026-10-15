@@ -29,13 +29,15 @@ import { logTechActivity, type ActivityActor } from "@/services/activityLog";
 import { adminAssignNumber } from "@/services/numberLock";
 import { fetchOrder, orderDocId, restoreOrders, upsertOrderForSale } from "@/services/orders";
 import {
-  assertMayManageMonths, buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign,
-  fileFollowedHistoryMonths, monthPromise, saveMonthSetup, setCampaignTeam, setMonthCommitments, setMonthPlatforms,
+  assertMayManageMonths, assertMonthDates, buildNoSaleCampaign, buildSoldCampaign, campaignInputFromSale, campaignRef, fetchCampaign,
+  fetchClientMonths, fileFollowedHistoryMonths, monthPromise, saveMonthSetup, setCampaignTeam, setMonthCommitments, setMonthPlatforms,
 } from "@/services/smm";
-import { assignSmmMonth, fetchMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
+import { assignSmmMonth, fetchMonthJobs, withdrawMonthJobs, type SmmAssignResult } from "@/services/smmAssign";
 import { dayToDate, isoDay } from "@/utils/smmPlan";
+import { keepUsedExtension } from "@/utils/promiseSla";
+import { LOCKED_MONTH_DATES, continuesInto } from "@/utils/smmMonthDates";
 import {
-  cleanPlatforms, cycleRangeLabel, cyclesOverlap, hasTeam, historyFiling, isMonthLocked, isNoSaleMonth, jobsByMember, linksForAccounts,
+  cleanPlatforms, cycleRangeLabel, cyclePhase, cyclesOverlap, hasTeam, historyFiling, isMonthLocked, isNoSaleMonth, jobsByMember, linksForAccounts,
   monthCycle, monthLabel, needsSetup, noSaleMonthProblem, normaliseClipsPerVideo, saleDay, smmSalesOnLeads,
 } from "@/utils/smmPackage";
 import { normalizePhone, phoneLockId, phoneVariants } from "@/utils/phone";
@@ -248,6 +250,12 @@ export interface MonthSetupInput {
    */
   platforms?: SmmPlatform[];
   team: SmmTeam;
+  /**
+   * The posts the person agreed to leave outside the month's new dates (2026-10-15) — by id, the list the
+   * setup screen showed and asked about ("Keep the new dates anyway?"). The dates check refuses a change of
+   * dates that leaves any other post outside (`utils/smmMonthDates.monthDatesCheck`).
+   */
+  confirmedOutside?: string[];
 }
 
 /**
@@ -285,21 +293,43 @@ export interface MonthSetupResult {
   assign: SmmAssignResult | null;
   /** A history month left on the board on hold — nothing follows it yet (2026-10-05). */
   onHold?: boolean;
+  /**
+   * A month already there filed as history (2026-10-15): the jobs it still had open, taken back (nobody had
+   * opened them) or kept because somebody had started — the screen says so; a person decides.
+   */
+  historyJobs?: { withdrawn: SmmAssignResult["withdrawn"]; keptStarted: SmmAssignResult["keptStarted"] };
 }
 
 /**
  * The month's deadline on its order and on every open job — what the queue and My Work count down to.
  * A month with no order (a no-sale month) has only its jobs to carry it.
+ *
+ * ── An extension already used stays used (2026-10-15) ───────────────────────────────────────────
+ * This runs on every save of the setup, and it wrote the month's deadline over whatever was there —
+ * dropping an extension somebody had used, so the job's later due date went back AND a second extension
+ * became possible (`canExtendPromise` reads `extension`). `keepUsedExtension` carries it, with the later
+ * of the two due dates.
  */
 async function applyMonthPromise(campaign: Pick<SmmCampaign, "id" | "orderId" | "cycle">): Promise<void> {
   const promise = monthPromise(campaign.cycle);
   if (campaign.orderId) {
-    await updateDoc(doc(db, "orders", campaign.orderId), { promise, updatedAt: serverTimestamp() }).catch(() => undefined);
+    const order = await fetchOrder(campaign.orderId).catch(() => null);
+    await updateDoc(doc(db, "orders", campaign.orderId), { promise: keepUsedExtension(promise, order?.promise), updatedAt: serverTimestamp() })
+      .catch(() => undefined);
   }
   for (const job of await fetchMonthJobs(campaign)) {
     if (job.status === "completed" || job.status === "verified") continue;
-    await updateDoc(doc(db, "work_assignments", job.id), { promise }).catch(() => undefined);
+    await updateDoc(doc(db, "work_assignments", job.id), { promise: keepUsedExtension(promise, job.promise) }).catch(() => undefined);
   }
+}
+
+/**
+ * The client's months for a change of a month's dates — read only when the dates DO change (the check
+ * asks nothing otherwise), once, and handed to the write so it is not read twice.
+ */
+async function clientMonthsForDates(month: Pick<SmmCampaign, "clientPhoneId" | "cycle"> | null, next: SmmCycle): Promise<SmmCampaign[]> {
+  const changes = !month?.cycle || month.cycle.startDate !== next.startDate || month.cycle.endDate !== next.endDate;
+  return changes && month?.clientPhoneId ? fetchClientMonths(month.clientPhoneId) : [];
 }
 
 /**
@@ -318,18 +348,29 @@ export async function applyMonthSetup(
 ): Promise<MonthSetupResult> {
   // Before the first write: setup renames, recounts and hands out jobs (2026-10-12, the view-only lead).
   assertMayManageMonths();
+  const today = isoDay(new Date());
+  /*
+    ── The dates check, before anything is written (2026-10-15) ────────────────────────────────────
+    A locked month is set up live never — on its FIRST setup too (that gap let a month that had already
+    ended be "set up" into the next period) — and new dates must pass `assertMonthDates`: no overlap
+    with the client's other months, no post left outside them unless the person said so. Asked here,
+    before the rename, the counts and the accounts are written, so a refusal leaves nothing half done; and
+    again inside the write (`saveMonthSetup`), against the month as it is stored then.
+  */
+  const current = await fetchCampaign(campaignId);
+  if (!current) throw new Error("This month no longer exists.");
+  if (isMonthLocked(current, today)) throw new Error(LOCKED_MONTH_DATES);
+  const cycle = monthCycle(setup.startDate, setup.endDate, anchorKept(current, setup));
+  const clientMonths = await clientMonthsForDates(current, cycle);
+  assertMonthDates(current, cycle, clientMonths, today, setup.confirmedOutside);
+
   if (setup.businessName?.trim()) await renameMonth(campaignId, setup.businessName);
   if (setup.commitments) await setMonthCommitments(campaignId, setup.commitments);
   // After the counts, so rows added for a higher count move to the new accounts with the rest.
   if (setup.platforms) await setMonthPlatforms(campaignId, setup.platforms);
   const before = await fetchCampaign(campaignId);
   if (!before) throw new Error("This month no longer exists.");
-  const today = isoDay(new Date());
   const firstSetup = !before.setupAt;
-  if (isMonthLocked(before, today) && !firstSetup) {
-    throw new Error("This completed month is locked to preserve its history and cannot be edited to represent a renewal. Create a new month for the next period.");
-  }
-  const cycle = monthCycle(setup.startDate, setup.endDate);
 
   const after = await saveMonthSetup(campaignId, {
     cycle,
@@ -337,7 +378,7 @@ export async function applyMonthSetup(
     pageLinks: cleanLinks(setup.pageLinks, setup.platforms ? before.platforms : null),
     setupByName: actor.name,
     setupByUid: actor.uid,
-  });
+  }, { clientMonths, confirmedOutside: setup.confirmedOutside });
   // A sold month's deadline goes on its order first, so the jobs created next copy it from there.
   if (before.orderId) await applyMonthPromise(after || { ...before, cycle });
 
@@ -407,11 +448,21 @@ export function historyTeam(team: SmmTeam | null | undefined): SmmTeam {
   };
 }
 
+/**
+ * The client's billing day a month keeps through an edit of its setup (2026-10-15, `SmmCycle.anchorDay`):
+ * a renewal 28 Feb → 31 Mar carries `anchorDay: 31`, and saving its setup without moving its start must
+ * not drop it — its own renewal would then end on the 28th again. A new start is a new billing day.
+ */
+function anchorKept(before: Pick<SmmCampaign, "cycle">, setup: Pick<MonthSetupInput, "startDate">): number | null {
+  return before.cycle?.anchorDay && before.cycle.startDate === setup.startDate ? before.cycle.anchorDay : null;
+}
+
 /** Why a history month's edited setup cannot be saved, or "" — its dates must stay in the past. */
 export function historySetupProblem(setup: MonthSetupInput, today: string): string {
   const problem = setupProblem(setup, today);
   if (problem) return problem;
-  if (monthCycle(setup.startDate, setup.endDate).endDate >= today) {
+  // Over = its renewal day (the end date) is today or earlier; a later one would make it run today (2026-10-15).
+  if (monthCycle(setup.startDate, setup.endDate).endDate > today) {
     return "A completed or historical month is locked and stays in the past — it cannot be extended or edited into the next renewal. Create a new renewal month for the next period.";
   }
   return "";
@@ -425,21 +476,28 @@ export function historySetupProblem(setup: MonthSetupInput, today: string): stri
  */
 export async function applyHistorySetup(campaignId: string, setup: MonthSetupInput, actor: SetupActor): Promise<void> {
   assertMayManageMonths();
-  const problem = historySetupProblem(setup, isoDay(new Date()));
+  const today = isoDay(new Date());
+  const problem = historySetupProblem(setup, today);
   if (problem) throw new Error(problem);
+  // The same dates check as a live setup (2026-10-15) — overlap and posts left outside — before any write.
+  const current = await fetchCampaign(campaignId);
+  if (!current) throw new Error("This month no longer exists.");
+  const cycle = monthCycle(setup.startDate, setup.endDate, anchorKept(current, setup));
+  const clientMonths = await clientMonthsForDates(current, cycle);
+  assertMonthDates(current, cycle, clientMonths, today, setup.confirmedOutside);
+
   if (setup.businessName?.trim()) await renameMonth(campaignId, setup.businessName);
   if (setup.commitments) await setMonthCommitments(campaignId, setup.commitments);
   if (setup.platforms) await setMonthPlatforms(campaignId, setup.platforms);
   const before = await fetchCampaign(campaignId);
   if (!before) throw new Error("This month no longer exists.");
-  const cycle = monthCycle(setup.startDate, setup.endDate);
   await saveMonthSetup(campaignId, {
     cycle,
     clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
     pageLinks: cleanLinks(setup.pageLinks, setup.platforms ? before.platforms : null),
     setupByName: actor.name,
     setupByUid: actor.uid,
-  });
+  }, { clientMonths, confirmedOutside: setup.confirmedOutside });
   await setCampaignTeam(campaignId, historyTeam(setup.team));
   await logTechActivity({
     actor,
@@ -503,8 +561,25 @@ export async function setupSaleMonth(params: {
 
   const today = isoDay(new Date());
   const cycle = monthCycle(setup.startDate, setup.endDate);
-  const history = cycle.endDate < today;
+  // Over from its renewal day (the end date) on — its own days end the day before (2026-10-15).
+  const history = cycle.endDate <= today;
   const orderId = orderDocId(lead.id, item, itemIndex);
+
+  /*
+    ── The dates check, before anything is written (2026-10-15) ────────────────────────────────────
+    A sale whose month is still on the board (any state but removed / deleted) gets its dates through the
+    same check as Edit setup — this path used to write `cycle` straight onto the month, with no lock,
+    overlap or posts check, flip it to history and leave its live jobs open. A sale whose month is gone
+    gets a new one, which may not share a day with any other month of the client. The client's months are
+    read once here and handed on.
+  */
+  const clientMonthsNow = await fetchClientMonths(phoneLockId(lead.phone));
+  const onBoard = clientMonthsNow.find((m) => m.id === orderId) || null;
+  const datesFor = (m: SmmCampaign | null) => (m ? monthCycle(setup.startDate, setup.endDate, anchorKept(m, setup)) : cycle);
+  assertMonthDates(onBoard, datesFor(onBoard), clientMonthsNow, today, setup.confirmedOutside);
+  /** The months read above, when the order names the same client (it always should) — else read again. */
+  const preloadedFor = (phoneId: string) => (phoneId === phoneLockId(lead.phone) ? clientMonthsNow : undefined);
+
   const sellerSnap = await getDoc(doc(db, "users", lead.assignedTo)).catch(() => null);
   const seller = sellerSnap?.exists() ? (sellerSnap.data() as AppUser) : null;
   const soldByName = seller?.name || "Salesperson";
@@ -536,6 +611,8 @@ export async function setupSaleMonth(params: {
   let clientMonths: SmmCampaign[] = [];
   /** Where a history month is filed: on hold (`active`) unless the client's run went on after it. */
   let historyStatus: SmmCampaign["status"] = "completed";
+  /** A month filed as history: the open jobs taken back or kept (2026-10-15). */
+  let historyJobs: MonthSetupResult["historyJobs"];
   let monthNumber = existing?.monthNumber || 1;
   if (replace) {
     const input = campaignInputFromSale({
@@ -553,7 +630,7 @@ export async function setupSaleMonth(params: {
       item,
       soldByName,
     });
-    const { previous, next, months } = await neighbourMonthsOf(order.clientPhoneId, cycle, orderId);
+    const { previous, next, months } = await neighbourMonthsOf(order.clientPhoneId, cycle, orderId, preloadedFor(order.clientPhoneId));
     nextMonth = next;
     clientMonths = months;
     historyStatus = historyFiling(null, !!next || laterMonthIn(months, cycle));
@@ -595,7 +672,7 @@ export async function setupSaleMonth(params: {
       // The month before it now points forward, and is filed as renewed if it has ended.
       await updateDoc(campaignRef(previous.id), {
         renewal: { ...(previous.renewal || { state: "none" }), state: "won", nextCampaignId: orderId, at: Timestamp.now(), byName: actor.name },
-        ...(previous.status === "active" && previous.cycle.endDate < today ? { status: "renewed" } : {}),
+        ...(previous.status === "active" && cyclePhase(previous.cycle, today) === "ended" ? { status: "renewed" } : {}),
         updatedAt: serverTimestamp(),
       }).catch(() => undefined);
     }
@@ -609,30 +686,48 @@ export async function setupSaleMonth(params: {
     if (!replace) {
       // A month already there becomes history: on hold, unless it was renewed, the client is not
       // renewing, or the client has a later month (2026-10-05).
-      const around = await neighbourMonthsOf(order.clientPhoneId, cycle, orderId);
+      const around = await neighbourMonthsOf(order.clientPhoneId, cycle, orderId, preloadedFor(order.clientPhoneId));
       clientMonths = around.months;
       historyStatus = historyFiling(existing?.renewal, laterMonthIn(around.months, cycle));
-      await updateDoc(campaignRef(orderId), {
-        cycle,
+      /*
+        Its dates through the ONE guarded write (2026-10-15, `saveMonthSetup` → `assertMonthDates` inside
+        the transaction): this used to write `cycle` straight onto the month — no lock, no overlap, no look
+        at its posts.
+      */
+      await saveMonthSetup(orderId, {
+        cycle: datesFor(existing),
         clipsPerVideo: normaliseClipsPerVideo(setup.clipsPerVideo),
-        history: true,
-        status: historyStatus,
-        setupAt: Timestamp.now(),
+        pageLinks: cleanLinks(setup.pageLinks, setup.platforms ? cleanPlatforms(setup.platforms) : null),
         setupByName: actor.name,
         setupByUid: actor.uid,
-        updatedAt: serverTimestamp(),
-      });
+      }, { clientMonths: preloadedFor(order.clientPhoneId), confirmedOutside: setup.confirmedOutside });
+      await updateDoc(campaignRef(orderId), { history: true, status: historyStatus, updatedAt: serverTimestamp() });
       if (setup.team && hasTeam(setup.team)) await setCampaignTeam(orderId, historyTeam(setup.team));
     }
+    /*
+      A history month is a record, not work (2026-10-15): the jobs still open on it are taken back the way
+      re-assigning takes them — nobody had opened it → withdrawn and told; somebody started → kept and
+      named in the result, for a person to decide. They used to stay open on a month nobody works.
+    */
+    const jobsOff = await withdrawMonthJobs(
+      { id: orderId, orderId, team: existing?.team || null, businessName: existing?.businessName || order.businessName, clientName: order.clientName },
+      undefined, new Set(), "history",
+    );
+    historyJobs = { withdrawn: jobsOff.withdrawn, keptStarted: jobsOff.keptStarted };
     await linkInFront(orderId, monthNumber, nextMonth, actor);
     await fileHistoryFollowedBy(clientMonths, {
       ...(existing as SmmCampaign), id: orderId, clientPhoneId: order.clientPhoneId, cycle, history: true, status: historyStatus,
     });
     if (order.status === "unassigned" || order.status === "assigned") {
+      const kept = jobsOff.keptStarted[0] || null;
       await updateDoc(doc(db, "orders", orderId), {
         status: "verified",
         verifiedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        // The order no longer points at a job that was taken back.
+        ...(order.workAssignmentId && jobsOff.withdrawnIds.has(order.workAssignmentId)
+          ? { workAssignmentId: kept?.id ?? null, assignedTo: kept?.uid ?? null, assignedToName: kept?.name ?? null }
+          : {}),
       });
     }
     await logTechActivity({
@@ -643,7 +738,7 @@ export async function setupSaleMonth(params: {
         team: jobsByMember(historyTeam(setup.team)).map((m) => ({ uid: m.uid, name: m.name, tracks: m.tracks })),
       },
     });
-    return { campaignId: orderId, history: true, assign: null, onHold: historyStatus === "active" };
+    return { campaignId: orderId, history: true, assign: null, onHold: historyStatus === "active", historyJobs };
   }
 
   // A running month follows the client's earlier months: any history month on hold before it is filed.
@@ -655,17 +750,22 @@ export async function setupSaleMonth(params: {
   return applyMonthSetup(orderId, setup, actor, { existingAssignments: params.existingAssignments });
 }
 
-/** Two days a week apart or less — the gap one month can leave before the next and still continue it. */
-const continues = (a: string | undefined, b: string | undefined): boolean =>
-  Math.abs((dayToDate(a)?.getTime() ?? 0) - (dayToDate(b)?.getTime() ?? 0)) <= 7 * 86_400_000;
+/**
+ * One month's end (its renewal day) and the next one's start: the next starts on it or up to a week after
+ * — FORWARD only (2026-10-15, `utils/smmMonthDates.continuesInto`). It was "a week apart either way", so a
+ * month starting up to seven days before the previous one ended — sharing days with it — was linked as its
+ * renewal; overlapping dates are now refused by the dates check before they get here.
+ */
+const continues = (prevEnd: string | undefined, nextStart: string | undefined): boolean => continuesInto(prevEnd, nextStart);
 
 /**
  * The client's months either side of this one, when this one continues the month before it or runs
  * straight into the month after it — so a run of old months set up in ANY order reads as Month 1 →
  * Month 2 → Month 3 rather than unrelated months.
  *
- * Continuous means a week or less between one's end and the other's start. A month further away is a
- * client who came back after a gap, and starts a run of its own.
+ * Continuous means the later month starts on the earlier one's end date or up to a week after it. A month
+ * further away is a client who came back after a gap, and starts a run of its own. `preloaded`: the
+ * client's months when the caller has just read them (`fetchClientMonths`) — else one read here.
  *
  * ── Why the month AFTER (2026-10-05) ───────────────────────────────────────────────────────────
  * Months used to be added only forward: the previous month was found, and the new one became the next.
@@ -678,12 +778,13 @@ async function neighbourMonthsOf(
   clientPhoneId: string,
   cycle: SmmCycle,
   ownId: string,
+  preloaded?: SmmCampaign[],
 ): Promise<{ previous: SmmCampaign | null; next: SmmCampaign | null; months: SmmCampaign[] }> {
   if (!clientPhoneId) return { previous: null, next: null, months: [] };
   try {
-    const snap = await getDocs(query(collection(db, "smm_campaigns"), where("clientPhoneId", "==", clientPhoneId)));
-    const months = snap.docs
-      .map((d) => ({ ...(d.data() as SmmCampaign), id: d.id }))
+    const all = preloaded ?? (await getDocs(query(collection(db, "smm_campaigns"), where("clientPhoneId", "==", clientPhoneId))))
+      .docs.map((d) => ({ ...(d.data() as SmmCampaign), id: d.id }));
+    const months = all
       .filter((c) => c.id !== ownId && c.status !== "deleted" && c.status !== "removed" && !!c.cycle);
     const ids = new Set(months.map((c) => c.id));
     const previous = months
@@ -753,7 +854,7 @@ async function linkInFront(campaignId: string, monthNumber: number, next: SmmCam
 }
 
 /** Whether a month's setup would have nobody on it — the form refuses that for a running month. */
-export function setupProblem(setup: MonthSetupInput, today: string): string {
+export function setupProblem(setup: MonthSetupInput, today: string, opts: { past?: boolean } = {}): string {
   const cycle = monthCycle(setup.startDate, setup.endDate);
   if (setup.businessName !== undefined && !setup.businessName.trim()) return "Give the month a name.";
   if (setup.platforms && cleanPlatforms(setup.platforms).length === 0) return "Tick at least one account the month covers.";
@@ -761,9 +862,11 @@ export function setupProblem(setup: MonthSetupInput, today: string): string {
     const c = cleanCommitments(setup.commitments);
     if (c.ai_ad + c.poster + c.real_video === 0) return "The month must owe at least one video or poster.";
   }
-  if (!dayToDate(setup.startDate)) return "Pick the day the month starts.";
+  // A month that had no sale ran in the past: its first day is picked, never guessed (2026-10-15).
+  if (!dayToDate(setup.startDate)) return opts.past ? "Pick the day the month started." : "Pick the day the month starts.";
   if (setup.endDate && setup.endDate <= setup.startDate) return "The month must end after it starts.";
-  if (cycle.endDate >= today && !hasTeam(setup.team)) return "Put somebody on the month — at least who makes the content.";
+  // Running or still to come: its renewal day (the end date) is after today (2026-10-15).
+  if (cycle.endDate > today && !hasTeam(setup.team)) return "Put somebody on the month — at least who makes the content.";
   return "";
 }
 
@@ -816,7 +919,9 @@ export async function noSaleMonthClashOf(phone: string, cycle: SmmCycle): Promis
 
   for (const s of sales) {
     if (s.state === "rejected") continue;
-    const saleCycle = s.campaign?.cycle || monthCycle(s.soldDay);
+    // A sale whose month is gone covers the period it was sold for: its "Month starts on" (2026-10-15),
+    // else — a sale recorded before that field — the day it was typed in.
+    const saleCycle = s.campaign?.cycle || monthCycle(s.item.smm?.startDate || s.soldDay);
     if (cyclesOverlap(saleCycle, cycle)) {
       return {
         message: `${s.sellerName} recorded a sale for these dates (${cycleRangeLabel(saleCycle)}), already counted as their sale. Use "Set up this sale" on it instead.`,
@@ -858,7 +963,7 @@ export interface NoSaleMonthInput {
 /** Everything wrong with a no-sale month before anything is read, or "" — the form's button reads it. */
 export function noSaleSetupProblem(input: Pick<NoSaleMonthInput, "phone" | "seller" | "setup">, today: string): string {
   return noSaleMonthProblem({ phone: input.phone, sellerUid: input.seller?.uid || "", startDate: input.setup.startDate }, today)
-    || setupProblem(input.setup, today);
+    || setupProblem(input.setup, today, { past: true });
 }
 
 /**
@@ -891,7 +996,8 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
   const clash = await noSaleMonthClashOf(phone, cycle);
   if (clash.message) throw new SmmMonthClashError(clash.message, clash.monthId);
 
-  const history = cycle.endDate < today;
+  // Over from its renewal day (the end date) on (2026-10-15).
+  const history = cycle.endDate <= today;
   const name = setup.businessName.trim().replace(/\s+/g, " ");
   const phoneId = phoneLockId(phone);
   const ref = doc(collection(db, "smm_campaigns"));
@@ -937,7 +1043,7 @@ export async function addNoSaleMonth(params: NoSaleMonthInput): Promise<MonthSet
     // hold for Finished.
     await updateDoc(campaignRef(previous.id), {
       renewal: { ...(previous.renewal || { state: "none" }), state: "won", nextCampaignId: ref.id, at: Timestamp.now(), byName: actor.name },
-      ...(previous.status === "active" && previous.cycle.endDate < today ? { status: "renewed" } : {}),
+      ...(previous.status === "active" && cyclePhase(previous.cycle, today) === "ended" ? { status: "renewed" } : {}),
       updatedAt: serverTimestamp(),
     }).catch(() => undefined);
   }

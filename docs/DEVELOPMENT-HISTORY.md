@@ -6,6 +6,319 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-15: SMM Delivery Control — all phases (2–7) built on top of phases 0–1: the weekly-task screen, the writes,
+  full-screen alerts, the AI layer, the server checker, and three extras** (`smm.md` §9.9 "Phases 2–4", "Phase 5", "Phase 6",
+  "Phase 7", §24, §25, §27; `data-model.md`; `roles-routes.md`; `backend-security.md` §12 / §18 / §21 / §25; `people.md` §9.13 /
+  §24; `chat.md` §9.10 / §24; `ai-ads.md` §17.3; `architecture.md` §5 / §6 / §11 / §22; `docs/firestore-rules.md`; CLAUDE.md §32
+  / §33). **Ask.** The owner, continuing HANDOFF.md: "now complete everything, don't leave anything pending" — so phases 2–6 AND
+  the optional phase 7. The approved plan (four messages, 2026-10-15): each client's month as WEEKLY tasks with a deadline at
+  each week's end, an AI supervisor with escalating full-screen alerts naming the type, every kind of work covered, and a NEW
+  UI behind a button with the classic page unchanged. **What was built.** (Phase 2) the button on the classic page (its only
+  change) and `/smm/control` (+ `/:monthId`) for the six SMM roles — Today (one card per client-week, worst first, one main
+  button per piece), Weeks, Client plan (health check, Switch on this month, the four weeks with checkpoints in words), Team,
+  Starting line, Alerts log, Settings — per role (`utils/smmDeliveryView`, `utils/smmControlAccess`), the piece sheet, the
+  remembered screen (`dts_smm_ui`). (Phase 3) `services/smmDelivery` on the now-exported `smm.mutateCampaign` (rules in
+  `utils/smmDeliveryActions`): switch on / re-plan, Do it now / Need more time, Blocked (+ confirm / clear), Why late, check-out
+  reasons, footage, approval with proof, posted links per account, moves (another week → the lead told; out of the month;
+  a late piece only by a manager), reassigns (3rd → admin), the Starting line, accepted AI titles, `smm_alert_state` answers,
+  Remind, the test alert; the classic stage calls now stamp `startedAt` / `madeAt` / `revisions`. (Phase 4) `SmmAlertHost` in
+  AppLayout (a light gate → `LiveAlertHost`): the full screen (answered, never closed; answers by audience) through the popup
+  coordinator (new `urgent` option = skip the 10-minute gap), a red bar in a slot under the Topbar while in the studio / for
+  10 minutes after "Open it" / on stale data, sound once per device, a blinking title; the 11 AM / 5 PM check, the check-in /
+  check-out due card step aside for covered people and check-out asks a reason per piece due, late or behind. (Phase 5, a
+  helper agent) `services/smmAi` + `utils/smmAiRules` + `services/prompts/smmDelivery` + `control/ai/*`: titles / ideas /
+  captions (checked in code — no invented numbers, prices, offers or towns, no repeats, festivals only in the piece's week),
+  My week and morning briefs (numbers filled by code), the reasons summary, the client's WhatsApp update (English / Telugu);
+  plain fallbacks; 2027 festival dates (`FESTIVALS_2027`, `FESTIVAL_CALENDAR`). (Phase 6, a helper agent) `api/smm-monitor.ts`
+  (CRON_SECRET; cron-job.org every 30 min + the Vercel daily cron; writes only notifications, the heartbeat and dead tokens;
+  `utils/smmDeliveryBaseline`, `smmServerPresence`, `smmServerDelivery`), the `smm_urgent` web / Android channel, and `.js` on the
+  alias-free utils' runtime imports (Vercel runs `api/` as Node ESM — reproduced `ERR_MODULE_NOT_FOUND` without it). (Phase 7)
+  Make it in the AI studio from a piece; the Flow-credit forecast (`utils/smmCreditForecast`); one-tap client approval in the
+  client's own chat (`api/order-chat` `smm-approvals` / `smm-answer`, `utils/smmClientApproval`, `ClientSmmApprovals`).
+  **Decisions made while building (said in `smm.md` §25):** "Switch on this month" is the one write Preview allows (a manager's
+  act; alerts still wait for Live); in Live a month not switched on is supervised from when Live began; the Preview Alerts log
+  judges months as if switched on from their first day ("would get"), the Starting line as if switched on now; the studio
+  strip covers the whole studio visit; "Open it" gives 10 minutes as the bar. **Found by the real-browser check and fixed:**
+  the Preview log was empty; the full screen never showed on Delivery Control (hidden there) — a person who works there never
+  saw it; tile counts included On hold months and tiles filtered into week cards that hid what they counted (now a flat list);
+  the bar covered the Topbar and the page title (now in an AppLayout slot); the title cut at 360 px; small tap targets; faint
+  check-out chips; every missed checkpoint said "counts against" (only the first does); a Chrome vibrate intervention. Older
+  test mocks updated (`checkinDayOff`, `driveUploadStep`, `clientChatEntry`); the health check reads `FESTIVAL_CALENDAR`.
+  **Files.** New: `pages/shared/SmmDeliveryControl.tsx`; `components/smm/control/*` (incl. `ai/`), `components/smm/alerts/*`,
+  `components/order-chat/ClientSmmApprovals.tsx`; `services/smmDelivery.ts`, `smmAi.ts`, `prompts/smmDelivery.ts`; `utils/smmDeliveryActions`,
+  `smmDeliveryView`, `smmControlAccess`, `smmCreditForecast`, `smmClientApproval`, `smmAiRules`, `smmDeliveryBaseline`, `smmServerPresence`,
+  `smmServerDelivery`; `api/smm-monitor.ts`. Changed: `App.tsx`, `SocialMedia.tsx` (button + remembered screen), `AppLayout.tsx` (host +
+  slot + the check stepping aside), `CheckoutModal`, `DailyCheckinPrompt`, `ClientChat`, `services/smm.ts` (export + stamps),
+  `orderChatGuest`, `fcm.ts`, `firebase-messaging-sw.js`, `vercel.json`, `api/order-chat.ts`, `utils/popupCoordinator` + `store/popupStore`
+  (`urgent`), `smmCadence` (`movedOut`, `.js`), `smmMonitor` (Starting-line decisions, `.js`), `smmDeliveryHealth`, `festivals`,
+  `posterOccasions`, `types/smmDelivery`, `smmDeliverySettings` (`lastRunSummary`), `test/memoryFirestore` (listener options).
+  **Tested.** Vitest: `smmDeliveryServiceOct15` (21), `smmDeliveryViewOct15` (16), `smmDeliveryControlUiOct15` (10),
+  `smmDeliveryPhase7Oct15` (7), `smmAiOct15` + `smmAiUiOct15` (58), `smmServerCheckerOct15` (44), phases 0–1's suites; the full suite,
+  build and typecheck (CLAUDE.md §32). Live Gemini: two runs of every AI call. Real browser (headless Chrome on the in-memory
+  Firestore, 360 / 390 / 412 / 1440 px, dark and light, as the tech admin, a member, the Social Media Team Lead and a
+  salesperson): the button and remembered screen, every tab, Switch on, Settings (Off reason, Live, rehearsal, test alert), the
+  full screen answered two ways, Start / Blocked / approval from the sheet, check-out reasons, no horizontal scroll, no app
+  console errors; then a re-check of every fix. **Not tested:** live Firebase, real FCM / push, a Vercel deploy, cron-job.org, an
+  Android phone, the published rules. **Owner to do:** `CRON_SECRET` + the cron-job.org job, publish the rules, a new APK, try
+  it in Preview, then Live with a pilot group.
+- **2026-10-15: dates and periods, platform-wide — a month's end date is its renewal day; one checked way to change a
+  month's dates; payroll opens on the period due; one commission rule; the India day everywhere** (`smm.md` §9.9, §24,
+  §25, §27; `sales.md` §9.4, §24, §25; `people.md` §9.13–9.16, §24, §25; `orders-work.md` §16, §24; `invoices.md` §9.22,
+  §24, §25; `ai-accounts.md` §9.21, §24, §25; `backend-security.md` §12; `architecture.md` §9.17; `data-model.md`; the
+  `invoice_numbers` rule in `docs/firestore-rules.md`; CLAUDE.md §28 / §32). **Problem.** The owner showed Social Media →
+  Dhana lakshmi reading "6 Oct → 6 Nov 2026" though its month ran 6 Sep → 6 Oct (on 5 Oct the history recorded the 6 Sep
+  start); its posts were dated 13 Aug – 9 Sep (five a month early — Gandhi Jayanthi on 2 Sep, Engineers' Day on 15 Aug)
+  plus "Dussehra offers" on 9 Oct; the sale behind it was saved 5 Jul 2026 (month id
+  `o_LQciB3pSGZEbscZipLBS_1783240453303`). **Diagnosis:** the header prints the saved `cycle`; only setup writes it; before
+  2026-10-12 Edit setup could move an ended month into the next period, and the 2026-10-12 lock still had gaps (the last
+  day, a first setup, Add SMM sale's set-up path); the SMM sale had no start date; the status ignored post dates; "Up 10d
+  ago" read `postedAt`. A platform-wide audit then found the same family elsewhere: periods taken from the action day,
+  periods edited in place, UTC days, two commission rules, payroll opening on the running period, receipts labelled with
+  the running period, P&L charging today's salaries, a re-approval re-dating a settled sale. **Owner's decisions** ("solve
+  all the problems"): (1) the SMM sale form asks "Month starts on" (renewal default = the old end date, new client = the
+  sale day); (2) a month's END DATE is the RENEWAL DAY — labels stay "6 Sep → 6 Oct", its own days are 6 Sep – 5 Oct, On
+  hold from 6 Oct; (3) commission: Payroll's rule everywhere (collected in the pay period, 75% gate) and Settlements never
+  pays what Payroll paid, nor the reverse; (4) Payroll opens on the period due and warns before paying a period that has
+  not ended. **What changed** (five parallel sessions, A1 / A2 / B / B2 / C):
+  *Social Media (A1, A2).* Own days and one count of days left (`smmPlan.lastOwnDay` / `isOwnDay` / `ownDayCount`,
+  `daysLeftInCycle` = `daysToRenewal`; `cyclePhase`, `isMonthLocked`, On hold, `monthPromise` "by 5 Oct", calendar, Insights'
+  running clients once per client, `MonthTimeline`); `cycle.anchorDay` against month-end drift (`monthCycle`,
+  `nextCycleAfter`); posts dated outside their month not counted and shown (`itemDatedOutside`, ring bucket, At risk line,
+  Content list tag, dialog warning), ad reports on own days (`monthAdReports`), "Up …" from the upload date
+  (`postedUpLabel`), "Completed (Locked)" only when finished (`lockedMonthLabel`); "Month starts on" on the sale
+  (`SmmSaleSpec.startDate`), renewals always on the old end date (`renewalStartDate`, `ensureCampaignForOrder`,
+  `createRenewalMonth`), no-sale month opens with no start; NEW `utils/smmMonthDates` — `monthDatesCheck` (locked /
+  overlap / posts outside with "Keep the new dates anyway"), enforced in `saveMonthSetup`'s transaction
+  (`assertMonthDates`, `SmmMonthDatesError`) and before every setup write; history filing withdraws untouched jobs
+  (`smmAssign.withdrawMonthJobs`); `promiseSla.keepUsedExtension`, `defaultExtensionHours` (3 days for a month), every
+  month job on the month's deadline (`createWorkAssignment` `promise` / `date`); `continuesInto`; `moveUnpostedToMonth`
+  clears carried dates; NEW `smm.movePieceToMonth` ("Move to Month 2"); NEW `SmmMonthsToCheck` on the board.
+  *Pay (B, B2).* Payroll / Sales Payroll open on `salaryMonthDue` with a period state and an early-pay confirmation
+  (`earlyPayWarning`, `EarlyPaymentError`, `payroll_lines.earlyPay`); receipts placed by NEW `utils/receiptPeriod`; NEW
+  `users.payHistory` + `utils/payTerms` + `payroll.savePayTerms` ("applies from pay period" in Edit Member and Salary
+  Management) read by every pay, P&L, ratio and estimate screen (`termsPeriodOn` for Work Done / Member History / the
+  renewals card); ONE commission rule in `utils/salesPay` (`collectionsOf`, `periodIncentive`, `settlementCoverage`,
+  `commissionByPeriod`, `commissionInWindow`, `runningPlanEstimate`) for Sales Payroll, My Salary, Settlements (rewritten,
+  NEW `components/sales/CommissionPeriodList`, `commission_settlements.periods/paidKeys/breakdown`, ended periods only),
+  My Performance, Leaderboard and P&L — four superseded `services/settlements` functions removed; `firstVerifiedAt` kept
+  by every decision (`keepFirstApproval`); My Leads "Collected on"; the sale form's advance = the first payment, payments
+  locked on edit (`SaleWriteError("payments_locked")`); the leave panel on the live computation; Salary Management per
+  period; P&L salary per pay period (paid = what was paid, unpaid = its terms, running = days so far — `shareToDate`); the
+  Accounts Dashboard = one pay period that adds up (no double-counted tech value); revenue charts by each sale's own
+  local day (`salesBookedByDay`); tech value by assignment day.
+  *Days, invoices, AI accounts (C).* `api/onboarding` today in Asia/Kolkata; expense date and main-admin "today" from
+  `useToday`; `workDates.localDayOfInstant` for old jobs; session CSV in local time (`formatLocalDateTime`); an issued
+  invoice's date kept inside its number's year and series order (`issuedDateProblem`, `saveIssuedContent` transaction,
+  `invoice_numbers.issueDate`, the Generate dialog with "Use today's date"); Flow credits dated by the day the clips were
+  made (`meta.madeOn`, transactions reading the stored account), `updateFlowAccount` a transaction on the live account,
+  "Day the Flow account was opened", "cycle" vs "calendar month" in every label.
+  **Files** (main ones; full list in `git status`): `utils/{smmPlan,smmPackage,smmGlance,smmDashboard,smmCalendar,
+  smmReminders,smmRenewalMoney,smmMonthDates (new),promiseSla,payrollEngine,receiptPeriod (new),payTerms (new),salesPay,
+  salePayments,saleDecision,saleEdit,profitAnalytics,salesRevenue,techProductivity,workDates,performanceCycle,formatters,
+  flowCredits,invoiceNumber,invoiceDraft}.ts`; `services/{smm,smmSetup,smmAssign,workAssign,orders,sales,payroll,payrollRun,
+  salaryReceipts,settlements,invoices,aiAccounts,onboardingGuest}.ts`; `api/onboarding.ts`; `types/{index,smm,payroll}.ts`;
+  hooks `useMonthPayroll`, `useSalesMemberPay`, `useSalaryMonth`, `useSalesEarnings`, `useSalaryPayments`;
+  `components/smm/*` (SmmVisuals, SmmGlance, SmmChips, SmmContentTable, SmmItemDialog, SmmSetupForm, SmmAddSaleDialog,
+  SmmAdsPanel, SmmReportPanel, SmmRenewalPopup, SmmRenewalsCard, SmmMonthsToCheck (new), calendar/*, dashboard/MonthViews,
+  WorkViews), `components/sales/{SaleForm,CommissionPeriodList (new)}`, `EditMemberModal`, `payroll/LeavePanel`,
+  `work/{ExtendPromiseButton,WorkDoneReport}`, `components/invoice/InvoiceEditor`, `components/ai-accounts/*`; pages
+  `shared/{Payroll,Profit,Leaderboard,SmmCampaignPage,SocialMedia,InvoiceBuilder,AiAccounts}`, `sales-admin/{Payroll,
+  Settlements,SalesApprovals}`, `sales-member/{MyLeads,MyPerformance,MySalary,Settlements,Dashboard}`,
+  `accounts-admin/{Dashboard,RevenueSummary,SalaryManagement,DailyExpenses}`, `main-admin/{Dashboard,Accounts,
+  RevenueOverview,TechDepartment,SessionHistory}`, `tech-admin/{MemberHistory,SessionHistory}`, `sales-admin/SessionHistory`,
+  `tech-member/{MySalaryDashboard,MyAiAccounts}`. **Tests:** new `smmDatesOct15`, `smmDatesUiOct15`, `smmSetupChecksOct15`,
+  `smmStartDatesOct15`, `smmSetupChecksUiOct15`, `payPeriodsOct15`, `commissionRuleOct15`, `collectedOnOct15`,
+  `payLeftoversOct15`, `datesIstOct15`, `invoiceDateOct15`, `flowUsageDateOct15`; tests that encoded the old rules
+  rewritten (`smmPlan`, `smmPackage`, `smmOnHoldOct05`, `smmGlance`, `smmRenewalOct05`, `smmDashboard(Ui)`,
+  `smmCalendar(Ui)`, `smmMessages`, `smmAddSaleUi`, `smmSaleForm`, `settlements`, `salePayments`, `profitAnalytics`,
+  `techProductivity`, `workDates`, `workDoneCycle` — the last two pinned to `TZ=Asia/Kolkata`). `npm run build`, `npx
+  vitest run` and `npx tsc -p tsconfig.check.json --noEmit`: build ✅ (main chunk ≈485 KB), tsc 0 errors, vitest 260/262
+  files, 4416/4418 tests — the 2 failures (`checkinDayOff`, `driveUploadStep`) come from the parallel SMM Delivery
+  Control work in progress (its `useSmmDeliverySettings` listener inside screens whose older test mocks lack
+  `onSnapshot` / `snap.exists`), reported to that session; `apiKeysOct10` can time out under load and passes alone.
+  Real-browser harness (headless Chrome, the real components on `memoryFirestore`, clock 15 Oct 2026, dark, 1440 + 390
+  px, no console errors, no page overflow), all PASS: (a) the owner's month reads "At risk — 9 posts are dated outside
+  6 Oct – 5 Nov", rows tagged "Outside this month", "Up 63d ago" from the upload date, an On hold month reads "Ended —
+  not renewed yet", Months to check lists it; (b) Edit setup 6 Sep → "6 Sep – 5 Oct · 30 days · renews 6 Oct", an
+  overlap refused with Open that month, posts left outside need "Keep the new dates anyway"; (c) the post dialog's
+  outside warning + Move to Month N; (d) the sale form's "Month starts on" (late renewal opens on the old end, earlier
+  refused); (e) Payroll opens on the period due, early pay names the days not worked; (f) an issued invoice's date
+  refused outside its FY; (g) "Day the clips were made". One fix from it: `SmmGlance` wide layout overflowed 8 px at
+  390 px (the new legend label) — one shrinkable column + wrapping labels.
+  **Not verified:** live Firebase (the owner's Dhana lakshmi document was not read or repaired — the admin does it with
+  Months to check → Edit setup), real devices / phones, the published rules (the `invoice_numbers` `issueDate` branch is
+  needed once published). **Behaviour the owner should confirm:** Settlements pays only ended periods; the Accounts
+  Dashboard is one pay period with no tech delivered value; recording / editing Flow credits, editing a Flow account,
+  changing an issued invoice's date and moving a post between months now need a connection.
+- **2026-10-15: the voice-over word contract — 17–20 spoken words in every clip, for every cast — and the 10/10
+  quality loop** (`ai-ads.md` §9.7, §17.2 step 3, §24, §25, §27; `data-model.md` `ai_generations.scriptQa`). The owner:
+  "EVERY GENERATED CLIP MUST CONTAIN 17–20 SPOKEN WORDS … A HARD MAXIMUM OF 20", for every category, ad type and
+  language, with a generate → validate → refine → revalidate loop, a strict 10/10 rubric and no bypass.
+  **Root causes found:** (1) three bands at once — 18–20 (one voice), 15–17 (a pair, 2026-09-22), an unused 13–15 (Kids) —
+  plus six deity catalogue entries setting their own sentence length ("six to nine spoken words"), and the catalogue
+  test that should have caught them could not (it did not allow "spoken" before "words", and its pace exception had
+  lost its backslashes); (2) two counters that disagreed (geminiService counted a dash or an ellipsis as a word, the
+  dialogue counter split "don't"); (3) `speakableLine` ran AFTER validation, so the checked text was not the shipped text
+  ("₹999" is one token, five spoken words); (4) nothing stopped an out-of-band clip from shipping — repairs ended with a
+  console warning, the whole-script repair replaced the draft unconditionally, `isBetterRepair` kept "fewer problems"
+  even when a clip went to 22 words, `isBetterDraft` let a higher-scoring draft with a 23-word clip beat a valid one, and
+  `finalClipSlack` could raise the clip ceiling; (5) the character prompts' worked examples were miscounted (three solo
+  lines marked "(18 words)" were 14–16; every duo clip 15–17); (6) the judge was never given the verified address (it
+  marked the required last-clip address as invented), never given word counts, scored six dimensions and the code
+  shipped at ≥ 8; (7) the spoken-phone-number check used `\b` around Telugu words and so never matched a Telugu script;
+  (8) the name check looked for "Ben 10" in a line that is spoken (and written) "Ben ten"; (9) found LIVE after the first
+  build: a Telugu final clip must keep the 9-word call line and the 5-word address, and the repair direction said "keep
+  every fact", so the editor could never drop the offer the writer had put there and the run stopped at 22 words.
+  **What changed:** new `utils/scriptContract.ts` — THE band (17 / 20, preferred 18–19, a pair's lines 7–12, 8–10
+  preferred), the one tokenizer (`spokenWordsOf`, `countSpokenWords`, `spokenTextOf`), `clipWordCountIssue`,
+  `contractViolations`, `bandDistance`, the estimators; `dialogueFormat` re-exports it (the duo / kids constants are
+  gone, the clip band can no longer be widened by a caller, the final-clip slack moves only the line split). New
+  `services/prompts/wordContract.ts` — one prompt block (`wordContractBlock`) in the writer, the whole-script repair, the
+  native-speaker review, the refine / clip editor, the character writer and repair; the closing line's and the
+  address's words counted in code, "a short invitation only — every offer in an earlier clip" when they leave ≤ 8 words,
+  and the shared `TELUGU_SCREEN_CTA`. `geminiService`: clips made speakable before every check; the cast's checks built
+  once (`dialogueTools`); repairs (`repairClipsByEdit`, shared with the Script Duration Checker, and
+  `repairDialogueClips`) told the exact cut / addition and, for the final clip, the room its fixed words leave; every
+  repair kept only when nearer the band; the clip repair no longer runs twice on the same text; the quality gate
+  rebuilt as `runQualityLoop` (judge → targeted polish or new draft → judge again; bounded by 5 passes, 2 empty rounds,
+  120 s; one last contract fit) and THE FINAL ACCEPTANCE GATE on the exact shipped text (a generated script outside the
+  contract stops the run with a message); the phone-digit check and the spoken-name tokens fixed; `refineVoiceOver`
+  holds every clip it edits to 17–20 (`editProblems`); `convertToVoiceOverScript` on the same contract and repairs.
+  `utils/scriptQa`: eight dimensions (+ cast, originality & flow), scores held to the judge's own problems and code's
+  mechanical findings (`withMechanicalChecks`, `mechanicalCaps`), 10/10 only by `isPerfect`, `isBetterDraft` ranks the
+  cast, then the contract, then the score, the pure loop controller `nextImprovement`, `ScriptQaSummary` gains `passes`,
+  `stopReason`, `clipWords`, `checkedScript`, `unscored`. `prompts/scriptQa`: the rubric with anchors, the cast's identity
+  (`characterAd.castNoteFor`), code's word counts, the address, the closing line, and a festival override (clip 1 is the
+  wish whatever the cast's own clip-1 direction says). `prompts/characterAd`: computed worked examples (every clip
+  17–20), `contractRegisterFor` (children / deity / cartoon notes). `repairDirection`: exact sizes, both lines of a
+  clip, and "keep what this clip must say; leave out a secondary offer rather than squeeze it in". Catalogue (TS + JSON):
+  the six deity length rules removed. Studio (`AIPlatformApp`): the QA strip ("Quality check 10/10" / best draft / not
+  scored, passes, eight scores, "changed after this check" when the script was refined), a live **Words per clip** row,
+  the Voice Over status chip, and the custom-script box counted by the one counter with per-clip chips.
+  **Tests:** new `scriptContractOct15` (the counter's edge cases — Telugu, English, mixed, punctuation, apostrophes,
+  labels, a price spoken; 16 / 17 / 18 / 19 / 20 / 21; the block; and, generated from the catalogue, every entry's writer
+  and repair contract plus its worked example counted, commercial and festival, Telugu and English) and
+  `scriptQualityLoopOct15` (a fake Gemini: a genuine 10/10 stops at once; a 25-word and a 12-word first draft repaired; a
+  failed repair retried; a language fix that breaks the limit rejected; a count fix that invents a fact beaten by a new
+  draft; a malformed judge retried once then unscored; a 6-score report refused; the 5-pass budget spent and the REAL
+  score shipped; a clip that cannot fit stops the run before any frame; a duplicate and a missing clip; a price counted
+  as spoken; a member's 25-word clip untouched; commercial vs festival; Telugu: the 9-word call line counted and a spoken
+  phone number caught; a pair counted across both lines and put back in order; ALL 41 entries × commercial / festival
+  through the pipeline with an over-long clip 1 — writer, repair, judge and final text agree; refine refuses a 21-word
+  edit and applies a 20-word one; the Script Duration Checker). Updated 13 older suites to the contract (fixtures of
+  16-word duo clips → 17–20; assertions on the old bands → the new block) without removing an assertion. Results:
+  `npx vitest run` 4370 tests — 4369 pass; the one failure is `smmDeliveryPhase0Oct15` (another session's SMM work in
+  progress; an earlier full run's 7 load timeouts in 4 UI files pass alone, 58 / 58); `npm run build` ✅;
+  `npx tsc -p tsconfig.check.json --noEmit` → 0 errors. Real browser (scratchpad harness, the real studio on fakes,
+  1440 / 390 px): the strip and the words per clip after a run, a refine → the "changed" note and the live recount, the
+  custom-script chips; no console error, no overflow. **Live Gemini** (`generateAdAssets` with vite-node, stopped once the
+  voice-over was final): Telugu single presenter, 3 clips with an address — first build: STOPPED by the final gate (clip 3
+  at 22) → cause (9) fixed → re-run: 18 · 19 · 20 words, **10/10** (gemini-2.5-flash judge) after 1 pass, 55 s; Telugu
+  Male & Female Duo, 2 clips: 18 · 20, 9.8 after 3 passes, 239 s; Lord Ganesha, Vinayaka Chavithi, 2 clips: 19 · 20 (9.4,
+  4 passes) and after the festival override 18 · 19 (8.3, stopped at the 120 s deadline). Every shipped text equalled the
+  checked text.
+- **2026-10-15: SMM Delivery Control, phase 1 — the rules** (`smm.md` §9.9 "SMM Delivery Control" (4)–(5), §24, §25;
+  `data-model.md`; plan in `HANDOFF.md`). The weekly task model and the supervisor, as pure rules with no screen yet.
+  **`utils/smmCadence`**: the client's four weeks (W4 = day 22 → the day before the renewal day, per session dts-os-47's
+  app-wide date rule of the same day), each week's deadline (its last working day at 19:00, Mon–Sat minus company holidays),
+  the ÷ 4 split (leftovers W1, W4, W2: 4 → 1,1,1,1; 6 → 2,1,1,2; 8 → 2,2,2,2) per kind, the checkpoints counted back in
+  working days (the plan's worked week — sent by Sat 24, poster Mon 26, approved Tue 27, live Wed 28 — is a test), placement
+  (a saved plan, the team's own date — kept —, carried pieces in W1, then the earliest week short), rows beyond / short of the
+  promise, extra work and festival posts on their own dates, a first month from day 4 with no real video in W1, suggested post
+  days, progress and blame (the first checkpoint missed: team / client / publisher), on-time % without client delays, and the
+  move rule. **`utils/smmMonitor`**: every alert due at a moment — the owner's ladder (week start, watch, checkpoint missed,
+  deadline day, deadline passed every 2 h), the leads +1 and the admins +2 working days (from 09:00), the client's side
+  (approval chases on days 2-4-7, the sales admin, not responding, footage, keeps changing, extras unbilled), the marketer's
+  ad report and ad start, setup / nobody owns / owner away / blocked / overloaded / crowded week — with the guards the plan
+  requires (answers quiet them, the Starting line, leave, quiet hours, capacity, one alert per person per piece, the once key,
+  pilot / preview / off, fresh data and a sane clock, one try/catch per month, never writing) and **the 30-day rehearsal**
+  (`rehearseSmm`, replaying the months from their stamps). The item fields they read (`plan`, `moves`, `madeAt`, `blocker`,
+  `eta`, `lateReasons`, `footage`, `revisions`, `reassigns` …) and the month's `delivery` are typed, optional, in
+  `types/smmDelivery`; nothing writes them yet (phase 3). One setting added: `ladder.weeklyLoadLimit` (12, range 3–40).
+  Both files are alias-free (the phase-6 server reuses them): a test asserts their imports, and
+  `esbuild --bundle` resolves `smmMonitor.ts` without the alias. Files: `src/utils/smmCadence.ts`, `src/utils/smmMonitor.ts`
+  (new), `src/types/smmDelivery.ts`, `src/utils/smmDeliverySettings.ts`, tests `src/test/smmCadenceOct15.test.ts`,
+  `src/test/smmMonitorOct15.test.ts`, `src/test/smmDeliveryFixtures.ts`. Tested: 158 table-driven tests (incl. parity of the
+  exclusion rule with `smmDeliveryHealth.excludedReason` and `smmPackage.isOnHold`); no UI, so no browser run.
+
+- **2026-10-15: SMM Delivery Control, phase 0 — the groundwork** (`smm.md` §9.9 "SMM Delivery Control", §24, §25, §27;
+  `data-model.md`; `backend-security.md` §14, §18; `architecture.md` §11, §22; `roles-routes.md` §8.2; plan in
+  `HANDOFF.md`). The owner approved (same day, four messages) a plan to divide each client's SMM month into weekly tasks
+  with week-end deadlines and escalating full-screen alerts, behind a button that keeps the classic Social Media as it
+  is; phase 0 builds what every later phase stands on. Nothing new is on screen yet. (1) **The popup coordinator**
+  (`utils/popupCoordinator` rules, `store/popupStore` registry, `hooks/usePopupClaim`): the 11 AM / 5 PM post-status check
+  used to wait by looking at the page (`[role=dialog], .fixed.inset-0` with a box) — it could not see the incoming-call
+  card (a floating `fixed top-4` panel), the check-in gate before it appeared (its reads can outlast the check's 8 s head
+  start), or what had just closed. Now every popup the app opens by itself REPORTS itself (`usePopupClaim`: the check-in
+  gate — "pending" while its reads come in, released once checked in —, the agreement gate, the profile prompt,
+  `UpdatePopup`, the birthday greeting, the renewal countdown), as do a call (`VideoCallManager`, phase ≠ idle) and the AI
+  studio (`AIPlatformApp`, one line beside its `holdUpdates()`), and they all show exactly as before. The status check
+  opens through `tryOpenPopup` — never over a call, the studio, another popup or a window the person opened (the old look
+  at the page, kept as the `busy` input), and not within ten minutes of a different popup closing (owner's rule); a
+  pending claim stops counting after two minutes, so a refused read cannot block it all day. (2) **The settings
+  document** `app_settings/smm_delivery` (`types/smmDelivery`, `utils/smmDeliverySettings` — written without the `@/`
+  alias for the phase-6 server checker —, `services/smmDeliverySettings`): mode Off / Preview / Live (missing document =
+  Preview), the pilot group, the deadline hour (19), the checkpoints (send −3 video / +1 for ≥ 6 clips, −2 poster, −2 real
+  video, footage −4, approved −1), quiet hours (20:00–09:00, Sundays, holidays), the escalation ladder and its limits
+  (the plan's numbers), the switch's history (20), `lastRunAt` for the server. Read leniently (junk → defaults); a change
+  is checked (whole numbers in range, steps in order). Only the tech admin and the main admin change it
+  (`canManageSmmDelivery`, in the service from the auth store and in a new `app_settings` rule); **turning it off needs a
+  reason and every other active main admin gets `smm_delivery_off`** (owner's decision 14). (3) **The data health check**
+  (`utils/smmDeliveryHealth`): a month's findings before switch-on, in sentences, worst first — excluded (deleted,
+  removed, history, finished, ended, on hold), blocked (bad dates, under 22 days, nothing promised), setup (nobody on it),
+  warnings (long week 4, empty Makes / Posts seat, a deactivated seat or owner, rows ≠ promised per kind, dates outside the
+  month, already late → the Starting line, extra work without a date or owner, holidays unreadable) and information
+  (upcoming, posted with no date / no link, undated rows, carried pieces, a first month's day-4 start, a Sunday / holiday
+  start, festival dates missing for 2027). **Rules:** `docs/firestore-rules.md` — `app_settings/{docId}` has its own rule
+  (staff as before; `smm_delivery` only main / tech admin) and is out of the catch-all. Tests: `smmDeliveryPhase0Oct15`
+  (62: the verdict table, settings reading / checks / alias-free, the health check on every finding and edge),
+  `smmDeliverySettingsOct15` (15, memoryFirestore: the switch, the off reason and who is told, refusals for the team
+  leader / Social Media Team Lead / sales admin / nobody, merging, range and order), `popupCoordinatorOct15` (10: the
+  registry; the real status check waiting for a call, the pending check-in, the studio and the gap; the real check-in gate
+  and update popup reporting). Full suite 240 files / 3804 tests, typecheck 0, build ✅. Browser (scratchpad harness,
+  real check-in gate, update popup, status check and the REAL AI studio on the in-memory Firestore, a shifted clock, 1440 and
+  390 px): 37 of 37 checks — the gate holds the 11 AM check; after check-in it waits the ten minutes, then opens; Later /
+  All updated; no gap after its own kind; it waits through a call claim and the open studio and opens when they end; the
+  update popup shows as before and reports itself; no console errors, no horizontal overflow. Not covered: live Firebase,
+  a real incoming call (the call was a claim), the birthday / renewal / profile / agreement popups in a browser.
+
+- **2026-10-15: the Real Owner Duo — Real Owner Face for two owners (Male + Male, Female + Female, Male + Female)**
+  (`ai-ads.md` §9.7, §17.2, §24, §25, §27; `sales.md` §9.4, §25). The owner asked (2026-10-14) for three duo
+  configurations of Real Owner Face: sales picks the configuration, the tech side uploads the two owners' photos in two
+  clearly labelled, required slots, and the configuration is the one source of truth sale → order → job → kit `spec` →
+  frames → script → Veo, both owners in every clip, never swapped, duplicated, invented or lost; single Real Owner Face,
+  Human Duo and every other category unchanged. The owner's answers: the video prompt is their real-person template for two, and on
+  Male + Female the man stands on the LEFT and speaks first. Started 2026-10-14 (the catalogue entries, `ownerPhotoSlots`,
+  the duo face lock and attach line, the two-person Veo template, the composition, the duo script / repair / frame
+  prompts — committed half-finished by the owner in `74b0b8e`, so the three entries were already in the pickers on
+  `main`); finished here. **Generator** (`services/geminiService.ts`): `packWardrobe` dresses each owner by side
+  (`ownerDuoWardrobeDirective`); a duo run missing either photo is refused before any call, naming it; BOTH photos go to
+  the frame writer, each with a sentence tying it to one side, and the request's configuration lists them; every frame is
+  stamped with the two-shot composition, the duo FACE LOCK and "📎 ATTACH OWNER PHOTO 1 (the man, LEFT) and OWNER PHOTO 2
+  (the woman, RIGHT), in that order"; a main-frame refine re-stamps both; `writeVeoPrompts` assembles
+  `assembleRealPersonDuoVeoPrompt`, each line seated by its speaker's side (`seatsOf`), so a clip a member gives to one
+  owner is voiced from that owner's side; the scene plan calls them "the business's two owners". **Prompts:**
+  `packVeoSubject` treats them as people; `realLocation` places "the two owners" ("TWO REAL PEOPLE — the business's own
+  two owners"); the frame prompt names each owner only by photograph in the shot plan (POSITIONS, continuation line) and
+  has its own in-place paragraph ("Owner 1 and Owner 2 says…" before). **Shared helpers** (`services/characterPacks`):
+  `ownerPhotoFile` (slot → `ownerImage` / new in-memory `FileStore.secondOwnerImage`) and `ownerSlotLabel`. **Studio**
+  (`AIPlatformApp`): two slots ("Owner 1 photo — Man · LEFT", "Owner 2 photo — Woman · RIGHT"), a note under the picker,
+  the check naming the missing photo, `RunFacts.ownerPhotos` → the AI Guide's "Attach BOTH owner photos in every tab"
+  (`generation/run.ts`, `mission.ts`). **The attach line** (found by the browser check; `utils/promptAttachments`,
+  `AttachmentBanner`, the tab chips and copy toast): it read only "IMAGE #n", so every Real Owner Face frame — single
+  too — said "Nothing to attach" / "no photo"; it now shows the owner photo(s) in order, and a store zone no longer
+  swallows the owner text. **Sales:** the sale form, the job's Special Category note and the client's WhatsApp ask for a
+  clear photo of EACH owner; "Both owners speak in every clip"; the tech requirements message says who is who;
+  `castLabelFor` "👨👩 man & woman" for the mixed owners. Also resolved the merge-conflict markers left in CLAUDE.md §32
+  (both sides kept). Tests: new `realOwnerDuoOct14.test.ts` (all three configurations: slots, stamps, the template and
+  its refine safety, the script prompt, the attach reader and banner, the sales messages, the full pipeline on a fake
+  Gemini, the missing-photo refusal, a one-owner clip, the refine re-stamp, the guide); `characterCatalogue` and
+  `castConsistencyOct08` updated for the family (every entry still runs end to end); the studio's slots and check in
+  `aiPlatformInputs`. Real browser (throwaway harness on fake Firebase / Gemini, 1440 and 390 px): the slots for all three,
+  the single slot unchanged, the alert, a full duo run's deliverables, the sale and job notes — no console errors, no
+  horizontal scroll. `npm run build`, `npx vitest run` (237 files, 3717 tests), `npx tsc` 0 errors. Not seen yet: a frame made in
+  ChatGPT / Gemini from two owner photos, or a Flow clip.
+
 - **2026-10-14: remove the opt-in SMM Operations / Preview Glass UI** (`src/components/smm/SmmOperationsView.tsx`, `src/components/smm/smm-operations.css`, `src/pages/shared/SocialMedia.tsx`, feature-only tests/config/workflow). Removed the alternate screen and its entry point, deleted its dedicated styles, test, scoped TypeScript config and workflow, and restored the original Social Media page and SMM module guide. Existing SMM campaign logic, routes and Classic interface are retained.
 
 - **2026-10-14: redesign SMM Operations as a premium glassmorphism studio** (`src/components/smm/SmmOperationsView.tsx`, `src/components/smm/smm-operations.css`, `src/pages/shared/SocialMedia.tsx`, `src/test/smmOperationsView.test.tsx`). Replaced the prior dashboard-style layout with a layered light-glass hero, 3D-depth KPI cards, package-fulfilment donut and per-kind progress, campaign-health distribution, priority queue, search/filters and responsive client glass cards. Classic SMM remains the default; the new view is opt-in and uses existing SMM records/routes only. Verification: SMM TypeScript check passed, focused SMM suites passed 25/25, and production build passed. Full suite: 3,688 passed / 3 failed in `src/test/characterCatalogue.test.ts`; the existing expectations omit the `owner_duo` catalogue entries. No AI Ads catalogue source/test was changed, and no manual authenticated pixel-by-pixel browser review is claimed.

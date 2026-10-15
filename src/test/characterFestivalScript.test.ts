@@ -6,7 +6,7 @@ import {
   CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT,
 } from "@/services/prompts/characterAd";
 import {
-  MIN_WORDS_PER_DUO_CLIP, MAX_WORDS_PER_DUO_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
+  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, countSpokenWords,
 } from "@/utils/dialogueFormat";
 
 /**
@@ -112,8 +112,8 @@ describe("festival wishes in a special-category script", () => {
 
     for (let i = 0; i < lines.length; i += 2) {
       const clipTotal = Number(lines[i][2]) + Number(lines[i + 1][2]);
-      expect(clipTotal, `clip ${i / 2 + 1}`).toBeGreaterThanOrEqual(MIN_WORDS_PER_DUO_CLIP);
-      expect(clipTotal, `clip ${i / 2 + 1}`).toBeLessThanOrEqual(MAX_WORDS_PER_DUO_CLIP);
+      expect(clipTotal, `clip ${i / 2 + 1}`).toBeGreaterThanOrEqual(MIN_WORDS_PER_CLIP);
+      expect(clipTotal, `clip ${i / 2 + 1}`).toBeLessThanOrEqual(MAX_WORDS_PER_CLIP);
     }
   });
 

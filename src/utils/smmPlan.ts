@@ -52,19 +52,87 @@ export function addDays(iso: string, n: number): string {
  * Thirty days from the sale, not the calendar month — a retainer sold on the 22nd runs to the 21st,
  * and pretending otherwise would give that client eight days of service for a month's money and
  * then bill them again. Editable afterwards, because clients do ask to start on the first.
+ *
+ * Legacy (months are `smmPackage.monthCycle` since 2026-10-03; only `services/smm.setCycle` uses this).
+ * Since 2026-10-15 the end date is the renewal day — the day AFTER the last own day — so `days` own
+ * days end on `start + days`: sold on the 22nd, its days run to the 21st and it renews on the 22nd.
  */
 export function cycleFromStart(startIso: string, days = 30): SmmCycle {
   const start = dayToDate(startIso) ? startIso : isoDay(new Date());
   return {
     month: start.slice(0, 7),
     startDate: start,
-    endDate: addDays(start, Math.max(1, days) - 1),
+    endDate: addDays(start, Math.max(1, days)),
   };
 }
 
-/** Days left in the cycle, counting today. Negative once it has run out. */
-export function daysLeftInCycle(cycle: SmmCycle, today: string): number {
-  return daysBetween(today, cycle.endDate) + 1;
+/*
+  ── A month's OWN days: start … the day before the end date (owner, 2026-10-15) ─────────────────────
+  A month is shown and billed "6 Sep → 6 Oct" — "from the 6th to the 6th" — and that label stays. But
+  6 Oct is the RENEWAL DAY: the next month's first day, and the day an undecided month goes On hold
+  ("On hold starts on 6 Oct if not renewed"). Until 2026-10-15 the end date was one of the month's own
+  days too, so it belonged to two months at once: on 6 Oct both "6 Sep → 6 Oct" and "6 Oct → 6 Nov"
+  were running, Insights counted the client twice and added both amounts, the 11 AM status check listed
+  both, and every month ran 31–32 days. So a month's own days are `startDate` … `endDate − 1`, and every
+  rule asks these helpers rather than comparing `endDate` by hand.
+*/
+
+/** The month's last own day — the day before its renewal day (the start, for a month with no days after it). */
+export function lastOwnDay(cycle: Pick<SmmCycle, "startDate" | "endDate">): string {
+  if (!cycle.endDate || !(cycle.endDate > cycle.startDate)) return cycle.startDate;
+  return addDays(cycle.endDate, -1);
+}
+
+/** Whether `day` is one of the month's own days (start … the day before the renewal day). */
+export function isOwnDay(cycle: Pick<SmmCycle, "startDate" | "endDate">, day: string): boolean {
+  return !!day && day >= cycle.startDate && day <= lastOwnDay(cycle);
+}
+
+/** How many own days the month has: 6 Sep → 6 Oct is 30 (6 Sep … 5 Oct). At least 1. */
+export function ownDayCount(cycle: Pick<SmmCycle, "startDate" | "endDate">): number {
+  return Math.max(1, daysBetween(cycle.startDate, lastOwnDay(cycle)) + 1);
+}
+
+/**
+ * The month's own days left, counting today — which is also the number of days to its renewal day.
+ * 5 on 1 Oct for "6 Sep → 6 Oct" (1–5 Oct), 1 on 5 Oct (its last day), 0 on 6 Oct (the renewal day —
+ * the month is over), negative after.
+ *
+ * ── One count for the bell, the card and the chip (2026-10-15) ─────────────────────────────────
+ * This used to be `daysBetween(today, end) + 1`, one more than `smmPackage.daysToRenewal`: on 1 Oct the
+ * bell said "5 days left" while the card's chip said "Renewal in 4 days", and on 6 Oct the bell said
+ * "1 day left", the card "Last day" and the chip "Renewal is today". With the end date as the renewal
+ * day the two are the same number, so `daysToRenewal` is this function and every screen counts from it.
+ */
+export function daysLeftInCycle(cycle: Pick<SmmCycle, "endDate">, today: string): number {
+  return daysBetween(today, cycle.endDate);
+}
+
+/**
+ * A piece dated outside the month's own days (2026-10-15) — it does NOT count toward this month.
+ *
+ * ── Why a date decides which month a post belongs to ─────────────────────────────────────────
+ * The owner's real month: saved as 6 Oct → 6 Nov while 9 of its 10 posts were dated 13 Aug – 9 Sep, and
+ * the card said "Completed — All 10 posts are live". Posted is not delivered for THIS month when the
+ * post's own date says it went up in another one. So a piece counts toward its month when its upload
+ * date is one of the month's own days, or when it has no upload date at all (an undated row, or a
+ * legacy one); one dated outside is reported separately, never counted as delivered, and the screens
+ * say so with a hint to fix its date. A post dated ON the renewal day belongs to the next month.
+ */
+export function itemDatedOutside(
+  item: Pick<SmmContentItem, "uploadDate">,
+  cycle: Pick<SmmCycle, "startDate" | "endDate"> | null | undefined,
+): boolean {
+  if (!cycle?.startDate || !item.uploadDate) return false;
+  return !isOwnDay(cycle, item.uploadDate);
+}
+
+/** Posted AND inside the month's days — what "delivered this month" means (no cycle: posted, as before). */
+export function isDeliveredInMonth(
+  item: SmmContentItem,
+  cycle: Pick<SmmCycle, "startDate" | "endDate"> | null | undefined,
+): boolean {
+  return isPosted(item) && !itemDatedOutside(item, cycle);
 }
 
 /* ── The plan ───────────────────────────────────────────────────────────────────────────────── */
@@ -236,9 +304,25 @@ export interface SmmFulfilment {
   /** 0–100 against what was SOLD, so extra work can never flatter a month that is behind. */
   percent: number;
   complete: boolean;
+  /**
+   * Promised pieces (not extra work) dated outside the month's own days, posted or not (2026-10-15) —
+   * never counted in `posted`. 0 when the month's dates were not given.
+   */
+  datedOutside: number;
 }
 
-export function fulfilment(campaign: Pick<SmmCampaign, "items" | "commitments">): SmmFulfilment {
+/**
+ * What the month owes and what it has delivered.
+ *
+ * Given the month's `cycle` (every campaign has one), a piece counts as posted only when it went up on
+ * one of the month's own days or has no upload date (`isDeliveredInMonth`, 2026-10-15) — so the card,
+ * the pace, the renewal popup and the client's monthly report cannot say "All 10 posts are live" for a
+ * month whose posts are dated a month before it. Without a cycle every posted piece counts, as before.
+ */
+export function fulfilment(
+  campaign: Pick<SmmCampaign, "items" | "commitments"> & { cycle?: SmmCycle | null },
+): SmmFulfilment {
+  const cycle = campaign.cycle || null;
   const byKind: KindProgress[] = SMM_CONTENT_KINDS.map(({ key }) => {
     const all = campaign.items.filter((i) => i.kind === key);
     const committed = Math.max(0, Math.floor(campaign.commitments?.[key] || 0));
@@ -247,7 +331,7 @@ export function fulfilment(campaign: Pick<SmmCampaign, "items" | "commitments">)
       kind: key,
       committed,
       made: contracted.filter(isMade).length,
-      posted: contracted.filter(isPosted).length,
+      posted: contracted.filter((i) => isDeliveredInMonth(i, cycle)).length,
       extra: all.filter((i) => i.extra && isPosted(i)).length,
     };
   });
@@ -263,15 +347,22 @@ export function fulfilment(campaign: Pick<SmmCampaign, "items" | "commitments">)
     extra: byKind.reduce((n, k) => n + k.extra, 0),
     percent: committed > 0 ? Math.min(100, Math.round((posted / committed) * 100)) : 0,
     complete: committed > 0 && posted >= committed,
+    datedOutside: campaign.items.filter((i) => !i.extra && itemDatedOutside(i, cycle)).length,
   };
 }
 
-/** How many of the month's posts went to each account — the per-platform line of the report. */
-export function postsByPlatform(items: SmmContentItem[]): { platform: SmmPlatform; label: string; count: number }[] {
+/**
+ * How many of the month's posts went to each account — the per-platform line of the report. Given the
+ * month's dates, only the posts that went up on its own days count (2026-10-15, as `fulfilment`).
+ */
+export function postsByPlatform(
+  items: SmmContentItem[],
+  cycle?: Pick<SmmCycle, "startDate" | "endDate"> | null,
+): { platform: SmmPlatform; label: string; count: number }[] {
   return SMM_PLATFORMS.map(({ key, label }) => ({
     platform: key,
     label,
-    count: items.filter((i) => isPosted(i) && i.platforms?.includes(key)).length,
+    count: items.filter((i) => isDeliveredInMonth(i, cycle) && i.platforms?.includes(key)).length,
   })).filter((p) => p.count > 0);
 }
 
@@ -387,6 +478,22 @@ export function allAdReports(campaign: Pick<SmmCampaign, "ads">): SmmAdDayReport
   return campaign.ads
     .flatMap((run) => (run.reports || []).map((r) => ({ ...r })))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
+/**
+ * The day reports for the month's OWN days only, newest first (2026-10-15) — what "this month's ads"
+ * means on the report tiles, the client's monthly report, the renewal ask and the renewal popup.
+ *
+ * ── Why not every report ─────────────────────────────────────────────────────────────────────
+ * The report tab's tiles added up every report on the month while its "leads a day" chart covered only
+ * the month's dates — a run started before the month (or reported after it) made the two disagree, and
+ * the client was sent leads from another month as this one's. A run's own panel still shows all of its
+ * days (`SmmAdsPanel`), and the ad money ledger counts every rupee (`budgetLedger`): money is money.
+ */
+export function monthAdReports(campaign: Pick<SmmCampaign, "ads" | "cycle">): SmmAdDayReport[] {
+  const all = allAdReports(campaign);
+  if (!campaign.cycle?.startDate) return all;
+  return all.filter((r) => isOwnDay(campaign.cycle, r.date));
 }
 
 /** The items one run is actually promoting. */
@@ -721,9 +828,23 @@ export function campaignHeadline(campaign: SmmCampaign, today: string): string {
   const left = daysLeftInCycle(campaign.cycle, today);
   const parts = [`${f.posted} of ${f.committed} posted`];
   if (wait.openCount > 0) parts.push(`${wait.openCount} waiting on client`);
-  // `left` counts today: it is 1 on the last day and 0 the day after, which used to read "last day".
+  // `left` counts today: 1 on the last own day, 0 on the renewal day (the end date — 2026-10-15).
   if (left > 1) parts.push(`ends in ${left} days`);
   else if (left === 1) parts.push("last day");
-  else parts.push(`ended ${1 - left} day${1 - left === 1 ? "" : "s"} ago`);
+  else if (left === 0) parts.push("ended today");
+  else parts.push(`ended ${-left} day${-left === 1 ? "" : "s"} ago`);
   return parts.join(" · ");
+}
+
+/**
+ * The day a posted piece went up, as the section shows it (2026-10-15): its UPLOAD date — the Content
+ * list's column, the day the calendar draws it on — and only when it has none, the day Posted was
+ * pressed (`postedAt`). The team often marks a month's posts posted together, days later: counting from
+ * the press put "Up 10d ago" beside an upload date two months earlier, and piled Insights' posts-a-day
+ * sparkline onto one day. Null when there is neither.
+ */
+export function postedDayOf(item: Pick<SmmContentItem, "postedAt" | "uploadDate">): string | null {
+  if (item.uploadDate) return item.uploadDate;
+  const ms = tsToMs(item.postedAt);
+  return ms ? isoDay(new Date(ms)) : null;
 }

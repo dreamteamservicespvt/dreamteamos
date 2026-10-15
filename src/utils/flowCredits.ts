@@ -141,6 +141,62 @@ export function hasRecordedCredits(account: Pick<FlowAccount, "usedByCycle"> | n
   return Object.values(account?.usedByCycle || {}).some((n) => Number(n) > 0);
 }
 
+/**
+ * Why `date` cannot be "the day the clips were made" on this account, or "" when it can (2026-10-15).
+ *
+ * ── Why the entry carries the day the clips were MADE ──
+ * Credits were dated the day Mark Complete was pressed. Clips made on the evening of 11 October and
+ * handed in on the 12th, on an account whose cycles run 12th → 11th, were booked into the NEW cycle:
+ * the old cycle showed credits left that Flow had already spent, and the new one showed them gone
+ * before they were. The entry's date, month and cycle now come from the day the clips were made —
+ * never a day still to come, and never before the account existed (its first cycle starts that day).
+ */
+export function usageDateProblem(
+  date: string,
+  today: string,
+  account?: Pick<FlowAccount, "createdOn" | "email"> | null,
+): string {
+  if (!isDate(date)) return "Pick the day the clips were made.";
+  if (date > today) return "The clips can't have been made on a day still to come.";
+  if (account && isDate(account.createdOn) && date < account.createdOn) {
+    return `${account.email || "This account"} was opened on ${account.createdOn} — clips made before that can't be on it.`;
+  }
+  return "";
+}
+
+/**
+ * The cycle a day falls in, for the figures a credit entry is checked against: the start, the next
+ * reset (the last day is the day before), what was used in it and what is left.
+ *
+ * ── Why not `accountState(account, today)` everywhere ──
+ * Editing an entry from an earlier cycle showed THIS cycle's "left after this" — the old cycle's own
+ * figures were nowhere. The credit dialog now asks for the cycle of the entry's own day.
+ */
+export function cycleFiguresOn(
+  account: Pick<FlowAccount, "createdOn" | "monthlyCredits" | "usedByCycle">,
+  day: string,
+): { cycleStart: string; cycleEnd: string; monthly: number; used: number; remaining: number } {
+  const cycleStart = cycleStartOf(account.createdOn, day);
+  const next = nextResetOf(account.createdOn, day);
+  const monthly = account.monthlyCredits || DEFAULT_FLOW_SETTINGS.monthlyCredits;
+  const used = Math.max(0, account.usedByCycle?.[cycleStart] || 0);
+  return { cycleStart, cycleEnd: addDays(next, -1), monthly, used, remaining: Math.max(0, monthly - used) };
+}
+
+/** A date plus whole days. */
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = parts(date);
+  const t = new Date(Date.UTC(y, m - 1, d + days));
+  return fmt(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+}
+
+/** "12 Oct" — a short day for labels. */
+export function shortDay(date: string): string {
+  if (!isDate(date)) return date;
+  const [, m, d] = parts(date);
+  return `${d} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1]}`;
+}
+
 /** Where an account stands today. */
 export function accountState(account: Pick<FlowAccount, "createdOn" | "expiresOn" | "monthlyCredits" | "usedByCycle" | "status">, today: string): AccountState {
   const cycleStart = cycleStartOf(account.createdOn, today);
@@ -228,8 +284,8 @@ export function validateFlowAccountInput(input: FlowAccountInput, today: string,
   if (!isValidEmail(input.email)) errors.email = "Enter the account's full email address.";
   if ((options.passwordRequired ?? true) && !input.password.trim()) errors.password = "Enter the account's password.";
   if (!normalisePhone(input.phone)) errors.phone = "Enter the 10-digit mobile number the account logs in with.";
-  if (!isDate(input.createdOn)) errors.createdOn = "Pick the day the account was created.";
-  else if (input.createdOn > today) errors.createdOn = "The creation date cannot be in the future.";
+  if (!isDate(input.createdOn)) errors.createdOn = "Pick the day the Flow account was opened.";
+  else if (input.createdOn > today) errors.createdOn = "That day is still to come.";
   return errors;
 }
 

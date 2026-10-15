@@ -16,7 +16,11 @@ vi.mock("firebase/firestore", () => ({
   onSnapshot: vi.fn(),
   getDocs: vi.fn(async () => ({ docs: [] })),
   serverTimestamp: () => "SERVER_TS",
-  Timestamp: { now: () => ({ seconds: 1_770_000_000, toMillis: () => 1_770_000_000_000 }) },
+  Timestamp: {
+    now: () => ({ seconds: 1_770_000_000, toMillis: () => 1_770_000_000_000 }),
+    // A month's jobs carry the month's deadline since 2026-10-15 (`monthPromise` in assignSmmMonth).
+    fromMillis: (ms: number) => ({ seconds: Math.floor(ms / 1000), toMillis: () => ms }),
+  },
   setDoc: async (ref: any, data: any) => { store[ref.path] = data; },
   deleteDoc: async (ref: any) => { delete store[ref.path]; },
   updateDoc: async (ref: any, patch: any) => { store[ref.path] = { ...store[ref.path], ...patch }; },

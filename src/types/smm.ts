@@ -325,14 +325,32 @@ export interface SmmCarriedPiece {
   byName: string;
 }
 
-/** The service month this campaign covers. */
+/**
+ * The service month this campaign covers — shown "6 Sep → 6 Oct", the way the client is billed.
+ *
+ * ── The end date is the RENEWAL DAY (owner, 2026-10-15) ──────────────────────────────────────────
+ * The month's own days are `startDate` … the day BEFORE `endDate` (6 Sep – 5 Oct). `endDate` is the
+ * renewal day: the next month's first day, the day an undecided month goes On hold. Until 2026-10-15
+ * the end date counted in both months — on 6 Oct "6 Sep → 6 Oct" and "6 Oct → 6 Nov" were both
+ * running, Insights counted the client twice and a month ran 31–32 days. Every rule reads the dates
+ * through `utils/smmPlan` (`lastOwnDay`, `isOwnDay`, `daysLeftInCycle`) and `utils/smmPackage`
+ * (`cyclePhase`), never by comparing `endDate` itself.
+ */
 export interface SmmCycle {
   /** yyyy-MM — what the month is called in a report. */
   month: string;
-  /** yyyy-MM-dd, inclusive. */
+  /** yyyy-MM-dd, the month's first own day. */
   startDate: string;
-  /** yyyy-MM-dd, inclusive. */
+  /** yyyy-MM-dd, the renewal day — NOT one of the month's own days (see above). */
   endDate: string;
+  /**
+   * The day of the month the client's run is billed on (2026-10-15) — set only when it differs from
+   * `startDate`'s day, i.e. after a short month clamped it: sold on 31 Jan → 28 Feb; the renewal
+   * 28 Feb → 31 Mar carries `anchorDay: 31`, so the client is back on the 31st instead of drifting to
+   * the 28th for ever. Absent = the start's own day (every month before 2026-10-15).
+   * `smmPackage.monthCycle` / `nextCycleAfter` set it.
+   */
+  anchorDay?: number;
 }
 
 /**
@@ -493,8 +511,17 @@ export interface SmmRenewalPrefill {
   clipsPerVideo?: number | null;
   /** The month being renewed, named — "October 2026". */
   monthLabel: string;
-  /** The day the next month starts, `yyyy-MM-dd`. */
+  /**
+   * The day the next month starts by default, `yyyy-MM-dd` — the renewed month's end date (2026-10-15:
+   * always, even for a renewal recorded late). The sale form's "Month starts on" opens on it.
+   */
   nextStart: string;
+  /**
+   * The renewed month's end date (its renewal day) — the earliest the next month may start: the sale form
+   * refuses an earlier "Month starts on" (the two months would share days). Absent on a prefill built
+   * before 2026-10-15; `nextStart` is then read in its place.
+   */
+  previousEnd?: string;
 }
 
 /** What a saved message template is for. Drives which placeholders it is offered. */

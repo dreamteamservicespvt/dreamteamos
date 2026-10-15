@@ -38,8 +38,26 @@ Y"; passwords live in their own collections and are read only on Show/Copy; **ev
 its Flow credits before it is marked complete** (My Work and Recent Ads through `useCreditGate`;
 posters skip it; "No Flow credits" is allowed; a job handed in again shows what was already recorded
 and starts at 0 clips); an ad can be split across accounts when one runs out; a ledger entry and the
-account's cycle total move in one batch (`increment` on `usedByCycle.<cycleStart>`); a creation date
-is fixed once credits are recorded. Paid ChatGPT (frames, footers, posters) and Grok (animations)
+account's cycle total move together (`increment` on `usedByCycle.<cycleStart>` — in one transaction since 2026-10-15, a
+batch before); a creation date is fixed once credits are recorded.
+**Dates (2026-10-15).** **Credits are dated by the day the clips were made** — the credit dialog asks "Day the clips were
+made" (`credit-made-on`; today by default or the entry's own day when editing; never a day to come; a per-account warning
+`credit-day-issue` and a refusal for a day before that account was opened). `recordFlowUsage(…, meta.madeOn)` (absent =
+today) sets `date`, `month` and `cycleStart` from it, in a TRANSACTION that reads each account as stored and works the
+cycle out from its STORED `createdOn` (`flowCredits.usageDateProblem`, `cycleFiguresOn`). `editFlowUsage` takes an
+optional `date` (the credits move to that day's cycle), moves to another account's cycle for the entry's day and refuses
+an account opened after the clips, rewrites `date` + `month`, and no longer fails on an entry whose account was deleted;
+unchanged account + day keep the recorded `cycleStart`. **The opening day is checked on the stored account:**
+`updateFlowAccount` is a transaction (the "credits already recorded" lock and the status compare read the stored
+document; the password secret is written in it), and both pages hand `FlowAccountDialog` the LIVE account, filling the
+form only when it opens (so "Fixed — credits are already recorded" shows live and typing is not wiped) — whichever of a
+record and an opening-day edit runs second sees the other. The field reads **"Day the Flow account was opened"** with
+the hint "Today — change it if the account was opened earlier. Its credits refresh on this day every month."
+**"Month" now says which:** Overview "Credits per cycle" (Used / Left "in each account's current cycle"); the Credit usage
+picker "Calendar month" with `usage-month-note` (entries by the calendar month the clips were made in; an account's cycle
+runs from its opening day); each `UsageList` row "· cycle from 12 Oct"; account cards "This cycle (12 Oct – 11 Nov)";
+My AI Accounts "Left / Used this cycle"; the credit dialog's figures are for the chosen day's cycle (an old entry shows
+its own cycle and gives its credits back only within it). Paid ChatGPT (frames, footers, posters) and Grok (animations)
 logins carry no credit maths: name, login, password, plan, renewal date, and who has them.
 
 **Gemini API keys** ✅ (2026-10-10). Every Flow account is a Google account that makes one free Gemini key
@@ -80,6 +98,9 @@ keys: keys 1, 12, 18 invalid, 13, 16, 23–28 leaked (11 dead).
   member's target is 30 accounts by 29 October, 2 a day; members see only the accounts they added, own
   or hold; the tech admin and team leaders manage every account; an account's creation date is fixed
   once credits are recorded on it.
+- **Credit dates (2026-10-15):** a credit entry's day, calendar month and account cycle come from the day the clips
+  were made (default today) — never a day still to come, never before the account was opened; the day can be corrected
+  later and the credits move to that day's cycle.
 - **Gemini API keys (2026-10-10):** a new Flow account is asked for its key in its own form — pasted, or "Add
   the key later" ticked; never silently skipped. One key per Flow account, saved only after Google is asked (a refused
   key is never saved; an unreachable Google saves it as "Not checked"); the same key cannot go on two
@@ -94,6 +115,9 @@ keys: keys 1, 12, 18 invalid, 13, 16, 23–28 leaked (11 dead).
 - AI Accounts: credits are entered by the member (there is no Flow API), so the totals are only as
   good as the entries; nothing reconciles them with Flow's own balance. The rules for the new
   collections are written (`docs/firestore-rules.md`) but restrict nothing until they are published.
+  Since 2026-10-15 recording credits, editing a credit entry and editing a Flow account are transactions: they need a
+  connection (the batches before were queued offline). Checked by unit tests, the services on the in-memory Firestore
+  and the real dialog in jsdom (`flowUsageDateOct15`) — not against live Firebase.
 - Gemini API keys: collected, checked and exported, but AdGen does not read them by itself (the owner
   chose to deploy them by hand) — a key is used only once it is in Vercel's `API_KEY_1…30` and the app is
   redeployed, and AdGen reads at most 30. "In use" is the admin's label, not something the app verifies.

@@ -1,4 +1,5 @@
 import { CLIP_SECONDS, clipLabel, parseLabeledClips } from "./voiceOverFormat";
+import { clipWordCountIssue, countSpokenWords, wordBudgetFor } from "./scriptContract";
 
 /**
  * Two-speaker clip scripting for character-pack ads.
@@ -8,9 +9,9 @@ import { CLIP_SECONDS, clipLabel, parseLabeledClips } from "./voiceOverFormat";
  * — it is an ordered exchange.
  *
  * ── The 8-second budget ───────────────────────────────────────────────────────────────────────
- * Every clip carries 18–20 spoken words (≈2.25–2.5 words/sec), whoever speaks them. In a
- * two-hander the clip total stays inside that band — that is what keeps every clip landing on
- * 8 seconds — while the split between the two characters is allowed to breathe.
+ * Every clip carries 17–20 spoken words (utils/scriptContract), whoever speaks them. In a
+ * two-hander the clip total — both lines together — stays inside that band, which is what keeps every
+ * clip landing on 8 seconds, while the split between the two characters (about 8–10 each) may breathe.
  *
  * ── Two representations, one source of truth ──────────────────────────────────────────────────
  * Same split-brain approach voiceOverFormat already uses, for the same reason: parsing, validation
@@ -28,75 +29,23 @@ import { CLIP_SECONDS, clipLabel, parseLabeledClips } from "./voiceOverFormat";
  * Platform showed every clip crammed into clip-1's card.
  */
 
-/**
- * Spoken words per 8-second clip — a range, not a single number, and the ONE definition of it.
+/*
+ * Spoken words per 8-second clip — the band, the line split and the counter — live in ONE place,
+ * utils/scriptContract, and are re-exported here for the many callers that import them from this file.
  *
- * An exact count forced the writer to pad or amputate a line that was otherwise right, and a padded
- * Telugu sentence is immediately audible. A band lands on the same 8 seconds while letting the
- * sentence end where it naturally ends.
- *
- * 18–20 for every ad, single voice or two-hander — the team's call. A ceiling of 22 was tried and
- * the clips came out too long to say comfortably in eight seconds. The normal voice-over validator,
- * its repair and review prompts, the refine editor, the character prompts and the Script Duration
- * Checker all read these two numbers, so this is the one place to change it.
+ * ── History of the band (kept so nobody re-introduces a second one) ──────────────────────────────────
+ * 18–20 for one voice (a ceiling of 22 was tried: too long to say comfortably); 15–17 for a two-hander
+ * (2026-09-22: the second speaker ran out of time in Veo); 13–15 for two children (2026-10-01, never wired
+ * in). On 2026-10-15 the owner set ONE contract for every cast: 17–20 spoken words a clip, the two lines of
+ * a two-person clip together (about 8–10 each). The duo risk that motivated 15–17 is watched in
+ * .claude/rules/ai-ads.md §27; the prompts now give each speaker an even, short half instead of fewer words.
  */
-export const MIN_WORDS_PER_CLIP = 18;
-export const MAX_WORDS_PER_CLIP = 20;
-/** The pace a clip is planned at — the middle of the band. Used to estimate clips from raw text. */
-export const TARGET_WORDS_PER_CLIP = 19;
-/**
- * A two-hander's clip band — deliberately LOWER than a single voice's.
- *
- * ── Why two speakers get fewer words ─────────────────────────────────────────────────────────
- * Two people sharing eight seconds lose time a single voice never does: the hand-off pause, the second
- * speaker drawing breath, the listener's reaction. At 18–20 words the second line routinely ran out of
- * time, and that is where the video model cut corners — it finished the line in the wrong character's
- * mouth, merged the two, or swapped them ("Motu's closing line in Patlu's voice"). 15–17 words gives each
- * speaker a comfortable half of the clip.
- */
-export const MIN_WORDS_PER_DUO_CLIP = 15;
-export const MAX_WORDS_PER_DUO_CLIP = 17;
-/** Two CHILDREN sharing an 8-second clip — see wordBudgetFor. */
-export const MIN_WORDS_PER_KIDS_CLIP = 13;
-export const MAX_WORDS_PER_KIDS_CLIP = 15;
-/** A single character's share in a two-hander. The two lines must still total inside the duo band above. */
-export const MIN_WORDS_PER_LINE = 7;
-export const MAX_WORDS_PER_LINE = 9;
-
-export interface WordBudget {
-  minClip: number;
-  maxClip: number;
-  minLine: number;
-  maxLine: number;
-}
-
-/**
- * The word budget for a clip, given how many people speak in it.
- *
- * ── Why this is not a constant ────────────────────────────────────────────────────
- * The CLIP band is a timing rule: eight seconds of speech is 18–20 words whoever says them. The
- * LINE band only ever existed to split that between two speakers.
- *
- * The catalogue now holds entries with a single speaker, and on those the two bands were applied
- * unchanged — so one line was told to be 8–12 words while its clip had to total 18 or more. Nothing can
- * satisfy both, so every clip of every solo ad failed validation and fell into the repair loop,
- * which then re-imposed the same impossible pair. With one speaker the line IS the clip, so it
- * inherits the clip band.
- */
-export function wordBudgetFor(speakerCount: number, options: { children?: boolean } = {}): WordBudget {
-  const solo = speakerCount <= 1;
-  // Children speak more slowly than an adult presenter, and a video model voicing a child keeps that
-  // pace: 15–17 words left the second child gabbling to fit the eight seconds. Two lines of 6–8.
-  if (options.children && !solo) {
-    return { minClip: MIN_WORDS_PER_KIDS_CLIP, maxClip: MAX_WORDS_PER_KIDS_CLIP, minLine: 6, maxLine: 8 };
-  }
-  return {
-    minClip: solo ? MIN_WORDS_PER_CLIP : MIN_WORDS_PER_DUO_CLIP,
-    maxClip: solo ? MAX_WORDS_PER_CLIP : MAX_WORDS_PER_DUO_CLIP,
-    minLine: solo ? MIN_WORDS_PER_CLIP : MIN_WORDS_PER_LINE,
-    maxLine: solo ? MAX_WORDS_PER_CLIP : MAX_WORDS_PER_LINE,
-  };
-}
+export {
+  MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP, PREFERRED_WORDS_PER_CLIP,
+  MIN_WORDS_PER_LINE, MAX_WORDS_PER_LINE, PREFERRED_WORDS_PER_LINE,
+  wordBudgetFor, countSpokenWords, spokenWordsOf,
+} from "./scriptContract";
+export type { WordBudget } from "./scriptContract";
 
 export interface DialogueLine {
   /** Character key, e.g. `motu`. */
@@ -594,17 +543,17 @@ export function applyNameSpellings(clips: DialogueClip[], spellings: NameSpellin
 
 // ── Validation ────────────────────────────────────────────────────────────────────────────────
 
-/** Words as a listener hears them — punctuation stripped, script-agnostic so Telugu counts too. */
-export function countSpokenWords(text: string): number {
-  return text
-    .replace(/[.,!?;:"'“”‘’()\[\]—–-]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean).length;
-}
+// Words are counted by utils/scriptContract countSpokenWords (re-exported above) — the one counter.
 
 export interface DialogueValidationOptions {
+  /**
+   * @deprecated Ignored since 2026-10-15: the CLIP band is the one contract (utils/scriptContract, 17–20)
+   * for every cast — no caller may widen or narrow it, so no category can slip past it.
+   */
   minWordsPerClip?: number;
+  /** @deprecated Ignored — see minWordsPerClip. */
   maxWordsPerClip?: number;
+  /** A speaker's share of a two-person clip (default: the contract's 7–12; one speaker: the clip band). */
   minWordsPerLine?: number;
   maxWordsPerLine?: number;
   /**
@@ -628,10 +577,10 @@ export interface DialogueValidationOptions {
    */
   forbiddenNames?: CharacterNameTokens[];
   /**
-   * Extra words the FINAL clip may use, per line and in total — given when it has to carry the
-   * business's address as well as the invitation. "Where is it?" / "Main Road, near the Clock Tower,
-   * Kakinada — come today!" does not fit two 7–9-word lines; it fits a shorter question and a longer
-   * answer. The first line may be that much shorter, the second that much longer.
+   * Extra room for the FINAL clip's LINE split — given when it has to carry the business's address as
+   * well as the invitation: a shorter question and a longer answer. The first line may be that much
+   * shorter, the second that much longer. It never moves the clip TOTAL: until 2026-10-15 it raised the
+   * clip ceiling too, which would have let a 22-word closing clip pass.
    */
   finalClipSlack?: number;
 }
@@ -705,11 +654,9 @@ export function validateDialogueClips(
   speakers: Speaker[],
   options: DialogueValidationOptions = {},
 ): string[] {
-  // Unset bands follow the cast size — a two-hander is held to the lower duo band (see wordBudgetFor).
+  // The clip band is the contract's for every cast; only the line split follows the cast size.
   const budget = wordBudgetFor(speakers.length);
   const {
-    minWordsPerClip = budget.minClip,
-    maxWordsPerClip = budget.maxClip,
     minWordsPerLine = budget.minLine,
     maxWordsPerLine = budget.maxLine,
     finalClipSlack = 0,
@@ -791,7 +738,6 @@ export function validateDialogueClips(
     const slack = n === expectedClipCount ? Math.max(0, finalClipSlack) : 0;
     const lineMin = Math.max(1, minWordsPerLine - slack);
     const lineMax = maxWordsPerLine + slack;
-    const clipMax = maxWordsPerClip + slack;
 
     if (clip.length !== speakers.length) {
       const names = speakers.map((s) => s.name).join(" and ");
@@ -826,7 +772,8 @@ export function validateDialogueClips(
         issues.push(`Clip ${n}: ${label(line.speaker)}'s line is empty.`);
         continue;
       }
-      if (words < lineMin || words > lineMax) {
+      // A single speaker's line IS the clip, so the clip check below is its check (one message, not two).
+      if (speakers.length > 1 && (words < lineMin || words > lineMax)) {
         issues.push(`Clip ${n}: ${label(line.speaker)}'s line must be ${lineMin}-${lineMax} words but has ${words}.`);
       }
       if (!/[.!?]$/.test(line.text.trim())) {
@@ -834,12 +781,9 @@ export function validateDialogueClips(
       }
     }
 
-    if (clip.length > 0 && (total < minWordsPerClip || total > clipMax)) {
-      issues.push(
-        `Clip ${n} must contain ${minWordsPerClip}-${clipMax} spoken words across both `
-        + `characters, but has ${total}.`,
-      );
-    }
+    // The clip total — every spoken word of every line in it — against the one contract (17–20).
+    const countIssue = clip.length > 0 ? clipWordCountIssue(n, total, speakers.length > 1) : null;
+    if (countIssue) issues.push(countIssue);
 
     // Two characters saying the same thing reads as a generation fault, not dialogue.
     const texts = clip.map((l) => l.text.trim().toLowerCase());

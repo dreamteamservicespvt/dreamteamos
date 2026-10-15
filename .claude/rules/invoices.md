@@ -85,8 +85,9 @@ Sidebar listens to the switch for team leaders only).
   `duplicatedFrom`, `sourceOrderId`, timestamps (`createdAt`, `updatedAt`, `issuedAt`, `issuedBy*`, `paidAt`,
   `cancelledAt`).
 - `invoice_counters/{2026-27}` `{ seq, fy }` · `invoice_numbers/{DTS-26-27-0001}` `{ number, invoiceId, fy,
-  sequence, byUid }` (create-only register; when its invoice is deleted it gains `deleted: true`, `deletedAt`,
-  `deletedByUid/Name`, `customerName`, `grandTotal` and the number is never reused) · `invoice_settings/access` `{ teamLeadersEnabled }` ·
+  sequence, byUid, issueDate }` (create-only register; when its invoice is deleted it gains `deleted: true`, `deletedAt`,
+  `deletedByUid/Name`, `customerName`, `grandTotal` and the number is never reused; `issueDate` since 2026-10-15 — written
+  by `generateInvoice` and rewritten with the invoice when an issued invoice's date changes; absent on older entries) · `invoice_settings/access` `{ teamLeadersEnabled }` ·
   `invoice_settings/defaults` `{ seller {name, gstin, address, website, email, phone, logoUrl}, payment (incl.
   qrImageUrl), terms, notes, taxRate, pricesIncludeTax, dueDays }`.
 
@@ -99,7 +100,24 @@ Sidebar listens to the switch for team leaders only).
   connection (15 s timeout) — a number is never given out offline.
 - **After issue (owner's choice):** editable and keeps its number. The builder opens an issued invoice
   read-only; Edit → Save changes (explicit, validated) bumps `revision` and logs `edited`. Status Unpaid / Paid /
-  Cancelled can change. **Delete** (owner, 2026-10-08): the maker or an admin can delete a draft or a generated
+  Cancelled can change. **An issued invoice's date (2026-10-15):** once numbered, its date must stay inside its
+  number's financial year (1 Apr – 31 Mar) and not before the date of the nearest earlier number still on record nor
+  after the nearest later one (same series; deleted numbers skipped; two may share a date). Checked only when the date
+  CHANGES (an older invoice already out of order can still have other fields fixed); a date the series cannot hold →
+  cancel and make a new invoice. Pure: `invoiceNumber.financialYearStartOfLabel` / `financialYearStartOfNumber` /
+  `sequenceOfNumber` / `financialYearSpan`; `invoiceDraft.issuedDateLimits` (picker min/max + hint "… its number's year
+  and place in the series") / `issuedDateProblem` / `validateInvoice(content, totals, issued?)`. The real check is
+  `services/invoices.saveInvoiceContent(…, { issued: true })` → `saveIssuedContent`: date unchanged → the plain update as
+  before (queued offline); changed → ONE transaction re-reads the invoice and the register entries around its number (up
+  to 10 each side), refuses with `InvoiceDateRefusedError` and the reason, else writes the invoice AND its register
+  entry's `issueDate`. A changed date needs a connection (15 s; offline → "needs a connection"). A neighbour's date is
+  its register `issueDate`, else (older entries) its invoice read outside the transaction — unreadable → only the year is
+  enforced on that side. The builder reads the rule on Edit (`fetchIssuedDateRule`), shows the error under the date at
+  once, and on a refusal jumps to the date and re-reads the rule. **Generate states the date and series**
+  (`generateConfirmCopy`, its own dialog `generate-confirm`): dated today → "Generate invoice"; otherwise "This draft is
+  dated 30 Mar 2027, not today." with **Use today's date** (`generate-use-today`; moves the due date by the same gap,
+  `withIssueDate`, and names the series today's date would put it in) or **Keep 30 Mar 2027** (`generate-keep-date`).
+  **Delete** (owner, 2026-10-08): the maker or an admin can delete a draft or a generated
   invoice (`deleteInvoice`); a generated one's number stays used — its register entry is marked deleted in the
   same transaction (the rules require it) — so the series skips it and never reuses it. The confirmation offers
   Cancelled as the gentler choice when the client already has the invoice (`deleteConfirmCopy`).
@@ -149,6 +167,13 @@ drawn at an exact size from its natural proportions within 170 × 44 (`fitLogo`)
 a real-browser run of the pages on the in-memory store (see DEVELOPMENT-HISTORY 2026-10-08).
 🟡 The PDF is photographed (html2canvas), so its text is not selectable; Print → "Save as PDF" gives a text PDF.
 🟡 No credit notes, no partial payments, no emailing from the app, no starting-number setting for the series.
+🟡 Issued-date check (2026-10-15): Generate does NOT check a draft's date against the previous number's date (a draft
+dated before the last issued invoice still takes the next number — the dialog shows the date; refusing would block
+legitimate back-dated invoices; the owner's call). Register entries before 2026-10-15 carry no `issueDate` and are not
+back-filled; a sales member cannot read other people's invoices, so on such a side only the year is enforced until that
+neighbour's date is next changed. Once the rules are published, the date change needs the `invoice_numbers` `issueDate`
+branch in `docs/firestore-rules.md` (added 2026-10-15). Checked by unit and in-memory-Firestore service tests
+(`invoiceDateOct15`; the real-browser check is in the 2026-10-15 history entry) — not against live Firebase.
 
 ## 27. RISKS
 

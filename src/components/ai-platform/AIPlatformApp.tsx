@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { getRoleLabel } from '@/utils/roleHelpers';
 import { FileUpload } from './FileUpload';
 import { GeneratedCard, parseVoiceOverClips, stripAttachmentDirective } from './GeneratedCard';
-import { buildPromptAttachments, type PromptAttachment } from '@/utils/promptAttachments';
+import { buildPromptAttachments, ownerPhotosInWords, type PromptAttachment } from '@/utils/promptAttachments';
 import { SavedItems, SavedGeneration } from './SavedItems';
 import { AdFormData, AdType, AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER, FileStore, GeneratedOutputs, GenerationStatus, LocationMode } from '@/types/aiPlatform';
 import PosterSpecFields from '@/components/work/PosterSpecFields';
@@ -22,7 +22,10 @@ import { useAssignmentBrief } from '@/hooks/useAssignmentBrief';
 import { briefAsInstructions, mergeBriefIntoInstructions } from '@/utils/adRequirement';
 import { assignmentFormSpec, jobClipCount, jobKitSpec, kitSpec, staleKitChanges } from '@/utils/assignmentFormSpec';
 import { CHATGPT_URL, GEMINI_URL } from './generation/mission';
-import { characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, packModelGender, packSpeakers, withCustomCharacter } from '@/services/characterPacks';
+import {
+  characterPackGroups, getCharacterPack, isCustomPack, isHumanPack, ownerPhotoFile, ownerPhotoSlots, ownerSlotLabel, packModelGender,
+  packSpeakers, withCustomCharacter,
+} from '@/services/characterPacks';
 import { attireLabel, attireOptionLabel, attireOptionsFor, castLabelFor, resolveModelSpec } from '@/utils/adRequirement';
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
 import { generateAdAssets, generatePosterConcepts, refinePosterConcept, refineVideoPoster, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
@@ -35,6 +38,7 @@ import { useAuthStore } from '@/store/authStore';
 import type { WorkAssignment } from '@/types';
 import { useConfirm } from '@/hooks/useConfirm';
 import { holdUpdates } from '@/services/appUpdate';
+import { usePopupClaim } from '@/hooks/usePopupClaim';
 import SpecUpdateDialog from './SpecUpdateDialog';
 import {
   describeSpecChanges, specOf, specSignature, type AssignmentSpec, type SpecChange,
@@ -42,6 +46,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import BrandLogo from '@/components/common/BrandLogo';
 import { clipLabel, clipRange, formatClipLine, formatClipScript, parseLabeledClips } from '@/utils/voiceOverFormat';
+import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, clipsNeededFor, countSpokenWords, inWordBand, spokenTextOf } from '@/utils/scriptContract';
 import { CUSTOM_FESTIVAL_OPTION, WISHES_FESTIVALS } from '@/utils/festivals';
 import { measureRun, saveRunTiming, type Checkpoint, type RunProfile } from '@/utils/generationEta';
 import { hasGeneratedAsset, type GenerationRun, type RunFacts } from './generation/run';
@@ -124,6 +129,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * member can take the update themselves whenever they are ready.
    */
   useEffect(() => holdUpdates(), []);
+  // Open = the studio holds the screen: a popup that waits its turn stays away until it closes (store/popupStore).
+  usePopupClaim("studio", true);
 
   const [formData, setFormData] = useState<AdFormData>({
     adType: AdType.COMMERCIAL,
@@ -149,7 +156,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   });
 
   const [files, setFiles] = useState<FileStore>({
-    logo: null, ownerImage: null, visitingCard: [], storeImage: [],
+    logo: null, ownerImage: null, secondOwnerImage: null, visitingCard: [], storeImage: [],
     productImages: [], flyersPosters: [], voiceRecording: [], textInstructionsFile: []
   });
 
@@ -399,6 +406,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   }, [assignment?.id, assignmentBrief.loading, assignmentBrief.businessInfo, assignmentBrief.businessAddress, assignmentBrief.notes, briefBusinessName]);
   /** The selected cartoon duo, or null for a normal human-model ad. */
   const activePack = getCharacterPack(formData.characterPack);
+  /**
+   * The Real Owner Duo's two photo slots (2026-10-14) — Owner 1 (LEFT, speaks first) and Owner 2 (RIGHT) —
+   * or [] / one slot for every other entry. The slots, the check and the guide read them here.
+   */
+  const ownerDuoSlots = ownerPhotoSlots(activePack).length > 1 ? ownerPhotoSlots(activePack) : [];
 
   /**
    * Previews of the client's uploaded location photos, so the "attach this one" instruction can
@@ -908,7 +920,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const currentRunProfile = (): RunProfile => ({
     mode: creationMode === 'poster' ? 'poster' : 'video',
     clipCount: runClipCount(),
-    fileCount: (files.logo ? 1 : 0) + (files.ownerImage ? 1 : 0) + files.visitingCard.length + files.storeImage.length
+    fileCount: (files.logo ? 1 : 0) + (files.ownerImage ? 1 : 0) + (files.secondOwnerImage ? 1 : 0)
+      + files.visitingCard.length + files.storeImage.length
       + files.productImages.length + files.flyersPosters.length + files.voiceRecording.length
       + files.textInstructionsFile.length,
     locationPhotos: creationMode === 'video' && formData.locationMode === 'real_provided' ? files.storeImage.length : 0,
@@ -929,6 +942,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       locationPhotos: onLocation ? files.storeImage.length : 0,
       castLabel: creationMode === 'video' && activePack ? activePack.label : '',
       ownerFace: creationMode === 'video' && !!activePack?.usesClientFace,
+      ownerPhotos: creationMode === 'video' && ownerDuoSlots.length > 1 ? ownerDuoSlots.map(ownerSlotLabel) : undefined,
     };
   };
 
@@ -964,8 +978,21 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       await showAlert({ title: "Poster size", description: "Enter a valid custom size — a ratio like 5 : 7, or pixels like 1080 × 1350.", confirmText: "OK" });
       return;
     }
+    // A Real Owner Duo needs BOTH owners' photos (2026-10-14): a frame made without one invents that person.
+    // Named by slot, so the member knows which one to add.
+    const missingOwners = creationMode === 'video' ? ownerDuoSlots.filter(slot => !ownerPhotoFile(files, slot)) : [];
+    if (missingOwners.length > 0) {
+      await showAlert({
+        title: missingOwners.length > 1 ? "Owner photos missing" : `${missingOwners[0].name} photo missing`,
+        description: `This is a ${activePack?.label} ad — each owner's face comes only from their own photo. Upload `
+          + missingOwners.map(s => `a clear, front-facing photo of ${s.name} (the ${s.kind} who stands on the ${s.side}) into "${ownerSlotLabel(s)}"`).join(', and ')
+          + ` — every clip reproduces both exact faces.`,
+        confirmText: "OK",
+      });
+      return;
+    }
     // The owner's face IS the ad on a Real Owner Face job — without the photo there is nothing to copy.
-    if (creationMode === 'video' && activePack?.usesClientFace && !files.ownerImage) {
+    if (creationMode === 'video' && activePack?.usesClientFace && ownerDuoSlots.length === 0 && !files.ownerImage) {
       await showAlert({ title: "Owner image missing", description: "This is a Real Owner Face ad. Upload a clear, front-facing photo of the owner into UPLOAD OWNER IMAGE — every clip reproduces that exact face.", confirmText: "OK" });
       return;
     }
@@ -1390,7 +1417,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (fromScript === 'done') return { tone: 'ok', label: 'Updated from final script' };
     if (key === 'voiceOver' && finalScriptProgress) return { tone: 'ok', label: 'Final script applied' };
     if (key === 'voiceOver' && outputs?.scriptQa) {
-      return { tone: outputs.scriptQa.passed ? 'ok' : 'wait', label: `Script QA ${outputs.scriptQa.score}/10` };
+      // A script no judge could score says so — a 0 is not a rating (utils/scriptQa unscoredSummary).
+      return outputs.scriptQa.unscored
+        ? { tone: 'wait', label: 'Script QA not scored' }
+        : { tone: outputs.scriptQa.passed ? 'ok' : 'wait', label: `Script QA ${outputs.scriptQa.score}/10` };
     }
     return null;
   };
@@ -1626,7 +1656,34 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                   {/* A Real Owner Face ad is built from ONE photo — the owner's face. It gets its own
                       box, first and unmissable, because on every other ad a client photo means a
                       LOCATION and here it means the identity. */}
-                  {creationMode === 'video' && activePack?.usesClientFace && (
+                  {/* The Real Owner Duo (2026-10-14): two owners, two photos — each slot names whose face it is
+                      and where that person stands, because owner photo 1 IS the person on the LEFT in every
+                      frame and every video prompt. Both are required. */}
+                  {creationMode === 'video' && ownerDuoSlots.length > 1 && (
+                    <div data-test="owner-image-slot" className="space-y-3">
+                      <p className={cn("text-[11px] font-semibold leading-relaxed", isDark ? "text-amber-300" : "text-amber-800")}>
+                        Two owners — one clear, front-facing photo of each. {ownerDuoSlots[0].name} stands on the LEFT and speaks first;
+                        {' '}{ownerDuoSlots[1].name} stands on the RIGHT.
+                      </p>
+                      {ownerDuoSlots.map(slot => (
+                        <div key={slot.index} data-test={`owner-photo-${slot.index + 1}`}>
+                          <FileUpload
+                            label={ownerSlotLabel(slot)}
+                            emphasis="owner"
+                            accept="image/png, image/jpeg, image/webp"
+                            required
+                            value={ownerPhotoFile(files, slot)}
+                            onChange={(f) => setFiles(prev => ({
+                              ...prev,
+                              [slot.index === 1 ? 'secondOwnerImage' : 'ownerImage']: (f as File) || null,
+                            }))}
+                            helperText={`${slot.name}'s face only — the ${slot.kind} on the ${slot.side} in every clip`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {creationMode === 'video' && activePack?.usesClientFace && ownerDuoSlots.length === 0 && (
                     <div data-test="owner-image-slot">
                       <FileUpload
                         label="Upload Owner Image"
@@ -2006,9 +2063,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                       <div className={cn("mt-3 rounded-lg border p-3",
                         isDark ? "border-amber-700/50 bg-amber-950/20" : "border-amber-300 bg-amber-50")}>
                         <p className={cn("text-xs", isDark ? "text-amber-200" : "text-amber-800")}>
-                          <b>{activePack.label}</b> — {activePack.tagline}.{activePack.characters.length > 1 ? ' Both characters speak in every clip.' : ` ${activePack.characters[0].name} presents throughout.`}
+                          <b>{activePack.label}</b> — {activePack.tagline}.{ownerDuoSlots.length > 1 ? ' Both owners speak in every clip.' : activePack.characters.length > 1 ? ' Both characters speak in every clip.' : ` ${activePack.characters[0].name} presents throughout.`}
                         </p>
-                        {activePack.usesClientFace && (
+                        {ownerDuoSlots.length > 1 ? (
+                          <p data-test="owner-duo-note" className={cn("mt-1.5 text-[11px] font-semibold", isDark ? "text-amber-300" : "text-amber-800")}>
+                            ↑ Upload both owners' photos in Assets &amp; Files — {ownerDuoSlots.map(ownerSlotLabel).join(' and ')}. Both are required.
+                          </p>
+                        ) : activePack.usesClientFace && (
                           <p className={cn("mt-1.5 text-[11px] font-semibold", isDark ? "text-amber-300" : "text-amber-800")}>
                             ↑ Upload the owner's face photo in UPLOAD OWNER IMAGE (Assets &amp; Files) — it is required.
                           </p>
@@ -2324,9 +2385,15 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                           {(() => {
                             const labeledClips = parseLabeledClips(customScript);
                             const isLabeled = labeledClips.length > 0;
-                            const wordCount = customScript.trim().split(/\s+/).filter(Boolean).length;
-                            const estSeconds = wordCount > 0 ? Math.round(wordCount / 2.3) : 0;
-                            const estClips = wordCount > 0 ? Math.max(1, Math.ceil(estSeconds / 8)) : 0;
+                            /*
+                              Spoken words only, by the one counter (utils/scriptContract) — the old split on spaces
+                              counted clip headers, `[Name]:` labels and stray dashes as words. The script is used
+                              word for word; the counts only show how each clip will fit its 8 seconds.
+                            */
+                            const clipWords = labeledClips.map(clip => countSpokenWords(spokenTextOf(clip)));
+                            const wordCount = isLabeled ? clipWords.reduce((sum, n) => sum + n, 0) : countSpokenWords(spokenTextOf(customScript));
+                            const estClips = clipsNeededFor(wordCount);
+                            const estSeconds = estClips * 8;
                             return (
                               <div className={cn("mt-2 p-2.5 rounded-lg border text-xs space-y-1",
                                 isLabeled
@@ -2342,12 +2409,19 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                                     </div>
                                     <div className="flex flex-wrap gap-1 pt-1">
                                       {labeledClips.map((_, i) => (
-                                        <span key={i} className={cn("px-1.5 py-0.5 rounded text-[10px] font-mono",
-                                          isDark ? "bg-emerald-900/40 text-emerald-300" : "bg-emerald-100 text-emerald-700")}>
-                                          {clipLabel(i)}
+                                        <span key={i} data-test={`custom-clip-words-${i + 1}`} className={cn("px-1.5 py-0.5 rounded text-[10px] font-mono",
+                                          inWordBand(clipWords[i])
+                                            ? (isDark ? "bg-emerald-900/40 text-emerald-300" : "bg-emerald-100 text-emerald-700")
+                                            : (isDark ? "bg-amber-900/40 text-amber-300" : "bg-amber-100 text-amber-800"))}>
+                                          {clipLabel(i)} · {clipWords[i]}w
                                         </span>
                                       ))}
                                     </div>
+                                    {clipWords.some(n => !inWordBand(n)) && (
+                                      <div className={isDark ? "text-amber-300" : "text-amber-700"}>
+                                        Generated clips hold {MIN_WORDS_PER_CLIP}–{MAX_WORDS_PER_CLIP} spoken words for 8 seconds. Yours is used exactly as written — a clip outside that may run short or long.
+                                      </div>
+                                    )}
                                   </>
                                 ) : wordCount > 0 ? (
                                   <>
@@ -2758,23 +2832,59 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
                             {outputs.coreMessage.messageLine || `${outputs.coreMessage.businessName} — ${outputs.coreMessage.corePromise}`}
                           </div>
                         )}
-                        {outputs.scriptQa && !finalScriptProgress && (
-                          <div data-test="script-qa" className="mx-4 mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs text-slate-300">
-                            <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <span className={cn("font-bold uppercase tracking-wider text-[10px]", outputs.scriptQa.passed ? "text-emerald-300" : "text-amber-300")}>
-                                Quality check {outputs.scriptQa.passed ? 'passed' : 'best draft'}
+                        {outputs.scriptQa && !finalScriptProgress && (() => {
+                          const qa = outputs.scriptQa;
+                          /** Kits made since 2026-10-15 run the improvement loop; a "passed" there means a genuine 10/10. */
+                          const loop = typeof qa.passes === 'number';
+                          /** The check is about THIS text only — a refine or a final script afterwards is a different script. */
+                          const current = !qa.checkedScript || qa.checkedScript === outputs.voiceOverScript;
+                          return (
+                            <div data-test="script-qa" className="mx-4 mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs text-slate-300">
+                              <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className={cn("font-bold uppercase tracking-wider text-[10px]", qa.passed && current ? "text-emerald-300" : "text-amber-300")}>
+                                  {qa.unscored ? 'Quality check not scored' : `Quality check ${qa.passed ? (loop ? '10/10' : 'passed') : 'best draft'}`}
+                                </span>
+                                {!qa.unscored && <span className="ag-num text-white">{qa.score}/10</span>}
+                                <span className="ag-muted">· {qa.drafts} draft{qa.drafts === 1 ? '' : 's'} checked{loop ? ` · ${qa.passes} improvement pass${qa.passes === 1 ? '' : 'es'}` : ''}</span>
+                                {!qa.unscored && <span className="ag-muted">· {Object.entries(qa.scores).map(([k, v]) => `${k} ${v}`).join(' · ')}</span>}
+                              </p>
+                              {!current && (
+                                <p data-test="script-qa-changed" className="mt-1.5 text-amber-200/90">
+                                  The script was changed after this check (a refine or a final script) — these scores are for the generated version.
+                                </p>
+                              )}
+                              {qa.notes.length > 0 && (
+                                <ul className="mt-1.5 list-disc pl-4 space-y-0.5 text-amber-100/90">
+                                  {qa.notes.map(n => <li key={n}>{n}</li>)}
+                                </ul>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        {hasClips && (() => {
+                          /*
+                            Spoken words per clip of the script as it stands NOW, counted by the one counter
+                            (utils/scriptContract) — labels and punctuation never count. Every generated clip is
+                            17–20; a member's own script is used word for word, so a clip outside the band is
+                            only flagged, never changed.
+                          */
+                          const counts = voiceClips.map(c => countSpokenWords(spokenTextOf(c.text)));
+                          const outside = counts.filter(n => !inWordBand(n)).length;
+                          return (
+                            <p data-test="clip-word-counts" className="mx-4 mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+                              <span className="font-semibold uppercase tracking-wider text-[10px] text-slate-300">Words per clip</span>
+                              {counts.map((n, i) => (
+                                <span key={i} data-test={`clip-words-${i + 1}`}
+                                  className={cn("ag-num rounded px-1.5 py-0.5", inWordBand(n) ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/15 text-amber-300")}>
+                                  {i + 1}: {n}
+                                </span>
+                              ))}
+                              <span className={outside ? "text-amber-300" : "text-slate-500"}>
+                                {outside ? `${outside} outside ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP}` : `all ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} ✓`}
                               </span>
-                              <span className="ag-num text-white">{outputs.scriptQa.score}/10</span>
-                              <span className="ag-muted">· {outputs.scriptQa.drafts} draft{outputs.scriptQa.drafts === 1 ? '' : 's'} checked</span>
-                              <span className="ag-muted">· {Object.entries(outputs.scriptQa.scores).map(([k, v]) => `${k} ${v}`).join(' · ')}</span>
                             </p>
-                            {outputs.scriptQa.notes.length > 0 && (
-                              <ul className="mt-1.5 list-disc pl-4 space-y-0.5 text-amber-100/90">
-                                {outputs.scriptQa.notes.map(n => <li key={n}>{n}</li>)}
-                              </ul>
-                            )}
-                          </div>
-                        )}
+                          );
+                        })()}
                         {voiceOverRevision && voiceOverRevision.after === outputs.voiceOverScript && (
                           <RefineRevisionBanner revision={voiceOverRevision} isDark={isDark}
                             onUndo={handleUndoVoiceOverRevision} onDismiss={() => setVoiceOverRevision(null)} />
@@ -3230,13 +3340,22 @@ const QuickCopyActions: React.FC<{
     // leave the page, so the attachment instruction follows them out.
     const attachment = attachments?.[index];
     if (attachment) {
+      // A Real Owner Face frame also needs the owner's face — a duo's two, in order (2026-10-14).
+      const owners = ownerPhotosInWords(attachment.ownerPhotos ?? []);
       toast({
         title: attachment.photoNumber === null
-          ? `${labelPrefix}${index + 1} copied — nothing to attach`
-          : `${labelPrefix}${index + 1} copied — now attach photo ${attachment.photoNumber}`,
+          ? owners
+            ? `${labelPrefix}${index + 1} copied — now attach ${owners}`
+            : `${labelPrefix}${index + 1} copied — nothing to attach`
+          : owners
+            ? `${labelPrefix}${index + 1} copied — now attach store photo ${attachment.photoNumber}, then ${owners}`
+            : `${labelPrefix}${index + 1} copied — now attach photo ${attachment.photoNumber}`,
         description: attachment.photoNumber === null
-          ? "This clip's location is generated from the prompt."
-          : `Store/Office Image #${attachment.photoNumber}${attachment.zone ? ` — ${attachment.zone}` : ''}${attachment.fileName ? ` (${attachment.fileName})` : ''}`,
+          ? owners
+            ? (attachment.ownerPhotos ?? []).join(', then ')
+            : "This clip's location is generated from the prompt."
+          : `Store/Office Image #${attachment.photoNumber}${attachment.zone ? ` — ${attachment.zone}` : ''}${attachment.fileName ? ` (${attachment.fileName})` : ''}`
+            + (owners ? `, then ${(attachment.ownerPhotos ?? []).join(', then ')}` : ''),
       });
     }
   };
@@ -3274,6 +3393,8 @@ const QuickCopyActions: React.FC<{
         const range = ranges?.[index];
         const attachment = attachments?.[index];
         const photoNumber = attachment?.photoNumber ?? null;
+        const ownerCount = attachment?.ownerPhotos?.length ?? 0;
+        const owners = ownerPhotosInWords(attachment?.ownerPhotos ?? []);
 
         return (
           <button
@@ -3282,8 +3403,10 @@ const QuickCopyActions: React.FC<{
             onClick={(event) => copyText(event, key, prompt, index)}
             title={attachment
               ? (photoNumber === null
-                ? `Copy ${frameLabel} — nothing to attach, the location is generated`
-                : `Copy ${frameLabel} — then attach Store/Office Image #${photoNumber}${attachment.zone ? ` (${attachment.zone})` : ''}`)
+                ? owners
+                  ? `Copy ${frameLabel} — then attach ${owners}`
+                  : `Copy ${frameLabel} — nothing to attach, the location is generated`
+                : `Copy ${frameLabel} — then attach Store/Office Image #${photoNumber}${attachment.zone ? ` (${attachment.zone})` : ''}${owners ? ` and ${owners}` : ''}`)
               : range ? `Copy ${frameLabel}${range}` : `Copy ${frameLabel} prompt`}
             className={cn(
               "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-all",
@@ -3296,7 +3419,15 @@ const QuickCopyActions: React.FC<{
             <span>{frameLabel}</span>
             {range && <span className="font-normal opacity-60">{range}</span>}
             {/* The photo itself, right on the chip — no number to decode, no list to count. */}
-            {attachment && (photoNumber === null ? (
+            {attachment && (photoNumber === null && ownerCount > 0 ? (
+              // The owners' faces: 👤 for one owner, 👤 1·2 for a Real Owner Duo's two, in order (2026-10-14).
+              <span
+                data-test={`attach-badge-${index}`}
+                className="ml-0.5 rounded bg-amber-400 px-1 py-0.5 text-[10px] font-bold leading-none text-amber-950"
+              >
+                👤{ownerCount > 1 ? ' 1·2' : ''}
+              </span>
+            ) : photoNumber === null ? (
               <span
                 data-test={`attach-badge-${index}`}
                 className={cn("ml-0.5 rounded px-1 py-0.5 text-[10px] font-bold leading-none",
@@ -3319,6 +3450,14 @@ const QuickCopyActions: React.FC<{
                 📎 {photoNumber}
               </span>
             ))}
+            {attachment && photoNumber !== null && ownerCount > 0 && (
+              <span
+                data-test={`attach-owner-badge-${index}`}
+                className="rounded bg-amber-400 px-1 py-0.5 text-[10px] font-bold leading-none text-amber-950"
+              >
+                +👤{ownerCount > 1 ? ' 1·2' : ''}
+              </span>
+            )}
           </button>
         );
       })}

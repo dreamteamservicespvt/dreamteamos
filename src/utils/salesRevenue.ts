@@ -101,3 +101,40 @@ export function dayRevenue(leads: Lead[], days: ReadonlySet<string> | null): Day
       .map(({ amount, count, categories }) => ({ amount, count, categories: Array.from(categories) })),
   };
 }
+
+/**
+ * Sales booked, by the day each sale was MADE and by the member who made it — the revenue charts of the
+ * accounts and main-admin pages (2026-10-15).
+ *
+ * ── Why ──
+ * Those charts dated a sale by `lead.lastUpdated` — which moves on every approval, edit or note — through
+ * `toISOString()` (the UTC day, the day before for anything between 00:00 and 05:30 IST), and read only the
+ * legacy single `saleDetails`, so every sale recorded in `saleItems` (all of them for months) was missing.
+ * Each sale now counts once, its agreed amount on its own day (`saleDay`, the local day it was submitted),
+ * across `saleItems` and the legacy shape alike. Rejected sales did not happen and are left out.
+ */
+export function salesBookedByDay(leads: Lead[]): Map<string, number> {
+  const byDay = new Map<string, number>();
+  for (const lead of leads) {
+    for (const item of saleItemsOf(lead)) {
+      if (item.verificationStatus === "rejected") continue;
+      const day = saleDay(item, lead);
+      if (!day) continue;
+      byDay.set(day, (byDay.get(day) ?? 0) + (item.amount || 0));
+    }
+  }
+  return byDay;
+}
+
+/** The same sales, totalled per salesperson (`lead.assignedTo`). */
+export function salesBookedByOwner(leads: Lead[]): Map<string, number> {
+  const byOwner = new Map<string, number>();
+  for (const lead of leads) {
+    if (!lead.assignedTo) continue;
+    for (const item of saleItemsOf(lead)) {
+      if (item.verificationStatus === "rejected") continue;
+      byOwner.set(lead.assignedTo, (byOwner.get(lead.assignedTo) ?? 0) + (item.amount || 0));
+    }
+  }
+  return byOwner;
+}

@@ -28,7 +28,12 @@ export const BUCKET_COLOR: Record<SmmBucket, string> = {
   waiting: "rgb(var(--viz-wait))",
   late: "rgb(var(--viz-late))",
   notStarted: "rgb(var(--viz-idle))",
+  // Live, but under another month's date (2026-10-15): the plain-magnitude grey, darker than "not started".
+  outside: "rgb(var(--viz-ink))",
 };
+
+/** The ring's parts a month shows: "Posted outside its dates" only when it has one (2026-10-15). */
+const bucketsOf = (glance: SmmGlance) => SMM_BUCKETS.filter((b) => b.key !== "outside" || glance.buckets.outside > 0);
 
 /** The stripe across the top of a card, and the status pill's tint. */
 export const TONE_STYLE: Record<SmmGlanceTone, { stripe: string; pill: string; icon: string }> = {
@@ -72,7 +77,7 @@ export function StatusRing({ glance, size = 112, stroke = 12 }: { glance: SmmGla
   let offset = 0;
   const label = glance.total === 0
     ? "Nothing promised this month"
-    : `${glance.posted} of ${glance.total} posted. ${SMM_BUCKETS.map((b) => `${glance.buckets[b.key]} ${b.label.toLowerCase()}`).join(", ")}.`;
+    : `${glance.posted} of ${glance.total} posted. ${bucketsOf(glance).map((b) => `${glance.buckets[b.key]} ${b.label.toLowerCase()}`).join(", ")}.`;
   return (
     <div data-test="smm-ring" className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={label}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
@@ -109,13 +114,16 @@ export function StatusRing({ glance, size = 112, stroke = 12 }: { glance: SmmGla
 export function RingLegend({ glance }: { glance: SmmGlance }) {
   return (
     <ul data-test="smm-ring-legend" className="min-w-0 flex-1 space-y-1.5">
-      {SMM_BUCKETS.map((b) => {
+      {bucketsOf(glance).map((b) => {
         const n = glance.buckets[b.key];
         return (
           <li key={b.key} title={b.hint} className={`flex items-center gap-2 text-[13px] ${n === 0 ? "opacity-40" : ""}`}>
             <span className={`h-2.5 w-2.5 shrink-0 ${b.key === "late" ? "rotate-45 rounded-[2px]" : "rounded-full"}`}
               style={{ background: BUCKET_COLOR[b.key] }} />
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">{b.label}</span>
+            {/* Wraps rather than truncates: "Posted outside its dates" (2026-10-15) is the longest label, and a
+                nowrap label's full width became the legend's minimum — the month page's glance stuck out of
+                its card by 8px at 390px (browser check). */}
+            <span className="min-w-0 flex-1 leading-tight text-muted-foreground">{b.label}</span>
             <span data-test={`smm-bucket-${b.key}`} className="font-semibold tabular-nums text-foreground">{n}</span>
           </li>
         );
@@ -179,14 +187,34 @@ export function NextPost({ glance }: { glance: SmmGlance }) {
 }
 
 /**
+ * "3 posts are dated outside 6 Sep – 5 Oct" — in amber, with what to do about it (2026-10-15). A post
+ * counts toward its month only on one of the month's own days; one dated outside is not counted as
+ * delivered, and without this line a month would simply look short with no reason given. Nothing when
+ * every dated piece is inside.
+ */
+export function DatedOutsideNote({ glance }: { glance: SmmGlance }) {
+  if (!glance.outsideLine) return null;
+  return (
+    <div data-test="smm-dated-outside" className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+      <AlertTriangle size={14} className="mt-px shrink-0 text-amber-800 dark:text-warning" />
+      {/* amber-800 on light: the warning yellow on its own tint is unreadable (browser check, 2026-10-13). */}
+      <p className="min-w-0">
+        <b className="font-semibold text-amber-800 dark:text-warning">{glance.outsideLine}.</b> {glance.outsideHint}
+      </p>
+    </div>
+  );
+}
+
+/**
  * The whole glance. `card`: one column, for the board. `wide`: the ring beside the details, for the
  * month's own page.
  */
 export function MonthGlance({ glance, layout = "card" }: { glance: SmmGlance; layout?: "card" | "wide" }) {
   if (layout === "wide") {
     return (
-      <div data-test="smm-glance" className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="flex items-center gap-5">
+      <div data-test="smm-glance" className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {/* One column that can shrink on a phone: the implicit `auto` track grew to its content's width. */}
+        <div className="flex min-w-0 items-center gap-5">
           <StatusRing glance={glance} size={124} stroke={13} />
           {/* Kept narrow, so each count sits right beside its words instead of across the page. */}
           <div className="flex min-w-0 max-w-[15rem] flex-1"><RingLegend glance={glance} /></div>
@@ -196,6 +224,7 @@ export function MonthGlance({ glance, layout = "card" }: { glance: SmmGlance; la
           <TimeBar glance={glance} />
           <NextPost glance={glance} />
         </div>
+        {glance.outsideLine && <div className="md:col-span-2"><DatedOutsideNote glance={glance} /></div>}
       </div>
     );
   }
@@ -205,6 +234,7 @@ export function MonthGlance({ glance, layout = "card" }: { glance: SmmGlance; la
         <StatusRing glance={glance} />
         <RingLegend glance={glance} />
       </div>
+      <DatedOutsideNote glance={glance} />
       <KindBars glance={glance} />
       <TimeBar glance={glance} />
       <NextPost glance={glance} />

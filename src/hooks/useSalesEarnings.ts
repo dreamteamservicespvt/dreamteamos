@@ -1,9 +1,12 @@
-import { useMemo } from "react";
-import { commissionRate } from "@/services/settlements";
+import { useEffect, useMemo, useState } from "react";
+import { onSnapshot } from "firebase/firestore";
+import { memberSettlementsQuery } from "@/services/settlements";
 import { useSalaryMonth, type SalaryMonthState } from "./useSalaryMonth";
 import { useMyLeads } from "./useMyLeads";
 import { deductionsFor, netPayable } from "@/utils/payrollEngine";
-import { salesIncentive, salesInPeriod } from "@/utils/salesPay";
+import { collectionsOf, periodIncentive, settlementCoverage } from "@/utils/salesPay";
+import { commissionTermsFor } from "@/utils/payTerms";
+import type { AppUser, CommissionSettlement } from "@/types";
 
 /**
  * A sales member's total earnings for a pay period: salary (attendance-driven, exactly like
@@ -44,6 +47,11 @@ export interface SalesEarnings {
   /** Sales recorded but not yet verified — not paid, but worth surfacing. */
   pendingSaleCount: number;
   pendingSaleValue: number;
+  /**
+   * Verified money in the period whose incentive Settlements already paid (2026-10-15) — not paid again
+   * with the salary, so it is not in `commission`. 0 when nothing was settled.
+   */
+  settledBase: number;
 
   /** salaryPayable + commission — once the period is paid, the amount that was paid. */
   totalEarnings: number;
@@ -66,19 +74,43 @@ export interface UseSalesEarningsOptions {
    * appointment letters state in those words. Omit it, or leave it 0, and nothing is withheld.
    */
   dailyTarget?: number;
+  /**
+   * The member's `payHistory` (2026-10-15): the salary, the rate and the target are then the ones that
+   * applied IN the period viewed. Absent = the fields above for every period (legacy).
+   */
+  payHistory?: AppUser["payHistory"];
 }
 
 export function useSalesEarnings({
-  memberId, monthlySalary, earningsOption, month, dailyTarget,
+  memberId, monthlySalary, earningsOption, month, dailyTarget, payHistory,
 }: UseSalesEarningsOptions): SalesEarnings {
-  const salary = useSalaryMonth({ memberId, monthlySalary, month });
+  const salary = useSalaryMonth({ memberId, monthlySalary, payHistory, month });
   // Shared with Dashboard / My Leads / My Performance — one listener for the whole session
   // (see store/salesLeadsStore.ts) instead of this hook opening its own. Only ever called with
   // the signed-in member's own uid, which is exactly what the shared store is keyed on.
   const { leads, loading: leadsLoading } = useMyLeads();
   const leadsLoaded = !!memberId && !leadsLoading;
 
-  const rate = commissionRate(earningsOption);
+  /**
+   * The member's incentive settlements — what Settlements already paid is not paid again with the
+   * salary (owner, 2026-10-15), so the figure here is the one Sales Payroll will pay.
+   */
+  const [settlements, setSettlements] = useState<CommissionSettlement[] | null>(null);
+  useEffect(() => {
+    if (!memberId) return;
+    return onSnapshot(
+      memberSettlementsQuery(memberId),
+      snap => setSettlements(snap.docs.map(d => ({ id: d.id, ...d.data() } as CommissionSettlement))),
+      error => { console.error("Settlements listener failed:", error); setSettlements([]); },
+    );
+  }, [memberId]);
+
+  // The plan and the target that applied IN the period viewed (utils/payTerms).
+  const terms = commissionTermsFor(
+    { salary: monthlySalary, dailyTarget, earningsOption: earningsOption as AppUser["earningsOption"], payHistory },
+    salary.month,
+  );
+  const rate = terms.rate;
 
   /**
    * Incentives follow the same 10th→9th pay period as salary, so one payday settles one span —
@@ -87,13 +119,14 @@ export function useSalesEarnings({
    * arrives). The rule — the sales counted and the 75% target gate — is `utils/salesPay`, the same
    * one Sales Payroll prices this member with, so the two screens cannot disagree again.
    */
-  const sales = useMemo(
-    () => salesInPeriod(leads, salary.period.start, salary.period.end),
-    [leads, salary.period.start, salary.period.end],
-  );
-  const incentive = salesIncentive({
-    salesBase: sales.salesBase, rate, dailyTarget, periodStart: salary.period.start,
-  });
+  const collections = useMemo(() => collectionsOf(leads), [leads]);
+  const settled = useMemo(() => settlementCoverage(settlements || [], collections), [settlements, collections]);
+  const incentive = useMemo(() => periodIncentive({
+    collections, period: salary.period, rate, dailyTarget: terms.dailyTarget,
+    // A paid period: what that payment left out; otherwise everything Settlements has paid.
+    exclude: salary.paidLine ? (salary.paidLine.incentive?.settledKeys ?? []) : settled,
+  }), [collections, salary.period, rate, terms.dailyTarget, salary.paidLine, settled]);
+  const sales = incentive;
 
   // The salary half is the engine's own figure — `netPayable` is what Payroll pays too. Once the
   // period is paid, `salary.computation` is the paid record's, so this is what was paid for it.
@@ -113,7 +146,7 @@ export function useSalesEarnings({
   const totalEarnings = paid ? paid.netSalary : salaryPayable + incentive.commission;
 
   return {
-    loading: salary.loading || !leadsLoaded,
+    loading: salary.loading || !leadsLoaded || (!!memberId && settlements === null),
     salary,
     salaryPayable,
     salaryDeduction,
@@ -135,6 +168,7 @@ export function useSalesEarnings({
     incentiveShortfall: incentive.shortfall,
     pendingSaleCount: sales.pendingSaleCount,
     pendingSaleValue: sales.pendingSaleValue,
+    settledBase: paid ? (paid.incentive?.settledBase ?? 0) : incentive.settledBase,
     totalEarnings,
     liveTotalEarnings,
     changedSincePaid: !!paid && Math.round(liveTotalEarnings) !== Math.round(paid.netSalary),

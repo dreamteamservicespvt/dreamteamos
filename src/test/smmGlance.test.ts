@@ -31,7 +31,7 @@ describe("monthGlance — the status in plain words", () => {
     }), TODAY);
     expect(g).toMatchObject({ status: "off_track", label: "Off track", reason: "2 posts are late", tone: "bad" });
     // 6 promised: 1 posted, 1 approved, 1 with the client, 2 late, 1 never planned.
-    expect(g.buckets).toEqual({ posted: 1, progress: 1, waiting: 1, notStarted: 1, late: 2 });
+    expect(g.buckets).toEqual({ posted: 1, progress: 1, waiting: 1, notStarted: 1, late: 2, outside: 0 });
     expect([g.posted, g.total, g.percent]).toEqual([1, 6, 17]);
   });
 
@@ -40,8 +40,9 @@ describe("monthGlance — the status in plain words", () => {
       commitments: { poster: 6, ai_ad: 0, real_video: 0 },
       items: [1, 2, 3, 4, 5, 6].map((i) => item({ status: "in_progress", uploadDate: `2026-10-${String(10 + i).padStart(2, "0")}` })),
     }), TODAY);
-    // 15 of 31 days gone → 2 posts expected by today, none posted.
-    expect(g).toMatchObject({ status: "at_risk", reason: "2 posts behind schedule", tone: "warn" });
+    // 15 of its 30 own days gone (20 Sep … 19 Oct — 20 Oct is the renewal day, 2026-10-15) → 3 posts
+    // expected by today, none posted.
+    expect(g).toMatchObject({ status: "at_risk", reason: "3 posts behind schedule", tone: "warn" });
   });
 
   it("calls a month keeping pace On track, and mentions posts waiting on the client", () => {
@@ -125,7 +126,8 @@ describe("monthGlance — the status in plain words", () => {
       { kind: "ai_ad", label: "Videos", posted: 1, total: 2 },
     ]);
     expect(g.extra).toBe(1);
-    expect(g.timeLabel).toBe("17 days left");
+    // 4 Oct … 19 Oct — 20 Oct is the renewal day, not one of its days (2026-10-15).
+    expect(g.timeLabel).toBe("16 days left");
     expect(g.next).toEqual({ title: "Diwali offer", day: "2026-10-05", dayLabel: "Tomorrow", timeLabel: "6:00 AM" });
   });
 

@@ -132,9 +132,13 @@ export default function AiAccounts() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {[
               { label: "Flow accounts", value: totals.accounts, sub: `${totals.live} usable` },
-              { label: "Credits this month", value: totals.capacity.toLocaleString("en-IN"), sub: `${settings.monthlyCredits} per account` },
-              { label: "Used", value: totals.used.toLocaleString("en-IN"), sub: "this cycle" },
-              { label: "Left", value: totals.remaining.toLocaleString("en-IN"), sub: "across all accounts", test: "total-left" },
+              // ── Why "cycle", not "month" (2026-10-15) ──
+              // These add up each account's CURRENT CYCLE — it runs from the day that account was opened to
+              // the day before, every month, so no two accounts' cycles line up. "This month" read as the
+              // calendar month, which is what the Credit usage tab lists.
+              { label: "Credits per cycle", value: totals.capacity.toLocaleString("en-IN"), sub: `${settings.monthlyCredits} per account, from its opening day` },
+              { label: "Used", value: totals.used.toLocaleString("en-IN"), sub: "in each account's current cycle" },
+              { label: "Left", value: totals.remaining.toLocaleString("en-IN"), sub: "in each account's current cycle", test: "total-left" },
               { label: "Expiring in 30 days", value: totals.expiringSoon, sub: "renew or replace" },
             ].map((c) => (
               <div key={c.label} className="bg-card border border-border rounded-xl p-3 min-w-0">
@@ -205,8 +209,12 @@ export default function AiAccounts() {
       ) : tab === "usage" ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <input type="month" className={`${fieldClass} w-44`} value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} data-test="usage-month" />
+            <input type="month" className={`${fieldClass} w-44`} value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} data-test="usage-month"
+              aria-label="Calendar month" />
             <button className={buttonClass.ghost} onClick={() => setDialog({ kind: "usage" })} data-test="usage-record"><Plus className="h-4 w-4" /> Record credits</button>
+            <p className="basis-full text-[11px] text-muted-foreground" data-test="usage-month-note">
+              Entries by the calendar month the clips were made in. An account's own cycle runs from its opening day — each entry says which.
+            </p>
           </div>
           <UsageList entries={entries} viewerId={user.uid} manager showUser onEdit={(entry) => setDialog({ kind: "usage", entry })} onDelete={removeEntry} />
         </div>
@@ -217,7 +225,10 @@ export default function AiAccounts() {
       )}
 
       <FlowAccountDialog open={dialog?.kind === "add" || dialog?.kind === "edit"} onClose={() => setDialog(null)} actor={user} settings={settings}
-        account={dialog?.kind === "edit" ? dialog.account : null} owners={persons} accounts={accounts} />
+        // The LIVE account, not the copy from when Edit was clicked (2026-10-15): credits recorded while the
+        // dialog is open lock its creation date at once. The service re-checks it in a transaction.
+        account={dialog?.kind === "edit" ? accounts.find((a) => a.id === dialog.account.id) || dialog.account : null}
+        owners={persons} accounts={accounts} />
       <ApiKeyDialog open={!!keyAccount} onClose={() => setDialog(null)} account={keyAccount} accounts={accounts} actor={user}
         onSaved={() => setDialog(null)} />
       <AssignDialog

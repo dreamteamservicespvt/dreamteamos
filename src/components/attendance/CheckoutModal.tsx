@@ -9,6 +9,9 @@ import { getWhatsAppUrl } from "@/utils/phone";
 import { driveAdTypeFolder, driveFileName, driveFolderPath, jobDrivePath, todaysDriveUploads } from "@/utils/driveUpload";
 import { markDriveUploaded } from "@/services/workDrive";
 import SmmDueCard from "@/components/smm/SmmDueCard";
+import { UnlessCoveredByDelivery, useCoveredByDelivery } from "@/components/smm/alerts/DeliveryCoverage";
+import CheckoutSmmReasons, { type CheckoutReasonEntry } from "@/components/smm/alerts/CheckoutSmmReasons";
+import { saveCheckoutReasons } from "@/services/smmDelivery";
 import type { AppUser, DailyCheckin, WorkAssignment } from "@/types";
 import {
   AlertTriangle, ArrowRight, CheckCircle2, Clock, LogOut, Loader2, User, Video, UploadCloud, ExternalLink,
@@ -69,9 +72,18 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
     }
   };
 
+  // SMM Delivery Control's check-out step (2026-10-15): the reasons for each social-media piece not done.
+  const smmCovered = useCoveredByDelivery();
+  const [smmReasons, setSmmReasons] = useState<{ entries: CheckoutReasonEntry[]; complete: boolean }>({ entries: [], complete: true });
+
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      if (smmCovered && smmReasons.entries.length) {
+        // Saved first; a month that could not be saved never stops the check-out (the reasons are help, not a gate on leaving).
+        const r = await saveCheckoutReasons(smmReasons.entries).catch((e) => ({ saved: 0, failed: [{ campaignId: "", message: e instanceof Error ? e.message : "" }] }));
+        if (r.failed.length) toast({ title: "Some social media reasons were not saved", description: r.failed[0].message || "Give them from Delivery Control.", variant: "destructive" });
+      }
       const checkOutTime = format(new Date(), "hh:mm a");
 
       await updateDoc(doc(db, "daily_checkins", todayCheckin.id), {
@@ -340,8 +352,12 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
         </div>
 
         {/* The last chance to notice a monthly client's post is due tomorrow — the same list the
-            check-in prompt showed this morning, when there was still a whole day to make it. */}
-        <SmmDueCard onNavigate={onClose} />
+            check-in prompt showed this morning, when there was still a whole day to make it. For the people
+            SMM Delivery Control covers (Live, 2026-10-15) a one-tap "why not done" for each piece due, late or
+            behind replaces it, and Submit waits for every answer. */}
+        <UnlessCoveredByDelivery covered={<CheckoutSmmReasons user={user} onChange={setSmmReasons} />}>
+          <SmmDueCard onNavigate={onClose} />
+        </UnlessCoveredByDelivery>
 
         {/* Only editable field: Note */}
         <div>
@@ -364,7 +380,7 @@ export default function CheckoutModal({ user, todayCheckin, assignments, onClose
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || (smmCovered && !smmReasons.complete)}
             data-test="submit-checkout"
             className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >

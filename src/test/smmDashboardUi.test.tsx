@@ -26,7 +26,7 @@ const month = (over: Partial<SmmCampaign>): SmmCampaign => ({
 function months(): SmmCampaign[] {
   return [
     month({
-      id: "late", businessName: "Lakshmi Jewellers",
+      id: "late", businessName: "Lakshmi Jewellers", clientPhoneId: "91000000001",
       items: [
         item({ status: "posted", uploadDate: "2026-09-25" }),
         item({ status: "planned", uploadDate: "2026-10-01" }),
@@ -39,13 +39,13 @@ function months(): SmmCampaign[] {
       }],
     }),
     month({
-      id: "good", businessName: "Green Leaf Cafe", amount: 15000,
+      id: "good", businessName: "Green Leaf Cafe", amount: 15000, clientPhoneId: "91000000002",
       cycle: { month: "2026-09", startDate: "2026-09-06", endDate: "2026-10-06" },
       items: [1, 2, 3, 4].map(() => item({ status: "posted", uploadDate: "2026-09-28" })),
       renewal: { state: "pitched" },
     }),
     month({
-      id: "new", businessName: "New Dawn Clinic", team: { creator: null, publisher: null, marketer: null, assistants: [] },
+      id: "new", businessName: "New Dawn Clinic", clientPhoneId: "91000000003", team: { creator: null, publisher: null, marketer: null, assistants: [] },
       cycle: { month: "2026-10", startDate: "2026-10-08", endDate: "2026-11-08" },
     }),
   ];
@@ -70,7 +70,8 @@ describe("the Social Media dashboard", () => {
     expect(screen.getByTestId("smm-stat-late").textContent).toBe("1");
     expect(screen.getByTestId("smm-stat-waiting").textContent).toBe("1");
     expect(screen.getByTestId("smm-stat-setup").textContent).toBe("1");
-    expect(screen.getByTestId("smm-stat-running").textContent).toBe("3");
+    // Running = on one of its own days today, one per client (2026-10-15): New Dawn starts on 8 Oct.
+    expect(screen.getByTestId("smm-stat-running").textContent).toBe("2");
   });
 
   it("opens the pile a tile counts", () => {

@@ -12,7 +12,9 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { DURATIONS, END_CREDITS_SECONDS, durationFromSeconds, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
 import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory, productionCategory } from "./serviceCatalog";
 import { PRICING } from "./pricing";
-import { getCharacterPack, isCustomPack, isHumanPack, isKidsPack, packCastGender, packHighlight, packModelGender } from "@/services/characterPacks";
+import {
+  getCharacterPack, isCustomPack, isHumanPack, isKidsPack, isOwnerDuoPack, ownerPhotoSlots, packCastGender, packHighlight, packModelGender,
+} from "@/services/characterPacks";
 import { posterStyleLabel, AUTO_POSTER_STYLE } from "@/services/posterStyles";
 import {
   DEFAULT_POSTER_SIZE, DEFAULT_POSTER_PRICE, POSTER_DURATION, isPosterCategory, posterSizeLabel,
@@ -110,6 +112,8 @@ export function castLabelFor(characterPack: string | null | undefined, modelGend
   const cast = pack ? packCastGender(pack) : (modelGender || ModelGender.FEMALE);
   const duo = !!pack && pack.characters.length > 1;
   if (isKidsPack(pack)) return cast === "mixed" ? "👧👦 girl & boy" : cast === "male" ? "👦👦 both boys" : "👧👧 both girls";
+  // The Real Owner Duo (Male + Female) puts the man first — he stands on the LEFT and speaks first (2026-10-14).
+  if (cast === "mixed" && isOwnerDuoPack(pack)) return "👨👩 man & woman";
   if (cast === "mixed") return "👩👨 woman & man";
   if (cast === "male") return duo ? "👨👨 both men" : "👨 male";
   return duo ? "👩👩 both women" : "👩 female";
@@ -521,7 +525,10 @@ export function buildAssignmentRequirementsMessage(a: {
     // The custom entry has no cast of its own — the description IS the character, so it is the
     // first thing the member must read about this job.
     character ? `🎭 *Character:* ${character}` : null,
-    pack ? (pack.characters.length > 1
+    pack ? (isOwnerDuoPack(pack)
+      // The Real Owner Duo (2026-10-14): two real owners, one photo each — who is who, as the studio's slots say it.
+      ? `💬 Both owners speak in every clip — ${ownerPhotoSlots(pack).map((s) => `${s.name} = the ${s.kind} (${s.side})`).join(", ")}; upload one clear photo of EACH owner`
+      : pack.characters.length > 1
       ? `💬 Both characters speak in every clip`
       : `💬 ${pack.characters[0].name} carries every clip alone`) : null,
     pack ? (a.realLocationProvided
