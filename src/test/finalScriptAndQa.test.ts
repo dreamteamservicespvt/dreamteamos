@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { finalScriptAiInstruction, finalScriptFromKit, finalScriptTemplate, readFinalScript } from "@/utils/finalScript";
 import {
   QA_DIMENSIONS, SCRIPT_GATE_DEADLINE_MS, SCRIPT_IMPROVEMENT_PASSES, SCRIPT_IMPROVEMENT_STALLS, isBetterDraft, isPerfect,
-  mechanicalCaps, nextImprovement, overallScore, parseScriptQa, qaDecision, qaInstructions, qaSummary, unscoredSummary,
+  isReady, mechanicalCaps, nextImprovement, overallScore, parseScriptQa, qaDecision, qaInstructions, qaSummary, unscoredSummary,
   withMechanicalChecks, type ScriptQaReport,
 } from "@/utils/scriptQa";
 import { SCRIPT_QA_SYSTEM_PROMPT } from "@/services/prompts/scriptQa";
@@ -227,14 +227,30 @@ describe("the improvement loop — bounded, and never fooled (utils/scriptQa nex
   });
 
   it("spends at most SCRIPT_IMPROVEMENT_PASSES passes, then ships the best with its real score", () => {
-    expect(SCRIPT_IMPROVEMENT_PASSES).toBe(5);
-    const good = standing(report({ ...ALL(9) }));
-    expect(nextImprovement({ best: good, passesUsed: 4, stalls: 0, elapsedMs: 0 })).toEqual({ mode: "polish", drafts: 1 });
-    expect(nextImprovement({ best: good, passesUsed: 5, stalls: 0, elapsedMs: 0 })).toEqual({ stop: "passes" });
+    expect(SCRIPT_IMPROVEMENT_PASSES).toBe(3);
+    const good = standing(report({ ...ALL(8.8) }));
+    expect(nextImprovement({ best: good, passesUsed: 2, stalls: 0, elapsedMs: 0 })).toEqual({ mode: "polish", drafts: 1 });
+    expect(nextImprovement({ best: good, passesUsed: 3, stalls: 0, elapsedMs: 0 })).toEqual({ stop: "passes" });
   });
 
-  it("stops after two rounds in a row that found nothing better, and at the deadline", () => {
-    const good = standing(report(ALL(9)));
+  it("ships a READY draft at once — ≥ 9/10, no area below 8.5, nothing invented, nothing code found (2026-10-16)", () => {
+    expect(nextImprovement({ best: standing(report(ALL(9))), passesUsed: 0, stalls: 0, elapsedMs: 0 })).toEqual({ stop: "ready" });
+    // A problem the judge listed does not block it (it already caps its dimension at 9).
+    const listed = report(ALL(9.5), { problems: [{ clip: 1, issue: "soft hook", fix: "sharper", dimension: "persuasion" }] });
+    expect(isReady(listed)).toBe(true);
+    // Every hard rule still blocks it.
+    expect(isReady(report(ALL(9.5), { unsupportedClaims: ["clip 1: free installation"] }))).toBe(false);
+    expect(isReady(withMechanicalChecks(report(ALL(9.5)), ["Clip 2 must contain 17–20 spoken words, but it has 22."]))).toBe(false);
+    expect(isReady(report({ ...ALL(9.6), language: 8 }))).toBe(false);
+    expect(isReady(report(ALL(8.9)))).toBe(false);
+    expect(nextImprovement({ best: standing(report(ALL(9.5)), { contract: { violations: 1, distance: 2 } }), passesUsed: 0, stalls: 0, elapsedMs: 0 })).toEqual({ mode: "polish", drafts: 1 });
+    expect(nextImprovement({ best: standing(report(ALL(9.5)), { broken: 1 }), passesUsed: 0, stalls: 0, elapsedMs: 0 })).toEqual({ mode: "rewrite", drafts: 2 });
+  });
+
+  it("stops after a round that found nothing better, and at the deadline", () => {
+    expect(SCRIPT_IMPROVEMENT_STALLS).toBe(1);
+    expect(SCRIPT_GATE_DEADLINE_MS).toBe(45_000);
+    const good = standing(report(ALL(8.8)));
     expect(nextImprovement({ best: good, passesUsed: 2, stalls: SCRIPT_IMPROVEMENT_STALLS, elapsedMs: 0 })).toEqual({ stop: "stalled" });
     expect(nextImprovement({ best: good, passesUsed: 1, stalls: 0, elapsedMs: SCRIPT_GATE_DEADLINE_MS })).toEqual({ stop: "deadline" });
   });

@@ -160,7 +160,8 @@ describe("a single voice — generate, validate, repair, judge, ship", () => {
   it("rejects a rewrite that fixes the language but breaks the word limit — the valid clip ships", async () => {
     writer = [script(CLIP_A, CLIP_B)];
     const betterButLong = "Every purchase comes with free home delivery and patient expert advice, so please call the number shown on the screen today."; // 21 — one over
-    judge = () => verdict(9, { problems: [{ clip: 2, dimension: "language", issue: "the ending is flat", fix: "warmer close" }] }, { language: 9 });
+    // Below "ready" (utils/scriptQa isReady, 2026-10-16), so the loop does try to improve it.
+    judge = () => verdict(8.8, { problems: [{ clip: 2, dimension: "language", issue: "the ending is flat", fix: "warmer close" }] }, { language: 8.8 });
     edit = () => editReply(2, betterButLong);
     const out = await run(form());
     expect(countSpokenWords(betterButLong)).toBe(21);
@@ -205,17 +206,17 @@ describe("a single voice — generate, validate, repair, judge, ship", () => {
 
   it("spends at most the improvement budget, then ships the best draft with its REAL score", async () => {
     writer = [script(CLIP_A, CLIP_B)];
-    // Each judgement a little higher, always with one problem left in clip 1: every pass improves, none is perfect.
-    judge = (_, n) => verdict(Math.min(9.4, 8.9 + n * 0.1), { problems: [{ clip: 1, dimension: "persuasion", issue: "the hook is soft", fix: "sharper hook" }] });
+    // Each judgement a little higher, always with one problem left in clip 1: every pass improves, none is ready.
+    judge = (_, n) => verdict(Math.min(8.7, 8.2 + n * 0.1), { problems: [{ clip: 1, dimension: "persuasion", issue: "the hook is soft", fix: "sharper hook" }] }, { persuasion: 9.4 });
     const adverbs = ["gladly", "proudly", "warmly", "happily", "always", "simply", "truly"];
     edit = (_, n) => editReply(1, `${CLIP_A.replace(/ today\.$/, "")} ${adverbs[n % adverbs.length]}.`);
     const out = await run(form());
     expect(out.scriptQa).toMatchObject({ passes: SCRIPT_IMPROVEMENT_PASSES, stopReason: "passes", drafts: SCRIPT_IMPROVEMENT_PASSES + 1, passed: false });
     expect(judgeCalls()).toHaveLength(SCRIPT_IMPROVEMENT_PASSES + 1);
-    // The best judgement was 9.4 everywhere — but the judge listed a problem against persuasion, so code holds
-    // persuasion at 9 and the REAL overall is 9.3, never the judge's rounder number.
+    // The best judgement gave persuasion 9.4 — but the judge listed a problem against persuasion, so code holds
+    // it at 9 and the REAL overall is 8.7 (8.6 elsewhere), never the judge's rounder number.
     expect(out.scriptQa!.scores.persuasion).toBe(9);
-    expect(out.scriptQa!.score).toBe(9.3);
+    expect(out.scriptQa!.score).toBe(8.7);
     expect(shippedWords(out.voiceOverScript).every(inWordBand)).toBe(true);
   });
 

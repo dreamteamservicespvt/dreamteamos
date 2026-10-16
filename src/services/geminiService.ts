@@ -3576,7 +3576,9 @@ Review it now and return the JSON verdict.` }] }],
     (utils/scriptQa withMechanicalChecks), then improves the BEST draft: targeted edits of the clips the
     problems name (a polish), or a new draft told exactly what failed (a rewrite). Every candidate is
     checked and judged again and replaces the best only when it is better — the cast first, then the word
-    contract, then the score. The loop stops at a genuine 10/10, after SCRIPT_IMPROVEMENT_PASSES passes,
+    contract, then the score. The loop stops at a genuine 10/10, at a READY draft (utils/scriptQa isReady —
+    every hard rule met and ≥ 9/10; 2026-10-16, runs were spending the whole budget chasing a 10/10 that never
+    came), after SCRIPT_IMPROVEMENT_PASSES passes,
     after two rounds that found nothing better, or at SCRIPT_GATE_DEADLINE_MS (utils/scriptQa
     nextImprovement), and the kit reports the real score, the passes and why it stopped. A member's own
     script is never judged or touched. A judge that cannot run never blocks the ad — but nothing it did not

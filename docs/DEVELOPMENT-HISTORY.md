@@ -6,6 +6,17 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-16: AdGen deliverables fast again — the script quality loop stops at a READY script** (`ai-ads.md` §17.2
+  step 3, §24, §27). The owner: "ad deliverables taking lot of time … time is getting delayed". Root cause: the
+  2026-10-15 loop only stopped early at a genuine 10/10, which live judges never gave (9.4–9.8), so almost every run
+  spent its full 5 passes / 120 s improving an already-good script — and frames, label, Veo prompts, B-roll and
+  overlays all wait for the final script (runs went from ~100 s to 147–239 s). Fix in `utils/scriptQa`: `isReady`
+  (cast kept, every clip 17–20 words, no invented fact, nothing mechanical, overall ≥ 9, every dimension ≥ 8.5) → stop
+  `ready`; budget 3 passes / 45 s / 1 empty round. The word contract, the cast guardrail and the final acceptance gate are
+  unchanged; `passed` still means a genuine 10/10. Files: `src/utils/scriptQa.ts`, `src/services/geminiService.ts`
+  (banner comment), tests `finalScriptAndQa`, `scriptQualityLoopOct15`, `castConsistencyOct08`. Tested: vitest 263 files /
+  4427 tests pass, tsc 0 errors, build ✅. Not measured on live Gemini (the team's keys were in use during working hours).
+
 - **2026-10-15: SMM Delivery Control — all phases (2–7) built on top of phases 0–1: the weekly-task screen, the writes,
   full-screen alerts, the AI layer, the server checker, and three extras** (`smm.md` §9.9 "Phases 2–4", "Phase 5", "Phase 6",
   "Phase 7", §24, §25, §27; `data-model.md`; `roles-routes.md`; `backend-security.md` §12 / §18 / §21 / §25; `people.md` §9.13 /

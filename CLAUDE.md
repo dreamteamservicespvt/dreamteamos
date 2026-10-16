@@ -221,7 +221,10 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-15)
+## 32. CURRENT PROJECT STATE (as of 2026-10-16)
+
+- 2026-10-16, **in the working tree (not committed)** — **AdGen speed**: the script quality loop ships a READY script
+  (≥ 9/10, every hard rule met) at once instead of chasing 10/10; budget 3 passes / 45 s (`ai-ads.md` §17.2, §27).
 
 - 2026-10-15, **in the working tree (not committed)** — **dates and periods**: an SMM month's end date is its renewal day
   (own days end the day before), the sale asks "Month starts on", one checked way to change a month's dates, posts dated
@@ -304,7 +307,7 @@ errors:** done means every listed item is fully resolved with no build, console 
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
 - `npm run build` ✅ (2026-10-15: main chunk ≈495 KB, vendor-firebase ≈665 KB, geminiService chunk ≈900 KB; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control, and its AI / alert parts).
-- `npx vitest run` ✅ 263 files, 4426 tests, all pass (2026-10-15, after SMM Delivery Control). Under heavy parallel load a
+- `npx vitest run` ✅ 263 files, 4427 tests, all pass (2026-10-16, after the AdGen speed fix). Under heavy parallel load a
   few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-15).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).

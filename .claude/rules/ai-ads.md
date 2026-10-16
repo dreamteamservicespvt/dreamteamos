@@ -248,9 +248,11 @@ cached; small images and anything the browser cannot redraw go as they are).
    draft (a cast). Every candidate is checked and judged again and replaces the best only when `isBetterDraft`: the cast
    first, then the word contract (fewer violations, then nearer the band — a polished draft with a 23-word clip used to
    beat a valid one on score), then judged at all, no invented facts, the computed score, fewer mechanical problems. An
-   edit that changed nothing is not judged. It stops at a genuine 10/10 (`perfect`), after `SCRIPT_IMPROVEMENT_PASSES` = 5
-   (`passes`), after `SCRIPT_IMPROVEMENT_STALLS` = 2 rounds in a row with nothing better (`stalled`), at
-   `SCRIPT_GATE_DEADLINE_MS` = 120 s (`deadline`), or when the judge cannot run and code finds nothing to fix
+   edit that changed nothing is not judged. It stops at a genuine 10/10 (`perfect`), at a **READY** draft (`ready`,
+   2026-10-16 — `isReady`: cast kept, every clip 17–20, no unsupported claim, nothing mechanical, overall ≥
+   `SCRIPT_READY_SCORE` 9 and every dimension ≥ `SCRIPT_READY_DIMENSION` 8.5; listed problems do not block it), after
+   `SCRIPT_IMPROVEMENT_PASSES` = 3 (`passes`), after `SCRIPT_IMPROVEMENT_STALLS` = 1 round with nothing better
+   (`stalled`), at `SCRIPT_GATE_DEADLINE_MS` = 45 s (`deadline`), or when the judge cannot run and code finds nothing to fix
    (`unscored` — the native-speaker review then still polishes it, kept only inside the contract). When even the best draft
    breaks the contract, ONE contract-only fit is tried, judged like any draft. **THE FINAL ACCEPTANCE GATE:** after every
    rewrite, repair, review, speakable pass and formatting step, the EXACT shipped text is counted again
@@ -764,8 +766,9 @@ attribution (`Clip.voScript` is one string).
   count inside their clip. A clip is fitted by writing (one idea, said simply), never by padding or cutting a sentence;
   a secondary detail that does not fit is left out, never squeezed in. The text that ships is counted again after every
   change; a generated script that still breaks the rule stops the run with a message (Press Generate) instead of
-  shipping. Every script is improved toward a genuine 10/10 within a fixed budget (5 passes, 2 empty rounds, 2 minutes)
-  and the kit shows its REAL score — never a 10/10 it did not earn. A member's own script is used word for word and is
+  shipping. A script that meets every hard rule and scores at least 9/10 (no area below 8.5) ships at once; a weaker one
+  is improved within a fixed budget (3 passes, 1 empty round, 45 seconds — owner, 2026-10-16: "ad deliverables taking
+  lot of time") and the kit shows its REAL score — never a 10/10 it did not earn. A member's own script is used word for word and is
   only counted. A refine never returns an edited clip outside 17–20.
 - **AI ads — contact numbers (owner, 2026-10-13):** the poster and the footer (Video Bottom Label) print exactly the
   unique contact numbers the business gave — the ones typed in the brief, the voice note's, or ones a card / flyer /
@@ -1037,13 +1040,14 @@ attribution (`Clip.voScript` is one string).
   every profile snapshot re-reads `ai_generations` (read-quota; a test mock with an unstable user
   made it loop).
 - A frame run with no logo FILE now uses the name board even when "No logo" is not ticked.
-- **The 10/10 loop costs quota and time (2026-10-15).** A script that is not perfect gets up to 5 improvement passes
-  (each a clip edit or a new draft, plus a judge call) within 120 s, then at most one contract fit; two empty rounds
-  in a row end it. Live: a 2-clip Telugu duo took 239 s (4 drafts, 4 passes) and a 2-clip Ganesha festival ad 147 s
-  — longer than the ~100 s before — and bursts of clip edits hit Google's PER-MINUTE limit on every key (the call
-  layer waits and retries; 251 rejected requests in one run, not counted against the daily quota). If members find
-  runs too slow, lower `SCRIPT_IMPROVEMENT_PASSES` / `SCRIPT_GATE_DEADLINE_MS` in `utils/scriptQa` — the contract and
-  the final gate do not depend on them.
+- **The quality loop's time (2026-10-15 → fixed 2026-10-16).** The 2026-10-15 loop chased a genuine 10/10 (5 passes,
+  120 s, 2 empty rounds); live, no script reached it, so nearly every run spent the full budget: a 2-clip Telugu duo
+  239 s, a 2-clip Ganesha ad 147 s (~100 s before), with per-minute 429 bursts. The owner found deliverables too slow
+  (2026-10-16), so a READY draft (`isReady`, ≥ 9/10, every hard rule met) now ships at once and the budget is 3 passes /
+  45 s / 1 empty round. A script that ships at 9.x shows "best draft" with its real score. **Not yet measured live** —
+  time one real run (the progress bar's "Checking the script" step should now take ~10–25 s on a ≥ 9 first draft). To
+  trade speed for polish, change `SCRIPT_READY_SCORE` / the budget in `utils/scriptQa`; the contract and the final gate
+  do not depend on them.
 - **A two-person clip now carries 17–20 words (2026-10-15), not 15–17.** 15–17 was chosen on 2026-09-22 because at
   18–20 the second speaker ran out of time and Veo finished the line in the wrong mouth. The owner set one rule for
   every cast; the prompts now split it evenly (8–10 a line, each 7–12) and every duo Veo prompt still gives each

@@ -66,12 +66,26 @@ const WEIGHTS: Record<QaDimension, number> = {
   facts: 0.18, language: 0.18, persuasion: 0.14, clarity: 0.12, relevance: 0.1, speakability: 0.12, cast: 0.08, originality: 0.08,
 };
 
-/** The improvement loop's budget — the one place to change it (geminiService withScriptQa reads these). */
-export const SCRIPT_IMPROVEMENT_PASSES = 5;
-/** Consecutive passes that find no better draft before the loop stops — more of the same rarely helps. */
-export const SCRIPT_IMPROVEMENT_STALLS = 2;
+/*
+  ── Why the loop stops at "ready", not only at 10/10 (2026-10-16, the owner: "ad deliverables taking lot of
+  time … tech is working now, time is getting delayed") ──
+  On 2026-10-15 the loop chased a genuine 10/10 for up to 5 passes / 120 s. Live, no script ever reached it
+  (9.4–9.8 after 3–4 passes, stopped "stalled"), so nearly EVERY run spent the whole budget polishing a script
+  that was already fine — 147–239 s a run instead of ~100 s, with bursts that hit Google's per-minute limit —
+  and no frame or video prompt starts until the script is final. A draft that is READY (isReady) now ships at
+  once; the hard rules (the cast, 17–20 words, no invented fact, nothing code found) are never relaxed, the
+  kit still shows the real score, and `passed` still means a genuine 10/10.
+*/
+/** The improvement loop's budget — the one place to change it (geminiService runQualityLoop reads these). */
+export const SCRIPT_IMPROVEMENT_PASSES = 3;
+/** Consecutive passes that find no better draft before the loop stops — one empty round is enough (live: a second rarely helped). */
+export const SCRIPT_IMPROVEMENT_STALLS = 1;
 /** Wall-clock budget for the improvement passes; after it the best draft so far ships. */
-export const SCRIPT_GATE_DEADLINE_MS = 120_000;
+export const SCRIPT_GATE_DEADLINE_MS = 45_000;
+/** A script at or above this overall score — with every hard rule met — ships without more passes (isReady). */
+export const SCRIPT_READY_SCORE = 9;
+/** …and no single dimension below this. */
+export const SCRIPT_READY_DIMENSION = 8.5;
 
 const clampScore = (v: unknown): number => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
@@ -197,6 +211,19 @@ export function isPerfect(report: ScriptQaReport): boolean {
     && report.mechanical.length === 0;
 }
 
+/**
+ * Good enough to ship without another pass: no unsupported claim, nothing mechanical on the exact text, the
+ * overall at least SCRIPT_READY_SCORE and every dimension at least SCRIPT_READY_DIMENSION. (The cast and the
+ * word contract are checked by nextImprovement beside it.) Listed problems do not block it — the judge lists
+ * one on nearly every script, and each already caps its dimension at 9.
+ */
+export function isReady(report: ScriptQaReport): boolean {
+  return report.unsupportedClaims.length === 0
+    && report.mechanical.length === 0
+    && report.overall >= SCRIPT_READY_SCORE
+    && QA_DIMENSIONS.every((d) => report.scores[d] >= SCRIPT_READY_DIMENSION);
+}
+
 export type QaDecision = "pass" | "polish" | "rewrite";
 
 /** What happens next — decided from the scores, never from the judge's own opinion of its verdict. */
@@ -263,7 +290,7 @@ export function isBetterDraft(a: DraftStanding, b: DraftStanding): boolean {
 }
 
 /** Why the improvement loop stopped. */
-export type ImprovementStop = "perfect" | "passes" | "stalled" | "deadline" | "unscored";
+export type ImprovementStop = "perfect" | "ready" | "passes" | "stalled" | "deadline" | "unscored";
 
 export interface ImprovementState {
   best: DraftStanding;
@@ -280,7 +307,7 @@ export type ImprovementStep = { stop: ImprovementStop } | { mode: "polish" | "re
 /**
  * The improvement loop's next step — pure, so its bounds are testable without a model.
  *
- * It stops when the best draft is 10/10 (and obeys the contract and its cast), when the passes are spent
+ * It stops when the best draft is 10/10 or READY (isReady — and obeys the contract and its cast), when the passes are spent
  * (SCRIPT_IMPROVEMENT_PASSES), after SCRIPT_IMPROVEMENT_STALLS rounds in a row found nothing better, when
  * the wall-clock budget is gone, or when nothing directs an improvement (the judge cannot run and code
  * finds nothing to fix). Otherwise: a broken cast or a script weak at its core is written again — two
@@ -294,6 +321,7 @@ export function nextImprovement(state: ImprovementState): ImprovementStep {
   const broken = best.broken ?? 0;
   const violations = best.contract?.violations ?? 0;
   if (broken === 0 && violations === 0 && best.report && isPerfect(best.report)) return { stop: "perfect" };
+  if (broken === 0 && violations === 0 && best.report && isReady(best.report)) return { stop: "ready" };
   if (state.passesUsed >= passes) return { stop: "passes" };
   if (state.stalls >= stallLimit) return { stop: "stalled" };
   if (state.elapsedMs >= deadline) return { stop: "deadline" };

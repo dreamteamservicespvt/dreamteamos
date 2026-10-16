@@ -312,9 +312,9 @@ describe("a Male & Female Duo is a Male & Female Duo from the script to the last
       /two-person conversation script for this Male & Female Duo ad came back without every speaker's own lines[\s\S]*Clip 1 is missing Boy's line[\s\S]*Press Generate/,
     );
     expect(madeFrames()).toBe(false);
-    // It tried: the first draft, a first round of two redrafts side by side, then one more — and stopped after
-    // two rounds in a row that found nothing better (utils/scriptQa nextImprovement), never looping on.
-    expect(calls.filter((c) => /^Write the \d+-clip .* for:/m.test(c.user)).length).toBe(1 + 2 + 1);
+    // It tried: the first draft, then a round of two redrafts side by side — and stopped after a round that
+    // found nothing better (utils/scriptQa nextImprovement, SCRIPT_IMPROVEMENT_STALLS = 1 since 2026-10-16), never looping on.
+    expect(calls.filter((c) => /^Write the \d+-clip .* for:/m.test(c.user)).length).toBe(1 + 2);
   });
 });
 
