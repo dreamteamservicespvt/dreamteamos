@@ -222,7 +222,12 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-18)
+## 32. CURRENT PROJECT STATE (as of 2026-10-19)
+
+- 2026-10-19, **on `main`** — **whole-app audit fixes**: revenue = approved sales everywhere (pending shown beside it, one
+  util `salesRevenue` + `revenueReport`), dashboard counters, Accounts = P&L, external creators not staff, Work Assign's
+  sold-ad label, HR filter on phones, another role's URL → own home, breadcrumbs in words, chart axes, My Leads' duplicate
+  sold lead (`people.md`, `roles-routes.md`, `orders-work.md`; history 2026-10-19).
 
 - 2026-10-18, **on `main` and live** (`1399a78`; live from the one-line `1c4e4bd`, build `1792295123286` — Vercel did
   not deploy the Claude co-authored commits by themselves) — **DREAM TEAM AI Development OS** (`devos.md` §9.23), from the
@@ -318,7 +323,7 @@ errors:** done means every listed item is fully resolved with no build, console 
 - `npm run build` ✅ (2026-10-18: main chunk ≈497 KB, vendor-firebase ≈665 KB, geminiService chunk ≈890 KB; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` 🟡 269 files, 4,516 tests: 4,515 pass (2026-10-18, with the Development OS); the one failure,
+- `npx vitest run` 🟡 272 files: all pass but one (2026-10-19, with the audit fixes); the one failure,
   `smmDeliveryControlUiOct15` (the view-only Social Media Team Lead), is pre-existing — it fails on `88ee836` too. Under
   heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-18).

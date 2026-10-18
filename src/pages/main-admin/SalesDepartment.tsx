@@ -3,7 +3,8 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { getRoleColor, getRoleLabel, isActiveUser } from "@/utils/roleHelpers";
 import { formatCurrency } from "@/utils/formatters";
-import type { AppUser } from "@/types";
+import type { AppUser, Lead } from "@/types";
+import { awaitingApprovalLabel, revenueTotals } from "@/utils/salesRevenue";
 import { Phone, Users, TrendingUp, Target, ShoppingBag } from "lucide-react";
 
 export default function SalesDepartment() {
@@ -26,19 +27,27 @@ export default function SalesDepartment() {
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  const salesDone = leads.filter((l: any) => l.saleDone && l.saleDetails);
-  const totalSalesRevenue = salesDone.reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
+  /*
+    ── Revenue = approved sales, every sale counted (2026-10-18, whole-app audit D-05) ──
+    This read only the legacy `saleDetails` — the LAST sale on each lead, every sale before it on the same lead
+    missing — and added pending sales at full value. Now every sale (`saleItems` and the legacy shape) counts: "Sales
+    Closed" is every sale not rejected, "Total Revenue" the APPROVED ones (the one rule, utils/salesRevenue —
+    owner-delegated decision), with what awaits approval said beside it.
+  */
+  const totals = revenueTotals(leads as Lead[]);
+  const salesClosed = totals.count + totals.awaitingCount;
+  const totalSalesRevenue = totals.revenue;
   const totalLeads = leads.length;
 
   const memberData = salesMembers.map((m) => {
     const memberLeads = leads.filter((l: any) => l.assignedTo === m.uid);
-    const memberSales = memberLeads.filter((l: any) => l.saleDone && l.saleDetails);
-    const revenue = memberSales.reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
+    const mine = revenueTotals(memberLeads as Lead[]);
+    const revenue = mine.revenue;
     const called = memberLeads.filter((l: any) => l.status !== "not_called").length;
     return {
       ...m,
       totalLeads: memberLeads.length,
-      salesCount: memberSales.length,
+      salesCount: mine.count + mine.awaitingCount,
       revenue,
       called,
       target: m.dailyTarget || m.target || 10000,
@@ -67,8 +76,9 @@ export default function SalesDepartment() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatBox icon={Users} label="Sales Executives" value={salesMembers.length} color="text-role-sales-member" />
         <StatBox icon={Phone} label="Total Leads" value={totalLeads} color="text-info" />
-        <StatBox icon={ShoppingBag} label="Sales Closed" value={salesDone.length} color="text-success" />
-        <StatBox icon={TrendingUp} label="Total Revenue" value={formatCurrency(totalSalesRevenue)} color="text-primary" />
+        <StatBox icon={ShoppingBag} label="Sales Closed" value={salesClosed} color="text-success" note={`${totals.count} approved · ${totals.awaitingCount} awaiting`} />
+        <StatBox icon={TrendingUp} label="Revenue (approved sales)" value={formatCurrency(totalSalesRevenue)} color="text-primary"
+          note={totals.awaitingCount > 0 ? awaitingApprovalLabel(totals) : "All time"} />
       </div>
 
       {/* Sales Admins */}
@@ -199,7 +209,7 @@ export default function SalesDepartment() {
   );
 }
 
-function StatBox({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
+function StatBox({ icon: Icon, label, value, color, note }: { icon: any; label: string; value: string | number; color: string; note?: string }) {
   return (
     <div className="bg-card border border-border rounded-xl p-3 md:p-4">
       <div className="flex items-center gap-2 mb-1 md:mb-2">
@@ -207,6 +217,7 @@ function StatBox({ icon: Icon, label, value, color }: { icon: any; label: string
         <span className="text-[10px] md:text-xs text-muted-foreground font-medium truncate">{label}</span>
       </div>
       <p className="font-display text-lg md:text-xl font-bold text-foreground truncate">{value}</p>
+      {note && <p className="text-[10px] md:text-xs text-muted-foreground mt-1 truncate" title={note} data-test="statbox-note">{note}</p>}
     </div>
   );
 }

@@ -9,30 +9,54 @@ interface StatCardProps {
   icon: LucideIcon;
   trend?: { value: number; positive: boolean };
   color?: string;
+  /** A short line under the figure that says what it counts, or what it leaves out ("Awaiting approval: ₹X"). */
+  note?: string;
 }
 
+/**
+ * Counts the shown figure up (or down) to `target` — and again whenever `target` changes.
+ *
+ * ── Why it re-runs (2026-10-18) ──
+ * It animated ONCE, guarded by a ref, with a frame loop that closed over the FIRST target. A dashboard renders
+ * before its Firestore listeners answer, so that first target was 0 and the card stayed at 0 for good: the main
+ * admin's four cards read "₹0 / 0 / 0 / 0" with 10 people, 4 sales and 4 videos in the data (whole-app audit,
+ * D-01). Now each new target animates from the figure on screen, the previous loop is cancelled, and a reduced-
+ * motion setting (or no animation frames at all) shows the figure at once.
+ */
 function useAnimatedCounter(target: number, duration = 1000) {
+  const safeTarget = Number.isFinite(target) ? target : 0;
   const [count, setCount] = useState(0);
-  const started = useRef(false);
+  const shown = useRef(0);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+    const from = shown.current;
+    if (from === safeTarget) return;
+    const reduced = typeof window !== "undefined"
+      && typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || typeof requestAnimationFrame !== "function") {
+      shown.current = safeTarget;
+      setCount(safeTarget);
+      return;
+    }
+    let frame = 0;
     const start = Date.now();
     const tick = () => {
-      const elapsed = Date.now() - start;
-      const progress = Math.min(elapsed / duration, 1);
+      const progress = Math.min((Date.now() - start) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.round(eased * target));
-      if (progress < 1) requestAnimationFrame(tick);
+      const next = progress >= 1 ? safeTarget : Math.round(from + (safeTarget - from) * eased);
+      shown.current = next;
+      setCount(next);
+      if (progress < 1) frame = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
-  }, [target, duration]);
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [safeTarget, duration]);
 
   return count;
 }
 
-export default function StatCard({ title, value, prefix = "", suffix = "", icon: Icon, trend, color }: StatCardProps) {
+export default function StatCard({ title, value, prefix = "", suffix = "", icon: Icon, trend, color, note }: StatCardProps) {
   const animatedValue = useAnimatedCounter(value);
 
   const formattedValue = prefix === "₹"
@@ -55,9 +79,10 @@ export default function StatCard({ title, value, prefix = "", suffix = "", icon:
         )}
       </div>
       <p className="text-muted-foreground text-xs md:text-sm font-medium mb-0.5 md:mb-1 truncate">{title}</p>
-      <p className="font-display text-xl md:text-3xl font-bold text-foreground tracking-tight">
+      <p className="font-display text-xl md:text-3xl font-bold text-foreground tracking-tight" data-test="stat-value">
         {prefix}{formattedValue}{suffix}
       </p>
+      {note && <p className="text-[10px] md:text-xs text-muted-foreground mt-1 truncate" title={note} data-test="stat-note">{note}</p>}
     </div>
   );
 }

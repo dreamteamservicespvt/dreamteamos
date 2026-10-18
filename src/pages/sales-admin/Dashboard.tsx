@@ -14,6 +14,7 @@ import { defaultPeriodFilter, periodBounds, periodLabel, withinPeriod, type Peri
 import { motion } from "framer-motion";
 import { processScheduledPools } from "@/services/scheduleRelease";
 import { useToast } from "@/hooks/use-toast";
+import { awaitingApprovalLabel, isApprovedSale } from "@/utils/salesRevenue";
 
 /**
  * How many selling days the selected period has actually reached.
@@ -110,7 +111,20 @@ export default function SalesAdminDashboard() {
   // Sales Closed = sale items SUBMITTED in the period (not leads whose lastUpdated happens
   // to fall in it — approval bumps lastUpdated and was shifting yesterday's sales to today).
   const salesClosed = dateSaleItems.length;
-  const totalRevenue = dateSaleItems.reduce((s: number, { item }: any) => s + (item.amount || 0), 0);
+  /*
+    ── Revenue = APPROVED sales (2026-10-18, whole-app audit D-05 — owner-delegated decision) ──
+    The Revenue card, the member cards' Revenue and target progress, and the summary table added PENDING sales at
+    full value. Now revenue is the approved sales of the period (utils/salesRevenue, the one rule — the money the
+    P&L, the Leaderboard and the commission gate stand on); what still awaits approval is said beside it. "Sales
+    Closed" still counts every sale made in the period that was not rejected.
+  */
+  const approvedItems = dateSaleItems.filter(({ item }: any) => isApprovedSale(item));
+  const totalRevenue = approvedItems.reduce((s: number, { item }: any) => s + (item.amount || 0), 0);
+  const awaitingItems = dateSaleItems.filter(({ item }: any) => !isApprovedSale(item));
+  const awaitingTotals = {
+    awaiting: awaitingItems.reduce((s: number, { item }: any) => s + (item.amount || 0), 0),
+    awaitingCount: awaitingItems.length,
+  };
   const called = filteredLeads.filter((l: any) => l.status !== "not_called").length;
   const pendingApprovals = dateSaleItems.filter(({ item }: any) => item.verificationStatus === "pending").length;
 
@@ -121,7 +135,7 @@ export default function SalesAdminDashboard() {
       name: m.name?.split(" ")[0] || "?",
       leads: mLeads.length,
       sales: mItems.length,
-      revenue: mItems.reduce((s: number, { item }: any) => s + (item.amount || 0), 0),
+      revenue: mItems.filter(({ item }: any) => isApprovedSale(item)).reduce((s: number, { item }: any) => s + (item.amount || 0), 0),
     };
   });
 
@@ -142,14 +156,16 @@ export default function SalesAdminDashboard() {
       const memberItems = dateSaleItems.filter(({ lead }: any) => lead.assignedTo === m.uid);
 
       const allItems = memberItems.map(({ item }: any) => item);
-      const verifiedItems = allItems.filter((item: any) => item.verificationStatus === "verified");
-      const totalRev = allItems.reduce((s: number, item: any) => s + (item.amount || 0), 0);
-      const verifiedRev = verifiedItems.reduce((s: number, item: any) => s + (item.amount || 0), 0);
+      // Revenue = approved sales (2026-10-18); what is still waiting is its own figure.
+      const verifiedItems = allItems.filter((item: any) => isApprovedSale(item));
+      const totalRev = verifiedItems.reduce((s: number, item: any) => s + (item.amount || 0), 0);
+      const awaitingRev = allItems.filter((item: any) => !isApprovedSale(item)).reduce((s: number, item: any) => s + (item.amount || 0), 0);
 
       // Group by the day each item was SUBMITTED (not lead.lastUpdated, which approving bumps)
-      // to count how many days they hit their target.
+      // to count how many days they hit their target — on approved revenue, like the progress bar.
       const revenueByDay: Record<string, number> = {};
       memberItems.forEach(({ item, lead }: any) => {
+        if (!isApprovedSale(item)) return;
         const day = saleItemDate(item, lead);
         if (!day) return;
         revenueByDay[day] = (revenueByDay[day] || 0) + (item.amount || 0);
@@ -166,7 +182,7 @@ export default function SalesAdminDashboard() {
       return {
         member: m,
         totalRevenue: totalRev,
-        verifiedRevenue: verifiedRev,
+        awaitingRevenue: awaitingRev,
         totalSales: allItems.length,
         totalLeads: memberLeads.length,
         dailyTarget,
@@ -209,7 +225,8 @@ export default function SalesAdminDashboard() {
         <StatBox icon={Phone} label={period.mode === "career" ? "Total Leads" : "Active Leads"} value={filteredLeads.length} color="text-info" />
         <StatBox icon={Target} label="Called" value={called} color="text-warning" />
         <StatBox icon={ShoppingBag} label="Sales Closed" value={salesClosed} color="text-success" />
-        <StatBox icon={TrendingUp} label="Revenue" value={formatCurrency(totalRevenue)} color="text-primary" />
+        <StatBox icon={TrendingUp} label="Revenue (approved)" value={formatCurrency(totalRevenue)} color="text-primary"
+          note={awaitingTotals.awaitingCount > 0 ? awaitingApprovalLabel(awaitingTotals) : undefined} />
       </div>
 
       {pendingApprovals > 0 && (
@@ -298,12 +315,12 @@ export default function SalesAdminDashboard() {
                 {/* Stats Grid */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="bg-background border border-border rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-muted-foreground">Revenue</p>
+                    <p className="text-[10px] text-muted-foreground">Revenue (approved)</p>
                     <p className="font-display font-bold text-sm text-primary">{formatCurrency(mp.totalRevenue)}</p>
                   </div>
                   <div className="bg-background border border-border rounded-lg p-2.5 text-center">
-                    <p className="text-[10px] text-muted-foreground">Verified</p>
-                    <p className="font-display font-bold text-sm text-success">{formatCurrency(mp.verifiedRevenue)}</p>
+                    <p className="text-[10px] text-muted-foreground">Awaiting approval</p>
+                    <p className="font-display font-bold text-sm text-warning">{formatCurrency(mp.awaitingRevenue)}</p>
                   </div>
                   <div className="bg-background border border-border rounded-lg p-2.5 text-center">
                     <p className="text-[10px] text-muted-foreground">Conversion</p>
@@ -343,7 +360,7 @@ export default function SalesAdminDashboard() {
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Leads</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Called</th>
               <th className="text-right px-4 py-3 font-medium text-muted-foreground">Sales</th>
-              <th className="text-right px-4 py-3 font-medium text-muted-foreground">Revenue</th>
+              <th className="text-right px-4 py-3 font-medium text-muted-foreground" title="Approved sales in the period">Revenue (approved)</th>
               <th className="text-center px-4 py-3 font-medium text-muted-foreground">Target</th>
               <th className="text-center px-4 py-3 font-medium text-muted-foreground">🏆 Days</th>
             </tr>
@@ -393,7 +410,7 @@ export default function SalesAdminDashboard() {
   );
 }
 
-function StatBox({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
+function StatBox({ icon: Icon, label, value, color, note }: { icon: any; label: string; value: string | number; color: string; note?: string }) {
   return (
     <div className="bg-card border border-border rounded-xl p-2.5 md:p-4">
       <div className="flex items-center gap-1.5 md:gap-2 mb-1 md:mb-2">
@@ -402,6 +419,7 @@ function StatBox({ icon: Icon, label, value, color }: { icon: any; label: string
         <span className="text-[10px] md:text-xs text-muted-foreground font-medium truncate">{label}</span>
       </div>
       <p className="font-display text-base md:text-xl font-bold text-foreground truncate">{value}</p>
+      {note && <p className="text-[10px] md:text-xs text-muted-foreground mt-1 truncate" title={note} data-test="statbox-note">{note}</p>}
     </div>
   );
 }

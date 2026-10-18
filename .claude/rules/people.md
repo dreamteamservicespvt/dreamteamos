@@ -210,10 +210,19 @@ team leaders, sales = sales members, external creators out; commission per sales
 UTC day of `lead.createdAt`). **Accounts Dashboard** (`accounts-admin/Dashboard.tsx`): the four cards are `computeProfit` for
 ONE pay period, the running one (`accounts-period`) — Revenue (verified sales), Expenses, Salaries & incentives, Net Profit,
 which add up; before, all-time revenue (sales + the tech side's delivered value — the same work twice) − all-time expenses −
-one month of today's salaries. **Revenue charts** (`utils/salesRevenue.salesBookedByDay` / `salesBookedByOwner`; Accounts
-Dashboard, Revenue Summary, Revenue Overview): each sale's agreed `amount` on its own local day (`submittedAt`, else
-`lead.createdAt`), `saleItems` + legacy `saleDetails`, rejected left out, pending counted (booked) — they read legacy
-`saleDetails` only, dated `lead.lastUpdated` in UTC, rejected included. **Expense date** (Daily Expenses, main admin
+one month of today's salaries. **Revenue = APPROVED sales (owner-delegated decision, 2026-10-18, audit D-05)** — ONE rule in
+`utils/salesRevenue` (`isApprovedSale`, `revenueTotals`, `revenueByDay`, `revenueByOwner`, `lastCalendarDays`, `revenueSeries`,
+`awaitingApprovalLabel`; `salesBookedByDay` / `salesBookedByOwner` removed): each verified sale's agreed `amount` on its own
+local day (`submittedAt`, else `lead.createdAt`), `saleItems` + legacy `saleDetails`; rejected counts nowhere; pending is
+NEVER added to a revenue total or chart — it is shown beside it as "Awaiting approval: ₹X (n sales)" (StatCard `note`); money
+collected stays its own figure. Revenue Overview (main admin) and Revenue Summary (accounts admin) are one builder,
+`utils/revenueReport` (the cards, chart and per-member rows all follow the 7D / 30D / All range; 7 / 30 = CALENDAR days ending
+today, a quiet day is 0; the tech side's verified work value is reported beside revenue, never inside it; rows are staff only).
+Used too by the main admin's Dashboard ("Revenue Today", "Sales Closed Today" = today's approved / awaiting, 7-day chart),
+Sales Department, the sales admin's Dashboard and the Accounts Dashboard (its 7-day chart = the last 7 calendar days). Chart
+value axes use `utils/formatters.formatRupeeAxis` ("₹500", "₹1.5k", "₹1.2L" — `toFixed(0)` + "k" repeated labels). **Staff
+counts** use `roleHelpers.isStaffMember` (active and not an external creator — D-04): Accounts Dashboard, Salary Management,
+main admin Dashboard / Accounts. **Expense date** (Daily Expenses, main admin
 Accounts): defaults to `useToday()` (local, turns over at midnight); a picked date is cleared after each entry (it was the
 UTC day, set once when the page opened). The main admin's Dashboard and Tech Department use `useToday()` too (the Dashboard
 re-subscribes at midnight). **Tech delivered value** (P&L, `techProductivity.memberProductivity`) counts a job on its
@@ -232,6 +241,10 @@ assignment day (`workDates.workCountsOn`; a bulk slot on `slot.assignedAt`, else
   applies from the pay period chosen (default the running one) — earlier periods keep their own terms, in pay, P&L,
   ratios and "Now ₹X". A receipt belongs to the period it pays. A P&L charges a paid salary what was paid, an unpaid
   one its terms, and a running period only its days so far. Every stored or compared day is the India day.
+- **Revenue (2026-10-18, owner-delegated):** "revenue" everywhere means approved (verified) sales, valued at the sale's
+  amount on the sale's own India day. Sales awaiting approval are shown beside it ("Awaiting approval: ₹X (n sales)"),
+  never added in; rejected sales count nowhere; the tech side's delivered value is never revenue. External creators are
+  never counted as staff.
 - **Sales targets:** only `dailyTarget` is stored; monthly is derived across the pay cycle.
 - **Tech performance month:** 10th → 9th; work counts on its **assignment** date.
 - **Tech productivity:** pay/work-value ratio target 5%, watch up to 10%, over 10% flagged.
@@ -287,8 +300,8 @@ assignment day (`workDates.workCountsOn`; a bulk slot on `slot.assignedAt`, else
 
 - Pay periods and the commission rule (2026-10-15): behaviour the owner should confirm — Settlements pays ended periods
   only (a member can no longer request a running one); the Accounts Dashboard shows ONE pay period and no longer adds the
-  tech side's delivered value to revenue; revenue charts count booked sales (pending included) while the Accounts
-  Dashboard's Revenue card counts verified only. Open: a sale revoked and re-approved before 2026-10-15 has no
+  tech side's delivered value to revenue; every revenue card and chart counts approved sales only (since 2026-10-18;
+  pending is shown beside it). Open: a sale revoked and re-approved before 2026-10-15 has no
   `firstVerifiedAt`, so legacy settlement coverage can miss it; no claw-back when a settled sale is rejected later; the
   renewals card and My Performance's Option 1 / 2 are estimates; a receipt sent ON its labelled period's last day keeps
   that label's period; "most recently saved" pay change wins for a period (same as "latest from" when saved in order);

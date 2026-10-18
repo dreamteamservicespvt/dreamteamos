@@ -140,7 +140,9 @@ category filters (`useOrderCategory`), period filters (`utils/periodFilter.ts`, 
 Orders tabs (active / delivered history paged by `ORDER_HISTORY_PAGE = 300` / removed).
 
 **Task dashboards:** tech admin Dashboard, Work Assign (member workload cards,
-`MemberWorkloadCard`), Work Done & Reports, member analytics, `AdsStatusBoard`.
+`MemberWorkloadCard`), Work Done & Reports, member analytics, `AdsStatusBoard`. The board's "created straight from Work
+Assign with no sale behind it" count is `utils/adPipeline.standaloneCount` — only jobs with no `orderId`; a job whose order is
+off the active queue (delivered / cancelled) is `orderOffQueue`, still a sold ad (2026-10-18, audit D-06).
 **Days and ratios (2026-10-15):** a job counts on its assignment day (`workDates.workCountsOn`); a record with only an
 `assignedAtIso` instant now reads its LOCAL (India) day through `workDates.localDayOfInstant` (it took the UTC day, the
 day before for 00:00–05:30 IST) — also `performanceCycle.workDayOf` and `orders.findReconcilableOrders`. Work Done

@@ -84,8 +84,8 @@ legacy users without the field active.
 ## 8. PERMISSIONS
 
 ### 8.1 Where permissions are enforced
-1. **Route guard (frontend only).** `AppLayout allowedRoles` in `App.tsx`. A wrong role is
-   `<Navigate to="/login">` (it does not sign out). External creators are confined to
+1. **Route guard (frontend only).** `AppLayout allowedRoles` in `App.tsx`. A wrong role is sent to
+   their OWN home, `defaultRouteForUser(user)` (since 2026-10-19, audit D-08; it was `/login`, which read as signed out). External creators are confined to
    `EXTERNAL_CREATOR_ROUTES`.
 2. **In-page and helper checks (frontend only).** For example `canPurgeOrders`,
    `canAssignBulkVideos`, `canCompleteBulkVideo`, `canEditProgress`, `canExtendPromise`,
@@ -190,7 +190,7 @@ credentials, store readable passwords (`services/memberCredentials.ts`), flags. 
 ## 10. PAGES & ROUTES
 
 All routes are defined in `src/App.tsx`. The guard is `AppLayout allowedRoles`: no user →
-`/login`; wrong role → `/login`; external creator on a non-allowed path → `/tech/create`. Every page
+`/login`; wrong role → their own home (`defaultRouteForUser`, 2026-10-19); external creator on a non-allowed path → `/tech/create`. Every page
 is lazy. Chunk loading shows `PageFallback` inside the shell (app pages) or `RouteFallback`
 (standalone pages). Auth loading shows "Loading workspace...".
 

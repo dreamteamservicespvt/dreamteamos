@@ -132,7 +132,8 @@ export default function AllDocumentsPanel({ documents, canSign, viewerId, canDel
           value={type}
           onChange={(e) => reset(() => setType(e.target.value as HrDocumentType | "all"))}
           data-test="document-type-filter"
-          className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
+          // Full width on a phone (its longest option is wider than a 390px card — audit D-07), its own size above.
+          className="h-10 w-full min-w-0 sm:w-auto sm:max-w-[18rem] rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
         >
           <option value="all">Every document type</option>
           {HR_DOCUMENT_GROUPS.map((g) => (

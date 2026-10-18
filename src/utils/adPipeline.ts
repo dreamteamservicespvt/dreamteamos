@@ -34,10 +34,21 @@ export interface AdRecord {
   order?: Order;
   assignment?: WorkAssignment;
   /**
-   * True when no order backs this — work created directly in Work Assign. These are the ads the
-   * Orders queue legitimately cannot show, and the only reason the two screens can still differ.
+   * True when no order backs this — work created directly in Work Assign (no `orderId`): a job with
+   * no sale behind it, which the Orders queue never shows.
    */
   standalone: boolean;
+  /**
+   * True when the work HAS an order (a sale behind it) but that order is not in the Orders query —
+   * delivered (verified), cancelled or otherwise out of the active queue. Still one real ad, counted
+   * once; it is simply finished business as far as Orders is concerned (2026-10-18).
+   *
+   * ── Why it is its own flag ──
+   * Until 2026-10-18 this case was marked `standalone` too, so every delivered SOLD ad was counted and
+   * badged on Work Assign as "created straight from Work Assign with no sale behind it" — the board said
+   * "2 ads" with one direct job and one verified sale (whole-app audit, D-06).
+   */
+  orderOffQueue?: boolean;
   memberUid: string | null;
 }
 
@@ -111,7 +122,9 @@ export function buildAdPipeline(
       id: a.id,
       stage: stageOfAssignment(a),
       assignment: a,
-      standalone: true,
+      // A sale stands behind it whenever it points at an order — only a job without one is standalone.
+      standalone: !a.orderId,
+      ...(a.orderId ? { orderOffQueue: true } : {}),
       memberUid: a.assignedTo ?? null,
     });
   }
@@ -135,9 +148,15 @@ export function countByStage(records: AdRecord[]): Record<AdStage, number> {
  * gap between the board and Orders is exactly the standalone records, and can be shown as such.
  */
 export function orderBacked(records: AdRecord[]): AdRecord[] {
-  return records.filter((r) => !r.standalone);
+  return records.filter((r) => !r.standalone && !r.orderOffQueue);
 }
 
+/** Work with no sale behind it — the jobs created straight from Work Assign. */
 export function standaloneCount(records: AdRecord[]): number {
   return records.filter((r) => r.standalone).length;
+}
+
+/** Sold work whose order has left the Orders queue (delivered, cancelled) — see `AdRecord.orderOffQueue`. */
+export function offQueueCount(records: AdRecord[]): number {
+  return records.filter((r) => r.orderOffQueue).length;
 }

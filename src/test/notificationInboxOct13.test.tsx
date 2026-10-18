@@ -35,7 +35,8 @@ vi.mock("firebase/firestore", async () => {
     },
   };
 });
-vi.mock("@/services/firebase", () => ({ db: {}, auth: { currentUser: null } }));
+// A signed-in staff member: since 2026-10-18 the push goes only with their ID token.
+vi.mock("@/services/firebase", () => ({ db: {}, auth: { currentUser: { getIdToken: async () => "test-id-token" } } }));
 vi.mock("@/utils/platform", () => ({ isNative: () => false }));
 const sound = vi.hoisted(() => ({ chimes: 0 }));
 vi.mock("@/utils/audio", () => ({

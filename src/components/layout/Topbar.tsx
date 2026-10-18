@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
-import { getRoleLabel, getRoleColor, getProfileRoute, defaultRouteForUser } from "@/utils/roleHelpers";
+import { getRoleLabel, getRoleColor, getProfileRoute, defaultRouteForUser, breadcrumbLabel } from "@/utils/roleHelpers";
 import { Bell, Menu, Check, Trash2, Loader2 } from "lucide-react";
 import { formatTime } from "@/utils/formatters";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -193,11 +193,11 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   // A raw document id is never shown (it read "O_Uwng3cPr…_1790839133922" on a social-media month):
   // it is replaced by its name once that has been read, and left out until then.
   const breadcrumb = segments
-    .map((s) => {
+    .map((s, i) => {
       if (resolvedNames[s]) return resolvedNames[s];
       if (looksLikeId(s)) return "";
-      if (s === "smm") return "Social Media";
-      return s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      // The page's menu name, never a title-cased slug ("Hr", "Dev Os" — audit D-09).
+      return breadcrumbLabel(segments, i, user?.role);
     })
     .filter(Boolean);
 

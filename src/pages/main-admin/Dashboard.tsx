@@ -1,12 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, formatRupeeAxis } from "@/utils/formatters";
 import StatCard from "@/components/dashboard/StatCard";
-import type { AppUser } from "@/types";
+import type { AppUser, Lead } from "@/types";
 import { TrendingUp, Users, Video, ShoppingBag } from "lucide-react";
 import { dailyTargetOf } from "@/utils/salesTargets";
+import { isStaffMember } from "@/utils/roleHelpers";
+import { awaitingApprovalLabel, isApprovedSale, lastCalendarDays, revenueSeries, revenueTotals, saleItemsOf } from "@/utils/salesRevenue";
+import { timestampMs } from "@/utils/saleIdentity";
 import { useToday } from "@/hooks/useToday";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -14,12 +17,9 @@ import {
 
 export default function MainAdminDashboard() {
   const user = useAuthStore((s) => s.user);
-  const [members, setMembers] = useState<AppUser[]>([]);
-  const [techMembers, setTechMembers] = useState<AppUser[]>([]);
-  const [salesMembers, setSalesMembers] = useState<AppUser[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [todayAssignments, setTodayAssignments] = useState<any[]>([]);
-  const [todayLeads, setTodayLeads] = useState<any[]>([]);
-  const [recentActivity, setRecentActivity] = useState<{ text: string; time: string; type: string }[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
 
   // The LOCAL day: `work_assignments.date` is written with `format(new Date(), "yyyy-MM-dd")`, so the
@@ -28,72 +28,73 @@ export default function MainAdminDashboard() {
   const today = useToday();
 
   useEffect(() => {
-    let allUsers: AppUser[] = [];
     const unsubs: (() => void)[] = [];
-
     unsubs.push(onSnapshot(collection(db, "users"), (snap) => {
-      allUsers = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
-      setMembers(allUsers.filter((u) => u.isActive));
-      setTechMembers(allUsers.filter((u) => u.role === "tech_member" && u.isActive && !u.externalCreator));
-      setSalesMembers(allUsers.filter((u) => u.role === "sales_member" && u.isActive));
+      setUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)));
     }));
-
     unsubs.push(onSnapshot(collection(db, "work_assignments"), (snap) => {
-      const allAssignments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTodayAssignments(allAssignments.filter((a: any) => a.date === today));
-
-      // Build tech activities
-      const activities: { text: string; time: string; type: string }[] = [];
-      allAssignments.filter((a: any) => a.date === today && a.status === "verified").forEach((data: any) => {
-        const member = allUsers.find((u) => u.uid === data.assignedTo);
-        activities.push({
-          text: `${member?.name || "Tech Member"} completed ${data.clipCount || 0} clip${(data.clipCount || 0) !== 1 ? "s" : ""}`,
-          time: data.verifiedAt?.toDate?.() ? timeAgo(data.verifiedAt.toDate()) : "recently",
-          type: "approved",
-        });
-      });
-      setRecentActivity((prev) => {
-        const salesActivities = prev.filter((a) => a.type === "sale");
-        return [...activities, ...salesActivities].slice(0, 10);
-      });
+      setTodayAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a: any) => a.date === today));
     }));
-
     unsubs.push(onSnapshot(collection(db, "leads"), (snap) => {
-      const allLeads = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTodayLeads(allLeads.filter((l: any) => l.saleDone));
-
-      const saleActivities: { text: string; time: string; type: string }[] = [];
-      allLeads.filter((l: any) => l.saleDone && l.saleDetails).forEach((l: any) => {
-        const member = allUsers.find((u) => u.uid === l.assignedTo);
-        saleActivities.push({
-          text: `${member?.name || "Sales Executive"} closed sale — ${formatCurrency(l.saleDetails?.amount || 0)}`,
-          time: l.lastUpdated?.toDate?.() ? timeAgo(l.lastUpdated.toDate()) : "recently",
-          type: "sale",
-        });
-      });
-      setRecentActivity((prev) => {
-        const techActivities = prev.filter((a) => a.type !== "sale");
-        return [...techActivities, ...saleActivities].slice(0, 10);
-      });
+      setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Lead)));
       setLoading(false);
     }));
-
     return () => unsubs.forEach((u) => u());
   }, [today]);
+
+  /*
+    ── What "today" counts (2026-10-18, whole-app audit D-02 / D-04) ──
+    "Sales Closed Today" and "Total Revenue Today" counted EVERY lead ever sold (no date at all) and only its LAST
+    sale (`saleDetails`), and revenue added the tech side's delivered value — the same work a second time. The
+    "7-Day Revenue" chart was one point labelled "Today" holding that all-time sum, and Recent Activity dated a sale
+    by the lead's last edit. Now: today = the local (India) day each sale was MADE; revenue = APPROVED sales (the
+    one rule, utils/salesRevenue — owner-delegated decision 2026-10-18), with what awaits approval said beside it;
+    the chart is the last 7 calendar days; the feed is each sale at the moment it was recorded. Staff counts leave
+    out external creators and switched-off accounts (`isStaffMember`).
+  */
+  const members = useMemo(() => users.filter(isStaffMember), [users]);
+  const techMembers = useMemo(() => members.filter((u) => u.role === "tech_member"), [members]);
+  const salesMembers = useMemo(() => members.filter((u) => u.role === "sales_member"), [members]);
+  const isToday = (day: string) => day === today;
+  const todaySales = revenueTotals(leads, { inDay: isToday });
+  const sevenDays = useMemo(() => revenueSeries(leads, lastCalendarDays(today, 7)), [leads, today]);
+  const sevenDayTotal = sevenDays.reduce((s, d) => s + d.revenue, 0);
+
+  const recentActivity = useMemo(() => {
+    const nameOf = (uid?: string) => users.find((u) => u.uid === uid)?.name;
+    const events: { text: string; at: number; type: string }[] = [];
+    todayAssignments.filter((a) => a.status === "verified").forEach((a) => {
+      events.push({
+        text: `${nameOf(a.assignedTo) || "Tech Member"} completed ${a.clipCount || 0} clip${(a.clipCount || 0) !== 1 ? "s" : ""}`,
+        at: timestampMs(a.verifiedAt),
+        type: "approved",
+      });
+    });
+    for (const lead of leads) {
+      for (const item of saleItemsOf(lead)) {
+        if (item.verificationStatus === "rejected") continue;
+        const at = timestampMs(item.submittedAt) || timestampMs(lead.createdAt);
+        if (!at) continue;
+        events.push({
+          text: `${nameOf(lead.assignedTo) || "Sales Executive"} closed a sale — ${formatCurrency(item.amount || 0)}${isApprovedSale(item) ? "" : " · awaiting approval"}`,
+          at,
+          type: "sale",
+        });
+      }
+    }
+    return events
+      .sort((a, b) => b.at - a.at)
+      .slice(0, 10)
+      .map((e) => ({ text: e.text, type: e.type, time: e.at ? timeAgo(new Date(e.at)) : "recently" }));
+  }, [users, leads, todayAssignments]);
 
   // Compute stats
   const totalMembers = members.length;
   const totalVideosToday = todayAssignments
     .filter((a) => a.status === "verified")
     .reduce((sum, a) => sum + (a.clipCount || 0), 0);
-  const totalSalesRevenue = todayLeads.reduce(
-    (sum, l: any) => sum + (l.saleDetails?.amount || 0), 0
-  );
-  const totalTechRevenue = todayAssignments
-    .filter((a) => a.status === "verified")
-    .reduce((sum, a) => sum + (a.totalPrice || 0), 0);
-  const totalRevenueToday = totalSalesRevenue + totalTechRevenue;
-  const salesToday = todayLeads.length;
+  const totalRevenueToday = todaySales.revenue;
+  const salesToday = todaySales.count + todaySales.awaitingCount;
 
   // Build tech team table data
   const techTableData = techMembers.map((m) => {
@@ -108,9 +109,8 @@ export default function MainAdminDashboard() {
 
   // Build sales team table data
   const salesTableData = salesMembers.map((m) => {
-    const memberLeads = todayLeads.filter((l: any) => l.assignedTo === m.uid);
-    const revenue = memberLeads.reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
-    return { name: m.name, sales: memberLeads.length, revenue, target: dailyTargetOf(m) || 10000 };
+    const mine = revenueTotals(leads, { inDay: isToday, ownerId: m.uid });
+    return { name: m.name, sales: mine.count + mine.awaitingCount, revenue: mine.revenue, target: dailyTargetOf(m) || 10000 };
   });
 
   return (
@@ -122,30 +122,42 @@ export default function MainAdminDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <StatCard title="Total Revenue Today" value={totalRevenueToday} prefix="₹" icon={TrendingUp} />
-        <StatCard title="Total Team Members" value={totalMembers} icon={Users} color="bg-info/10 text-info" />
-        <StatCard title="Videos Today" value={totalVideosToday} icon={Video} color="bg-success/10 text-success" />
-        <StatCard title="Sales Closed Today" value={salesToday} icon={ShoppingBag} color="bg-warning/10 text-warning" />
+        <StatCard
+          title="Revenue Today"
+          value={totalRevenueToday}
+          prefix="₹"
+          icon={TrendingUp}
+          note={todaySales.awaitingCount > 0 ? awaitingApprovalLabel(todaySales) : "Approved sales"}
+        />
+        <StatCard title="Total Team Members" value={totalMembers} icon={Users} color="bg-info/10 text-info" note="Active staff" />
+        <StatCard title="Videos Today" value={totalVideosToday} icon={Video} color="bg-success/10 text-success" note="Clips verified today" />
+        <StatCard
+          title="Sales Closed Today"
+          value={salesToday}
+          icon={ShoppingBag}
+          color="bg-warning/10 text-warning"
+          note={`${todaySales.count} approved · ${todaySales.awaitingCount} awaiting`}
+        />
       </div>
 
-      {/* Activity + empty chart placeholder */}
+      {/* Activity + the last 7 days' revenue */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Chart placeholder — shows data when daily_revenue collection is populated */}
         <div className="lg:col-span-2 bg-card border border-border rounded-xl p-5">
-          <h3 className="font-display font-semibold text-foreground mb-4">7-Day Revenue</h3>
-          {totalRevenueToday === 0 && !loading ? (
-            <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">
+          <h3 className="font-display font-semibold text-foreground">7-Day Revenue</h3>
+          <p className="text-xs text-muted-foreground mb-4">Approved sales, by the day each sale was made · last 7 days</p>
+          {sevenDayTotal === 0 && !loading ? (
+            <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm" data-test="seven-day-empty">
               <div className="text-center">
                 <TrendingUp size={32} className="mx-auto mb-2 opacity-30" />
-                <p>Revenue chart will populate as data comes in</p>
+                <p>No approved sales in the last 7 days</p>
               </div>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={[{ day: "Today", sales: totalSalesRevenue, tech: totalTechRevenue }]}>
+              <LineChart data={sevenDays}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.8% 16.1%)" />
-                <XAxis dataKey="day" stroke="hsl(240 3.7% 65.9%)" fontSize={12} />
-                <YAxis stroke="hsl(240 3.7% 65.9%)" fontSize={12} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                <XAxis dataKey="date" stroke="hsl(240 3.7% 65.9%)" fontSize={12} tickFormatter={(v) => String(v).slice(5)} />
+                <YAxis stroke="hsl(240 3.7% 65.9%)" fontSize={12} tickFormatter={formatRupeeAxis} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: "hsl(240 5.3% 7.1%)",
@@ -155,14 +167,12 @@ export default function MainAdminDashboard() {
                   }}
                   formatter={(value: number) => [`₹${value.toLocaleString("en-IN")}`, ""]}
                 />
-                <Line type="monotone" dataKey="sales" stroke="hsl(24.6 95% 53.1%)" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="tech" stroke="hsl(217.2 91.2% 59.8%)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="revenue" name="Revenue" stroke="hsl(24.6 95% 53.1%)" strokeWidth={2} dot />
               </LineChart>
             </ResponsiveContainer>
           )}
           <div className="flex items-center gap-6 mt-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-primary rounded" /> Sales Revenue</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-info rounded" /> Tech Work Value</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-primary rounded" /> Revenue (approved sales)</span>
           </div>
         </div>
 
@@ -203,14 +213,14 @@ export default function MainAdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Tech Team */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-display font-semibold text-foreground mb-4">Tech Department</h3>
+          <h3 className="font-display font-semibold text-foreground mb-4">Tech Department <span className="text-xs font-normal text-muted-foreground">· today</span></h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-muted-foreground border-b border-border">
                   <th className="text-left pb-3 font-medium">Member</th>
                   <th className="text-right pb-3 font-medium">Videos</th>
-                  <th className="text-right pb-3 font-medium">Revenue</th>
+                  <th className="text-right pb-3 font-medium" title="The value of the work verified today — a productivity measure, not revenue">Work value</th>
                   <th className="text-right pb-3 font-medium">Status</th>
                 </tr>
               </thead>
@@ -238,14 +248,14 @@ export default function MainAdminDashboard() {
 
         {/* Sales Team */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-display font-semibold text-foreground mb-4">Business Development Department</h3>
+          <h3 className="font-display font-semibold text-foreground mb-4">Business Development Department <span className="text-xs font-normal text-muted-foreground">· today</span></h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-muted-foreground border-b border-border">
                   <th className="text-left pb-3 font-medium">Member</th>
                   <th className="text-right pb-3 font-medium">Sales</th>
-                  <th className="text-right pb-3 font-medium">Revenue</th>
+                  <th className="text-right pb-3 font-medium" title="Today's approved sales">Revenue</th>
                   <th className="text-left pb-3 pl-4 font-medium">Progress</th>
                 </tr>
               </thead>

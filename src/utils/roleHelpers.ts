@@ -299,6 +299,19 @@ export function isActiveUser(u: { isActive?: boolean } | null | undefined): bool
 }
 
 /**
+ * Is this person counted as STAFF — in a head-count, a staff-by-role list, a salary total? Active and not an
+ * external creator (2026-10-18).
+ *
+ * An external creator is an outsider allowed only the ad tool (`AppUser.externalCreator`: "appear in no team list,
+ * report, dashboard"). The audit found one counted on the Accounts Dashboard ("Total Staff", "Tech Member"), in
+ * Salary Management's list and its monthly total, and on the main admin's Dashboard and Accounts. The P&L already
+ * left them out (`profitAnalytics`).
+ */
+export function isStaffMember(u: { isActive?: boolean; externalCreator?: boolean } | null | undefined): boolean {
+  return isActiveUser(u) && !u?.externalCreator;
+}
+
+/**
  * The page where someone sees their own salary and leave — the link a "Salary Paid" or "Leave
  * Approved" notification opens.
  *
@@ -322,6 +335,39 @@ export function getNavItems(
   if (user?.externalCreator) return EXTERNAL_CREATOR_NAV;
   const items = NAV[role] || [];
   return access?.invoiceBuilder ? items : items.filter((i) => !i.requiresInvoiceSwitch);
+}
+
+/** Words a URL slug cannot spell: title-casing "hr" gave "Hr", "dev-os" "Dev Os", "ai-accounts" "Ai Accounts". */
+const SEGMENT_LABELS: Record<string, string> = {
+  smm: "Social Media",
+  hr: "HR & Documents",
+  agreements: "HR & Documents",
+  "dev-os": "Development OS",
+  "ai-accounts": "AI Accounts",
+  control: "Delivery Control",
+  "feedback-upsell": "Feedback & Upsell",
+  profit: "Profit & Loss",
+};
+const ACRONYMS: Record<string, string> = { Ai: "AI", Hr: "HR", Os: "OS", Smm: "SMM" };
+
+/**
+ * The Topbar breadcrumb's word for one path segment (2026-10-19, audit D-09).
+ *
+ * The page's own menu name when the path so far is a menu link of the viewer's role ("/main-admin/revenue" →
+ * "Revenue Overview", "/dev-os" → "Development OS"), else a fixed word for slugs that do not title-case
+ * ("hr" → "HR & Documents"), else the slug title-cased with its acronyms kept in capitals.
+ */
+export function breadcrumbLabel(segments: string[], index: number, role?: UserRole | null): string {
+  const s = segments[index];
+  const path = `/${segments.slice(0, index + 1).join("/")}`;
+  const flat = (items: NavItem[]): NavItem[] => items.flatMap((i) => (i.children ? flat(i.children) : [i]));
+  const nav = role ? flat(NAV[role] || []).find((i) => i.path === path) : undefined;
+  if (nav) return nav.title;
+  if (SEGMENT_LABELS[s]) return SEGMENT_LABELS[s];
+  return s
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\b(Ai|Hr|Os|Smm)\b/g, (w) => ACRONYMS[w]);
 }
 
 export function getRoleLabel(role: UserRole): string {

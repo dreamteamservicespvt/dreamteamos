@@ -9,6 +9,25 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+/**
+ * Rupees for a chart's value axis: "₹0", "₹500", "₹1.5k", "₹2k", "₹1.2L", "₹3.4Cr".
+ *
+ * ── Why not `(v / 1000).toFixed(0) + "k"` ──
+ * The four revenue charts used that, so a scale of 0 / 500 / 1,000 / 1,500 / 2,000 read
+ * "₹0k ₹1k ₹1k ₹2k ₹2k" — two ticks with one label each (seen on the main admin's 7-day chart,
+ * 2026-10-19). Under ₹1,000 the amount is written whole; above it one decimal, dropped when zero,
+ * keeps neighbouring ticks of a nice scale apart while staying short enough for the axis.
+ */
+export function formatRupeeAxis(value: number): string {
+  const v = Number(value) || 0;
+  const a = Math.abs(v);
+  const trim = (x: number) => (Math.round(x * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  if (a >= 1e7) return `₹${trim(v / 1e7)}Cr`;
+  if (a >= 1e5) return `₹${trim(v / 1e5)}L`;
+  if (a >= 1000) return `₹${trim(v / 1000)}k`;
+  return `₹${Math.round(v)}`;
+}
+
 export function formatDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });

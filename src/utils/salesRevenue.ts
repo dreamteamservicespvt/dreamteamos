@@ -102,22 +102,83 @@ export function dayRevenue(leads: Lead[], days: ReadonlySet<string> | null): Day
   };
 }
 
+/*
+  ── What "revenue" means — ONE rule for every screen (owner-delegated decision, 2026-10-18) ──────────────────
+  Revenue is APPROVED sales: a sale a sales admin verified, at its agreed `amount`, on the day the sale was MADE
+  (`saleDay` — its `submittedAt` as a local, India, day; else the lead's creation day), across `saleItems` and the
+  legacy `saleDetails` alike. It is the rule the P&L (`profitAnalytics.computeProfit`), the Leaderboard and Payroll
+  already used, and since this date it is the only one.
+
+  Why: the first whole-app audit (2026-10-18) found "revenue" meaning three things. The Accounts Dashboard put
+  "Revenue (verified sales) ₹2,998" beside a chart that counted PENDING sales at full contract value (₹10,000 on one
+  day) plus the tech side's delivered value — the same work a second time; Revenue Overview, the main admin's Sales
+  Department and the Sales Dashboard counted pending sales too; the main admin's Dashboard and Accounts took only the
+  LAST sale on each lead, for all time. The owner delegated the choice ("take the best decision"): approved sales,
+  because that is the money the company's own P&L and pay already stand on.
+
+  - A sale AWAITING approval (pending, or an older record with no status) is never added into a revenue total or
+    chart. A screen that used to count it shows it as its own labelled figure — "Awaiting approval: ₹X (n sales)".
+  - A REJECTED sale did not happen and counts nowhere.
+  - Money actually COLLECTED (`dayRevenue` above, `utils/salePayments`) is a third figure and stays where a screen
+    already shows it. The tech side's delivered value is a productivity measure, never revenue (`profitAnalytics`).
+  (Before this, 2026-10-15 → 10-18, the charts used `salesBookedByDay` / `salesBookedByOwner`: pending counted.)
+*/
+
+/** Does this sale count as revenue? Approved (verified) only. */
+export function isApprovedSale(item: Pick<SaleDetail, "verificationStatus"> | null | undefined): boolean {
+  return item?.verificationStatus === "verified";
+}
+
+/** A sale still waiting for a sales admin — neither approved nor rejected (a missing status included). */
+export function isAwaitingApproval(item: Pick<SaleDetail, "verificationStatus"> | null | undefined): boolean {
+  return !!item && item.verificationStatus !== "verified" && item.verificationStatus !== "rejected";
+}
+
+export interface RevenueTotals {
+  /** Approved sales' agreed amounts — THE revenue figure. */
+  revenue: number;
+  /** How many approved sales. */
+  count: number;
+  /** Sales awaiting approval — shown beside revenue, never inside it. */
+  awaiting: number;
+  awaitingCount: number;
+}
+
+/** Which sale days to count; `null` / absent = every day ("All" / career). */
+export type SaleDayFilter = ((day: string) => boolean) | null | undefined;
+
 /**
- * Sales booked, by the day each sale was MADE and by the member who made it — the revenue charts of the
- * accounts and main-admin pages (2026-10-15).
- *
- * ── Why ──
- * Those charts dated a sale by `lead.lastUpdated` — which moves on every approval, edit or note — through
- * `toISOString()` (the UTC day, the day before for anything between 00:00 and 05:30 IST), and read only the
- * legacy single `saleDetails`, so every sale recorded in `saleItems` (all of them for months) was missing.
- * Each sale now counts once, its agreed amount on its own day (`saleDay`, the local day it was submitted),
- * across `saleItems` and the legacy shape alike. Rejected sales did not happen and are left out.
+ * Revenue (approved sales) and the sales awaiting approval, for the days `inDay` accepts — optionally only the
+ * sales of one salesperson (`lead.assignedTo`). A sale with no day is counted only when every day is.
  */
-export function salesBookedByDay(leads: Lead[]): Map<string, number> {
+export function revenueTotals(leads: Lead[], opts: { inDay?: SaleDayFilter; ownerId?: string } = {}): RevenueTotals {
+  const out: RevenueTotals = { revenue: 0, count: 0, awaiting: 0, awaitingCount: 0 };
+  for (const lead of leads) {
+    if (opts.ownerId && lead.assignedTo !== opts.ownerId) continue;
+    for (const item of saleItemsOf(lead)) {
+      if (item.verificationStatus === "rejected") continue;
+      if (opts.inDay) {
+        const day = saleDay(item, lead);
+        if (!day || !opts.inDay(day)) continue;
+      }
+      if (isApprovedSale(item)) {
+        out.revenue += item.amount || 0;
+        out.count += 1;
+      } else {
+        out.awaiting += item.amount || 0;
+        out.awaitingCount += 1;
+      }
+    }
+  }
+  return out;
+}
+
+/** Revenue (approved sales) per sale day, `yyyy-MM-dd` → ₹. Days with no approved sale are absent. */
+export function revenueByDay(leads: Lead[]): Map<string, number> {
   const byDay = new Map<string, number>();
   for (const lead of leads) {
     for (const item of saleItemsOf(lead)) {
-      if (item.verificationStatus === "rejected") continue;
+      if (!isApprovedSale(item)) continue;
       const day = saleDay(item, lead);
       if (!day) continue;
       byDay.set(day, (byDay.get(day) ?? 0) + (item.amount || 0));
@@ -126,15 +187,43 @@ export function salesBookedByDay(leads: Lead[]): Map<string, number> {
   return byDay;
 }
 
-/** The same sales, totalled per salesperson (`lead.assignedTo`). */
-export function salesBookedByOwner(leads: Lead[]): Map<string, number> {
+/** Revenue (approved sales) per salesperson (`lead.assignedTo`), for the days `inDay` accepts. */
+export function revenueByOwner(leads: Lead[], inDay?: SaleDayFilter): Map<string, number> {
   const byOwner = new Map<string, number>();
   for (const lead of leads) {
     if (!lead.assignedTo) continue;
-    for (const item of saleItemsOf(lead)) {
-      if (item.verificationStatus === "rejected") continue;
-      byOwner.set(lead.assignedTo, (byOwner.get(lead.assignedTo) ?? 0) + (item.amount || 0));
-    }
+    const { revenue } = revenueTotals([lead], { inDay });
+    if (revenue) byOwner.set(lead.assignedTo, (byOwner.get(lead.assignedTo) ?? 0) + revenue);
   }
   return byOwner;
+}
+
+/**
+ * The last `n` CALENDAR days ending on `today` (inclusive), oldest first, as `yyyy-MM-dd`.
+ *
+ * "Last 7 days" charts took the last 7 DATES THAT HAD DATA (`slice(-7)` over the days present), so a quiet week
+ * stretched the chart back a month and a day with no sale simply vanished. Now a day with nothing is a 0.
+ */
+export function lastCalendarDays(today: string, n: number): string[] {
+  const [y, m, d] = today.split("-").map(Number);
+  const days: string[] = [];
+  for (let i = n - 1; i >= 0; i -= 1) {
+    const date = new Date(y, (m || 1) - 1, (d || 1) - i, 12); // midday: no DST edge can move the day
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    days.push(`${date.getFullYear()}-${mm}-${dd}`);
+  }
+  return days;
+}
+
+/** Revenue per day for exactly these days (0 where nothing was approved), in the order given. */
+export function revenueSeries(leads: Lead[], days: string[]): { date: string; revenue: number }[] {
+  const byDay = revenueByDay(leads);
+  return days.map((date) => ({ date, revenue: byDay.get(date) ?? 0 }));
+}
+
+/** "Awaiting approval: ₹1,999 (1 sale)" — the one wording for the figure shown beside revenue. */
+export function awaitingApprovalLabel(totals: Pick<RevenueTotals, "awaiting" | "awaitingCount">): string {
+  const n = totals.awaitingCount;
+  return `Awaiting approval: ₹${new Intl.NumberFormat("en-IN").format(totals.awaiting)} (${n} sale${n === 1 ? "" : "s"})`;
 }

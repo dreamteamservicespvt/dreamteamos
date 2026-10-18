@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildAdPipeline, countByStage, orderBacked, standaloneCount } from "@/utils/adPipeline";
+import { buildAdPipeline, countByStage, offQueueCount, orderBacked, standaloneCount } from "@/utils/adPipeline";
 import type { Order, WorkAssignment } from "@/types";
 
 /**
@@ -70,7 +70,19 @@ describe("the cases that used to make the numbers drift apart", () => {
   it("counts work whose order is no longer in the query, once", () => {
     const records = buildAdPipeline([], [work("w1", "verified", "m1", "o-gone")]);
     expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({ stage: "verified", standalone: true });
+    // A sale stands behind it (it points at an order), so it is NOT "created straight from Work Assign"
+    // (2026-10-18, audit D-06: a delivered sold ad was counted and badged as having no sale behind it).
+    expect(records[0]).toMatchObject({ stage: "verified", standalone: false, orderOffQueue: true });
+    expect(standaloneCount(records)).toBe(0);
+    expect(offQueueCount(records)).toBe(1);
+    expect(orderBacked(records)).toHaveLength(0); // still not in the Orders queue
+  });
+
+  it("says one direct job and one delivered sale apart (the audit's Work Assign case)", () => {
+    const records = buildAdPipeline([], [work("w-direct", "assigned"), work("w-sold", "verified", "m1", "o-verified")]);
+    expect(records).toHaveLength(2);
+    expect(standaloneCount(records)).toBe(1);
+    expect(offQueueCount(records)).toBe(1);
   });
 
   it("never double-counts an order that also has an assignment", () => {
@@ -159,13 +171,15 @@ describe("the board and the Orders queue can always be reconciled", () => {
     const queueCounts = countByStage(queue);
 
     for (const stage of ["unassigned", "assigned", "in_progress", "completed"] as const) {
-      const gap = board.filter(r => r.standalone && r.stage === stage).length;
+      const gap = board.filter(r => (r.standalone || r.orderOffQueue) && r.stage === stage).length;
       expect(boardCounts[stage] - gap).toBe(queueCounts[stage]);
     }
   });
 
-  it("makes the whole difference exactly the standalone work", () => {
-    expect(board.length - queue.length).toBe(standaloneCount(board));
+  it("makes the whole difference exactly the standalone work plus sold work that left the queue", () => {
+    expect(board.length - queue.length).toBe(standaloneCount(board) + offQueueCount(board));
+    expect(standaloneCount(board)).toBe(2); // w-manual-a, w-manual-b — the jobs with no sale behind them
+    expect(offQueueCount(board)).toBe(1);   // w-orphan — its order is no longer in the query
   });
 
   it("keeps a departed member's abandoned work out of BOTH, not just one", () => {

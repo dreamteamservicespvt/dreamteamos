@@ -4,7 +4,8 @@ import { workCountsOn } from "./workDates";
 import { isLinePaid, netPayable, payPeriodForDate, payPeriodForMonth, periodDates, shiftPayMonth } from "./payrollEngine";
 import { collectionsOf, commissionInWindow, type Collection } from "./salesPay";
 import { commissionTermsFor, salaryFor } from "./payTerms";
-import type { AppUser, Lead, SaleDetail, WorkAssignment } from "@/types";
+import { revenueTotals } from "./salesRevenue";
+import type { AppUser, Lead, WorkAssignment } from "@/types";
 import { DEFAULT_PAYROLL_CONFIG, type PayrollLine } from "@/types/payroll";
 
 /**
@@ -73,17 +74,6 @@ export interface ProfitBreakdown {
   expensesByCategory: { category: string; amount: number }[];
 }
 
-/** Sale line items on a lead, across both the current and legacy shapes. */
-function saleItemsOf(lead: Lead): SaleDetail[] {
-  return lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
-}
-
-/** The date a sale counts on. */
-function saleDate(item: SaleDetail, lead: Lead): string | null {
-  const seconds = (item.submittedAt as { seconds?: number })?.seconds
-    ?? (lead.createdAt as { seconds?: number })?.seconds;
-  return seconds ? format(new Date(seconds * 1000), "yyyy-MM-dd") : null;
-}
 
 export interface ComputeProfitInput {
   filter: PeriodFilter;
@@ -111,19 +101,12 @@ export function computeProfit(input: ComputeProfitInput): ProfitBreakdown {
   const cycleStartDay = input.cycleStartDay ?? DEFAULT_PAYROLL_CONFIG.payDayOfMonth;
   const todayStr = input.todayStr ?? format(new Date(), "yyyy-MM-dd");
 
-  // ── Income: verified sales only. Pending sales aren't money yet. ──────────
-  let salesRevenue = 0;
-  let salesCount = 0;
-
-  for (const lead of leads) {
-    for (const item of saleItemsOf(lead)) {
-      if (item.verificationStatus !== "verified") continue;
-      const date = saleDate(item, lead);
-      if (!withinPeriod(date ?? undefined, filter)) continue;
-      salesRevenue += item.amount || 0;
-      salesCount += 1;
-    }
-  }
+  // ── Income: approved (verified) sales only. Pending sales aren't money yet. ──────────
+  // The ONE revenue rule every screen uses since 2026-10-18 (utils/salesRevenue.revenueTotals): the agreed amount
+  // of each approved sale, on the local day it was made, across saleItems and the legacy saleDetails.
+  const revenue = revenueTotals(leads, { inDay: (day) => withinPeriod(day, filter) });
+  const salesRevenue = revenue.revenue;
+  const salesCount = revenue.count;
 
   const otherIncome = otherIncomeRecords
     .filter(r => withinPeriod(r.date, filter))

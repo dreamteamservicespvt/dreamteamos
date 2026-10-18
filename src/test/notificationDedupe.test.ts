@@ -36,7 +36,8 @@ vi.mock("firebase/firestore", () => ({
   where: vi.fn(),
   serverTimestamp: () => "TS",
 }));
-vi.mock("@/services/firebase", () => ({ db: {} }));
+// A signed-in staff member: since 2026-10-18 the push goes only with their ID token.
+vi.mock("@/services/firebase", () => ({ db: {}, auth: { currentUser: { getIdToken: async () => "test-id-token" } } }));
 vi.mock("@/utils/platform", () => ({ isNative: () => false }));
 
 const { sendNotification } = await import("@/services/notifications");

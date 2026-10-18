@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
-import { isActiveUser } from "@/utils/roleHelpers";
+import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDate } from "@/utils/formatters";
-import type { AppUser } from "@/types";
+import { computeProfit } from "@/utils/profitAnalytics";
+import { defaultPeriodFilter, periodLabel, withinPeriod } from "@/utils/periodFilter";
+import { awaitingApprovalLabel, revenueTotals } from "@/utils/salesRevenue";
+import type { AppUser, Lead, WorkAssignment } from "@/types";
+import type { PayrollLine } from "@/types/payroll";
 import { Wallet, TrendingUp, TrendingDown, Plus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useToday } from "@/hooks/useToday";
@@ -26,7 +29,8 @@ const EXPENSE_CATEGORIES = [
 export default function Accounts() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
-  const [members, setMembers] = useState<AppUser[]>([]);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
+  const [payrollLines, setPayrollLines] = useState<PayrollLine[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
@@ -49,9 +53,11 @@ export default function Accounts() {
 
   useEffect(() => {
     let loaded = 0;
-    const checkDone = () => { loaded++; if (loaded >= 4) setLoading(false); };
+    const checkDone = () => { loaded++; if (loaded >= 5) setLoading(false); };
     const unsubs: (() => void)[] = [];
-    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setMembers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser)).filter(isActiveUser)); /* only active people are shown */ checkDone(); }));
+    // Everyone, inactive included — a person paid in the period still cost money in it (as on the Accounts Dashboard).
+    unsubs.push(onSnapshot(collection(db, "users"), (snap) => { setAllUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser))); checkDone(); }));
+    unsubs.push(onSnapshot(collection(db, "payroll_lines"), (snap) => { setPayrollLines(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PayrollLine))); checkDone(); }, () => checkDone()));
     unsubs.push(onSnapshot(collection(db, "expenses"), (snap) => {
       setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense)).sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
       checkDone();
@@ -61,16 +67,34 @@ export default function Accounts() {
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  const totalSalesRevenue = leads
-    .filter((l: any) => l.saleDone && l.saleDetails)
-    .reduce((s, l: any) => s + (l.saleDetails?.amount || 0), 0);
-  const totalTechRevenue = assignments
-    .filter((a) => a.status === "verified")
-    .reduce((s, a) => s + (a.totalPrice || 0), 0);
-  const totalRevenue = totalSalesRevenue + totalTechRevenue;
-  const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
-  const totalSalaries = members.reduce((s, m) => s + (m.salary || 0), 0);
-  const netProfit = totalRevenue - totalExpenses - totalSalaries;
+  /*
+    ── One period, the P&L's own engine (2026-10-18, whole-app audit D-03) ──
+    The net profit here was ALL-TIME revenue (the LAST sale on each lead, pending included, plus the tech side's
+    delivered value — the same work a second time) minus ALL-TIME expenses minus ONE month of every active
+    person's salary today (an external creator included): -₹1,75,683 while Profit & Loss and the Accounts
+    Dashboard said -₹24,099 for the same company and day. The Accounts Dashboard had exactly this fixed on
+    2026-10-15; this page now reads the same engine (utils/profitAnalytics.computeProfit) for the same period —
+    the pay period running now — so the three screens agree: revenue = approved sales (the one rule,
+    utils/salesRevenue), expenses dated in the period, salaries paid where paid (else what applied then, for the
+    days so far) and incentives by the payroll rule. The expense list below still shows every entry.
+  */
+  const period = useMemo(() => defaultPeriodFilter("cycle"), []);
+  const profit = useMemo(() => computeProfit({
+    filter: period,
+    users: allUsers,
+    leads: leads as Lead[],
+    assignments: assignments as WorkAssignment[],
+    expenses,
+    payrollLines,
+  }), [period, allUsers, leads, assignments, expenses, payrollLines]);
+  const awaiting = useMemo(
+    () => revenueTotals(leads as Lead[], { inDay: (day) => withinPeriod(day, period) }),
+    [leads, period],
+  );
+  const totalRevenue = profit.totalIncome;
+  const totalExpenses = profit.expenses;
+  const totalSalaries = profit.techSalary + profit.salesSalary + profit.salesCommission;
+  const netProfit = profit.netProfit;
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +133,7 @@ export default function Accounts() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">Accounts</h1>
-          <p className="text-muted-foreground text-sm mt-1">Financial overview and expense tracking</p>
+          <p className="text-muted-foreground text-sm mt-1">Financial overview and expense tracking · figures for this pay period, <span data-test="main-accounts-period">{periodLabel(period)}</span></p>
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
@@ -122,20 +146,23 @@ export default function Accounts() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <div className="bg-card border border-border rounded-xl p-3 md:p-5">
-          <div className="flex items-center gap-2 mb-1"><TrendingUp size={14} className="text-success" /><span className="text-[10px] md:text-xs text-muted-foreground">Total Revenue</span></div>
-          <p className="font-display text-lg md:text-2xl font-bold text-foreground">{formatCurrency(totalRevenue)}</p>
+          <div className="flex items-center gap-2 mb-1"><TrendingUp size={14} className="text-success" /><span className="text-[10px] md:text-xs text-muted-foreground">Revenue (approved sales)</span></div>
+          <p className="font-display text-lg md:text-2xl font-bold text-foreground" data-test="main-accounts-revenue">{formatCurrency(totalRevenue)}</p>
+          {awaiting.awaitingCount > 0 && (
+            <p className="text-[10px] md:text-xs text-muted-foreground mt-1" data-test="main-accounts-awaiting">{awaitingApprovalLabel(awaiting)}</p>
+          )}
         </div>
         <div className="bg-card border border-border rounded-xl p-3 md:p-5">
           <div className="flex items-center gap-2 mb-1"><TrendingDown size={14} className="text-destructive" /><span className="text-[10px] md:text-xs text-muted-foreground">Expenses</span></div>
           <p className="font-display text-lg md:text-2xl font-bold text-foreground">{formatCurrency(totalExpenses)}</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-3 md:p-5">
-          <div className="flex items-center gap-2 mb-1"><Wallet size={14} className="text-warning" /><span className="text-[10px] md:text-xs text-muted-foreground">Salaries</span></div>
+          <div className="flex items-center gap-2 mb-1"><Wallet size={14} className="text-warning" /><span className="text-[10px] md:text-xs text-muted-foreground">Salaries & incentives</span></div>
           <p className="font-display text-lg md:text-2xl font-bold text-foreground">{formatCurrency(totalSalaries)}</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-3 md:p-5">
           <div className="flex items-center gap-2 mb-1"><TrendingUp size={14} className={netProfit >= 0 ? "text-success" : "text-destructive"} /><span className="text-[10px] md:text-xs text-muted-foreground">Net Profit</span></div>
-          <p className={`font-display text-lg md:text-2xl font-bold ${netProfit >= 0 ? "text-success" : "text-destructive"}`}>{formatCurrency(netProfit)}</p>
+          <p className={`font-display text-lg md:text-2xl font-bold ${netProfit >= 0 ? "text-success" : "text-destructive"}`} data-test="main-accounts-net">{formatCurrency(netProfit)}</p>
         </div>
       </div>
 

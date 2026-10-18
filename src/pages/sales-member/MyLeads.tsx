@@ -388,9 +388,13 @@ export default function MyLeads() {
     const dayDateStr = recentDays[dayIndex]?.dateStr;
     const dayLeads = groups[dayDateStr] || [];
 
-    // Special: if viewing Today (index 0), also include uncalled leads from past days
+    // Special: if viewing Today (index 0), also include uncalled leads from past days — each lead once.
+    // A past lead sold to today while still "Not Called" is worked today AND uncalled from another day:
+    // it was listed twice, and counted twice in the cards above (2026-10-19).
     if (dayIndex === 0) {
+      const inToday = new Set(dayLeads.map((l) => l.id));
       const uncalledPast = src.filter((l) => {
+        if (inToday.has(l.id)) return false;
         if (l.status !== "not_called") return false;
         const ts = l.createdAt?.seconds;
         if (!ts) return false;

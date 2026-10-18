@@ -6,6 +6,30 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-19: whole-app audit — defects fixed and checked in a real browser** (`people.md` §9.16 / §24,
+  `roles-routes.md` §8.1 / §10, `orders-work.md` §16). From a full-app harness (the REAL `App.tsx`, login, guards and pages
+  on `memoryFirestore`; 11 seeded accounts) swept per role × route, then driven by hand in Chrome. **D-01** main admin
+  StatCards stuck at 0 (`useAnimatedCounter` animated once, from the first — empty — value; now re-animates on every new
+  target, reduced motion respected). **D-02** the Dashboard's "Today" figures were all-time. **D-03** Accounts' net profit ≠
+  P&L (both now `profitAnalytics`). **D-04** external creators counted as staff (`roleHelpers.isStaffMember`). **D-05**
+  "revenue" meant four different things — now ONE rule: approved sales on their own India day, pending shown beside it
+  ("Awaiting approval: ₹X (n sales)"), rejected nowhere, tech value never inside it; Revenue Overview + Revenue Summary
+  rebuilt on `utils/revenueReport`, 7 / 30 days = calendar days (owner-delegated decision 2026-10-18). **D-06** Work Assign
+  called every delivered SOLD ad "created with no sale behind it" (`adPipeline.orderOffQueue`). **D-07** HR's document-type
+  select overflowed a 390px phone (`AllDocumentsPanel`: full width on phones). **D-08** another role's URL landed a signed-in
+  person on the sign-in form (`AppLayout` → `defaultRouteForUser`). **D-09** breadcrumbs showed slugs ("Hr", "Dev Os") —
+  `roleHelpers.breadcrumbLabel` uses the menu name. Found by hand in Chrome: the four revenue charts repeated axis labels
+  ("₹0k ₹1k ₹1k ₹2k ₹2k" — `formatters.formatRupeeAxis`), and **My Leads listed a sold lead twice** (and counted it twice)
+  when it was still "Not Called" — it was both "worked today" and "uncalled from an earlier day" (`applyDayWindow` dedupes).
+  Two test suites still expected a push with nobody signed in (`notificationDedupe`, `notificationInboxOct13` — since
+  `4037758` a push needs the member's ID token); their firebase mock now has a signed-in user. **Tested:** new
+  `auditFixesOct19` (12) + updated `commissionRuleOct15`; full `npx vitest run` 272 files — only the pre-existing
+  `smmDeliveryControlUiOct15` failure; `tsc` 0 errors; `npm run build` ✅. In Chrome (the harness): the full sale → Sales
+  Approvals → Orders → assign → My Work (code, studio, Flow-credit step, Drive step) → Review & Verify flow, Revenue
+  Overview 7D / 30D / All, Accounts = P&L, the dashboards' figures after the sale, breadcrumbs, a tech member opening
+  `/tech-admin/dashboard`; a headless sweep of every role × route at 1920 / 375 and 1366 / 360 (no overflow or clipping,
+  every forbidden route → the person's home). Not checked: live Firebase, Gemini, push.
+
 - **2026-10-18 (later): the Firestore rules audited against the app; staff logins made on the server**
   (`backend-security.md` §12; `docs/firestore-rules.md`). A static audit compared every rule in `docs/firestore-rules.md`
   with all 664 Firestore accesses in `src/` (no emulator: no Java on this machine). Publishing the rules closes the

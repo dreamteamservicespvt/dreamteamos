@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/services/firebase";
-import { formatCurrency } from "@/utils/formatters";
-import { getRoleLabel, isActiveUser } from "@/utils/roleHelpers";
+import { formatCurrency, formatRupeeAxis } from "@/utils/formatters";
+import { getRoleLabel, isStaffMember } from "@/utils/roleHelpers";
 import { computeProfit } from "@/utils/profitAnalytics";
-import { defaultPeriodFilter, periodLabel } from "@/utils/periodFilter";
-import { salesBookedByDay } from "@/utils/salesRevenue";
+import { defaultPeriodFilter, periodLabel, withinPeriod } from "@/utils/periodFilter";
+import { awaitingApprovalLabel, lastCalendarDays, revenueSeries, revenueTotals } from "@/utils/salesRevenue";
+import { useToday } from "@/hooks/useToday";
 import type { AppUser, Lead, WorkAssignment } from "@/types";
 import type { PayrollLine } from "@/types/payroll";
 import { Wallet, TrendingUp, TrendingDown, Users, PieChart } from "lucide-react";
@@ -35,8 +36,10 @@ export default function AccountsDashboard() {
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  // Only active people are shown (owner, 2026-10-10).
-  const members = useMemo(() => allUsers.filter(isActiveUser), [allUsers]);
+  // Only active people are shown (owner, 2026-10-10), and never an external creator — an outsider allowed only the
+  // ad tool is not staff (2026-10-18, whole-app audit D-04: "Total Staff" and "Tech Member" counted one).
+  const members = useMemo(() => allUsers.filter(isStaffMember), [allUsers]);
+  const today = useToday();
 
   /*
     ── One period for revenue, expenses and salaries (2026-10-15) ──
@@ -61,32 +64,29 @@ export default function AccountsDashboard() {
   const totalSalaries = profit.techSalary + profit.salesSalary + profit.salesCommission;
   const netProfit = profit.netProfit;
 
-  // Expense by category for pie chart
-  const expByCategory: Record<string, number> = {};
-  expenses.forEach((e) => {
-    const cat = e.category || "Other";
-    expByCategory[cat] = (expByCategory[cat] || 0) + (e.amount || 0);
-  });
-  const pieData = Object.entries(expByCategory).map(([name, value]) => ({ name, value }));
+  // Sales in this pay period still awaiting approval — said beside revenue, never added into it (2026-10-18).
+  const awaiting = useMemo(
+    () => revenueTotals(leads as Lead[], { inDay: (day) => withinPeriod(day, period) }),
+    [leads, period],
+  );
+
+  // Expense by category for the pie — the same pay period as the cards above (it was every expense ever, beside
+  // cards that say "this pay period"; 2026-10-18). computeProfit already groups them.
+  const pieData = profit.expensesByCategory.map(({ category, amount }) => ({ name: category, value: amount }));
   const COLORS = [
     "hsl(24.6 95% 53.1%)", "hsl(217.2 91.2% 59.8%)", "hsl(142.1 70.6% 45.3%)",
     "hsl(47.9 95.8% 47.3%)", "hsl(270 91% 65%)", "hsl(0 84.2% 60.2%)",
   ];
 
-  // Revenue by date for bar chart (last 7 days)
-  const revenueByDate: Record<string, { date: string; sales: number; tech: number }> = {};
-  assignments.filter((a) => a.status === "verified").forEach((a) => {
-    const d = a.date || "unknown";
-    if (!revenueByDate[d]) revenueByDate[d] = { date: d, sales: 0, tech: 0 };
-    revenueByDate[d].tech += a.totalPrice || 0;
-  });
-  // Each sale on its own (local) day, across saleItems and the legacy shape (2026-10-15) — not the lead's
-  // last-touched time in UTC, and not the legacy field alone.
-  salesBookedByDay(leads as Lead[]).forEach((amount, d) => {
-    if (!revenueByDate[d]) revenueByDate[d] = { date: d, sales: 0, tech: 0 };
-    revenueByDate[d].sales += amount;
-  });
-  const barData = Object.values(revenueByDate).sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
+  /*
+    ── Revenue, the last 7 CALENDAR days (2026-10-18, whole-app audit D-05) ──
+    The chart was the last 7 DATES THAT HAD DATA (`slice(-7)`), counted PENDING sales at full contract value and
+    added the tech side's delivered value as a second "revenue" bar — beside a card that counts approved sales only.
+    Now it is the one revenue rule (utils/salesRevenue — approved sales on the day each was made; owner-delegated
+    decision 2026-10-18) for each of the last 7 days, today included, a quiet day showing 0.
+  */
+  const barData = useMemo(() => revenueSeries(leads as Lead[], lastCalendarDays(today, 7)), [leads, today]);
+  const sevenDayTotal = barData.reduce((s, d) => s + d.revenue, 0);
 
   // Team count by role
   const roleCounts = members.reduce((acc, m) => {
@@ -116,7 +116,8 @@ export default function AccountsDashboard() {
 
       {/* Summary Cards — one pay period for all of them, so Net Profit is their own sum. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatBox icon={TrendingUp} label="Revenue (verified sales)" value={formatCurrency(totalRevenue)} color="text-success" />
+        <StatBox icon={TrendingUp} label="Revenue (approved sales)" value={formatCurrency(totalRevenue)} color="text-success"
+          note={awaiting.awaitingCount > 0 ? awaitingApprovalLabel(awaiting) : undefined} />
         <StatBox icon={TrendingDown} label="Expenses" value={formatCurrency(totalExpenses)} color="text-destructive" />
         <StatBox icon={Wallet} label="Salaries & incentives" value={formatCurrency(totalSalaries)} color="text-warning" />
         <StatBox icon={TrendingUp} label="Net Profit" value={formatCurrency(netProfit)} color={netProfit >= 0 ? "text-success" : "text-destructive"} />
@@ -126,18 +127,18 @@ export default function AccountsDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Revenue Chart */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-display font-semibold text-foreground mb-4">Revenue (Last 7 Days)</h3>
-          {barData.length === 0 ? (
-            <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">No data yet</div>
+          <h3 className="font-display font-semibold text-foreground">Revenue (Last 7 Days)</h3>
+          <p className="text-xs text-muted-foreground mb-4">Approved sales, by the day each sale was made</p>
+          {sevenDayTotal === 0 ? (
+            <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm" data-test="accounts-7day-empty">No approved sales in the last 7 days</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={barData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.8% 16.1%)" />
                 <XAxis dataKey="date" stroke="hsl(240 3.7% 65.9%)" fontSize={10} tickFormatter={(v) => v.slice(5)} />
-                <YAxis stroke="hsl(240 3.7% 65.9%)" fontSize={10} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                <YAxis stroke="hsl(240 3.7% 65.9%)" fontSize={10} tickFormatter={formatRupeeAxis} />
                 <Tooltip contentStyle={{ backgroundColor: "hsl(240 5.3% 7.1%)", border: "1px solid hsl(240 3.8% 16.1%)", borderRadius: "8px", fontSize: "11px" }} formatter={(v: number) => [formatCurrency(v), ""]} />
-                <Bar dataKey="sales" name="Sales" fill="hsl(24.6 95% 53.1%)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="tech" name="Tech" fill="hsl(217.2 91.2% 59.8%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" name="Revenue" fill="hsl(24.6 95% 53.1%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -145,9 +146,9 @@ export default function AccountsDashboard() {
 
         {/* Expense Breakdown Pie */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-display font-semibold text-foreground mb-4">Expense Breakdown</h3>
+          <h3 className="font-display font-semibold text-foreground mb-4">Expense Breakdown <span className="text-xs font-normal text-muted-foreground">· this pay period</span></h3>
           {pieData.length === 0 ? (
-            <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">No expenses yet</div>
+            <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">No expenses in this pay period</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <RPieChart>
@@ -177,7 +178,7 @@ export default function AccountsDashboard() {
   );
 }
 
-function StatBox({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
+function StatBox({ icon: Icon, label, value, color, note }: { icon: any; label: string; value: string | number; color: string; note?: string }) {
   return (
     <div className="bg-card border border-border rounded-xl p-4">
       <div className="flex items-center gap-2 mb-2">
@@ -185,6 +186,7 @@ function StatBox({ icon: Icon, label, value, color }: { icon: any; label: string
         <span className="text-xs text-muted-foreground font-medium">{label}</span>
       </div>
       <p className="font-display text-xl font-bold text-foreground">{value}</p>
+      {note && <p className="text-[11px] text-muted-foreground mt-1" data-test="statbox-note">{note}</p>}
     </div>
   );
 }

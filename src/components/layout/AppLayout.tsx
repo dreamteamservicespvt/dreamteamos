@@ -34,7 +34,7 @@ import { UnlessCoveredByDelivery } from "@/components/smm/alerts/DeliveryCoverag
 const SMM_ALERT_ROLES: string[] = ["main_admin", "tech_admin", "sales_admin", "tech_member", "sales_member", "tech_team_leader"];
 import { registerBackButton } from "@/services/capacitor-plugins";
 import { isNative } from "@/utils/platform";
-import { EXTERNAL_CREATOR_ROUTES } from "@/utils/roleHelpers";
+import { EXTERNAL_CREATOR_ROUTES, defaultRouteForUser } from "@/utils/roleHelpers";
 import { useMyLeadsSync } from "@/hooks/useMyLeads";
 import { useMyOrdersSync } from "@/hooks/useMyOrders";
 import type { UserRole } from "@/types";
@@ -110,8 +110,10 @@ export default function AppLayout({ allowedRoles }: AppLayoutProps) {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+  // Another role's page sends a signed-in person to their OWN home, never the sign-in form: /login does not
+  // redirect a live session, so it read as being signed out (audit D-08, 2026-10-19).
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={defaultRouteForUser(user)} replace />;
   }
   // External creators are confined to the ad-creation tool and their profile — any other route
   // (typed in, deep-linked, or bookmarked) sends them back to Create Ad.

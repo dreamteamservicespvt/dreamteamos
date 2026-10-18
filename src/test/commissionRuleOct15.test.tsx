@@ -35,7 +35,7 @@ const { default: RevenueOverview } = await import("@/pages/main-admin/RevenueOve
 const { keepFirstApproval } = await import("@/utils/saleDecision");
 const { collectedAtFor, collectedOnProblem, paymentEvents } = await import("@/utils/salePayments");
 const { mergeSaleEdit, paymentEditRefusal } = await import("@/utils/saleEdit");
-const { salesBookedByDay, salesBookedByOwner } = await import("@/utils/salesRevenue");
+const { revenueByDay, revenueByOwner } = await import("@/utils/salesRevenue");
 
 import type { AppUser, CommissionSettlement, Lead, SaleDetail } from "@/types";
 
@@ -225,8 +225,8 @@ describe("revenue charts", () => {
   ] as unknown as Lead[];
 
   it("dates each sale by its own local day, across saleItems and the legacy shape, rejected left out", () => {
-    expect([...salesBookedByDay(leads)].sort()).toEqual([["2026-10-10", 999], ["2026-10-12", 1999]]);
-    expect(salesBookedByOwner(leads).get("sita")).toBe(999);
+    expect([...revenueByDay(leads)].sort()).toEqual([["2026-10-10", 999], ["2026-10-12", 1999]]);
+    expect(revenueByOwner(leads).get("sita")).toBe(999);
   });
 
   it("the Accounts Dashboard's net profit is one pay period's revenue − expenses − salaries & incentives", async () => {
@@ -248,7 +248,7 @@ describe("revenue charts", () => {
     mem.__seed("leads/l1", leads[0] as unknown as Record<string, unknown>);
     mem.__seed("leads/l2", leads[1] as unknown as Record<string, unknown>);
     render(<RevenueOverview />);
-    const card = (await screen.findByText("From Sales")).parentElement!;
+    const card = (await screen.findByText("Revenue (approved sales)")).parentElement!;
     await waitFor(() => expect(within(card).getByText("₹2,998")).toBeTruthy());
   });
 });
