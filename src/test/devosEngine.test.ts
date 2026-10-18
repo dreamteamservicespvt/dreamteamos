@@ -6,6 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("firebase/firestore", async () => await import("./memoryFirestore"));
 
+// Whole journeys on the in-memory store (1–5 s each alone): the 5 s default timed them out only when the machine was
+// busy (2026-10-18), never on a wrong result.
+vi.setConfig({ testTimeout: 30_000 });
+
 import * as sdk from "firebase/firestore";
 import * as mem from "./memoryFirestore";
 import { clientStore, type ClientSdk } from "@/devos/engine/store";
@@ -17,7 +21,7 @@ import { ensureProfile, onboard, startTask, answer, nextItem, hint, ensureTodayF
 import { dispatch } from "@/devos/engine/router";
 import { appeal, coach, submitPractical } from "@/devos/engine/review";
 import { joinLeague, closeDueLeagues } from "@/devos/engine/competition";
-import { runTick } from "@/devos/engine/tick";
+import { claimTickSlot, runTick } from "@/devos/engine/tick";
 import { applyAttempt } from "@/devos/engine/progress";
 import { replenishPool } from "@/devos/engine/aipool";
 import { adminIntegrity, adminOverview, adminPerson, adminQuarantine, adminQuestions, adminSavePolicy } from "@/devos/engine/admin";
@@ -30,7 +34,7 @@ import { evaluateRank } from "@/devos/core/ranks";
 import { rankBlueprint } from "@/devos/core/director";
 import { seasonOf } from "@/devos/core/season";
 import { similarityDecision } from "@/devos/core/similarity";
-import type { AttemptResponse, DevAttempt, DevProfile, DevSession, DevTask, Exposure, ItemKey, PublicItem, QuestionDoc, SeenEntry } from "@/devos/core/types";
+import type { AttemptResponse, DevAttempt, DevCorrection, DevProfile, DevSession, DevTask, Exposure, ItemKey, PublicItem, QuestionDoc, SeenEntry } from "@/devos/core/types";
 
 const store = clientStore(sdk as unknown as ClientSdk, {});
 let clock = Date.UTC(2026, 9, 20, 5, 0); // Tue 20 Oct 2026, 10:30 IST
@@ -835,5 +839,87 @@ describe("devos engine — time limits and deadlines are honest (2026-10-18)", (
     const s = mem.__read(PATH.session("u_ravi", id)) as unknown as DevSession;
     expect(s.slots.filter((x) => x.state === "expired").length).toBe(s.slots.length - 1);
     expect(mem.__all(PATH.tasks("u_ravi")).filter((t) => t.kind === "rank").length).toBe(1);
+  });
+});
+
+describe("devos engine — runs with nobody involved (owner, 2026-10-18: \"0% human involvement\")", () => {
+  async function baselineDone(deps: Deps, actor: Actor) {
+    await onboard(deps, actor, { consent: true, answers: {}, track: "sales" });
+    await finishTask(deps, actor, "baseline", true);
+  }
+
+  it("an open tick runs at most once per 20-minute slot, whoever calls it", async () => {
+    const deps = await makeDeps();
+    expect(await claimTickSlot(deps)).toBe(true);
+    expect(await claimTickSlot(deps)).toBe(false); // the same slot, a second caller
+    clock += 5 * 60_000;
+    expect(await claimTickSlot(deps)).toBe(false); // still inside it
+    clock += 20 * 60_000;
+    expect(await claimTickSlot(deps)).toBe(true); // the next slot
+    const s = await runTick(deps, { reason: "cron", trigger: "vercel 0 4 * * *" });
+    expect(s.trigger).toBe("vercel 0 4 * * *");
+    expect((mem.__read(PATH.health) as { lastTick?: { trigger?: string } }).lastTick?.trigger).toBe("vercel 0 4 * * *");
+  });
+
+  it("an appeal the graders cannot answer waits in the queue and the tick decides it — no admin", async () => {
+    const deps = await makeDeps();
+    await baselineDone(deps, ravi);
+    const open = (mem.__all(PATH.attempts("u_ravi")) as unknown as DevAttempt[]).find((a) => a.item.type === "open" && (a.outcome === "passed" || a.outcome === "failed"));
+    expect(open).toBeTruthy();
+    const down = await makeDeps(fakeAi({ down: true }));
+    const r = await appeal(down, ravi, { attemptId: open!.id, reason: "I covered every point the question asked for." });
+    expect(r.outcome).toBe("pending");
+    expect(r.message).not.toMatch(/admin/i);
+    const id = `appeal_u_ravi_${open!.id}`;
+    expect(((mem.__read("devos_queue/grading")?.items as { kind: string; id: string }[]) ?? []).some((q) => q.kind === "appeal" && q.id === id)).toBe(true);
+    expect((mem.__read(PATH.attempt("u_ravi", open!.id)) as unknown as DevAttempt).appeal?.outcome).toBe("pending");
+    await expect(appeal(deps, ravi, { attemptId: open!.id, reason: "Asking a second time, same answer." })).rejects.toMatchObject({ status: 409 });
+    // The graders are back: the next tick (after the two-minute hold) decides it and tells the person.
+    clock += 5 * 60_000;
+    await runTick(await makeDeps(), { reason: "cron" });
+    const c = mem.__read(PATH.correction(id)) as unknown as DevCorrection;
+    expect(c.pending).toBeFalsy();
+    expect(["upheld", "changed"]).toContain((mem.__read(PATH.attempt("u_ravi", open!.id)) as unknown as DevAttempt).appeal?.outcome);
+    expect(((mem.__read("devos_queue/grading")?.items as { id: string }[]) ?? []).some((q) => q.id === id)).toBe(false);
+    expect(notices.some((n) => n.key === `devos_appeal_${id}` && n.uid === "u_ravi")).toBe(true);
+  });
+
+  it("an appeal the graders never answer is decided after its tries — the original stands, the person is told", async () => {
+    const deps = await makeDeps();
+    await baselineDone(deps, ravi);
+    const open = (mem.__all(PATH.attempts("u_ravi")) as unknown as DevAttempt[]).find((a) => a.item.type === "open" && (a.outcome === "passed" || a.outcome === "failed"))!;
+    const down = await makeDeps(fakeAi({ down: true }));
+    await appeal(down, ravi, { attemptId: open.id, reason: "I covered every point the question asked for." });
+    const id = `appeal_u_ravi_${open.id}`;
+    for (let i = 0; i < DEFAULT_POLICY.scoring.gradeRetryLimit; i++) {
+      clock += 30 * 60_000;
+      await runTick(down, { reason: "cron" });
+    }
+    const c = mem.__read(PATH.correction(id)) as unknown as DevCorrection;
+    expect(c.pending).toBeFalsy();
+    expect(c.detail).toMatch(/original result stands/);
+    expect((mem.__read(PATH.attempt("u_ravi", open.id)) as unknown as DevAttempt).appeal?.outcome).toBe("upheld");
+    expect(notices.some((n) => n.key === `devos_appeal_${id}`)).toBe(true);
+  });
+
+  it("a profile edited outside the server is rebuilt from its signed ledgers by the morning run; forged XP rows never count", async () => {
+    const deps = await makeDeps();
+    await baselineDone(deps, ravi);
+    const honest = mem.__read(PATH.user("u_ravi")) as unknown as DevProfile;
+    // Someone with database access writes 9,999 XP and rank 6 straight into the profile, and adds an unsigned XP row.
+    mem.__seed(PATH.user("u_ravi"), { ...honest, xp: { ...honest.xp, total: 9999 }, rank: { ...honest.rank, level: 6 } });
+    mem.__seed(PATH.xp("u_ravi", "xp_forged"), { id: "xp_forged", uid: "u_ravi", amount: 5000, reason: "forged", sourceType: "task", sourceId: "x", ruleVersion: "v0", seasonId: "S1", day: "2026-10-20", recordedAt: clock });
+    clock = Date.UTC(2026, 9, 21, 1, 30); // Wed 21 Oct, 07:00 IST — the next morning's roll-over
+    const s = await runTick(await makeDeps(), { reason: "cron" });
+    expect(s.steps.find((x) => x.id === "rollover")?.note).toMatch(/1 profile\(s\) edited outside the server rebuilt/);
+    const repaired = mem.__read(PATH.user("u_ravi")) as unknown as DevProfile;
+    expect(repaired.xp.total).toBe(honest.xp.total);
+    expect(repaired.rank.level).toBe(honest.rank.level);
+    expect(mem.__all(PATH.audits).some((a) => a.action === "repair_profile" && a.target === "u_ravi")).toBe(true);
+    // The admin's check agrees: the forged row is reported and left out of the ledger.
+    const check = await adminIntegrity(deps, boss, { uid: "u_ravi" });
+    expect(check.profile).toBe("ok");
+    expect(check.xpTampered).toBe(1);
+    expect(check.xpLedger).toBe(honest.xp.total);
   });
 });

@@ -53,8 +53,11 @@ BASIC → … → ULTRA PRO MAX (six); a rank never drops.
     tests on `memoryFirestore`) and an `AiPort` (`geminiPort.ts` REST, or `fakeAi.ts` deterministic): `bank`
     (serve), `grading`, `progress`, `learner`, `review` (practicals, appeals, voids, coach), `competition` (boards,
     seasons, leagues, missions), `aipool`, `reports`, `admin`, `queue`, `tick`, `router` (the ONE action switch).
-- **Two doors in `api/devos.ts`** (`maxDuration` 60): `GET` = the tick (cron, `CRON_SECRET` via
-  `utils/smmServerDelivery.cronAuthProblem` — Bearer from Vercel Cron, `x-cron-secret` from cron-job.org); `POST
+- **Two doors in `api/devos.ts`** (`maxDuration` 60): `GET` = the tick — with `CRON_SECRET` set it needs it
+  (`utils/smmServerDelivery.cronAuthProblem` — Bearer from Vercel Cron, `x-cron-secret` from cron-job.org); without it
+  (2026-10-18, owner: "0% human involvement") it runs OPEN but at most once per 20-minute slot for the whole company
+  (`tick.claimTickSlot`, a transaction on `devos_runs/open`; a repeat within a minute on a warm instance is answered 202
+  before any read), so the worst any caller can do is make the normal, idempotent, budgeted work happen on time; `POST
   {action,…}` = `verifyIdToken` → `users/{uid}` → `Actor` → `router.dispatch`. Actions: `bootstrap onboard today
   start next hint answer submit practice rank appeal coach privacy league.join boards catchup` and `admin.overview
   admin.staff admin.person admin.track admin.enrol admin.policy admin.void admin.regrade admin.quarantine
@@ -197,9 +200,20 @@ BASIC → … → ULTRA PRO MAX (six); a rank never drops.
   every attempt and rank event records the version it was judged under.
 
 ### The tick (`engine/tick.ts`) — the work with every browser closed
-Woken by `GET /api/devos`: Vercel's daily cron (`vercel.json`, `0 1 * * *` = 06:30 IST) and cron-job.org every 30
-minutes (to be set up by the owner, below); as a safety net a staff member's app asks the server to `catchup` when the
-last run is over 2 hours old (06:00–21:00 IST). Steps, each bounded and idempotent, leaving a heartbeat in
+**It runs with nobody involved** (owner, 2026-10-18: "0% human involvement — if there is time for us then only we
+will involve"). Woken by `GET /api/devos` from SEVEN daily Vercel crons (`vercel.json`; Hobby fires each anywhere in its
+hour, so they sit on the hour): 01 UTC (06:30–07:29 IST — the roll-over), 04 (the 09:00 "quest ready" notice), 06, 08,
+10, 12 (the 17:00 "still waiting" notice), 15 (Saturday's 20:00 league close) — no secret or outside cron needed (the
+open slot above); `CRON_SECRET` + a cron-job.org job every 30 minutes remain OPTIONAL hardening / a faster cadence. As a
+safety net a staff member's app asks the server to `catchup` when the last run is over 2 hours old (06:00–21:00 IST).
+Each run's `trigger` (which cron, a catch-up, Run now) is kept with the heartbeat and shown on the Automation tab, which
+says "Runs by itself — nothing to set up". Nothing waits for an admin: an **appeal** on a written answer that the graders
+cannot answer is queued (`kind: "appeal"`, the correction `pending`) and decided by the tick (`review.resumeAppeal`; after
+`gradeRetryLimit` tries the original stands), the person told (`devos_result`, "Your review is done") — it used to be
+"sent to an admin to review", and nothing picked it up; the roll-over re-queues any pending appeal the queue lost;
+every morning it checks every profile's signature (already read — no extra reads) and rebuilds one edited outside the
+server from its signed ledgers (`admin.checkPerson`, audited `repair_profile`; a ledger row with a wrong or missing
+signature is reported and left out of the totals — before, a forged XP row counted in the rebuilt total). Steps, each bounded and idempotent, leaving a heartbeat in
 `devos_health/current`: the **daily roll-over** after 06:00 IST (claimed once in `devos_runs/roll_<day>`): invites
 (working days only — never a Sunday, a company holiday or the person's approved leave; every 3 days, 5 at most; in the
 bell, pushed only outside quiet hours), expiries (a platform fault is `system_error`), re-queues, today's quests and the week's
@@ -229,10 +243,9 @@ role's screens at 390 px and desktop (each finding fixed and re-checked).
   at the owner's go-ahead) made it live. Checked on production: `GET /api/devos` → 500 `{"error":"CRON_SECRET not
   configured"}` (until the secret is set), a POST without a token → 401, the preflight → 204, and the bundle carries the
   "Development OS" menu item and its page.
-- **`CRON_SECRET` is not set on Vercel** (2026-10-18: `GET /api/smm-monitor` answered 500), so no cron runs: the
-  daily work happens only through the catch-up when someone opens the app. Set it (Vercel → Settings → Environment
-  Variables) and redeploy, then create a cron-job.org job: GET `https://dreamteamos.vercel.app/api/devos`, header
-  `x-cron-secret: <same value>`, every 30 minutes. The Control Center's Automation tab shows the last run.
+- **No setup needed to run** (2026-10-18): without `CRON_SECRET` the seven Vercel crons run the tick through the open
+  slot. Optional: set `CRON_SECRET` (then only callers holding it can wake the tick — Vercel's crons send it themselves)
+  and a cron-job.org job every 30 minutes for a faster cadence. The Automation tab shows each run and what woke it.
 - Live Firestore / Vercel / push were not exercised (no login here); the `devos_*` rules are in
   `docs/firestore-rules.md` (publication NOT CONFIRMED — the design does not depend on them: keys are sealed and
   ledgers signed).

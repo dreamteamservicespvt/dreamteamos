@@ -279,6 +279,17 @@ function Questions() {
   );
 }
 
+/** What woke a run, in words ("vercel 0 4 * * *" → "the 9:30 AM run"). */
+function triggerWords(t: string): string {
+  const m = /^vercel (\d+) (\d+) \* \* \*$/.exec(t);
+  if (m) {
+    const ist = (Number(m[2]) * 60 + Number(m[1]) + 330) % 1440;
+    const h = Math.floor(ist / 60);
+    return `the ${h % 12 || 12}:${String(ist % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"} run`;
+  }
+  return t === "catchup" ? "a catch-up from an open app" : t === "manual" ? "Run now" : t === "open" ? "a scheduled call" : t === "cron" ? "the scheduler" : t;
+}
+
 function Automation() {
   const { isPlatformAdmin, run, busy } = useDevOs();
   const { data: s, reload } = useAdminData<Snapshot>("admin.overview", { fresh: true });
@@ -297,7 +308,7 @@ function Automation() {
       <Section title="The scheduled worker" hint="Creates quests, expires overdue tasks, grades waiting answers, fills the question pool, runs leagues and seasons, writes the daily report — with every browser closed."
         right={isPlatformAdmin ? <Button size="sm" className="min-h-[36px]" disabled={busy === "tick"} onClick={runNow} data-test="admin-run-tick">{busy === "tick" ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Activity className="h-3.5 w-3.5 mr-1" />}Run now</Button> : null}>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Kpi label="Last run" value={h?.lastTickAt ? timeAgo(h.lastTickAt) : "never"} sub={h?.lastTickAt ? fmtDateTime(h.lastTickAt) : "the cron has not run yet"} tone={stale ? "warn" : "good"} />
+          <Kpi label="Last run" value={h?.lastTickAt ? timeAgo(h.lastTickAt) : "never"} sub={h?.lastTickAt ? `${fmtDateTime(h.lastTickAt)}${tick?.trigger ? ` · ${triggerWords(tick.trigger)}` : ""}` : "not run yet — the next scheduled time starts it"} tone={stale ? "warn" : "good"} />
           <Kpi label="AI calls today" value={h?.ai?.calls ?? 0} sub={`${h?.ai?.failures ?? 0} failed${h?.ai?.lastError ? ` · last: ${h.ai.lastError}` : ""}${deadKeys ? ` · ${deadKeys} key${deadKeys > 1 ? "s" : ""} refused by Google, skipped — replace ${deadKeys > 1 ? "them" : "it"} in AI Accounts → API keys` : ""}`} />
           <Kpi label="Question quality today" value={h?.quality?.generated ?? 0} sub={`accepted · ${h?.quality?.rejected ?? 0} rejected · ${h?.quality?.duplicatesBlocked ?? 0} duplicates blocked`} />
         </div>
@@ -307,16 +318,12 @@ function Automation() {
             <ul className="text-xs space-y-1">{(((last ?? tick) as { steps?: { id: string; ok: boolean; note: string; ms: number }[] }).steps ?? []).map((st) => <li key={st.id} className="flex gap-2"><Chip tone={st.ok ? "good" : "bad"}>{st.id}</Chip><span className="text-muted-foreground">{st.note}</span></li>)}</ul>
           </div>
         )}
-        {stale && (
-          <div className="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm space-y-1">
-            <p className="font-medium">Set up the every-30-minutes trigger (one time)</p>
-            <ol className="list-decimal pl-5 text-xs space-y-0.5">
-              <li>In Vercel → Project → Settings → Environment Variables, add <code>CRON_SECRET</code> (any long random text) and redeploy. The daily backup run then starts by itself.</li>
-              <li>On cron-job.org create a job: GET <code>https://dreamteamos.vercel.app/api/devos</code>, header <code>x-cron-secret: &lt;the same text&gt;</code>, every 30 minutes.</li>
-              <li>Until then, the app catches up on the server whenever someone opens the Development OS.</li>
-            </ol>
-          </div>
-        )}
+        {/* Nothing to set up (owner, 2026-10-18: "0% human involvement"): Vercel wakes it on its own, and any open app
+            catches up. It used to ask the admins to add a secret and an outside cron job before anything ran. */}
+        <div className={cn("mt-4 rounded-xl border p-3 text-sm space-y-1", stale ? "border-warning/40 bg-warning/10" : "border-border bg-muted/30")} data-test="admin-self-running">
+          <p className="font-medium">{stale ? "No run in the last two hours — the next scheduled run picks everything up" : "Runs by itself — nothing to set up"}</p>
+          <p className="text-xs text-muted-foreground">Seven runs a day, each within its hour: 6:30 AM (the day's quests and invites), 9:30 AM (quest-ready notice), 11:30 AM, 1:30 PM, 3:30 PM, 5:30 PM (still-waiting notice) and 8:30 PM (Saturday's league results). Each run grades waiting answers and appeals, re-checks every profile's signatures each morning, fills the question pool and closes what is due. Anyone opening the Development OS also starts a catch-up when a run is overdue. "Run now" is only for when you want it sooner.</p>
+        </div>
         <Note className="mt-3">AI: Gemini, using the same keys as the ad studio (plus working keys in AI Accounts). Free-tier keys may let Google use the text sent for product improvement — only scenarios, rubrics and answers are sent, never names. For production use, a paid key is recommended.</Note>
       </Section>
     </div>

@@ -6,6 +6,27 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-18 (later): the Development OS runs with nobody involved** (`devos.md` §9.23 the tick, §25; `backend-security.md`
+  §12, §21; `data-model.md`). **Ask.** The owner: "the platform … needed to be run 0% of human involvement … if there is
+  time for us then only we will involve." **Where it still waited for a person:** the tick needed `CRON_SECRET` set in
+  Vercel plus a cron-job.org job (neither set — so nothing ran unless someone opened the app); an appeal the graders
+  could not answer was "sent to an admin to review" and nothing ever picked it up; tampering was found only when an admin
+  pressed Integrity (and its rebuild still counted a forged, unsigned XP row). **Fixed.** (1) The tick runs OPEN without
+  `CRON_SECRET` — at most one run per 20-minute slot for the whole company (`tick.claimTickSlot`, a transaction on
+  `devos_runs/open`; a repeat within a minute on a warm instance is answered before any read), woken by SEVEN daily Vercel
+  crons on the hour (06:30 roll-over, 09:30 quest-ready, 11:30, 13:30, 15:30, 17:30 still-waiting, 20:30 Saturday league
+  close); with the secret set it is required, as before. Each run records what woke it (`trigger`); the Automation tab
+  says "Runs by itself — nothing to set up". (2) A pending appeal is queued (`kind: "appeal"`) and decided by the tick
+  (`review.resumeAppeal`, bounded; after the tries the original stands), the person told; lost ones re-queued each
+  morning. (3) Every morning every profile's signature is checked (no extra reads) and a tampered one rebuilt from its
+  signed ledgers (`admin.checkPerson`, shared with the Integrity button, audited); ledger rows with a wrong or missing
+  signature are left out of the totals. **Files.** `api/devos.ts`, `vercel.json`, `src/devos/engine/{tick,review,admin,queue}.ts`,
+  `src/devos/core/types.ts`, `src/components/devos/admin/AdminView.tsx`, `play/ResultPanel.tsx`; tests `devosEngine`
+  (+4: the slot, an appeal decided by the tick, an appeal given up after its tries, the morning repair with a forged row),
+  `smmServerCheckerOct15` (the crons), timeouts on two long journey tests that timed out only under load. **Tested.** Dev
+  OS + cron tests pass; tsc 0; the API parsed, its ESM chain checked, and its GET doors smoke-tested (secret set → 401;
+  unset → past the door to the setup).
+
 - **2026-10-18: DREAM TEAM AI Development OS — built inside DTS-OS** (`devos.md` §9.23, NEW module file; `data-model.md`,
   `roles-routes.md`, `architecture.md`, `backend-security.md`; `docs/firestore-rules.md`; CLAUDE.md Context map, §32, §33).
   **Ask.** The owner, with the MSRS PDF ("DREAM TEAM AI Development OS — MSRS v1.0") and a 20-section master prompt: "don't

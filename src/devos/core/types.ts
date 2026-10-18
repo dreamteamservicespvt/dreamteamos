@@ -373,7 +373,7 @@ export interface DevAttempt {
   /** Set only by a correction (the original `scoring` is kept). */
   current?: { score: number; outcome: Outcome; correctionId: string; at: number };
   /** The learner's review of this answer (one per answer), whatever it decided — the correction record has the detail. */
-  appeal?: { at: number; outcome: "changed" | "upheld" | "voided"; detail: string };
+  appeal?: { at: number; outcome: "changed" | "upheld" | "voided" | "pending"; detail: string };
   /** Applied to XP / mastery / season (idempotency marker; `applyAttempt` sets it once). */
   appliedAt?: number;
   /** Grading jobs tried for an open answer (bounded — policy `gradeRetryLimit`). */
@@ -804,6 +804,10 @@ export interface DevCorrection {
   by: string;
   at: number;
   detail?: string;
+  /** An appeal the graders could not answer yet: waiting in the grading queue, re-graded by the tick (2026-10-18). */
+  pending?: boolean;
+  /** Re-grading tries of a pending appeal (bounded — policy `gradeRetryLimit`). */
+  tries?: number;
   sig?: string;
 }
 
@@ -867,6 +871,8 @@ export interface TickSummary {
   generated: number;
   notifications: number;
   errors: number;
+  /** What woke it: a Vercel cron's schedule ("0 4 * * *"), "open" (no CRON_SECRET), "cron", "catchup" or "manual". */
+  trigger?: string;
 }
 
 export interface ReportClaim {

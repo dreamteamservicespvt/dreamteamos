@@ -193,7 +193,8 @@ export async function voidAttempt(deps: Deps, policy: DevPolicy, uid: string, at
 }
 
 export interface AppealResult {
-  outcome: "changed" | "upheld" | "voided";
+  /** `pending` = the graders could not answer yet; the tick decides it (resumeAppeal) and tells the person. */
+  outcome: "changed" | "upheld" | "voided" | "pending";
   message: string;
   correction?: DevCorrection;
 }
@@ -229,20 +230,19 @@ export async function appeal(deps: Deps, actor: Actor, input: { attemptId: strin
   if (attempt.item.type === "open" && key?.rubric && attempt.response.kind === "text") {
     const res = await gradeOpen(deps, policy, { scenario: attempt.item.scenario, question: attempt.item.question, rubric: key.rubric, exemplar: key.exemplar, answer: attempt.response.text, purpose: "rank" });
     if (!res.scoring) {
-      const c = await record("upheld", before, "The re-evaluation could not be completed; an admin will review it.");
-      return { outcome: "upheld", message: "We could not re-grade it right now — it has been sent to an admin to review.", correction: c };
+      // ── Nobody has to step in (owner, 2026-10-18: "0% human involvement") ── The graders cannot answer right now: the
+      // appeal waits in the grading queue, the tick re-grades it (bounded) and tells the person. It used to be "sent to
+      // an admin to review" — and nothing ever picked it up.
+      const c: DevCorrection = {
+        id, uid, attemptId: attempt.id, kind: "appeal", reason: reason.slice(0, 500), before: { score: before.score, outcome: before.outcome },
+        after: { score: before.score, outcome: before.outcome }, by: uid, at: now, detail: "Waiting for the graders — re-checked automatically.", pending: true, tries: 0,
+      };
+      await writeCorrection(deps, c);
+      await noteOnAnswer("pending", "Waiting for the graders — it is re-checked automatically, usually within a day.");
+      await enqueueGrading(deps, { uid, kind: "appeal", id });
+      return { outcome: "pending", message: "The graders are busy right now — your review is queued and runs by itself. The result will show on this answer.", correction: c };
     }
-    const diff = Math.abs(res.scoring.score - before.score);
-    if (diff > policy.scoring.disagreementTolerance) {
-      const after = { score: res.scoring.score, outcome: (res.scoring.passed ? "passed" : "failed") as DevAttempt["outcome"] };
-      const c = await record("changed", after, `Re-graded by two independent judges: ${res.scoring.score}% (was ${before.score}%).`);
-      await deps.store.set(PATH.attempt(uid, attempt.id), { current: { ...after, correctionId: c.id, at: now } }, true);
-      await deps.store.set(PATH.evidence(uid, `ev_${attempt.id}`), { score: after.score, correctedBy: c.id }, true);
-      await reconcileDimension(deps, policy, uid, attempt.dim);
-      return { outcome: "changed", message: `Re-graded: your score is now ${after.score}% (it was ${before.score}%).`, correction: c };
-    }
-    const c = await record("upheld", before, `Re-graded by two independent judges: ${res.scoring.score}% — within ${policy.scoring.disagreementTolerance} points of the original.`);
-    return { outcome: "upheld", message: `Two fresh judges scored it ${res.scoring.score}%, close to the original ${before.score}% — the result stands.`, correction: c };
+    return resolveOpenAppeal(deps, policy, { id, uid, attempt, reason, before, scoring: res.scoring });
   }
 
   if (attempt.source === "ai" && deps.ai && attempt.item.options?.length) {
@@ -260,6 +260,67 @@ export async function appeal(deps: Deps, actor: Actor, input: { attemptId: strin
   // Short: it is shown as a toast, and the worked answer is already on the screen (the whole explanation in the toast
   // covered the Next button — found in the browser test).
   return { outcome: "upheld", message: attempt.source === "template" ? "Re-checked: the answer is worked out from the rules in the question, and it stands — see the worked answer below." : "Re-checked: the answer key stands — see the worked answer below.", correction: c };
+}
+
+/**
+ * Decide an appeal on a written answer from the fresh judges' scoring (`null` = they could not grade it, after every
+ * try): a change of more than the policy's tolerance replaces the score (the original stays, the skill is re-settled),
+ * anything else upholds it. Writes the correction (replacing a pending one) and notes it on the answer.
+ */
+async function resolveOpenAppeal(
+  deps: Deps, policy: DevPolicy,
+  a: { id: string; uid: string; attempt: DevAttempt; reason: string; before: { score: number; outcome: DevAttempt["outcome"] }; scoring: Scoring | null },
+): Promise<AppealResult> {
+  const now = deps.now();
+  const record = async (outcome: "changed" | "upheld", after: { score: number; outcome: DevAttempt["outcome"] }, detail: string) => {
+    const c: DevCorrection = { id: a.id, uid: a.uid, attemptId: a.attempt.id, kind: "appeal", reason: a.reason.slice(0, 500), before: { score: a.before.score, outcome: a.before.outcome }, after, by: a.uid, at: now, detail };
+    await writeCorrection(deps, c);
+    await deps.store.set(PATH.attempt(a.uid, a.attempt.id), { appeal: { at: now, outcome, detail: detail.slice(0, 300) } }, true);
+    return c;
+  };
+  if (!a.scoring) {
+    const c = await record("upheld", a.before, "The graders could not re-check it after several tries, so the original result stands.");
+    return { outcome: "upheld", message: "The graders could not re-check it after several tries, so the original result stands.", correction: c };
+  }
+  const s = a.scoring;
+  if (Math.abs(s.score - a.before.score) > policy.scoring.disagreementTolerance) {
+    const after = { score: s.score, outcome: (s.passed ? "passed" : "failed") as DevAttempt["outcome"] };
+    const c = await record("changed", after, `Re-graded by two independent judges: ${s.score}% (was ${a.before.score}%).`);
+    await deps.store.set(PATH.attempt(a.uid, a.attempt.id), { current: { ...after, correctionId: c.id, at: now } }, true);
+    await deps.store.set(PATH.evidence(a.uid, `ev_${a.attempt.id}`), { score: after.score, correctedBy: c.id }, true);
+    await reconcileDimension(deps, policy, a.uid, a.attempt.dim);
+    return { outcome: "changed", message: `Re-graded: your score is now ${after.score}% (it was ${a.before.score}%).`, correction: c };
+  }
+  const c = await record("upheld", a.before, `Re-graded by two independent judges: ${s.score}% — within ${policy.scoring.disagreementTolerance} points of the original.`);
+  return { outcome: "upheld", message: `Two fresh judges scored it ${s.score}%, close to the original ${a.before.score}% — the result stands.`, correction: c };
+}
+
+/**
+ * The tick's turn on a waiting appeal (`id` = its correction): re-grade it; when the judges answer — or after
+ * `gradeRetryLimit` tries — decide it and tell the person. "waiting" = try again on a later run.
+ */
+export async function resumeAppeal(deps: Deps, policy: DevPolicy, uid: string, id: string): Promise<"resolved" | "waiting"> {
+  const c = (await deps.store.get(PATH.correction(id))) as unknown as DevCorrection | null;
+  if (!c?.pending) return "resolved";
+  const attempt = (await deps.store.get(PATH.attempt(uid, c.attemptId))) as unknown as DevAttempt | null;
+  const q = attempt ? ((await deps.store.get(PATH.question(attempt.qid))) as unknown as QuestionDoc | null) : null;
+  const key = q ? await open<ItemKey>(deps.secrets, q.key) : null;
+  let scoring: Scoring | null = null;
+  if (attempt && key?.rubric && attempt.response.kind === "text") {
+    scoring = (await gradeOpen(deps, policy, { scenario: attempt.item.scenario, question: attempt.item.question, rubric: key.rubric, exemplar: key.exemplar, answer: attempt.response.text, purpose: "rank" })).scoring ?? null;
+  }
+  const tries = (c.tries ?? 0) + 1;
+  if (!scoring && attempt && key?.rubric && tries < policy.scoring.gradeRetryLimit) {
+    await deps.store.set(PATH.correction(id), { tries }, true); // `tries` is not signed (integrity.signedFields)
+    return "waiting";
+  }
+  if (!attempt) {
+    await deps.store.set(PATH.correction(id), { pending: false, detail: "The answer no longer exists." }, true);
+    return "resolved";
+  }
+  const r = await resolveOpenAppeal(deps, policy, { id, uid, attempt, reason: c.reason, before: c.before, scoring });
+  await deps.notify.send({ uid, type: "devos_result", title: "Your review is done", message: r.message.slice(0, 200), link: `/dev-os/history/${attempt.id}`, key: `devos_appeal_${id}`, push: true }).catch(() => false);
+  return "resolved";
 }
 
 // ── The coach ───────────────────────────────────────────────────────────────────────────────────

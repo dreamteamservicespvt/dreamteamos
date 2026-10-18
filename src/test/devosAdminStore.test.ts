@@ -196,7 +196,7 @@ describe("the production storage adapter (firebase-admin), through the server's 
     await dispatch(deps, boss, "admin.tick", {});
 
     expect(problems).toEqual([]);
-  });
+  }, 30_000); // a whole journey (~5 s alone) — the 5 s default timed out under a busy machine, never on a failure
 
   it("the strict fake really refuses what Firestore refuses (so the clean run above means something)", async () => {
     const db = strictAdminDb();

@@ -60,7 +60,7 @@ export function ResultPanel({ attempt, extras }: { attempt: DevAttempt; extras?:
     setAppealing(false);
     if (r) {
       setAppealOpen(false);
-      toast({ title: r.outcome === "upheld" ? "Result re-checked" : "Result updated", description: r.message });
+      toast({ title: r.outcome === "pending" ? "Review queued" : r.outcome === "upheld" ? "Result re-checked" : "Result updated", description: r.message });
     }
   };
 
@@ -164,7 +164,11 @@ export function ResultPanel({ attempt, extras }: { attempt: DevAttempt; extras?:
             <Button className={cn("sm:self-end", TAP)} disabled={coaching || ask.trim().length < 3} onClick={askCoach} data-test="coach-ask">{coaching && <Loader2 className="h-4 w-4 animate-spin mr-1" />}Ask</Button>
           </div>
           {coachReply && <p className="text-sm rounded-xl bg-primary/5 border border-primary/20 p-3" data-test="coach-reply">{coachReply}</p>}
-          {attempt.appeal ? (
+          {attempt.appeal?.outcome === "pending" ? (
+            <p className="text-xs text-muted-foreground flex items-start gap-1 min-h-[32px]" data-test="appeal-pending">
+              <Scale className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Review asked on {new Date(attempt.appeal.at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} — waiting for the graders. It is re-checked automatically, usually within a day, and you will be told.
+            </p>
+          ) : attempt.appeal ? (
             <p className="text-xs text-muted-foreground flex items-start gap-1 min-h-[32px]" data-test="appeal-done">
               <Scale className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Reviewed on {new Date(attempt.appeal.at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}: {attempt.appeal.outcome === "upheld" ? "the result stands" : attempt.appeal.outcome === "changed" ? "the score was corrected" : "the question was withdrawn and no longer counts"} — {attempt.appeal.detail}
             </p>

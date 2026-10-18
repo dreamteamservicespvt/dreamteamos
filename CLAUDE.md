@@ -229,8 +229,9 @@ errors:** done means every listed item is fully resolved with no build, console 
   owner's MSRS: `/dev-os/*` for all seven roles — ten skills, a baseline, daily quests, weekly practicals, retention /
   transfer checks, six evidence-gated ranks (XP never unlocks one), never the same question twice, AI rubric grading with
   two judges, seasons / leagues / boards / team missions, and the admins' Control Center; every write on the server
-  (`api/devos.ts` + `src/devos/`), its daily work on a cron (`0 1 * * *` + cron-job.org) with an in-app catch-up. Owner:
-  set `CRON_SECRET` (it also starts the SMM checker) + the cron-job.org job; publish the `devos_*` rules.
+  (`api/devos.ts` + `src/devos/`). It **runs with nobody involved** (later that day): seven daily Vercel crons wake its
+  tick with no secret needed (one run per 20-minute slot), appeals are decided by the tick, profiles self-repair each
+  morning; an in-app catch-up as a safety net. Optional: `CRON_SECRET` (needed by the SMM checker), the `devos_*` rules.
 
 - 2026-10-16, **on `main`** — **AdGen speed**: the script quality loop ships a READY script
   (≥ 9/10, every hard rule met) at once instead of chasing 10/10; budget 3 passes / 45 s (`ai-ads.md` §17.2, §27).
@@ -380,7 +381,7 @@ with key/model rotation; Cloudinary uploads; WebRTC; Capacitor Android; PWA with
 **Architecture.** Thick client with no CRUD backend. Rules live in `src/utils` (pure, tested) and
 `src/services` (Firestore ops with side-effects: notifications, activity logs, mirrors). Realtime
 `onSnapshot` everywhere. Free-tier read quota shapes everything: scope queries, keep listeners
-session-long, key effects on `uid`. Two crons (`api/smm-monitor`, `api/devos`, both need `CRON_SECRET`); other
+session-long, key effects on `uid`. Crons: `api/smm-monitor` (needs `CRON_SECRET`) and `api/devos` (seven a day, runs without it); other
 sweeps run when pages open. The **Development OS** is the exception to the thick client: all its writes are the
 server's (`api/devos` + the isomorphic engine `src/devos/`; `devos.md`).
 

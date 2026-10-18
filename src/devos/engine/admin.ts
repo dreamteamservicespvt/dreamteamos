@@ -305,23 +305,44 @@ export async function adminExport(deps: Deps, actor: Actor, input: { uid?: strin
 export async function adminIntegrity(deps: Deps, actor: Actor, input: { uid: string; repair?: boolean }) {
   assertPlatformAdmin(actor);
   const policy = await loadPolicy(deps);
-  const uid = input.uid;
+  return checkPerson(deps, policy, input.uid, { repair: !!input.repair, by: actor });
+}
+
+type SignedRow = Record<string, unknown> & { sig?: string };
+
+/**
+ * One person's records against their signatures; with `repair`, a profile edited outside the server (or no longer
+ * matching its ledgers) is rebuilt from the ledgers. Used by the admin's Integrity button and, every day with nobody
+ * looking, by the tick for any profile whose signature fails (owner, 2026-10-18: "0% human involvement").
+ *
+ * ── Only rows the server signed count ── A row whose signature is wrong (edited) or missing (the server signs every
+ * row it writes — so one with none was written from a browser) is left out of the ledger totals; before, a forged XP
+ * row still counted in the rebuilt total. A row signed under an earlier key (a rotated service account) cannot be
+ * checked and still counts.
+ */
+export async function checkPerson(deps: Deps, policy: DevPolicy, uid: string, opts: { repair: boolean; by: Pick<Actor, "uid" | "name"> }) {
   const profile = (await deps.store.get(PATH.user(uid))) as unknown as (DevProfile & { sig?: string }) | null;
   if (!profile) throw new DevError(404, "no_profile", "No record.");
   const [xpRows, attemptRows, rankRows, evRows] = await Promise.all([
     deps.store.query(PATH.xps(uid)), deps.store.query(PATH.attempts(uid), [], { orderBy: ["createdAt", "desc"], limit: 100 }),
     deps.store.query(PATH.rankEvents(uid)), deps.store.query(PATH.evidences(uid)),
   ]);
-  const verdicts = { profile: await checkRecord(deps.secrets, "profile", profile as unknown as Record<string, unknown> & { sig?: string }), xpTampered: 0, attemptsTampered: 0, rankTampered: 0 };
-  for (const r of xpRows) if ((await checkRecord(deps.secrets, "xp", r.data as Record<string, unknown> & { sig?: string })) === "tampered") verdicts.xpTampered++;
-  for (const r of attemptRows) if ((await checkRecord(deps.secrets, "attempt", r.data as Record<string, unknown> & { sig?: string })) === "tampered") verdicts.attemptsTampered++;
-  for (const r of rankRows) if ((await checkRecord(deps.secrets, "rank", r.data as Record<string, unknown> & { sig?: string })) === "tampered") verdicts.rankTampered++;
-  const xpTotal = xpRows.reduce((a, r) => a + (Number((r.data as unknown as XpTransaction).amount) || 0), 0);
-  const ranks = rankRows.map((r) => Number((r.data as { newRank?: number }).newRank) || 1);
-  const rankFromLedger = Math.max(1, ...ranks);
+  const verdicts = { profile: await checkRecord(deps.secrets, "profile", profile as unknown as SignedRow), xpTampered: 0, attemptsTampered: 0, rankTampered: 0 };
+  const counts = async (kind: "xp" | "rank", row: SignedRow) => {
+    const v = await checkRecord(deps.secrets, kind, row);
+    return v === "ok" || (v === "unknown" && !!row.sig);
+  };
+  const xpOk: XpTransaction[] = [];
+  for (const r of xpRows) { if (await counts("xp", r.data as SignedRow)) xpOk.push(r.data as unknown as XpTransaction); else verdicts.xpTampered++; }
+  for (const r of attemptRows) if ((await checkRecord(deps.secrets, "attempt", r.data as SignedRow)) === "tampered") verdicts.attemptsTampered++;
+  const rankOk: { newRank?: number }[] = [];
+  for (const r of rankRows) { if (await counts("rank", r.data as SignedRow)) rankOk.push(r.data as { newRank?: number }); else verdicts.rankTampered++; }
+  const xpTotal = xpOk.reduce((a, x) => a + (Number(x.amount) || 0), 0);
+  const rankFromLedger = Math.max(1, ...rankOk.map((e) => Number(e.newRank) || 1));
   const ledgerMismatch = xpTotal !== profile.xp.total || rankFromLedger !== profile.rank.level;
   let repaired = false;
-  if (input.repair && (verdicts.profile === "tampered" || ledgerMismatch)) {
+  const actor = opts.by;
+  if (opts.repair && (verdicts.profile === "tampered" || ledgerMismatch)) {
     const evidence = evRows.map((r) => r.data as unknown as DevEvidence & { void?: boolean }).filter((e) => !e.void);
     const rules = { upScore: policy.scoring.upScore, downScore: policy.scoring.downScore, upAfter: policy.scoring.upAfter, downAfter: policy.scoring.downAfter, recentPerDim: policy.scoring.recentPerDim };
     const now = deps.now();

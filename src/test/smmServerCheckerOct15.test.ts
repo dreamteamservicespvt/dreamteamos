@@ -652,9 +652,12 @@ describe("the service worker shows an urgent SMM alert until it is acted on", ()
 describe("vercel.json", () => {
   it("adds the daily backup cron (10:00 IST) and keeps the rewrites and headers", () => {
     const v = JSON.parse(readFileSync(resolve(ROOT, "vercel.json"), "utf8"));
-    // The Development OS's daily cron (2026-10-18) sits beside it: 01:00 UTC = 06:30 IST, so Vercel's hourly
-    // precision on Hobby (06:30–07:29 IST) always lands after the Dev OS's 06:00 rollover gate.
-    expect(v.crons).toEqual([{ path: "/api/smm-monitor", schedule: "30 4 * * *" }, { path: "/api/devos", schedule: "0 1 * * *" }]);
+    // The Development OS's daily crons (2026-10-18) sit beside it — seven a day, on the hour, because Hobby fires a cron
+    // anywhere in its hour: 01 UTC = 06:30–07:29 IST (after the 06:00 roll-over gate), 04 = the 09:00 "quest ready"
+    // notice, 12 = the 17:00 "still waiting" notice, 15 = Saturday's 20:00 league close, 06 / 08 / 10 grading and the AI
+    // pool. They run it with nobody setting anything up (api/devos.ts → engine/tick.claimTickSlot).
+    expect(v.crons[0]).toEqual({ path: "/api/smm-monitor", schedule: "30 4 * * *" });
+    expect(v.crons.slice(1)).toEqual(["0 1", "0 4", "0 6", "0 8", "0 10", "0 12", "0 15"].map((s) => ({ path: "/api/devos", schedule: `${s} * * *` })));
     expect(v.rewrites).toEqual([{ source: "/(.*)", destination: "/" }]);
     expect(v.headers.map((x: { source: string }) => x.source)).toEqual(["/assets/(.*)", "/", "/index.html", "/firebase-messaging-sw.js", "/manifest.webmanifest", "/version.json"]);
     expect(istMoment("2026-10-21", 10)).toBe(Date.UTC(2026, 9, 21, 4, 30)); // 04:30 UTC is 10:00 India time

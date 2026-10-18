@@ -84,8 +84,13 @@ must stay out of the browser; `devos.md` §9.23). **POST** `{action, …}`: `Aut
 `verifyIdToken` → `users/{uid}` (name, role, `createdBy`, `isActive`, `externalCreator` — never the body) →
 `engine/router.dispatch` (refuses a switched-off account / an external creator first; input validated per action);
 answers `{ok, result}` or `{ok:false, code, error}` with a plain sentence (`DevError` status). **GET** = the tick
-(`engine/tick.runTick`, 48 s budget), behind `CRON_SECRET` exactly like `smm-monitor` (`cronAuthProblem`; no secret →
-500, wrong → 401); woken by Vercel's daily cron (`0 1 * * *`) and cron-job.org (to be set up). **Secrets:** the sealing /
+(`engine/tick.runTick`, 48 s budget). With `CRON_SECRET` set: exactly like `smm-monitor` (`cronAuthProblem`; wrong /
+missing → 401). **Without it (2026-10-18, owner: "0% human involvement") the tick is OPEN but throttled:** a repeat within
+a minute on a warm instance → 202 before any read; otherwise one transaction on `devos_runs/open` lets at most ONE run per
+20-minute slot company-wide (`tick.claimTickSlot`) → 202 for the rest. Accepted risk: anybody can make the normal,
+idempotent, budgeted daily work run on time (never more often; the AI budget and the per-run caps still hold), at a cost
+of one read per call that reaches the claim. Woken by SEVEN daily Vercel crons (`vercel.json`, on the hour; their
+`x-vercel-cron-schedule` header is recorded as the run's `trigger`). **Secrets:** the sealing /
 signing keys are derived from the service account's `private_key` — no new variable. **Gemini:** server-side REST
 (`engine/geminiPort`, key in the `x-goog-api-key` header), keys = env `API_KEY_n` / `VITE_API_KEY_n` / `GEMINI_API_KEY`
 / `API_KEY` / `VITE_API_KEY` + `gemini_api_keys` docs not `failed`; metered (policy daily budget, ≤ 8 requests per
@@ -288,7 +293,7 @@ bundled into client JavaScript**.
 | `VITE_API_KEY` / `API_KEY` / `GEMINI_API_KEY` | `geminiService.ts` | Single-key fallback when no numbered key exists |
 | `VITE_FIREBASE_VAPID_KEY` | `services/fcm.ts` | Web Push VAPID key for FCM `getToken`. **Not in local `.env`**; Vercel value [NOT CONFIRMED] |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | `api/*.ts` (server only) | JSON service account for firebase-admin (Vercel project env) |
-| `CRON_SECRET` (2026-10-15) | `api/smm-monitor.ts`, and since 2026-10-18 `api/devos.ts` GET (server only; NOT `VITE_`-prefixed, never bundled) | protects the SMM server checker and the Development OS tick; Vercel Cron sends it as `Authorization: Bearer`, cron-job.org as `x-cron-secret`. **To be set by the owner** — until then both endpoints answer 500, no server alerts go out and the Dev OS's daily work runs only through the app's catch-up |
+| `CRON_SECRET` (2026-10-15) | `api/smm-monitor.ts`, and since 2026-10-18 `api/devos.ts` GET (server only; NOT `VITE_`-prefixed, never bundled) | protects the SMM server checker; for the Development OS tick it is OPTIONAL hardening (unset → the open, slot-throttled tick — it runs by itself on Vercel's crons). Vercel Cron sends it as `Authorization: Bearer`, cron-job.org as `x-cron-secret`. Not set as of 2026-10-18: `smm-monitor` answers 500 and sends no server alerts until it is |
 | `import.meta.env.DEV` | `onboardingGuest.ts`, `orderChatGuest.ts` | Enables in-browser fallbacks for `/api` flows during `vite dev` |
 | `__BUILD_ID__` (define, not env) | `services/appUpdate.ts` | Build identity compared with `/version.json` |
 

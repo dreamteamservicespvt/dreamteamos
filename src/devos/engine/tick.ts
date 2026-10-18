@@ -20,9 +20,10 @@ import { replenishPool, type PoolTarget } from "./aipool.js";
 import { closeDueLeagues, closeEndedSeasons, ensureLeague, ensureMission, rebuildBoards, settleMissions } from "./competition.js";
 import { loadPolicy, PATH, type Deps } from "./context.js";
 import { ensureTodayFor, finishOpenGrading, newProfile } from "./learner.js";
-import { signRecord } from "./integrity.js";
+import { checkRecord, signRecord } from "./integrity.js";
+import { checkPerson } from "./admin.js";
 import { generateReport, rebuildSnapshot, type Snapshot } from "./reports.js";
-import { gradePractical } from "./review.js";
+import { gradePractical, resumeAppeal } from "./review.js";
 import { calendarFor, closeAndSettle } from "./progress.js";
 import { runCalibration } from "./calibration.js";
 import { dequeueGrading, enqueueGrading, isQueued, QUEUE_PATH, type QueueItem } from "./queue.js";
@@ -77,6 +78,18 @@ async function requeueStranded(deps: Deps, uid: string, pendingAnswers: number, 
   return missing.length;
 }
 
+/** The same for appeals still waiting for the graders (one query for the whole company — `pending` is rare). */
+async function requeueAppeals(deps: Deps, queueDoc: Doc | null): Promise<number> {
+  let n = 0;
+  for (const r of await deps.store.query("devos_corrections", [["pending", "==", true]], { limit: 100 })) {
+    const uid = String(r.data.uid ?? "");
+    if (!uid || isQueued(queueDoc, uid, r.id)) continue;
+    await enqueueGrading(deps, { uid, kind: "appeal", id: r.id }, Number(r.data.at) || deps.now());
+    n++;
+  }
+  return n;
+}
+
 /** Expire this person's overdue tasks (the deadline is the server's — FR-029). */
 async function expireOverdue(deps: Deps, policy: DevPolicy, uid: string): Promise<number> {
   const now = deps.now();
@@ -120,6 +133,8 @@ async function expireOverdue(deps: Deps, policy: DevPolicy, uid: string): Promis
 export interface TickOptions {
   reason: "cron" | "manual" | "catchup";
   budgetMs?: number;
+  /** What woke a cron run (api/devos: the Vercel cron's schedule, or "open"); shown on the Automation tab. */
+  trigger?: string;
 }
 
 export async function runTick(deps: Deps, opts: TickOptions): Promise<TickSummary> {
@@ -130,7 +145,7 @@ export async function runTick(deps: Deps, opts: TickOptions): Promise<TickSummar
   const policy = await loadPolicy(deps);
   const day = istDay(started);
   const hour = istHour(started);
-  const summary: TickSummary = { at: started, ms: 0, mode: policy.mode, steps: [], questsCreated: 0, expired: 0, graded: 0, generated: 0, notifications: 0, errors: 0 };
+  const summary: TickSummary = { at: started, ms: 0, mode: policy.mode, steps: [], questsCreated: 0, expired: 0, graded: 0, generated: 0, notifications: 0, errors: 0, trigger: (opts.trigger ?? opts.reason).slice(0, 40) };
   const step = async (id: string, minLeft: number, fn: () => Promise<string>) => {
     if (left() < minLeft) { summary.steps.push({ id, ok: true, note: "skipped (time budget)", ms: 0 }); return; }
     const t0 = Date.now();
@@ -192,6 +207,16 @@ export async function runTick(deps: Deps, opts: TickOptions): Promise<TickSummar
           // Staleness lowers confidence, never the score (FR-040).
           if (DIMENSION_IDS.some((d) => p.dims[d].lastAt !== null)) await deps.store.set(PATH.user(u.uid), { dims: refreshConfidence(p.dims, started) }, true);
         }
+        requeued += await requeueAppeals(deps, queueDoc).catch(() => 0);
+        // ── Integrity with nobody looking (owner, 2026-10-18: "0% human involvement") ── Every profile's signature is
+        // checked each morning — they were read above, so it costs no reads; one edited outside the server is rebuilt
+        // from its signed ledgers (admin.checkPerson) and the repair audited. It used to wait for an admin's Integrity button.
+        let repairedProfiles = 0;
+        for (const p of profiles.values()) {
+          if ((await checkRecord(deps.secrets, "profile", p as unknown as Record<string, unknown> & { sig?: string })) !== "tampered") continue;
+          const r = await checkPerson(deps, policy, p.uid, { repair: true, by: { uid: "system", name: "the daily integrity check" } }).catch(() => null);
+          if (r?.repaired) repairedProfiles++;
+        }
         const tracks: TrackId[] = ["sales", "technical", "admin"];
         for (const t of tracks) {
           const learners = [...profiles.values()].filter((p) => p.track === t && p.status === "active" && p.onboarding.baseline === "complete").map((p) => ({ uid: p.uid, name: p.name }));
@@ -209,7 +234,7 @@ export async function runTick(deps: Deps, opts: TickOptions): Promise<TickSummar
         for (const u of staff.filter((x) => x.role === "main_admin" || x.role === "tech_admin")) {
           if (await deps.notify.send({ uid: u.uid, type: "devos_report", title: "Development report for today", message: report.claims[0]?.text ?? "Open the Control Center for today's summary.", link: "/dev-os/admin/reports", key: `devos_report_${day}_${u.uid}`, push: false })) summary.notifications++;
         }
-        return `${staff.length} staff · ${summary.questsCreated} tasks created · ${summary.expired} expired · ${invited} invited${requeued ? ` · ${requeued} re-queued for grading` : ""}${calibration.flagged.length ? ` · ${calibration.flagged.length} question pattern(s) withdrawn by calibration` : ""} · seasons closed: ${closed.join(",") || "none"}`;
+        return `${staff.length} staff · ${summary.questsCreated} tasks created · ${summary.expired} expired · ${invited} invited${requeued ? ` · ${requeued} re-queued for grading` : ""}${repairedProfiles ? ` · ${repairedProfiles} profile(s) edited outside the server rebuilt from their ledgers` : ""}${calibration.flagged.length ? ` · ${calibration.flagged.length} question pattern(s) withdrawn by calibration` : ""} · seasons closed: ${closed.join(",") || "none"}`;
       });
     }
 
@@ -260,6 +285,9 @@ export async function runTick(deps: Deps, opts: TickOptions): Promise<TickSummar
           const a = await deps.store.get(PATH.attempt(it.uid, it.id));
           if (r || a?.outcome !== "pending_validation") done.push(it);
           if (r) summary.graded++;
+        } else if (it.kind === "appeal") {
+          // An appeal the graders could not answer when it was made — decided here, never by a person.
+          if ((await resumeAppeal(deps, policy, it.uid, it.id)) === "resolved") { done.push(it); summary.graded++; }
         } else {
           const ok = await gradePractical(deps, policy, it.uid, it.id);
           const tsk = await deps.store.get(PATH.task(it.uid, it.id));
@@ -332,6 +360,24 @@ export async function recordDeadKeys(deps: Deps, found: { fp: string; why: strin
 /** The fingerprints to skip now. */
 export const deadKeyFingerprints = (h: Pick<HealthDoc, "deadKeys"> | null, now: number): string[] =>
   (h?.deadKeys ?? []).filter((k) => k.until > now).map((k) => k.fp);
+
+/** One tick slot when the tick is open (no CRON_SECRET — api/devos.ts): 20 minutes for the whole company. */
+export const TICK_SLOT_MS = 20 * 60_000;
+
+/**
+ * Claim this slot for an open tick: true for the first caller of the slot, false for every other one (one document,
+ * `devos_runs/open`, in a transaction). So with nobody setting anything up, any number of callers — the Vercel crons, a
+ * retry, a stranger — make the tick run at most once per slot.
+ */
+export async function claimTickSlot(deps: Deps, slotMs = TICK_SLOT_MS): Promise<boolean> {
+  const slot = Math.floor(deps.now() / slotMs);
+  return deps.store.tx(async (t) => {
+    const d = (await t.get(PATH.run("open"))) as { slot?: number } | null;
+    if (d && Number(d.slot) >= slot) return false;
+    t.set(PATH.run("open"), { slot, at: deps.now() } as unknown as Doc);
+    return true;
+  });
+}
 
 /** Is a catch-up run due (the cron has not run for a while during the working day)? */
 export async function catchupDue(deps: Deps): Promise<boolean> {

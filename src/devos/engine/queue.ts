@@ -17,7 +17,8 @@ export const QUEUE_PATH = "devos_queue/grading";
 /** The most items the one queue document holds (the oldest go first — the daily roll-over finds them again). */
 export const QUEUE_MAX = 400;
 
-export interface QueueItem { uid: string; kind: "attempt" | "task"; id: string; since: number }
+/** `appeal` = an appeal the graders could not answer yet (id = the attempt's id; review.resumeAppeal). */
+export interface QueueItem { uid: string; kind: "attempt" | "task" | "appeal"; id: string; since: number }
 
 /** The queue document with `item` in it once (queuing again refreshes its time). Pure — for use inside a transaction. */
 export function withQueued(doc: Record<string, unknown> | null, item: Omit<QueueItem, "since">, now: number): { items: QueueItem[] } {

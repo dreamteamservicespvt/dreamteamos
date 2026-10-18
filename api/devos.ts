@@ -8,8 +8,10 @@
  * goes through here, with the Admin SDK, and the engine (`src/devos/**`) runs here.
  *
  * ── Two doors ─────────────────────────────────────────────────────────────────────────────────────
- *   GET  (cron)  — `runTick`: Vercel's daily cron (`vercel.json`, Bearer CRON_SECRET) and cron-job.org every 30 minutes
- *                  (header `x-cron-secret`). The same check as `api/smm-monitor` (`utils/smmServerDelivery.cronAuthProblem`).
+ *   GET  (cron)  — `runTick`, woken by Vercel's daily crons (`vercel.json`, seven a day). With CRON_SECRET set it needs
+ *                  it (Bearer from Vercel, `x-cron-secret` from cron-job.org — `utils/smmServerDelivery.cronAuthProblem`);
+ *                  without it, it runs open but at most once per 20-minute slot (`claimOpenSlot`, below) — so the
+ *                  platform runs with nobody setting anything up.
  *   POST {action, …} — a signed-in staff member: `Authorization: Bearer <Firebase ID token>`; who they are and their role
  *                  come from `users/{uid}`, never from the body; then `engine/router.dispatch`.
  *
@@ -31,7 +33,7 @@ import { adminStore, type AdminDb } from "../src/devos/engine/store.js";
 import { DevError, PATH, type Actor, type AiPort, type Deps, type Notice } from "../src/devos/engine/context.js";
 import { geminiPort } from "../src/devos/engine/geminiPort.js";
 import { dispatch } from "../src/devos/engine/router.js";
-import { bumpQuality, deadKeyFingerprints, recordDeadKeys, runTick } from "../src/devos/engine/tick.js";
+import { bumpQuality, claimTickSlot, deadKeyFingerprints, recordDeadKeys, runTick } from "../src/devos/engine/tick.js";
 import { cronAuthProblem } from "../src/utils/smmServerDelivery.js";
 import type { AiCallLog, HealthDoc } from "../src/devos/core/types.js";
 
@@ -188,6 +190,17 @@ async function makeDeps(maxCalls: number): Promise<{ deps: Deps; calls: AiCallLo
   return { deps, calls, dead };
 }
 
+/**
+ * ── Runs by itself — nobody has to set anything up (owner, 2026-10-18: "0% human involvement") ──────
+ * With `CRON_SECRET` set, a tick needs it (Vercel Cron sends it as a Bearer, cron-job.org as `x-cron-secret`) — as
+ * before. Without it, Vercel's daily crons (`vercel.json`: several, spread over the day) wake the tick unauthenticated,
+ * so the tick is open — but at most ONE run per 20-minute slot for the whole company, claimed in a transaction
+ * (`devos_runs/open`): the most any caller can do is make the platform do its normal, idempotent, budgeted work on time.
+ * A repeat within a minute on a warm instance costs nothing; one inside a slot that already ran, one document read.
+ */
+let lastOpenLook = 0;
+const claimOpenSlot = (deps: Deps) => claimTickSlot(deps);
+
 /** After a request: count its AI calls and remember the dead keys it met (both never fatal). */
 async function afterRequest(deps: Deps, calls: AiCallLog[], dead: { fp: string; why: string }[]): Promise<void> {
   if (calls.length) await bumpQuality(deps, istDay(Date.now()), {}, calls).catch(() => undefined);
@@ -215,11 +228,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") return res.status(204).end();
 
   if (req.method === "GET") {
-    const denied = cronAuthProblem(req.headers as Record<string, unknown>, process.env.CRON_SECRET);
-    if (denied) return res.status(denied.status).json({ error: denied.error });
+    const secret = process.env.CRON_SECRET;
+    if (secret) {
+      const denied = cronAuthProblem(req.headers as Record<string, unknown>, secret);
+      if (denied) return res.status(denied.status).json({ error: denied.error });
+    } else if (Date.now() - lastOpenLook < 60_000) {
+      return res.status(202).json({ ok: true, ran: false, why: "a run was started moments ago" });
+    } else {
+      lastOpenLook = Date.now(); // before any setup, so a burst of callers (or a failing setup) costs nothing more
+    }
     try {
       const { deps, calls, dead } = await makeDeps(40);
-      const summary = await runTick(deps, { reason: "cron", budgetMs: 48_000 });
+      if (!secret && !(await claimOpenSlot(deps))) return res.status(202).json({ ok: true, ran: false, why: "this 20-minute slot already ran" });
+      const schedule = req.headers["x-vercel-cron-schedule"];
+      const trigger = typeof schedule === "string" && schedule ? `vercel ${schedule}` : secret ? "cron" : "open";
+      const summary = await runTick(deps, { reason: "cron", budgetMs: 48_000, trigger });
       await afterRequest(deps, calls, dead);
       return res.status(200).json({ ok: true, ...summary });
     } catch (e) {

@@ -43,6 +43,12 @@
   ],
   "crons": [
     { "path": "/api/smm-monitor", "schedule": "30 4 * * *" },
-    { "path": "/api/devos", "schedule": "0 1 * * *" }
+    { "path": "/api/devos", "schedule": "0 1 * * *" },
+    { "path": "/api/devos", "schedule": "0 4 * * *" },
+    { "path": "/api/devos", "schedule": "0 6 * * *" },
+    { "path": "/api/devos", "schedule": "0 8 * * *" },
+    { "path": "/api/devos", "schedule": "0 10 * * *" },
+    { "path": "/api/devos", "schedule": "0 12 * * *" },
+    { "path": "/api/devos", "schedule": "0 15 * * *" }
   ]
 }
