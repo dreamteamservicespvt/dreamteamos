@@ -6,6 +6,19 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-18 (evening): the audit work is live; the Firestore rules PUBLISHED; public sign-up off**
+  (`backend-security.md` §14 / §25 / §27, `roles-routes.md` §8.1, `docs/firestore-rules.md` Status, CLAUDE.md §32 / §33).
+  The owner pushed `802f09a` (with a88759a, 0ae2c2b, 4037758, 49d224c); Vercel build `1792320604656`. Checked live:
+  `/api/send-notification` and `/api/staff-account` → 401 without a token, `/api/devos` GET → 200 (a tick, 0 errors).
+  Then, at the owner's request, in the owner's Chrome (the `dts-manager` console): the live rules were
+  `allow read, write: if true` — **anyone could read, write and delete the whole database**. Replaced with the block in
+  `docs/firestore-rules.md` (put into the editor from `main` on GitHub, verified identical, 29,102 chars) and
+  published; Authentication → Settings → User actions → "Enable create (sign-up)" unticked (Email/Password is the only
+  provider; no Anonymous). **Tested from outside:** anonymous list on 12 sensitive collections → 403, an anonymous write
+  → 403, `public_badges` → 200 (by design, G8). **Not tested:** the ten in-app checks with real logins (no production
+  test logins). HANDOFF.md closed. Note: the repo is public and the owner's commit `802f09a` added HANDOFF.md, which
+  described the open database — it is deleted from the tree, still in history.
+
 - **2026-10-19: whole-app audit — defects fixed and checked in a real browser** (`people.md` §9.16 / §24,
   `roles-routes.md` §8.1 / §10, `orders-work.md` §16). From a full-app harness (the REAL `App.tsx`, login, guards and pages
   on `memoryFirestore`; 11 seeded accounts) swept per role × route, then driven by hand in Chrome. **D-01** main admin

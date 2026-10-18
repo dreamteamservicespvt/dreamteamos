@@ -226,7 +226,8 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 - 2026-10-19, **on `main` and live** (with the 2026-10-18 security work and the Dev OS's open tick; pushed by the owner as
   `802f09a`, build `1792320604656`, checked 2026-10-18 10:52 UTC: both APIs 401 without a token, `/api/devos` 200;
-  Firestore still answers anonymous reads until the rules are published) — **whole-app audit fixes**: revenue = approved sales everywhere (pending shown beside it, one
+  the **Firestore rules PUBLISHED** 10:58 UTC — anonymous reads / writes now 403 — and public sign-up switched off,
+  `backend-security.md` §14) — **whole-app audit fixes**: revenue = approved sales everywhere (pending shown beside it, one
   util `salesRevenue` + `revenueReport`), dashboard counters, Accounts = P&L, external creators not staff, Work Assign's
   sold-ad label, HR filter on phones, another role's URL → own home, breadcrumbs in words, chart axes, My Leads' duplicate
   sold lead (`people.md`, `roles-routes.md`, `orders-work.md`; history 2026-10-19).
@@ -363,8 +364,7 @@ errors:** done means every listed item is fully resolved with no build, console 
   two open Cinematic Ads questions (a format changed mid-project resets nothing; a clip's animation prompt has no
   line-by-line speaker — `ai-ads.md` §17.4); replace the 11 dead Gemini keys in Vercel (2026-10-10: `API_KEY_1`, 12,
   18 invalid; 13, 16, 23–28 leaked — §26.3) with working ones from AI Accounts → API keys → Download .env;
-  publish `docs/firestore-rules.md` in the console (it also holds the bell's `notification_state` rule and the Social Media Team Lead's view-only rule, protects the Flow / ChatGPT / Grok passwords and the
-  invoices, their numbers and the team-leader switch); check the invoice defaults and make one real invoice + PDF;
+  run the ten checks in `docs/firestore-rules.md` with real logins (published 2026-10-18; G2–G11 still open); check the invoice defaults and make one real invoice + PDF;
   move secrets out of source; revoke the Gemini key that was hard-coded in the deleted `src/services/gemini.ts` (still in
   git history); generate a few clips in Flow (Frames to Video)
   from the dynamic-pass prompts — a single presenter, a human duo, Motu & Patlu (watch Patlu's height), a client
@@ -398,8 +398,8 @@ server's (`api/devos` + the isomorphic engine `src/devos/`; `devos.md`).
 users with the same `createdBy`. Guard is `AppLayout allowedRoles` in `App.tsx`; navigation is in
 `utils/roleHelpers.ts`.
 
-**Permissions.** Enforced in the UI plus a few server checks. Firestore rules are coarse and were
-unpublished as of 2026-08 [NOT CONFIRMED now]. Key rules: >10% discount needs sales admin approval (the sale still reaches tech at once); only
+**Permissions.** Enforced in the UI plus a few server checks. Firestore rules are coarse; published
+2026-10-18 (anonymous access refused; any staff member still writes most collections, G2–G4). Key rules: >10% discount needs sales admin approval (the sale still reaches tech at once); only
 tech admin purges orders; members never assign; one promise extension; feedback before upsell;
 SMM posting needs client approval; a sale the tech team started can be edited (not its service) but never deleted.
 

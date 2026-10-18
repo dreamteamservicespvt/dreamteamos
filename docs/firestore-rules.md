@@ -491,11 +491,15 @@ service cloud.firestore {
 
 ## Status
 
-**Not yet published.** Verified on 2026-08-03: all five collections above still answer
-unauthenticated reads with HTTP 200, including `employee_profiles` with every employee's PAN,
-Aadhaar, home address and salary. Everything in the app has been built and tested against these
-rules — publishing them is a paste into the console, and nothing in the product depends on the
-database staying open.
+**Published on 2026-10-18** (≈10:58 UTC, from the block above, character-for-character; the console had
+`allow read, write: if true` until then — anyone could read, write and delete everything). Checked from outside
+right after: every collection probed (`employee_profiles`, `member_credentials`, `users`, `leads`, `payroll_lines`,
+`orders`, `flow_account_secrets`, `devos_users`, `notifications`, `hr_documents`, `company_settings`,
+`gemini_api_keys`) answers an anonymous list with **403**, an anonymous write 403; `public_badges` still lists (200,
+by design for `/verify` — the "anyone can list" gap is G8). Public email sign-up was switched OFF the same day
+(Authentication → Settings → User actions); the only provider is Email/Password (no Anonymous). The ten app checks
+above have NOT been run yet with real logins — do them, and the still-open gaps G2–G11 (DEVELOPMENT-HISTORY
+2026-10-18) need a tested rules change. When this file changes, publish it again.
 
 ## Nothing else to enable
 

@@ -95,7 +95,8 @@ legacy users without the field active.
    participant, CORS allow-list), `api/onboarding.ts` (4-digit code, 5 tries / 15 min lockout),
    `api/devos.ts` (2026-10-18: the Development OS — ID token → `users/{uid}`; every Dev OS write and role check is
    here; switched-off accounts and external creators refused in `engine/router.dispatch`).
-   `api/send-notification.ts` has **no authentication** (§26).
+   `api/send-notification.ts` takes only an active staff member's ID token (2026-10-18); `api/staff-account.ts`
+   (2026-10-18) creates logins for admins only (`CAN_CREATE`).
 4. **Firestore rules**, documented in `docs/firestore-rules.md`: helpers `isStaff` (signed-in and
    no `orderChat` claim), `isAdmin` (main/tech/sales admin), `isManager` (+ team leader). Special
    rules cover `employee_profiles`, `public_badges`, `member_credentials`, `hr_documents`,
@@ -107,7 +108,7 @@ legacy users without the field active.
    (browsers write none; a person reads only their own `devos_users/{uid}` record; boards, leagues, missions and the
    policy are staff-readable; the rest is server-only — kept out of the catch-all by its prefix).
    Everything else falls to a catch-all: **any staff may read and write**.
-   Publication status: **[NOT CONFIRMED]**. It was verified as *not published* on 2026-08-03.
+   **Published 2026-10-18** (anonymous access refused; checked from outside).
 
 > Consequence: almost every "who can do what" below is a UI rule. A signed-in staff account can
 > technically write most collections directly. Do not describe a UI rule as a security boundary.

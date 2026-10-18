@@ -173,10 +173,11 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   per person, per device (`utils/workUnlock.ts`, localStorage). This is a speed bump, not a
   security control: the code sits on the same Firestore document.
 - **Frontend protection:** route guard plus UI checks (§8). **API protection:** see §12.
-- **Firestore rules:** the intended model is in `docs/firestore-rules.md`. It was recorded
-  **not published** on 2026-08-03, with unauthenticated reads of `employee_profiles` (PAN, Aadhaar,
-  salary) returning 200 at the time. Current live state is **[NOT CONFIRMED]**. The doc includes a
-  curl check that should return 403 for each sensitive collection once published. **2026-10-12:**
+- **Firestore rules:** the model is in `docs/firestore-rules.md`, **published 2026-10-18** (until then the console
+  held `allow read, write: if true`). Checked from outside the same minute: anonymous list / write → 403 on every
+  sensitive collection, `public_badges` lists by design. Public email sign-up was switched OFF the same day (logins
+  come only from `api/staff-account` / `api/onboarding`); the only provider is Email/Password. Still open: G2–G11
+  (a staff member can rewrite their own `users.role`; HR / pay collections open to all staff; guest gaps). **2026-10-12:**
   `smm_campaigns` got its first own rule (kept out of the catch-all) — the view-only Social Media Team Lead
   updates only months she is on and creates / deletes none; the same check runs in the browser before every
   month write (`services/smm.assertMayChangeMonth` / `assertMayManageMonths`, reading the signed-in user from
@@ -332,8 +333,8 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
-- Firestore security: rules written but publication [NOT CONFIRMED]; authorization mostly
-  client-side.
+- Firestore security: rules published 2026-10-18 (outsiders refused), but coarse — any staff member can still write
+  most collections, incl. their own `role` (G2–G4); authorization mostly client-side.
 - The bell (2026-10-13): cleared and dismissed notifications are hidden, not deleted; what keeps the collection
   small is the 90-day clean-up (2,000 rows a day at most, so a large first backlog takes several days). It runs only
   when somebody opens the app and needs the catch-all rule's delete. The first "Mark all read" or "Clear all" of a
@@ -388,10 +389,8 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 
 ## 27. POTENTIAL RISKS (need verification)
 
-- Firestore rules may still be unpublished, leaving HR PII (PAN, Aadhaar, salary) world-readable
-  with the public web API key.
-- Logout deletes FCM tokens **after** `signOut`; if rules require auth, the delete fails silently
-  and a shared device may keep receiving the previous user's pushes.
+- The published rules were checked statically, not on the emulator: a screen the audit missed may now get
+  "permission denied" — run the ten checks in `docs/firestore-rules.md` with real logins.
 - The seed main-admin auto-creation trusts a hard-coded email on first login.
 - `VITE_FIREBASE_VAPID_KEY` is absent locally; web push registration depends on the Vercel env.
 - Work access codes, client chat ids and invite codes are bearer secrets. Links forwarded around
