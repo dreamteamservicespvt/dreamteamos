@@ -358,7 +358,8 @@ errors:** done means every listed item is fully resolved with no build, console 
   18 invalid; 13, 16, 23–28 leaked — §26.3) with working ones from AI Accounts → API keys → Download .env;
   publish `docs/firestore-rules.md` in the console (it also holds the bell's `notification_state` rule and the Social Media Team Lead's view-only rule, protects the Flow / ChatGPT / Grok passwords and the
   invoices, their numbers and the team-leader switch); check the invoice defaults and make one real invoice + PDF;
-  move secrets out of source; authenticate `/api/send-notification`; generate a few clips in Flow (Frames to Video)
+  move secrets out of source; revoke the Gemini key that was hard-coded in the deleted `src/services/gemini.ts` (still in
+  git history); generate a few clips in Flow (Frames to Video)
   from the dynamic-pass prompts — a single presenter, a human duo, Motu & Patlu (watch Patlu's height), a client
   photo — no Veo video has been made from them yet; check a duo ad's styled outfits stay identical in every clip;
   make a Real Owner Face frame (a man and a woman, Traditional attire) and check no bindi or tilak appears, then one
@@ -447,8 +448,8 @@ duplicated WorkAssign/MemberAssignments pages; verify with `npm run build` + `np
 `npx tsc -p tsconfig.check.json --noEmit` (0 errors); browser checks via a throwaway
 harness with a faked Firebase.
 
-**Known limitations.** Secrets in source and the Gemini keys in the bundle; unauthenticated push
-API; plaintext stored passwords; member delete keeps the Auth account; unscoped listeners on admin
+**Known limitations.** Secrets in source (TURN) and the Gemini keys in the bundle (the push API takes only staff
+tokens since 2026-10-18); plaintext stored passwords; member delete keeps the Auth account; unscoped listeners on admin
 pages; lint debt; no priority, comments or scheduler; accounts module basic.
 
 **Rules.** Follow §29 and §30. The context is this core + `.claude/rules/*.md` +

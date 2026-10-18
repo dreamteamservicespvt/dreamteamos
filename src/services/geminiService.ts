@@ -175,13 +175,10 @@ const API_KEYS: string[] = [
   import.meta.env.VITE_API_KEY_30 || import.meta.env.API_KEY_30 || '',
 ].filter(key => key.length > 0); // Remove empty keys
 
-// DEBUG: Log how many keys were found (remove after verification)
-console.log(`[API Key Debug] Total valid API keys loaded: ${API_KEYS.length}`);
-if (API_KEYS.length > 0) {
-  API_KEYS.forEach((k, i) => console.log(`  Key ${i + 1}: ${k.slice(0, 6)}...${k.slice(-4)}`));
-} else {
-  console.warn('[API Key Debug] NO API keys found! Check env var names in Vercel.');
-  console.log('[API Key Debug] import.meta.env keys:', Object.keys(import.meta.env).filter(k => k.includes('KEY') || k.includes('API')));
+// Never print a key or part of one: this file runs in every staff member's browser, and its console is open to
+// anyone at the desk (a "DEBUG" block here printed each key's first 6 and last 4 characters until 2026-10-18).
+if (API_KEYS.length === 0 && !(import.meta.env.VITE_API_KEY || import.meta.env.API_KEY || import.meta.env.GEMINI_API_KEY)) {
+  console.warn('[Gemini] No API keys are configured for this deployment.');
 }
 
 // Fallback to single API_KEY if no numbered keys are set

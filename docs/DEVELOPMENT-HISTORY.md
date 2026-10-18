@@ -6,6 +6,24 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-18 (later): security — the push endpoint, key leaks, and the open database** (`backend-security.md` §12, §26;
+  CLAUDE.md §32 / §33). Part of the owner's whole-site audit ("YOUR MISSION … security engineer …"). **Found.**
+  (1) `api/send-notification` pushed to any `userId` for any caller — anybody on the internet could ring a staff
+  member's phone with any text or a fake incoming call. (2) `services/geminiService.ts` printed every Gemini key's first
+  6 and last 4 characters to every user's browser console ("DEBUG … remove after verification"). (3) `services/gemini.ts`
+  — dead code (no callers) holding a hard-coded Gemini key. (4) **Production Firestore answers UNAUTHENTICATED list
+  requests on every collection probed** (`employee_profiles`, `member_credentials`, `users`, `leads`, `payroll_lines`,
+  `orders`, `flow_account_secrets`, `devos_users`, `notifications`; checked with a field mask so only document names came
+  back) — the rules in `docs/firestore-rules.md` were never published. **Fixed.** (1) The endpoint takes only an active
+  staff member's Firebase ID token (401 / 403 otherwise; `Authorization` allowed in the preflight) and
+  `sendNotification` sends it (nobody signed in → no push; the bell row is still written). (2) The key logging is gone
+  (a plain warning only when no key is configured). (3) The file is deleted — the key stays in git history and must be
+  revoked. (4) Needs the owner: publish the rules (an audit of the rules against every app access was run first — see
+  the next entry / the report). **Files.** `api/send-notification.ts`, `src/services/notifications.ts`,
+  `src/services/geminiService.ts`, `src/services/gemini.ts` (deleted); test `sendNotificationAuthOct18` (7: no token,
+  bad token, guest, switched-off, staff ok, preflight; the app sends its token / none when signed out). **Tested.**
+  The test + `pushNotifications` pass; tsc 0; the API parsed.
+
 - **2026-10-18 (later): the Development OS runs with nobody involved** (`devos.md` §9.23 the tick, §25; `backend-security.md`
   §12, §21; `data-model.md`). **Ask.** The owner: "the platform … needed to be run 0% of human involvement … if there is
   time for us then only we will involve." **Where it still waited for a person:** the tick needed `CRON_SECRET` set in

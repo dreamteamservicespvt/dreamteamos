@@ -1,5 +1,5 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
-import { db } from "@/services/firebase";
+import { auth, db } from "@/services/firebase";
 import { isNative } from "@/utils/platform";
 
 interface SendNotificationParams {
@@ -127,22 +127,23 @@ export async function sendNotification({ userId, type, title, message, link, cal
     await addDoc(collection(db, "notifications"), payload);
   }
 
-  // 2. Fire-and-forget: trigger web push via the serverless API
-  try {
-    fetch(`${API_BASE}/api/send-notification`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, title, message, link, type, callDocId }),
-    }).then((res) => {
-      if (!res.ok) {
-        console.error("[Push] API responded with", res.status, res.statusText);
-      }
-    }).catch((err) => {
+  // 2. Fire-and-forget: trigger the push through the serverless API, AS the signed-in member — since 2026-10-18 the
+  //    API refuses a request without a staff member's ID token (anybody could push to anybody before). Nobody signed in
+  //    (a script, a test) → no push; the bell row above is written either way.
+  void (async () => {
+    try {
+      const token = await auth?.currentUser?.getIdToken();
+      if (!token) return;
+      const res = await fetch(`${API_BASE}/api/send-notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId, title, message, link, type, callDocId }),
+      });
+      if (!res.ok) console.error("[Push] API responded with", res.status, res.statusText);
+    } catch (err) {
       console.error("[Push] fetch failed:", err);
-    });
-  } catch (err) {
-    console.error("[Push] send error:", err);
-  }
+    }
+  })();
 }
 
 /**

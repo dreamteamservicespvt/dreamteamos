@@ -42,8 +42,12 @@ the background jobs are the SMM server checker (2026-10-15) and the Development 
 - **Purpose:** send an FCM push to all of a user's device tokens.
 - **Body:** `{ userId, title, message, link?, type?, callDocId? }` (400 if the first three are
   missing).
-- **Auth:** **none**. CORS header only for `https://localhost` (Capacitor) and the production
-  origin. Server-to-server calls are not blocked.
+- **Auth (2026-10-18):** `Authorization: Bearer <Firebase ID token>` of an ACTIVE staff member (`verifyIdToken` →
+  `users/{uid}` exists and `isActive !== false`) — 401 without / with a bad token, 403 for a guest or a switched-off
+  account. Until then it had **none**: anybody could push any text, or a fake call, to any staff member's devices.
+  `services/notifications.sendNotification` sends the member's token (no one signed in → no push, the bell row is
+  still written). CORS for `https://localhost` (Capacitor) and production; `Authorization` allowed in the preflight.
+  Test: `sendNotificationAuthOct18`.
 - **DB:** reads `fcmTokens where userId==`; deletes invalid tokens.
 - **Payload:** data-only (no `notification` key) so the service worker or native layer renders
   one notification. Channel `calls` / `messages` / `default`; call TTL 0.
@@ -340,17 +344,16 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
 
 ## 26. CONFIRMED ISSUES (evidence in code)
 
-1. **Unauthenticated push endpoint.** `api/send-notification.ts` accepts any POST with a
-   `userId` and pushes to that user. CORS only limits browsers.
-2. **Secrets committed in source:** Gemini API key in `src/services/gemini.ts` (its only export
-   `verifyScreenshot` has **no callers**, so it is dead code carrying a live-looking key); TURN
-   credentials in `src/services/webrtcConfig.ts`.
+1. ~~Unauthenticated push endpoint~~ — FIXED 2026-10-18: `api/send-notification.ts` takes only an active staff
+   member's ID token (§12).
+2. **Secrets committed in source:** TURN credentials in `src/services/webrtcConfig.ts`. The dead
+   `src/services/gemini.ts` (a hard-coded Gemini key, no callers) was deleted on 2026-10-18 — the key is still in git
+   history, so it must be revoked in Google AI Studio.
 3. **Gemini keys shipped to every browser — and Google now reports several as leaked** (403 "Your API
    key was reported as leaked" on keys 13, 16 and 23–28, measured 2026-10-10; keys 1, 12, 18 invalid — 11 of 30
    dead, 19 working). `envPrefix`
-   includes `API_KEY_` and `GEMINI_`, so every key is in the public bundle, and `geminiService.ts` also
-   logs each key's first 6 and last 4 characters to the console on load ("DEBUG … remove after
-   verification"). The call layer skips dead keys, but each is capacity lost; they must be replaced, and
+   includes `API_KEY_` and `GEMINI_`, so every key is in the public bundle (the console log of each key's first 6
+   and last 4 characters was removed on 2026-10-18). The call layer skips dead keys, but each is capacity lost; they must be replaced, and
    the lasting fix is a server-side proxy so no key reaches a browser.
 4. **Plaintext passwords stored** in `member_credentials` (by design, admin-readable) and in
    completed `onboarding_invites`.

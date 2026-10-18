@@ -19,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") {
     return res.status(204).end();
@@ -27,6 +27,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // ── Signed-in, active staff only (2026-10-18) ──────────────────────────────────────────────────
+  // Until now any POST naming a userId pushed to that person's devices: anybody on the internet could ring a staff
+  // member's phone with any words, or fake an incoming call (CLAUDE.md §26.1). The app now sends the member's Firebase
+  // ID token (services/notifications.sendNotification); a client-chat guest has no `users` record and is refused — the
+  // client's own alerts go through api/order-chat.
+  const token = /^Bearer\s+(.+)$/i.exec(String(req.headers.authorization ?? ""))?.[1];
+  if (!token) return res.status(401).json({ error: "Sign in required" });
+  let callerUid: string;
+  try {
+    callerUid = (await admin.auth().verifyIdToken(token)).uid;
+  } catch {
+    return res.status(401).json({ error: "Sign in required" });
+  }
+  try {
+    const caller = await adminDb.collection("users").doc(callerUid).get();
+    if (!caller.exists || caller.data()?.isActive === false) return res.status(403).json({ error: "Not allowed" });
+  } catch (err) {
+    console.error("[send-notification] caller check failed:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 
   try {
