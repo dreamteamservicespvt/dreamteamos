@@ -120,6 +120,8 @@ const SocialMedia = lazy(() => import("@/pages/shared/SocialMedia"));
 const SmmCampaignPage = lazy(() => import("@/pages/shared/SmmCampaignPage"));
 // SMM Delivery Control (2026-10-15) — the new Social Media screen behind the classic page's button.
 const SmmDeliveryControl = lazy(() => import("@/pages/shared/SmmDeliveryControl"));
+// DREAM TEAM AI Development OS (2026-10-18) — every role's development space and the admins' Control Center.
+const DevOsPage = lazy(() => import("@/pages/shared/DevOs"));
 const Meeting = lazy(() => import("@/pages/shared/Meeting"));
 const AdminChatMonitor = lazy(() => import("@/pages/shared/AdminChatMonitor"));
 // Invoice Builder (2026-10-08): the register, the workspace, and the team-leader switch's door.
@@ -227,6 +229,18 @@ const App = () => (
             <Route path="/smm/control" element={<SmmDeliveryControl />} />
             <Route path="/smm/control/:monthId" element={<SmmDeliveryControl />} />
             <Route path="/smm/:campaignId" element={<SmmCampaignPage />} />
+          </Route>
+
+          {/*
+            DREAM TEAM AI Development OS (2026-10-18) — one route, all seven roles, un-prefixed for the same reason as
+            /smm: its notifications ("today's quest", "you were promoted") must open for whoever receives them. The page
+            scopes itself — a learner's own development; the Control Center for the main / tech / sales admin, with the
+            server checking the scope again (api/devos.ts). External creators stay confined by AppLayout.
+          */}
+          <Route element={<AppLayout allowedRoles={[
+            "main_admin", "tech_admin", "sales_admin", "accounts_admin", "tech_member", "sales_member", "tech_team_leader",
+          ]} />}>
+            <Route path="/dev-os/*" element={<DevOsPage />} />
           </Route>
 
           {/*

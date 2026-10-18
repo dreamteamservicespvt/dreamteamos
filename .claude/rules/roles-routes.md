@@ -92,7 +92,9 @@ legacy users without the field active.
    `canRecordFeedback`, `isSmmOverseer`/`canEditCampaign`, `Clients.canManage`/`canImport`,
    `Payroll.canManage`, `HrCenter.isAdmin → canDelete`, `Leaderboard.isAdmin` (career view).
 3. **Server-side checks.** `api/order-chat.ts` (guest token claim, staff must be a room
-   participant, CORS allow-list), `api/onboarding.ts` (4-digit code, 5 tries / 15 min lockout).
+   participant, CORS allow-list), `api/onboarding.ts` (4-digit code, 5 tries / 15 min lockout),
+   `api/devos.ts` (2026-10-18: the Development OS — ID token → `users/{uid}`; every Dev OS write and role check is
+   here; switched-off accounts and external creators refused in `engine/router.dispatch`).
    `api/send-notification.ts` has **no authentication** (§26).
 4. **Firestore rules**, documented in `docs/firestore-rules.md`: helpers `isStaff` (signed-in and
    no `orderChat` claim), `isAdmin` (main/tech/sales admin), `isManager` (+ team leader). Special
@@ -101,7 +103,9 @@ legacy users without the field active.
    (+messages), `calls`, the AI-account collections, (2026-10-08) `invoices`, `invoice_counters`,
    `invoice_numbers`, `invoice_settings` (`canUseInvoices`, `invoiceAdmin`; kept out of the catch-all), and
    (2026-10-12) `smm_campaigns` (`isViewOnlySmmLead`: the Social Media Team Lead updates only months she is on and
-   creates / deletes none; every other role as under the catch-all).
+   creates / deletes none; every other role as under the catch-all), and (2026-10-18) every `devos_*` collection
+   (browsers write none; a person reads only their own `devos_users/{uid}` record; boards, leagues, missions and the
+   policy are staff-readable; the rest is server-only — kept out of the catch-all by its prefix).
    Everything else falls to a catch-all: **any staff may read and write**.
    Publication status: **[NOT CONFIRMED]**. It was verified as *not published* on 2026-08-03.
 
@@ -171,6 +175,8 @@ legacy users without the field active.
 | See every invoice (others see their own) · Invoices → Settings (logo, business, bank, QR, tax, terms) | ✅ | ✅ | | | ✅ | | ✅ |
 | Team-leader Invoice Builder switch | ✅ | ✅ | | | | | |
 | Delete an invoice (draft or generated; the number stays used — 2026-10-08) | ✅ | ✅ | own, while the switch is on | | ✅ | ✅ own | ✅ |
+| Development OS as a learner — baseline, daily quests, practice, practicals, league, boards, coach, appeals (2026-10-18; checked on the SERVER, `api/devos`; enrolled by `policy.enrollRoles`) | opts in (off by default) | ✅ | ✅ | ✅ (not an external creator) | ✅ | ✅ | ✅ |
+| Development OS Control Center — every learner, the policy (versioned), void / regrade / quarantine, run the tick, AI generation, export, integrity (server-checked, `isPlatformAdmin`) | ✅ | ✅ | | | Sales track only, read-only (`adminScopeTracks`) | | |
 
 ## 9. APPLICATION MODULES (the entries for this module)
 
@@ -214,6 +220,17 @@ is lazy. Chunk loading shows `PageFallback` inside the shell (app pages) or `Rou
 | `/invoices/:invoiceId` | `shared/InvoiceBuilder.tsx` | The workspace (editor + live A4 preview); `/invoices/new` swaps itself for a fresh id |
 Both sit under `AppLayout allowedRoles={INVOICE_ROUTE_ROLES}` → `InvoiceAccessGate` (the team-leader switch). A
 tech member is sent to `/login` by the guard. Nav: one "Invoices" item per allowed role (`INVOICES_NAV`); see `invoices.md`.
+
+### Development OS — all seven roles (2026-10-18)
+| Route | Page | Purpose |
+|---|---|---|
+| `/dev-os` | `shared/DevOs.tsx` → `components/devos/HomeView` | The learner's day: today's quest, the weekly challenge, other tasks, practice by skill; first-run "Get started" |
+| `/dev-os/start` · `/dev-os/play/:taskId` | `StartView` · `PlayView` | Onboarding (consent, work questions, track) → baseline · one item at a time, hints, result, coach, appeal, practicals |
+| `/dev-os/skills` · `/path` · `/rank` · `/arena` · `/history` · `/history/:attemptId` | `SkillsView` · `PathView` · `CareerView` · `ArenaView` · `HistoryView` · `AttemptView` | Ten skill cards · the plan · rank gates + badges + the rank assessment · boards, league, team mission, privacy · every answer · one answer's full record |
+| `/dev-os/admin/*` | `components/devos/admin/AdminView` (+ `PersonView`, `PolicyView`) | Control Center: Overview, People (→ a person), Questions, Automation, Reports, Audit, Exceptions, Policy — the main and tech admin; the sales admin's view is the Sales track, read-only; others never see the tab |
+One `AppLayout allowedRoles` group with the seven roles (`App.tsx`), lazy nested routes; unknown sub-paths go to
+`/dev-os`. External creators stay confined to `EXTERNAL_CREATOR_ROUTES` and are refused by the server too. Every Dev OS
+notification links to `/dev-os…`, which every role can open. Nav: `DEV_OS_NAV` per role (`devos.md`).
 
 ### main_admin — `/main-admin/*`
 `dashboard` (Dashboard) · `team` (TeamManagement: all users, create admins) · `revenue`

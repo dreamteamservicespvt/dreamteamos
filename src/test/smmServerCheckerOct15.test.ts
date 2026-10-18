@@ -652,7 +652,9 @@ describe("the service worker shows an urgent SMM alert until it is acted on", ()
 describe("vercel.json", () => {
   it("adds the daily backup cron (10:00 IST) and keeps the rewrites and headers", () => {
     const v = JSON.parse(readFileSync(resolve(ROOT, "vercel.json"), "utf8"));
-    expect(v.crons).toEqual([{ path: "/api/smm-monitor", schedule: "30 4 * * *" }]);
+    // The Development OS's daily cron (2026-10-18) sits beside it: 01:00 UTC = 06:30 IST, so Vercel's hourly
+    // precision on Hobby (06:30–07:29 IST) always lands after the Dev OS's 06:00 rollover gate.
+    expect(v.crons).toEqual([{ path: "/api/smm-monitor", schedule: "30 4 * * *" }, { path: "/api/devos", schedule: "0 1 * * *" }]);
     expect(v.rewrites).toEqual([{ source: "/(.*)", destination: "/" }]);
     expect(v.headers.map((x: { source: string }) => x.source)).toEqual(["/assets/(.*)", "/", "/index.html", "/firebase-messaging-sw.js", "/manifest.webmanifest", "/version.json"]);
     expect(istMoment("2026-10-21", 10)).toBe(Date.UTC(2026, 9, 21, 4, 30)); // 04:30 UTC is 10:00 India time

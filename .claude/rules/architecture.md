@@ -154,13 +154,17 @@ hiring link), and hand-maintained social-media plans (SMM campaigns).
        ▼                       ▼                   ▼                     ▼
  Firestore + Auth + FCM    Gemini API         Cloudinary          Vercel serverless (firebase-admin)
  (rules pasted in console)  (keys in bundle)   (unsigned preset)    send-notification · order-chat · onboarding · smm-monitor (cron)
+                                                                     · devos (Development OS: every Dev OS write + its cron)
 ```
 
 Key architectural facts:
 - **Thick client, no custom CRUD backend.** Pages and services read and write Firestore directly.
-  Business rules live in `src/services/*` (Firestore-aware) and `src/utils/*` (pure). Only four
+  Business rules live in `src/services/*` (Firestore-aware) and `src/utils/*` (pure). Only five
   jobs run on the server (§12): push sending, client-chat guest tokens and alerts (and, since 2026-10-15, a client's
-  Social Media approval), hiring-link provisioning, and the SMM Delivery Control checker (`api/smm-monitor`, on a cron).
+  Social Media approval), hiring-link provisioning, the SMM Delivery Control checker (`api/smm-monitor`, on a cron),
+  and — the one module that is NOT a thick client — the **Development OS** (2026-10-18, `api/devos`: every Dev OS
+  write, because answer keys, scores and ranks must stay out of the browser; its engine is `src/devos/`, isomorphic,
+  run by the server and, in DEV / tests, in the browser — `devos.md`).
 - **Authorization is mostly client-side.** Route guards and in-page checks decide what people see.
   The Firestore rules in `docs/firestore-rules.md` are coarse (any signed-in staff can read and
   write almost everything), and were **recorded as not yet published** (§14, §27).
@@ -168,8 +172,10 @@ Key architectural facts:
   orders" listener in `AppLayout`, team-scoped queries (`services/teamLeads.ts`), denormalized
   mirrors on orders, and on-demand history pages. The project exceeded the 50K reads/day quota in
   the past (352K in one day, fixed 2026-09-12).
-- **No scheduler or cron — except one** (2026-10-15: `api/smm-monitor`, SMM Delivery Control's checker, woken by
-  cron-job.org every 30 min 09–20 IST + Vercel's daily cron; `smm.md` §9.9). Otherwise time-based behaviour runs when someone opens a page ("on-open sweeps"):
+- **No scheduler or cron — except two** (2026-10-15: `api/smm-monitor`, SMM Delivery Control's checker, woken by
+  cron-job.org every 30 min 09–20 IST + Vercel's daily cron; `smm.md` §9.9 — and 2026-10-18: `api/devos`, the
+  Development OS tick, the same way plus a server-side catch-up asked for by any open app; `devos.md`). Both need
+  `CRON_SECRET` on Vercel, NOT set as of 2026-10-18. Otherwise time-based behaviour runs when someone opens a page ("on-open sweeps"):
   deadline alerts in the Orders page, number-pool release in the Sales Admin Dashboard, SMM due
   reminders in check-in/check-out, birthday pushes from `BirthdayGreeting`.
 - **Realtime everywhere.** Most screens subscribe with `onSnapshot`. Firestore uses a persistent
@@ -193,7 +199,8 @@ DTS-OS/
 │   ├── send-notification.ts   ← FCM multicast push to a user's tokens
 │   ├── order-chat.ts          ← client-chat guest token, push registration, alerts, review mirror
 │   ├── onboarding.ts          ← hiring-link actions; creates the employee account
-│   └── smm-monitor.ts         ← SMM Delivery Control's server checker (cron, CRON_SECRET; 2026-10-15)
+│   ├── smm-monitor.ts         ← SMM Delivery Control's server checker (cron, CRON_SECRET; 2026-10-15)
+│   └── devos.ts               ← the Development OS server: actions (ID token) + its tick (cron, CRON_SECRET; 2026-10-18)
 ├── src/
 │   ├── main.tsx               ← entry: Capacitor init, service-worker registration, PWA install prompt
 │   ├── App.tsx                ← ALL routes + role guards (AppLayout allowedRoles)
@@ -206,6 +213,9 @@ DTS-OS/
 │   ├── services/              ← Firestore/API/AI access + domain operations (≈63 files)
 │   │   └── prompts/           ← Gemini prompt modules (character ads, motion/Veo, refine, poster, …)
 │   ├── utils/                 ← PURE business logic, no React or Firestore (≈95 files, most unit-tested)
+│   ├── devos/                 ← the Development OS engine (2026-10-18): core/ (pure rules) · content/ (question
+│   │                            families) · engine/ (operations over a store port + an AI port) — alias-free, `.js`
+│   │                            imports, run by api/devos.ts (and in DEV / tests in the browser)
 │   ├── hooks/                 ← data hooks (useAuth, useMyLeads, useOrderChat, useSalaryMonth, …)
 │   ├── store/                 ← zustand: authStore, sidebarStore, callStore, salesLeadsStore,
 │   │                            salesOrdersStore, cinematicAdsStore
@@ -376,6 +386,7 @@ tech admin too).
 | `DriveUploadSheet` (+ `DrivePendingStrip`, `DriveUploadChip`), `useDriveUploadStep` | `components/work/` | The Drive step after a hand-in (§9.6): the job's folder, file name, the member's Drive link, "It's uploaded" / "Upload later" |
 | `AccessCodeGate`, `FieldHint`, `ImageLightbox`, `ViewToggle`, `BrandLogo` | `components/common/` | Shared primitives (FieldHint has a 24px tap target) |
 | `InvoiceEditor` (+ `ItemsEditor`, `editorKit`, `FillFromSale`), `InvoicePreview`, `InvoicePaper`, `StatusPill`, `InvoiceAccessGate`, `InvoiceAccessCard` (Settings, tech + main admin), `useInvoiceAssets` | `components/invoice/` | Invoice Builder (`invoices.md` §9.22): editor + live A4 sheets; `InvoicePreview.capturePages()` hands the same sheets to the PDF and print |
+| `DevOsProvider` / `useDevOs` (`context`: the person, profile, tasks, policy, `run` with a double-tap guard), `DevOsShell` (header, rank, tabs), `kit` (Section, Chip, RankBadge, rings, `TAP`), `HomeView`, `StartView`, `PlayView` (+ `play/ItemForm`, `ResultPanel`, `PracticalView`), `SkillsView`, `PathView`, `CareerView`, `ArenaView`, `HistoryView`, `AttemptView`, `admin/AdminView` (+ `PersonView`, `PolicyView`) | `components/devos/` | The Development OS (`devos.md` §9.23): one card per item, status in words + one ring; every change through `run(action)` → `services/devosApi` (the server) |
 | `CreditUsageDialog`, `useCreditGate`, `FlowAccountDialog`, `FlowAccountsList`, `AssignDialog`, `PaidAccountsPanel`, `SecretField`, `CreditCalculator`, `TargetCard`, `UsageList`, `AiModal` | `components/ai-accounts/` | AI Accounts (§9.21). `useCreditGate` puts the credit step in front of Mark Complete on My Work and Recent Ads; `AiModal` is z-[70] so the credit dialog opens over the full-screen studio |
 | `ui/*` | `components/ui/` | shadcn primitives. Do not hand-edit casually |
 

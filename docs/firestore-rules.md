@@ -385,6 +385,28 @@ service cloud.firestore {
       allow write: if isStaff() && (docId != 'smm_delivery' || role() in ['main_admin', 'tech_admin']);
     }
 
+    // ── DREAM TEAM AI Development OS (`devos_*`, 2026-10-18) ──────────────────────────────────────
+    // EVERY Dev OS write is the server's (`api/devos`, Admin SDK — rules do not apply to it): answers are
+    // graded, XP, mastery, streaks and ranks are moved there, so no browser writes any `devos_*` document and
+    // nobody can award themselves a rank. A person READS their own record live — `devos_users/{uid}` and its
+    // tasks, sessions (the items as shown, never a key), attempts, xp, rank_events and achievements. Their
+    // seen index, exposures and evidence are the server's alone. Every staff member reads the season boards
+    // (approved fields only — a person who hid themselves is not on them), the league rounds, the team missions
+    // and the policy. The questions (`devos_questions`, answer keys sealed with AES-GCM besides), the bank,
+    // seasons' raw scores, jobs, audit, reports, corrections, snapshots, health and runs have no rule: denied.
+    // The admins' Control Center reads them through `api/devos`, which checks the role on the server.
+    match /devos_users/{uid} {
+      allow read: if isStaff() && request.auth.uid == uid;
+      match /{sub}/{docId} {
+        allow read: if isStaff() && request.auth.uid == uid
+                    && sub in ['tasks', 'sessions', 'attempts', 'xp', 'rank_events', 'achievements'];
+      }
+    }
+    match /devos_boards/{seasonId}    { allow read: if isStaff(); }
+    match /devos_leagues/{roundId}    { allow read: if isStaff(); }
+    match /devos_missions/{missionId} { allow read: if isStaff(); }
+    match /devos_config/{docId}       { allow read: if isStaff(); }
+
     // ── Everything else the app runs on ────────────────────────────────────────────────────────
     // Staff-only, which is what it always should have been. Nothing outside this file needs it.
     //
@@ -394,18 +416,20 @@ service cloud.firestore {
     // restricted collections — employee_profiles, member_credentials, hr_documents,
     // onboarding_invites, cinematic_projects — are still reached by it today; adding them to this
     // list is the change that makes their rules real, and should be tested against each HR screen.)
+    // Every `devos_*` collection is kept out by its prefix (2026-10-18), so a new Dev OS collection is
+    // denied to browsers until it gets a rule of its own above.
     match /{collection}/{document=**} {
       allow read, write: if isStaff() && !(collection in [
         'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets', 'gemini_api_keys',
         'invoices', 'invoice_counters', 'invoice_numbers', 'invoice_settings',
         'smm_campaigns', 'notification_state', 'app_settings', 'smm_alert_state'
-      ]);
+      ]) && !collection.matches('devos_.*');
     }
   }
 }
 ```
 
-## After publishing, check these eight things
+## After publishing, check these ten things
 
 1. Open an ID card and scan its QR (or visit `/verify/<uid>` signed out) — it must say **Verified
    employee**. If it says "could not be verified", press **Republish all badges** in
@@ -453,6 +477,12 @@ service cloud.firestore {
    Social Media Team Lead, open an alert's sheet or the full screen and press **I'm on it** — it must save
    (`smm_alert_state`); then as the tech admin open Delivery Control — the page must load without a "permission"
    error (it reads everybody's `smm_alert_state`).
+10. Development OS (2026-10-18): sign in as a tech member, open **Development OS** and answer one question —
+    Home, Skills and History must load and update (their own `devos_users` record). Open **Arena** — the boards
+    and the league must load (`devos_boards` / `devos_leagues`). Then, in the browser console of that session,
+    `firebase.firestore().doc('devos_users/<another uid>').get()` (or the curl check above with
+    `devos_questions`) must be refused. As the main admin, open **Development OS → Control Center** — the
+    Overview and People tabs load through `/api/devos`, not the rules.
 
 ## Status
 

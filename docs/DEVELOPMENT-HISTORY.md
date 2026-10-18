@@ -6,6 +6,93 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-18: DREAM TEAM AI Development OS — built inside DTS-OS** (`devos.md` §9.23, NEW module file; `data-model.md`,
+  `roles-routes.md`, `architecture.md`, `backend-security.md`; `docs/firestore-rules.md`; CLAUDE.md Context map, §32, §33).
+  **Ask.** The owner, with the MSRS PDF ("DREAM TEAM AI Development OS — MSRS v1.0") and a 20-section master prompt: "don't
+  ask me anything … check, plan, research, develop it, test it … open all the roles … I want the world's best platform".
+  **Audit.** No assessment, mastery, XP or rank existed (only the static `training_modules` library); `CRON_SECRET` is not
+  set on Vercel (`GET /api/smm-monitor` → 500), so nothing runs with browsers closed; the Firestore rules' publication is
+  unconfirmed; 11 of 30 Gemini keys dead. **Research → decisions** (primary sources): Pelánek, *Applications of the Elo
+  Rating System in Adaptive Educational Systems* (Computers & Education) → the Elo-style mastery estimate and ~70 %
+  success targeting; Settles & Meeder, *A Trainable Spaced Repetition Model* (Duolingo, ACL 2016) → retention checks on
+  growing gaps; Zheng et al., *Judging LLM-as-a-Judge* (MT-Bench) → position / self bias → two independent judges from
+  different models, a reference answer, quotes that must exist in the answer, an adjudicator; Dammu & Alonso,
+  *Near-duplicate Question Detection* (UW / Amazon) → lexical + semantic + solution-signature dedupe; Duolingo's blog
+  (streak freezes: two held raised daily learners; weekly leagues) → freezes, leagues, a "near you" view; Khanmigo
+  ("never gives you the answer") → the coach explains only after the answer, hints never give it. **Architecture.** The
+  one module that is not a thick client: every write is the server's (`api/devos.ts`, Admin SDK; POST actions with an ID
+  token, GET = the tick behind `CRON_SECRET`), the engine is isomorphic (`src/devos/` core / content / engine over a
+  store port and an AI port; the same router runs in DEV / tests in the browser on `memoryFirestore`). Answer keys AES-GCM
+  sealed and ledgers HMAC-signed (keys derived from the service account) so the design does not depend on the rules.
+  **Built.** Onboarding + consent + track; a ten-dimension baseline; the Director (priorities, daily quests, fresh retries,
+  retention / transfer checks, weekly practicals, practice); 16 objective template families with computed keys + 6 open
+  ones with rubrics, and an AI question pool (writer → code checks → independent solver → embedding dedupe → sealed);
+  deterministic scoring, AI rubric grading with two judges + adjudication + an injection fence; XP (capped, anti-farming,
+  idempotent ledger) ≠ mastery ≠ league rating; six evidence-gated ranks (assessments, floors, critical dimensions,
+  practicals, transfer, retention, evidence, capstone), automatic promotion with a rank event; streaks that Sundays /
+  holidays / leave never break; 4-week seasons, four boards, weekly leagues (Elo), team missions; the Control Center
+  (overview, people, questions, automation, reports with fact-cited claims, audit, exceptions, a versioned policy,
+  voids / regrades / quarantine / export / integrity); the tick (roll-over, notices, grading queue, leagues, missions, AI
+  pool, boards) with a catch-up from any open app; `/dev-os/*` for all seven roles + `DEV_OS_NAV`; `vercel.json` cron
+  `0 1 * * *`. **Found and fixed by the LIVE Gemini run** (the fake AI hid them): every judge verdict refused —
+  gemini-2.5-flash answers `confidence: 5` (now read on any scale, `scoring.readConfidence`) — so no open answer could
+  be graded and every AI open question was rejected; quotes shortened with "..." counted as invented (`quoteInAnswer`);
+  the writer's notes ("The trap here is …") and a repeated question in scenarios (`prompts.cleanScenario`); an off-task
+  answer took 4/4 on "Within the limit" (rubric v2 + a judge rule); one batch = one pattern copied four times (prompt);
+  dead keys spending a request's 8-call budget (`geminiPort` `skip` + `devos_health.deadKeys`). Also fixed: an open
+  answer / practical is queued IN its save's transaction (a request cut off at 60 s stranded it) + the roll-over
+  re-queues lost ones; the router refuses a switched-off account for every action; the day before the first season is
+  Season 1; invites only on working days (not Sundays, holidays or the person's leave); History reaches every task
+  ("Show older tasks"); hints already taken come back on resume; an unsent written answer is kept as a draft in the
+  browser; a teammate's mission part reads "done / not done yet", never a public "failed" (FR-047); the AI bank index
+  is capped at 2,000 entries (measured 325 bytes each — 3,000 sat within 7% of Firestore's 1 MiB document limit); the
+  server polyfills WebCrypto for an older Node; the frame no longer nests a `<main>` or doubles the padding. **FR-013
+  completed:** an admin can withdraw a faulty question (every answer to it voided, originals kept) and patterns are
+  calibrated automatically (`core/calibration` + `engine/calibration`: answers counted per pattern, flagged daily
+  when < 15 % pass or > 97 % at level 3+, withdrawn 14 days, then measured afresh). **The production adapter**
+  (`adminStore`) is now tested through the server's router on a fake as strict as Firestore (no `undefined`, no nested
+  arrays, plain objects only, no composite-index query, documents < 1 MiB) — before, only the client adapter ran in tests.
+  **Time limits and deadlines made honest** (found reviewing the time-up fix): an expired item was left OUT of a task's
+  score, so letting the hardest questions of a rank assessment or a league run out raised the % — it now counts as 0
+  (a platform fault still never counts); a quest settled at its deadline with one right answer of three counted as a
+  done, "perfect" quest with its XP — such a task now ends `expired` (its in-time answers still count); questions kept
+  being served after a session's deadline, only to be recorded expired — no longer (`closeAndSettle` wherever one is
+  found); the baseline's session kept its first week's date, so after a week every answer was "expired" — the baseline
+  has no deadline at any level now; a rank assessment walked away from left no record (no cooldown — fish for an easy
+  draw the next day) — a started one counts as taken and only one is open at a time; a league session whose last
+  question ran out never marked its entry done, and a walked-away entry never counted — the entry is written with the
+  result in the settling transaction and the close settles started ones; the policy's `questDueHour` (23:00, what the
+  docs promised) was ignored — quests closed at midnight. **Found in the browser** (a harness driving every role at 390
+  px and desktop) **and fixed:** a spinner on finished baseline / league summaries; the next question opened scrolled
+  down (the page scrolls inside the layout's `<main>`); a stale Overview; voids that left the gate counters unchanged;
+  the sales admin could open Questions / Automation / Reports; a practical with no way back and lost typing; no way past
+  a timed question at 0:00; raw ISO dates and a cut-off rank badge at 390 px; a 10-item Technical rank assessment missing
+  three skills; duplicate skills in a gate to-do; a missing "quest done" line; unreadable orange / amber text in the light
+  theme and sub-24 px links; then, on the re-check, a Sunday baseline that said "next working day" until reopened (the
+  reason now comes with the last answer), status chips under 4.5:1 in the light theme (green 2.8:1 — every tone now one
+  step darker on its tint), and unsent drafts keyed without the person (one weekly-challenge id per track: the next
+  person on a shared browser saw them — now `devos_draft_<uid>_…` / `devos_practical_<uid>_…`, others' removed on
+  opening, `components/devos/drafts.ts`). **Files.** `api/devos.ts`; `src/devos/**`;
+  `src/services/devosApi.ts`, `devosLocal.ts`; `src/hooks/useDevOs.ts`; `src/components/devos/**`;
+  `src/pages/shared/DevOs.tsx`; `src/App.tsx`; `src/utils/roleHelpers.ts`; `vercel.json`; tests `devosContent`,
+  `devosEngine`, `devosScoring`, `devosAiOutput`, `devosAdminStore`, `devosDrafts` (+ `smmServerCheckerOct15` for the
+  second cron).
+  **Tested.** 89 Dev OS tests in 6 files pass (`devosContent` — every family × track × setting × form × difficulty;
+  `devosEngine` 38 — the flows end to end on `memoryFirestore`; `devosScoring`; `devosAiOutput`; `devosAdminStore` — the
+  production adapter; `devosDrafts`). Full suite 269 files / 4,516 tests: 4,515 pass; the one failure is
+  pre-existing and outside this work (`smmDeliveryControlUiOct15` "Live, the view-only Social Media Team Lead…", which
+  fails on a clean `88ee836` too). `tsc` 0 errors; `npm run build` ✅ (the question engine never ships to the browser);
+  `api/devos.ts` parsed with esbuild and its whole runtime import chain checked for Node ESM (`.js`, no aliases). A
+  live Gemini run of every prompt (generation → code checks → independent solver → embeddings / dedupe; the judge;
+  coach; report; practical) found the five bugs above. In a real browser: a throwaway harness (Vite + the real pages on
+  `memoryFirestore`, the DEV router, the fake AI and a clock shim, driven over CDP in headless Chrome; outside the repo,
+  removed afterwards) drove every role — sales / tech members, team leader, sales / tech / accounts / main admin, an
+  external creator, a switched-off account — at 390 px and desktop, light and dark: the first pass's findings (above)
+  were all fixed; the re-check passed items 1–10 (68 + 9 checks); the focused pass on the time limits, the Sunday text,
+  the chip contrast (every tone ≥ 5.3:1 on its tint) and the per-person drafts was 73 PASS / 0 FAIL, with no console
+  errors and no 390 px overflow. Not driven: live Firebase, Vercel and FCM push (no login here), so the production
+  rules, the cron and push are owner checks.
+
 - **2026-10-16: AdGen deliverables fast again — the script quality loop stops at a READY script** (`ai-ads.md` §17.2
   step 3, §24, §27). The owner: "ad deliverables taking lot of time … time is getting delayed". Root cause: the
   2026-10-15 loop only stopped early at a genuine 10/10, which live judges never gave (9.4–9.8), so almost every run

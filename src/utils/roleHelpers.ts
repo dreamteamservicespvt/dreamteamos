@@ -4,7 +4,7 @@ import {
   Settings, BookOpen, FolderOpen, Target, User, BarChart3,
   ClipboardList, Briefcase, Wrench, FileCheck, MessageSquare, Video, Eye, Film, ScrollText, CalendarClock, Trophy, History,
   ShoppingBag, Contact, Star, GraduationCap, LayoutGrid, PiggyBank, Banknote, Wand2, Search,
-  MessageSquarePlus, Megaphone, KeyRound, ReceiptIndianRupee,
+  MessageSquarePlus, Megaphone, KeyRound, ReceiptIndianRupee, BrainCircuit,
 } from "lucide-react";
 
 export interface NavItem {
@@ -28,9 +28,16 @@ export interface NavItem {
  */
 const INVOICES_NAV: NavItem = { title: "Invoices", path: "/invoices", icon: ReceiptIndianRupee };
 
+/**
+ * DREAM TEAM AI Development OS (2026-10-18) — one link for every role, near the top: the daily quest is a few
+ * minutes a day and is only done when it is in plain sight. The admins' Control Center is a tab inside it.
+ */
+const DEV_OS_NAV: NavItem = { title: "Development OS", path: "/dev-os", icon: BrainCircuit };
+
 const NAV: Record<UserRole, NavItem[]> = {
   main_admin: [
     { title: "Dashboard", path: "/main-admin/dashboard", icon: LayoutDashboard },
+    DEV_OS_NAV,
     { title: "Team Management", path: "/main-admin/team", icon: Users },
     { title: "Revenue Overview", path: "/main-admin/revenue", icon: TrendingUp },
     { title: "Tech Department", path: "/main-admin/tech", icon: Code },
@@ -47,6 +54,7 @@ const NAV: Record<UserRole, NavItem[]> = {
   ],
   tech_admin: [
     { title: "Dashboard", path: "/tech-admin/dashboard", icon: LayoutDashboard },
+    DEV_OS_NAV,
     { title: "Work Assign", path: "/tech-admin/work-assign", icon: ClipboardList },
     { title: "Orders", path: "/tech-admin/orders", icon: ShoppingBag },
     // Monthly retainers. A top-level link for every role that touches one: a month that is
@@ -91,6 +99,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     // and it was third, under a Dashboard that summarises the same numbers less usefully.
     { title: "Leaderboard", path: "/sales-admin/leaderboard", icon: Trophy },
     { title: "Dashboard", path: "/sales-admin/dashboard", icon: LayoutDashboard },
+    DEV_OS_NAV,
     { title: "My Team", path: "/sales-admin/team", icon: Users },
     { title: "Sales Approvals", path: "/sales-admin/approvals", icon: FileCheck },
     { title: "Clients", path: "/sales-admin/clients", icon: Contact },
@@ -142,6 +151,7 @@ const NAV: Record<UserRole, NavItem[]> = {
   ],
   accounts_admin: [
     { title: "Dashboard", path: "/accounts/dashboard", icon: LayoutDashboard },
+    DEV_OS_NAV,
     { title: "Revenue Summary", path: "/accounts/revenue", icon: TrendingUp },
     INVOICES_NAV,
     { title: "Daily Expenses", path: "/accounts/expenses", icon: Wallet },
@@ -149,6 +159,7 @@ const NAV: Record<UserRole, NavItem[]> = {
   ],
   tech_member: [
     { title: "Dashboard", path: "/tech/dashboard", icon: LayoutDashboard },
+    DEV_OS_NAV,
     { title: "My Work", path: "/tech/my-work", icon: Briefcase },
     // Monthly retainers. A top-level link for every role that touches one: a month that is
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
@@ -196,6 +207,9 @@ const NAV: Record<UserRole, NavItem[]> = {
         { title: "Settlements", path: "/sales/settlements", icon: Wallet },
       ],
     },
+    // The Development OS (2026-10-18): a top-level link straight after the agreed first six
+    // (salesNav.test), like Invoices, rather than pushing the work and the leaderboard down.
+    DEV_OS_NAV,
     // Billing the clients they sold to. A top-level link (2026-10-08), placed after the agreed
     // first six (salesNav.test) rather than pushing Clients and Salary down.
     INVOICES_NAV,
@@ -223,6 +237,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     // behind is only ever fixed by somebody noticing, and nobody notices a submenu.
     { title: "Social Media", path: "/smm", icon: Megaphone },
     { title: "Work Assign", path: "/team-leader/work-assign", icon: ClipboardList },
+    DEV_OS_NAV,
     { title: "Work Done & Reports", path: "/team-leader/work-reports", icon: BarChart3 },
     { title: "Feedback & Upsell", path: "/team-leader/feedback-upsell", icon: MessageSquarePlus },
     // Only while the Tech Admin has the team-leader switch on (Settings → Invoice Builder).

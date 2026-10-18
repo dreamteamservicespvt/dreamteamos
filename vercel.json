@@ -42,6 +42,7 @@
     }
   ],
   "crons": [
-    { "path": "/api/smm-monitor", "schedule": "30 4 * * *" }
+    { "path": "/api/smm-monitor", "schedule": "30 4 * * *" },
+    { "path": "/api/devos", "schedule": "0 1 * * *" }
   ]
 }

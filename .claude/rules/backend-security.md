@@ -31,11 +31,12 @@ cache recovery. `pages/auth/Login.tsx`, `hooks/useAuth.ts`, `store/authStore.ts`
 
 ## 12. BACKEND & API ARCHITECTURE
 
-The backend is Firestore (accessed directly from the client) plus **four Vercel serverless
+The backend is Firestore (accessed directly from the client) plus **five Vercel serverless
 functions** in `api/`. Each initialises `firebase-admin` from `FIREBASE_SERVICE_ACCOUNT_KEY` and
-accepts `POST` only (`OPTIONS` → 204) — except `smm-monitor` (GET or POST, behind `CRON_SECRET`). There is no Express
-server, no middleware stack; the one background job is the SMM server checker (2026-10-15, below). `vite dev` does **not** serve `/api/*`; use `vercel dev` or the DEV-only
-fallbacks.
+accepts `POST` only (`OPTIONS` → 204) — except `smm-monitor` (GET or POST, behind `CRON_SECRET`) and `devos` (GET =
+its cron tick behind `CRON_SECRET`, POST = actions with an ID token). There is no Express server, no middleware stack;
+the background jobs are the SMM server checker (2026-10-15) and the Development OS tick (2026-10-18), both below.
+`vite dev` does **not** serve `/api/*`; use `vercel dev` or the DEV-only fallbacks.
 
 ### `POST /api/send-notification` (`api/send-notification.ts`)
 - **Purpose:** send an FCM push to all of a user's device tokens.
@@ -76,6 +77,23 @@ compare (`utils/smmServerDelivery.cronAuthProblem`); no `CRON_SECRET` → 500, w
 `messaging().sendEach` directly (NOT `/api/send-notification`): data-only; urgent = high priority / 4 h TTL, channel `smm_urgent` only to
 tokens flagged `channels: "smm_urgent"` (else `default`); notice = normal / 24 h. Off → heartbeat only; Preview → computed, nothing
 sent; stops sending after 40 s (the rest next run). Its runtime imports of the alias-free utils end in `.js` (Node ESM on Vercel).
+
+### `GET|POST /api/devos` (`api/devos.ts`, 2026-10-18, `maxDuration` 60)
+The **Development OS server** — the one module whose every write is server-side (answer keys, scores, XP and ranks
+must stay out of the browser; `devos.md` §9.23). **POST** `{action, …}`: `Authorization: Bearer <Firebase ID token>` →
+`verifyIdToken` → `users/{uid}` (name, role, `createdBy`, `isActive`, `externalCreator` — never the body) →
+`engine/router.dispatch` (refuses a switched-off account / an external creator first; input validated per action);
+answers `{ok, result}` or `{ok:false, code, error}` with a plain sentence (`DevError` status). **GET** = the tick
+(`engine/tick.runTick`, 48 s budget), behind `CRON_SECRET` exactly like `smm-monitor` (`cronAuthProblem`; no secret →
+500, wrong → 401); woken by Vercel's daily cron (`0 1 * * *`) and cron-job.org (to be set up). **Secrets:** the sealing /
+signing keys are derived from the service account's `private_key` — no new variable. **Gemini:** server-side REST
+(`engine/geminiPort`, key in the `x-goog-api-key` header), keys = env `API_KEY_n` / `VITE_API_KEY_n` / `GEMINI_API_KEY`
+/ `API_KEY` / `VITE_API_KEY` + `gemini_api_keys` docs not `failed`; metered (policy daily budget, ≤ 8 requests per
+action, 30 / 40 for ticks), dead keys remembered by fingerprint in `devos_health/current.deadKeys` for a day; no name
+or personal data in any prompt. **Writes** only `devos_*` and `notifications/{key}` (`create()`, `meta.source "devos"`)
++ data-only FCM push (`default` channel; dead tokens deleted) — NOT through `/api/send-notification`. CORS: production,
+`dreamteamos-*.vercel.app`, `https://localhost`, `http://localhost:*`. Relative imports end in `.js`; parse after
+editing: `npx esbuild api/devos.ts --bundle --platform=node --format=esm --external:firebase-admin --external:@vercel/node --log-level=error --outfile=/dev/null`.
 
 ### `POST /api/onboarding` (`api/onboarding.ts`), `{ action, inviteId, code, ... }`
 Actions `open` · `accept-offer` (signature URL) · `accept-joining` (creates the account) ·
@@ -146,7 +164,12 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   the auth store), so the screens, the services and the rule agree (`smm.md` §9.9). **2026-10-15:** `app_settings`
   got its own rule (kept out of the catch-all): staff read and write every document as before, except
   `app_settings/smm_delivery` (SMM Delivery Control's switch), which only the main admin and the tech admin write — the
-  same check `services/smmDeliverySettings` makes from the auth store before writing.
+  same check `services/smmDeliverySettings` makes from the auth store before writing. **2026-10-18:** every `devos_*`
+  collection is kept out of the catch-all by its prefix: browsers write none (the Development OS writes only through
+  `api/devos`), a person reads only their own `devos_users/{uid}` record, staff read the boards, leagues, missions and
+  the policy. Because publication is [NOT CONFIRMED], the Dev OS does not rely on the rules: answer keys are AES-GCM
+  sealed and the ledgers (attempts, XP, rank events, the profile) HMAC-signed with keys derived from the service
+  account (`core/crypto`; `admin.integrity` reports and repairs a row edited outside the server).
 - **Secrets in source (values not reproduced here):** Firebase web config (public by design) in
   `services/firebase.ts` and duplicated in `services/secondaryAuth.ts`; a **Gemini API key** in
   `services/gemini.ts` (dead code); **Metered.ca TURN username/credential** in
@@ -231,7 +254,10 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   `api/smm-monitor` (the apps only display them; `smm_urgent` is deliberately NOT an `UpdatePopup` popup type — the in-app full
   screen is the alert host's, computed live), `smm_moved`, `smm_reassigned`, `smm_remind` (`once`), `smm_test`, and
   `smm_approved` / `smm_changes` from the client chat) and HR types, `ai_account`
-  (an AI account assigned to or moved from someone), `drive_folder_missing` (a tech member with no Drive folder asks their tech admin; link `/tech-admin/drive`).
+  (an AI account assigned to or moved from someone), `drive_folder_missing` (a tech member with no Drive folder asks their tech admin; link `/tech-admin/drive`),
+  and the Development OS's (2026-10-18, written ONLY by `api/devos`, key = the notice's once key): `devos_invite`,
+  `devos_quest` (09:00), `devos_due` (17:00), `devos_result`, `devos_badge`, `devos_rankup`, `devos_league`,
+  `devos_mission`, `devos_report` (main + tech admin) — links `/dev-os…`, quiet hours 20:00–09:00 for pushes.
 
 ## 20. THIRD-PARTY INTEGRATIONS
 
@@ -240,9 +266,9 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
 | Firebase Auth | Staff login, guest custom tokens | `services/firebase.ts`, `secondaryAuth.ts`, `orderChatGuest.ts`, `api/*` | credentials / ID tokens | web config + service account | mapped `auth/*` codes |
 | Cloud Firestore | All data | everywhere | documents | Auth + console rules | toasts, "never throw" services |
 | Firebase Cloud Messaging | Push | `services/fcm.ts`, sw, `api/send-notification.ts`, `api/order-chat.ts` | tokens, data payloads | VAPID key; service account | invalid tokens deleted |
-| Google Gemini | Scripts, prompts, extraction, vision reads | `services/geminiService.ts`, `cinematicAdsService.ts`, `gemini.ts` | business info, uploaded images/audio/text as base64, prompts | API keys in bundle | key/model rotation (§17.3) |
+| Google Gemini | Scripts, prompts, extraction, vision reads; the Development OS's question writer, solver, rubric judges, embeddings, coach, reports, practicals (2026-10-18, server-side REST) | `services/geminiService.ts`, `cinematicAdsService.ts`, `gemini.ts`, `src/devos/engine/geminiPort.ts` (via `api/devos`) | business info, uploaded images/audio/text as base64, prompts; Dev OS: fictional scenarios, rubrics and answer text only — no names | API keys in bundle; Dev OS: the same keys on the server | key/model rotation (§17.3); Dev OS: dead keys remembered a day, bounded calls, answers stay pending when it fails |
 | Cloudinary | File/image uploads (avatars, signatures, chat files, proofs, frames) | `services/cloudinary.ts` | files → `secure_url` | unsigned upload preset | rejects on non-2xx |
-| Vercel | Hosting + 3 functions | `vercel.json`, `api/` | — | env var for service account | — |
+| Vercel | Hosting + 5 functions + 2 daily crons (`smm-monitor`, `devos`) | `vercel.json`, `api/` | — | env vars for the service account and `CRON_SECRET` | — |
 | Metered.ca TURN + Google STUN | WebRTC relay | `services/webrtcConfig.ts` | media | hard-coded TURN credentials | call UI states |
 | WhatsApp | Deep links only (`wa.me`) for requirements, attendance updates, reports, client messages | ≈11 files | prefilled text | none | — |
 | Google Flow / Gemini app / ChatGPT / Grok | External generation tools (links only); their logins and Flow credit use are kept in AI Accounts (§9.21), entered by hand — no API | `generation/mission.ts`, `PosterConceptsPanel.tsx`, `services/aiAccounts.ts` | none (user copies prompts) | stored logins | — |
@@ -262,7 +288,7 @@ bundled into client JavaScript**.
 | `VITE_API_KEY` / `API_KEY` / `GEMINI_API_KEY` | `geminiService.ts` | Single-key fallback when no numbered key exists |
 | `VITE_FIREBASE_VAPID_KEY` | `services/fcm.ts` | Web Push VAPID key for FCM `getToken`. **Not in local `.env`**; Vercel value [NOT CONFIRMED] |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | `api/*.ts` (server only) | JSON service account for firebase-admin (Vercel project env) |
-| `CRON_SECRET` (2026-10-15) | `api/smm-monitor.ts` (server only; NOT `VITE_`-prefixed, never bundled) | protects the SMM server checker; Vercel Cron sends it as `Authorization: Bearer`, cron-job.org as `x-cron-secret`. **To be set by the owner** — until then the endpoint answers 500 and no server alerts go out |
+| `CRON_SECRET` (2026-10-15) | `api/smm-monitor.ts`, and since 2026-10-18 `api/devos.ts` GET (server only; NOT `VITE_`-prefixed, never bundled) | protects the SMM server checker and the Development OS tick; Vercel Cron sends it as `Authorization: Bearer`, cron-job.org as `x-cron-secret`. **To be set by the owner** — until then both endpoints answer 500, no server alerts go out and the Dev OS's daily work runs only through the app's catch-up |
 | `import.meta.env.DEV` | `onboardingGuest.ts`, `orderChatGuest.ts` | Enables in-browser fallbacks for `/api` flows during `vite dev` |
 | `__BUILD_ID__` (define, not env) | `services/appUpdate.ts` | Build identity compared with `/version.json` |
 
@@ -301,7 +327,9 @@ Gemini key), the production API base URL, and CORS allow-lists in `api/*`.
   harness. Not checked against live Firebase, push, or the published rule for `notification_state`.
 
 **NOT IMPLEMENTED ❌** (referenced or planned, absent in code):
-- A general server-side scheduler (only SMM Delivery Control's checker runs on a cron since 2026-10-15); server-side authorization for most writes.
+- A general server-side scheduler (only SMM Delivery Control's checker, since 2026-10-15, and the Development OS tick,
+  since 2026-10-18, run on a cron); server-side authorization for most writes (the Development OS is the exception:
+  all of its writes are server-side).
 - Self-registration; Firebase Auth account deletion when a member is deleted.
 - Firebase Analytics.
 

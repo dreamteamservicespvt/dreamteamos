@@ -37,6 +37,7 @@
 | `.claude/rules/ai-ads.md` | §9.7 AI Ads Platform, §9.8 Cinematic Ads, §17 advertisement generation | `components/ai-platform`, `components/cinematic-ads`, Gemini / prompt services, ad utils |
 | `.claude/rules/ai-accounts.md` | §9.21 AI Accounts (Flow credits, paid logins) | `components/ai-accounts`, AI Accounts pages, `aiAccounts` / `flowCredits` |
 | `.claude/rules/invoices.md` | §9.22 Invoice Builder (GST invoices, `DTS/26-27/0001` numbers, live A4 preview, PDF) | `components/invoice`, Invoices pages, `invoice*` utils / services, `utils/gst`, `useLeaveGuard` |
+| `.claude/rules/devos.md` | §9.23 DREAM TEAM AI Development OS (ten skills, daily quests, evidence-gated ranks, Control Center; `api/devos` + its cron) | `src/devos/**`, `api/devos.ts`, `components/devos`, `pages/shared/DevOs.tsx`, `useDevOs`, `devosApi` / `devosLocal`, `devos*` tests |
 | `.claude/rules/chat.md` | §9.10 client order chat + calls, §9.12 team chat / calls / meetings | chat, order-chat and call files, `api/order-chat.ts` |
 | `.claude/rules/people.md` | §9.13 attendance & leave, §9.14 payroll & commission, §9.15 HR & documents, §9.16 finance | HR, agreements, payroll, attendance, onboarding, accounts-admin, salary pages |
 | `docs/DEVELOPMENT-HISTORY.md` | §31 development history (newest first) | never; read it on demand |
@@ -221,24 +222,31 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-16)
+## 32. CURRENT PROJECT STATE (as of 2026-10-18)
 
-- 2026-10-16, **in the working tree (not committed)** — **AdGen speed**: the script quality loop ships a READY script
+- 2026-10-18, **on `main`** (pushed 2026-10-18) — **DREAM TEAM AI Development OS** (`devos.md` §9.23), from the
+  owner's MSRS: `/dev-os/*` for all seven roles — ten skills, a baseline, daily quests, weekly practicals, retention /
+  transfer checks, six evidence-gated ranks (XP never unlocks one), never the same question twice, AI rubric grading with
+  two judges, seasons / leagues / boards / team missions, and the admins' Control Center; every write on the server
+  (`api/devos.ts` + `src/devos/`), its daily work on a cron (`0 1 * * *` + cron-job.org) with an in-app catch-up. Owner:
+  set `CRON_SECRET` (it also starts the SMM checker) + the cron-job.org job; publish the `devos_*` rules.
+
+- 2026-10-16, **on `main`** — **AdGen speed**: the script quality loop ships a READY script
   (≥ 9/10, every hard rule met) at once instead of chasing 10/10; budget 3 passes / 45 s (`ai-ads.md` §17.2, §27).
 
-- 2026-10-15, **in the working tree (not committed)** — **dates and periods**: an SMM month's end date is its renewal day
+- 2026-10-15, **on `main`** — **dates and periods**: an SMM month's end date is its renewal day
   (own days end the day before), the sale asks "Month starts on", one checked way to change a month's dates, posts dated
   outside not counted, Months to check; Payroll opens on the period due and asks before paying early; pay terms apply
   from a chosen period (`users.payHistory`); ONE commission rule (collected in the period, 75% gate, Settlements and
   Payroll never pay the same money); P&L / Accounts Dashboard per pay period; invoice dates kept in their series; Flow
   credits dated by the day made; the India day everywhere (`smm.md`, `sales.md`, `people.md`, `orders-work.md`,
   `invoices.md`, `ai-accounts.md`, `data-model.md`; the `invoice_numbers` rule).
-- 2026-10-15, **in the working tree (not committed)** — **the voice-over word contract**: every clip of every generated
+- 2026-10-15, **on `main`** — **the voice-over word contract**: every clip of every generated
   script holds 17–20 spoken words (18–19 preferred, 20 the hard ceiling), for every cast, ad type and language — a pair's
   two lines together — counted by ONE counter on the exact shipped text (`utils/scriptContract`, `prompts/wordContract`);
   a 10/10 quality loop (8-dimension rubric, the score computed in code, ≤ 5 passes / 120 s) and a final gate that stops a
   run whose script still breaks the contract (`ai-ads.md` §17.2 step 3, §24, §25, §27; `data-model.md`).
-- 2026-10-15, **in the working tree (not committed)** — **SMM Delivery Control, all phases (0–7)**, starting in **Preview**:
+- 2026-10-15, **on `main`** — **SMM Delivery Control, all phases (0–7)**, starting in **Preview**:
   each client's month as WEEKLY tasks (`utils/smmCadence`), the supervisor (`utils/smmMonitor`), a new screen behind
   **✨ Delivery Control** on the classic Social Media page (`/smm/control`: Today, Weeks, Client plan, Team, Starting line,
   Alerts log, Settings — per role), the writes (`services/smmDelivery`: switch a month on, Do it now / Need more time,
@@ -248,48 +256,48 @@ errors:** done means every listed item is fully resolved with no build, console 
   festivals), the server checker `api/smm-monitor.ts` (cron, `CRON_SECRET`), and phase 7: Make it in the AI studio, the
   Flow-credit forecast, and one-tap client approval in the client chat (`api/order-chat` `smm-approvals` / `smm-answer`)
   (`smm.md` §9.9, `data-model.md`, `roles-routes.md`, `backend-security.md`, `people.md`, `chat.md`, `architecture.md`).
-- 2026-10-15, **in the working tree (not committed)** — the **Real Owner Duo**: Real Owner Face for two owners (Male + Male,
+- 2026-10-15, **on `main`** — the **Real Owner Duo**: Real Owner Face for two owners (Male + Male,
   Female + Female, Male + Female). Two labelled owner-photo slots in the studio, both required (the run is refused
   without either); Owner 1 = photo 1 = LEFT, speaks first (the man on Male + Female), Owner 2 = RIGHT; the duo face lock
   and two-photo attach line on every frame, the owner's template for two on every Veo prompt; the sales notes ask for a
   photo of EACH owner. Its first half was already on `main` (`74b0b8e`), so the three entries show in the pickers there
   without this wiring (`ai-ads.md` §17.2, §24, §25, §27; `sales.md` §9.4).
 - 2026-10-14, **documentation in `main`** — cross-module DTS-OS navigation consolidated into the repository-wide system-navigation section in `.claude/rules/architecture.md`; `CLAUDE.md` points to it. This indexes the existing module guides, key service/data flows, repository layout, verification steps and security caveats; it is not a claim of a full runtime or pixel-level audit.
-- 2026-10-13 (late night), **in the working tree (not committed)**: the bell's follow-ups — **toasts at the bottom on
+- 2026-10-13 (late night), **on `main`**: the bell's follow-ups — **toasts at the bottom on
   phones**, a smaller badge, **dismiss one row** (X / swipe, Undo) and **mark as unread**, a **daily 90-day clean-up** of
   `notifications`, and the bell's index in **`firestore.indexes.json`** (+ `firebase.json`, `.firebaserc`)
   (`backend-security.md` §18, `data-model.md`).
-- 2026-10-13 (night), **in the working tree (not committed)**: the **bell's Mark all read and Clear all work**. They act
+- 2026-10-13 (night), **on `main`**: the **bell's Mark all read and Clear all work**. They act
   on every notification, not the 50 loaded. Clear all is one `notification_state/{uid}` point with Undo, and the
   once-a-day reminders are written once (`sendNotification({ once })`), so they never come back
   (`backend-security.md` §18, `data-model.md`; new rule in `docs/firestore-rules.md`).
-- 2026-10-13 (evening), **in the working tree (not committed)** — **poster refine works**: design requests go in one
+- 2026-10-13 (evening), **on `main`** — **poster refine works**: design requests go in one
   "Changes:" line (the three sentences untouched), a refine can leave out / bring back a verified number or the address and
   change the words' language, and the studio says when nothing or not all was applied (`ai-ads.md` §17.2, §24).
-- 2026-10-13, **in the working tree (not committed)** — SMM **"Create next renewal" only for the main admin and the tech
+- 2026-10-13, **on `main`** — SMM **"Create next renewal" only for the main admin and the tech
   admin** (not the team leaders; the salesperson keeps Renew, the sale), in the screens and in `createRenewalMonth`
   (`smm.md`, `roles-routes.md`).
-- 2026-10-13 (later), **in the working tree (not committed)** — **contact numbers on the poster and the footer**: one
+- 2026-10-13 (later), **on `main`** — **contact numbers on the poster and the footer**: one
   verified list (`utils/businessFacts.contactNumbersOf`, at most 3, each once, as written) printed by the label, both
   posters, overlays, frames and refines; an order id / account / price is never a phone number; the label's WhatsApp
   number is one of its pills, not an extra; the poster's Format line names the count or "No phone number" (`ai-ads.md`).
-- 2026-10-13, **in the working tree (not committed)** — the 3-item task of 2026-10-12: the **Social Media Team Lead is
+- 2026-10-13, **on `main`** — the 3-item task of 2026-10-12: the **Social Media Team Lead is
   view-only** on months she is not on and works her own like a member (`smm.md`, `roles-routes.md`, the first
   `smm_campaigns` rule in `docs/firestore-rules.md`); **Half Day leave** — Full day / Half day, ½ of the allowance, the HL
   mark, counted in halves everywhere (`people.md`, `data-model.md`); **poster prompts** — ONE conceptual ad type, the
   owner's three sentences + a Format line, for Poster Creation AND the video kit's poster, 9:16 by default (`ai-ads.md`).
-- 2026-10-10, **in the working tree (not committed)**: **Motu & Patlu walk only where a clip's words need it** — every
+- 2026-10-10, **on `main`**: **Motu & Patlu walk only where a clip's words need it** — every
   other clip is acted out standing, so Veo keeps their heights and clothes (`ai-ads.md` §17.2 step 6, §24).
 
 - 2026-10-10, **on `main` and live** (`7c36262`, pushed by the owner): **Attendance → Pay Salary on one source of truth** — one tally, paid =
   the payment record, Sales Payroll on the member's rule, Accounts linked to Payroll (`people.md` §9.13–9.14, `data-model.md`);
   then **inactive people shown only in My Team / Team Management** (`cbe33fc`, live; `roleHelpers.isActiveUser`,
-  `roles-routes.md`); then, **in the working tree (not committed)**, **comp-off** — W "Worked on holiday" earns a credit,
+  `roles-routes.md`); then, **on `main`**, **comp-off** — W "Worked on holiday" earns a credit,
   C "Comp Off" pays an absence, Apply in Payroll (`people.md` §9.13).
-- 2026-10-10, **in the working tree (not committed)**: **Gemini API keys on the Flow accounts** (asked in the Add form too; the AI Studio link
+- 2026-10-10, **on `main`**: **Gemini API keys on the Flow accounts** (asked in the Add form too; the AI Studio link
   can be copied) + the tech admin's
   **API keys** tab (copy / `.env` / in use); AdGen still reads Vercel's `API_KEY_1…30` (`ai-accounts.md`).
-- 2026-10-10, **in the working tree (not committed)**: **AdGen's Gemini calls no longer fail on a retired, busy or
+- 2026-10-10, **on `main`**: **AdGen's Gemini calls no longer fail on a retired, busy or
   used-up model** — the model list made current (2.0 Flash, shut down 2026-06-01, was still asked; 3.8 / 3.6 Flash and
   Google's never-retired `-latest` aliases added), `callWithFallback` rewritten on shared facts only, a plain sentence
   when nothing can answer (`utils/geminiModels`; `ai-ads.md` §17.3).
@@ -305,13 +313,15 @@ errors:** done means every listed item is fully resolved with no build, console 
 - Before it on `main` (`abeab79`, 2026-10-08 17:10, the owner's commits): everything through 2026-10-05 (§31),
   **Sales → Tech on one permanent `saleId`** (`sales.md`, `orders-work.md`), **Real Owner Face** and **దసరా**
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
-- `npm run build` ✅ (2026-10-15: main chunk ≈495 KB, vendor-firebase ≈665 KB, geminiService chunk ≈900 KB; lazy pages for
-  AI Accounts, Invoices, SMM Delivery Control, and its AI / alert parts).
-- `npx vitest run` ✅ 263 files, 4427 tests, all pass (2026-10-16, after the AdGen speed fix). Under heavy parallel load a
-  few UI tests can time out; they pass re-run alone.
-- `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-15).
+- `npm run build` ✅ (2026-10-18: main chunk ≈497 KB, vendor-firebase ≈665 KB, geminiService chunk ≈890 KB; lazy pages for
+  AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
+  ships to the browser).
+- `npx vitest run` 🟡 269 files, 4,516 tests: 4,515 pass (2026-10-18, with the Development OS); the one failure,
+  `smmDeliveryControlUiOct15` (the view-only Social Media Team Lead), is pre-existing — it fails on `88ee836` too. Under
+  heavy parallel load a few UI tests can time out; they pass re-run alone.
+- `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-18).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
-- Most recent work (newest first; detail in §31): dates and periods across SMM, pay, invoices and AI accounts (2026-10-15); the voice-over word contract + 10/10 loop (2026-10-15); SMM Delivery Control, all phases (2026-10-15); the Real Owner Duo (2026-10-15); bottom toasts, one-row dismiss / unread, the 90-day clean-up, the
+- Most recent work (newest first; detail in §31): the DREAM TEAM AI Development OS (2026-10-18); dates and periods across SMM, pay, invoices and AI accounts (2026-10-15); the voice-over word contract + 10/10 loop (2026-10-15); SMM Delivery Control, all phases (2026-10-15); the Real Owner Duo (2026-10-15); bottom toasts, one-row dismiss / unread, the 90-day clean-up, the
   index file; the bell's Mark all read / Clear all; poster refine (a Changes line,
   contacts, language, what was not applied); one contact-number list for posters and the footer; SMM Team Lead
   view-only, Half Day leave, one-type poster prompts (2026-10-13); Motu & Patlu walk only where needed; AdGen's Gemini model list and call layer; Gemini API keys on the Flow accounts; attendance → pay salary on one source of truth (2026-10-10); the ad's cast kept from the configuration to the video prompts
@@ -362,14 +372,16 @@ the ads with Gemini-written prompts (visuals made in external tools). The app al
 attendance, payroll, commission and finance.
 
 **Stack.** React 18 + TS (non-strict) + Vite 5 + Tailwind/shadcn + zustand; Firebase
-Auth/Firestore/FCM called **directly from the browser**; 4 Vercel functions in `api/`
-(`send-notification`, `order-chat`, `onboarding`); Gemini via `@google/genai` from the browser
+Auth/Firestore/FCM called **directly from the browser**; 5 Vercel functions in `api/`
+(`send-notification`, `order-chat`, `onboarding`, `smm-monitor`, `devos`); Gemini via `@google/genai` from the browser
 with key/model rotation; Cloudinary uploads; WebRTC; Capacitor Android; PWA with self-update.
 
 **Architecture.** Thick client with no CRUD backend. Rules live in `src/utils` (pure, tested) and
 `src/services` (Firestore ops with side-effects: notifications, activity logs, mirrors). Realtime
 `onSnapshot` everywhere. Free-tier read quota shapes everything: scope queries, keep listeners
-session-long, key effects on `uid`. No cron; sweeps run when pages open.
+session-long, key effects on `uid`. Two crons (`api/smm-monitor`, `api/devos`, both need `CRON_SECRET`); other
+sweeps run when pages open. The **Development OS** is the exception to the thick client: all its writes are the
+server's (`api/devos` + the isomorphic engine `src/devos/`; `devos.md`).
 
 **Roles.** `main_admin`, `tech_admin`, `sales_admin`, `accounts_admin`, `tech_team_leader`,
 `tech_member`, `sales_member`, plus flags `externalCreator` (ad tool only) and `smmLeader`. Team =
@@ -388,7 +400,9 @@ SMM posting needs client approval; a sale the tech team started can be edited (n
 `member_credentials`, `public_badges`), pay (`payroll_*`, `salary_*`, `commission_settlements`,
 `leave_requests`, `daily_checkins`, `attendance`, `holidays`, `salesCheckins`), AI accounts
 (`flow_accounts`, `flow_usage`, `paid_accounts`, and their `*_secrets`, `gemini_api_keys`), invoices (`invoices` with embedded
-lines, `invoice_counters`, `invoice_numbers`, `invoice_settings` — §9.22; one engine, `utils/invoiceMath`).
+lines, `invoice_counters`, `invoice_numbers`, `invoice_settings` — §9.22; one engine, `utils/invoiceMath`), the
+Development OS (`devos_users/{uid}` + subcollections, `devos_questions` (sealed keys), `devos_config/policy`, boards,
+leagues, missions, queue, health — §9.23, server-written only).
 
 **Core pipeline.** `SaleForm` → `services/sales.recordSale` (the sale with its permanent `saleId` + order
 `o_<saleId>` in one transaction; then team-only chat + SMM campaign; edits / deletes by `saleId` too) →
