@@ -224,7 +224,9 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-19)
 
-- 2026-10-19, **on `main`** — **whole-app audit fixes**: revenue = approved sales everywhere (pending shown beside it, one
+- 2026-10-19, **on `main` and live** (with the 2026-10-18 security work and the Dev OS's open tick; pushed by the owner as
+  `802f09a`, build `1792320604656`, checked 2026-10-18 10:52 UTC: both APIs 401 without a token, `/api/devos` 200;
+  Firestore still answers anonymous reads until the rules are published) — **whole-app audit fixes**: revenue = approved sales everywhere (pending shown beside it, one
   util `salesRevenue` + `revenueReport`), dashboard counters, Accounts = P&L, external creators not staff, Work Assign's
   sold-ad label, HR filter on phones, another role's URL → own home, breadcrumbs in words, chart axes, My Leads' duplicate
   sold lead (`people.md`, `roles-routes.md`, `orders-work.md`; history 2026-10-19).
