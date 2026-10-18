@@ -224,6 +224,11 @@ found the confidence-scale bug and four others, fixed); and a browser harness on
 role's screens at 390 px and desktop (each finding fixed and re-checked).
 
 **Not verified / owner actions:**
+- **Not live yet:** `1399a78` is on `main`, but Vercel did not deploy it (2026-10-18: the live `version.json` stayed at
+  the 2026-10-16 build for 30+ minutes, Vercel healthy). A Claude co-authored commit on the Hobby plan is not deployed —
+  the same happened on 2026-10-08, made live by the owner's one-line commit `0fb64c3`. Make it live the same way (or
+  Vercel → Deployments → Redeploy), then check `GET /api/devos` answers JSON (`{"error":"CRON_SECRET not configured"}`
+  until the secret is set) instead of the app's page.
 - **`CRON_SECRET` is not set on Vercel** (2026-10-18: `GET /api/smm-monitor` answered 500), so no cron runs: the
   daily work happens only through the catch-up when someone opens the app. Set it (Vercel → Settings → Environment
   Variables) and redeploy, then create a cron-job.org job: GET `https://dreamteamos.vercel.app/api/devos`, header

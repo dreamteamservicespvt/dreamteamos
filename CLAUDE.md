@@ -224,7 +224,8 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-18)
 
-- 2026-10-18, **on `main`** (pushed 2026-10-18) — **DREAM TEAM AI Development OS** (`devos.md` §9.23), from the
+- 2026-10-18, **on `main`, NOT live yet** (`1399a78` pushed; Vercel did not deploy it — a Claude co-authored commit on
+  the Hobby plan, as on 2026-10-08; the owner's one-line trigger commit / Redeploy makes it live) — **DREAM TEAM AI Development OS** (`devos.md` §9.23), from the
   owner's MSRS: `/dev-os/*` for all seven roles — ten skills, a baseline, daily quests, weekly practicals, retention /
   transfer checks, six evidence-gated ranks (XP never unlocks one), never the same question twice, AI rubric grading with
   two judges, seasons / leagues / boards / team missions, and the admins' Control Center; every write on the server

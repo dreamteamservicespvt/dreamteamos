@@ -91,7 +91,11 @@
   were all fixed; the re-check passed items 1–10 (68 + 9 checks); the focused pass on the time limits, the Sunday text,
   the chip contrast (every tone ≥ 5.3:1 on its tint) and the per-person drafts was 73 PASS / 0 FAIL, with no console
   errors and no 390 px overflow. Not driven: live Firebase, Vercel and FCM push (no login here), so the production
-  rules, the cron and push are owner checks.
+  rules, the cron and push are owner checks. **Deploy.** Committed as `1399a78` and pushed to `main`; Vercel did not
+  deploy it (the live build stayed 2026-10-16 for 30+ minutes with Vercel healthy) — a Claude co-authored commit on
+  the Hobby plan, as on 2026-10-08 (live only after the owner's one-line `0fb64c3`). The owner's trigger commit or a
+  Redeploy makes it live. The function itself was checked locally: bundled and imported as Node ESM, it answers GET
+  without the secret 500 `CRON_SECRET not configured`, a POST without a token 401, a preflight 204.
 
 - **2026-10-16: AdGen deliverables fast again — the script quality loop stops at a READY script** (`ai-ads.md` §17.2
   step 3, §24, §27). The owner: "ad deliverables taking lot of time … time is getting delayed". Root cause: the
