@@ -104,11 +104,13 @@ service cloud.firestore {
       // `clientReview` is the customer's own verdict on their own order, and it is here rather
       // than behind the API so the review lands even when the serverless function is unreachable.
       // The server mirrors it outward to the order and the client record (api/order-chat.ts):
-      // a guest can write this one document and nothing else.
+      // a guest can write this one document and nothing else. `activeAt` (2026-10-18 audit): the client's presence
+      // heartbeat (orderChat.setOrderChatPresence) writes it with activeUsers; without it every presence update was
+      // refused, so the client was pushed every message while reading the chat.
       allow update: if isStaff() || (
         isGuestOfThisChat() &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['activeUsers', 'unreadCounts', 'lastMessage', 'lastMessageAt', 'lastMessageBy',
+          .hasOnly(['activeUsers', 'activeAt', 'unreadCounts', 'lastMessage', 'lastMessageAt', 'lastMessageBy',
                     'clientReview'])
       );
 
@@ -223,7 +225,10 @@ service cloud.firestore {
 
     match /flow_accounts/{id} {
       // A member lists `where('visibleTo','array-contains',uid)`; a manager lists their team.
-      allow read:   if isStaff() && (isTechManager() || request.auth.uid in resource.data.visibleTo);
+      // `resource == null`: adding an account reads its (new) id inside the transaction first — a member must be able to
+      // learn an id is free (2026-10-18 audit: without it no tech member could add a Flow account). A taken id still
+      // goes through the update rule below.
+      allow read:   if isStaff() && (resource == null || isTechManager() || request.auth.uid in resource.data.visibleTo);
       allow create: if isStaff() && request.resource.data.addedBy == request.auth.uid;
       // The holder's credit entries move its running total; the adder/owner may correct its details.
       allow update: if isStaff() && (isTechManager() || request.auth.uid in resource.data.visibleTo);

@@ -148,7 +148,7 @@ export default function TechAdminMyTeam() {
     }
     setCreating(true);
     try {
-      const cred = await createUserWithoutSignOut(formEmail.trim(), formPassword);
+      const cred = await createUserWithoutSignOut(formEmail.trim(), formPassword, formRole);
       const uid = cred.user.uid;
       const normalizedPhone = formPhone.trim() ? normalizePhone(formPhone.trim()) : "";
       const newUser: Record<string, any> = {

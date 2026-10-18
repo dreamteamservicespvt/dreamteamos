@@ -100,7 +100,7 @@ export default function MyTeam() {
     }
     setCreating(true);
     try {
-      const cred = await createUserWithoutSignOut(formEmail.trim(), formPassword);
+      const cred = await createUserWithoutSignOut(formEmail.trim(), formPassword, "sales_member");
       const uid = cred.user.uid;
       const normalizedPhone = formPhone.trim() ? normalizePhone(formPhone.trim()) : "";
       const newUser: AppUser = {

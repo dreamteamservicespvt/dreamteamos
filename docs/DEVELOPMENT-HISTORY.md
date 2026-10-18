@@ -6,6 +6,22 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-18 (later): the Firestore rules audited against the app; staff logins made on the server**
+  (`backend-security.md` §12; `docs/firestore-rules.md`). A static audit compared every rule in `docs/firestore-rules.md`
+  with all 664 Firestore accesses in `src/` (no emulator: no Java on this machine). Publishing the rules closes the
+  anonymous exposure (everything 403 except `public_badges`). **Fixed before publication:** B1 a tech member could not
+  add a Flow account (the transaction reads the new id; rule now `resource == null ||`); B2 logout removed the device's
+  push rows AFTER signing out (refused, so a shared Android phone kept the last person's pushes) — now before
+  (`Sidebar.tsx`); B3 the client's presence heartbeat writes `activeAt`, which the guest rule did not allow. **G1
+  (critical, after publishing):** any self-registered Firebase account passes `isStaff()`; browser account creation
+  needed public sign-up on — staff logins are now created by the new `api/staff-account` (Admin SDK, admin-only,
+  `CAN_CREATE`), so the owner can switch public sign-up OFF. Still open (owner + a tested rules change): G2 any staff
+  member can rewrite their own `users.role`; G3 the HR collections' own rules are shadowed by the catch-all; G4 pay,
+  attendance, notifications, fcmTokens open to all staff; G5–G11 guest calls / chat history / badges / settings (the
+  full list is in the handoff and the report). **Files.** `api/staff-account.ts` (new), `src/services/secondaryAuth.ts`,
+  the three add-member pages + `onboardingGuest.ts` (role passed), `src/components/layout/Sidebar.tsx`,
+  `docs/firestore-rules.md`; test `staffAccountOct18` (14). **Tested.** tests pass, tsc 0, the API parsed.
+
 - **2026-10-18 (later): security — the push endpoint, key leaks, and the open database** (`backend-security.md` §12, §26;
   CLAUDE.md §32 / §33). Part of the owner's whole-site audit ("YOUR MISSION … security engineer …"). **Found.**
   (1) `api/send-notification` pushed to any `userId` for any caller — anybody on the internet could ring a staff

@@ -104,6 +104,16 @@ or personal data in any prompt. **Writes** only `devos_*` and `notifications/{ke
 `dreamteamos-*.vercel.app`, `https://localhost`, `http://localhost:*`. Relative imports end in `.js`; parse after
 editing: `npx esbuild api/devos.ts --bundle --platform=node --format=esm --external:firebase-admin --external:@vercel/node --log-level=error --outfile=/dev/null`.
 
+### `POST /api/staff-account` (`api/staff-account.ts`, 2026-10-18)
+Creates a staff LOGIN with the Admin SDK for the admins' add-member screens (main admin Team Management, tech / sales
+admin My Team, via `services/secondaryAuth.createUserWithoutSignOut(email, password, role)`; a DEV build keeps the old
+browser path). Bearer ID token of an ACTIVE admin; who may create whom (`CAN_CREATE`): main_admin → every role but
+main_admin, tech_admin → tech_member / tech_team_leader, sales_admin → sales_member (403 otherwise). Answers `{uid}` or
+`{error, code}` with the client SDK's codes (`auth/email-already-in-use`, `auth/weak-password`, `auth/invalid-email`).
+Why: browser account creation needs Firebase's PUBLIC sign-up on, and with it on anybody could register an account the
+rules treat as staff (rules audit G1). **Owner:** once deployed, switch public sign-up OFF (Firebase console →
+Authentication → Settings → User actions → untick "Enable create (sign-up)"). Test: `staffAccountOct18` (14).
+
 ### `POST /api/onboarding` (`api/onboarding.ts`), `{ action, inviteId, code, ... }`
 Actions `open` · `accept-offer` (signature URL) · `accept-joining` (creates the account) ·
 `decline` (reason). Every call re-checks the 4-digit code (lockout after 5 tries for 15 minutes; 410

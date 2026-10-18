@@ -199,7 +199,7 @@ async function devFallback(action: Action, body: Record<string, unknown>): Promi
     const password = `Dts@${Math.random().toString(36).slice(2, 8)}`;
     let uid: string;
     try {
-      const cred = await createUserWithoutSignOut(invite.email, password);
+      const cred = await createUserWithoutSignOut(invite.email, password, invite.role);
       uid = cred.user.uid;
     } catch (err) {
       return { ok: false, error: (err as { code?: string }).code === "auth/email-already-in-use" ? "email_taken" : "provision_failed" };

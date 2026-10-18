@@ -375,8 +375,8 @@ the ads with Gemini-written prompts (visuals made in external tools). The app al
 attendance, payroll, commission and finance.
 
 **Stack.** React 18 + TS (non-strict) + Vite 5 + Tailwind/shadcn + zustand; Firebase
-Auth/Firestore/FCM called **directly from the browser**; 5 Vercel functions in `api/`
-(`send-notification`, `order-chat`, `onboarding`, `smm-monitor`, `devos`); Gemini via `@google/genai` from the browser
+Auth/Firestore/FCM called **directly from the browser**; 6 Vercel functions in `api/`
+(`send-notification`, `order-chat`, `onboarding`, `smm-monitor`, `devos`, `staff-account`); Gemini via `@google/genai` from the browser
 with key/model rotation; Cloudinary uploads; WebRTC; Capacitor Android; PWA with self-update.
 
 **Architecture.** Thick client with no CRUD backend. Rules live in `src/utils` (pure, tested) and

@@ -88,8 +88,11 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         console.error("Failed to update session on logout:", e);
       }
     }
-    await signOut(auth);
+    // The push registration goes BEFORE sign-out: removing this device's `fcmTokens` rows is a read + delete that needs
+    // the member still signed in. After sign-out it was refused (once the rules are published) and swallowed, so a shared
+    // Android phone kept the departed person's row — and their sales, chat, call and SMM pushes (2026-10-18 rules audit).
     await deleteFCMToken(user.uid).catch(() => {});
+    await signOut(auth);
     // Access codes proven on this device are forgotten with the session. They are remembered per
     // person, but a shared phone should not carry one member's unlocked jobs into the next login.
     clearWorkUnlocks();

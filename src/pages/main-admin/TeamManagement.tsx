@@ -542,7 +542,7 @@ function CreateAdminModal({ onClose, onCreated, currentUserId }: CreateModalProp
 
     setCreating(true);
     try {
-      const cred = await createUserWithoutSignOut(trimmedEmail, trimmedPassword);
+      const cred = await createUserWithoutSignOut(trimmedEmail, trimmedPassword, role);
 
       await setDoc(doc(db, "users", cred.user.uid), {
         email: trimmedEmail,
