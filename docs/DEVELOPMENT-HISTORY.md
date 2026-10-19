@@ -6,6 +6,18 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-19 (late night, 2): number requests — who holds a number, and asking for it** (`sales.md` §9.3,
+  `data-model.md`, `roles-routes.md` §8.2, `backend-security.md` §18, `docs/firestore-rules.md`). The owner, after the
+  live check of 9885719740: the screen said "another member" without a name, and she could do nothing. Decided with
+  the owner: request everywhere a colleague blocks a number; a SOLD number only the sales admin gives (the holder's
+  sales stay on their closed lead); on approval her old hidden lead comes back. New `number_requests` collection,
+  `utils/numberRequest` (id, `mayDecideNumberRequest`, `leadHasSale`), `services/numberRequests` (`findNumberHolder`,
+  `requestNumber`, `decideNumberRequest` — one transaction moves leads + lock; listeners), `components/sales/
+  NumberRequests` (`NumberRequestAction`, `NumberRequestsPanel`), wired into My Leads (hidden-number line, Add Custom
+  Lead's blocked answers now in the box, the holder's panel) and Leads Management (the sales admin's panel); lock
+  timeline action `transferred`; `numberLock.buildLeadData` exported. Test `numberRequestsOct19` (8); full suite,
+  build, typecheck 0; the flow driven at 390px in the local harness.
+
 - **2026-10-19 (late night): My Leads fast for a big list; search on any day; "already yours" that showed nothing;
   deadline alerts once** (`sales.md` §9.3, `orders-work.md` §16, `backend-security.md` §18). The owner, from Kusuma's
   phone (2,173 leads, 1,739 sales): slow to open, "Creating…" hangs, a tiny search that only searches the chosen day,

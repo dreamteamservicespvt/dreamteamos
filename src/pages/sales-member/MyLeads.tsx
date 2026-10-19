@@ -63,6 +63,9 @@ import { orderIdOfSale, saleIdOf } from "@/utils/saleIdentity";
 import { saleHasWork } from "@/utils/saleEdit";
 import { buildClientSaleMessage } from "@/utils/salesMessage";
 import SaleStatusChip from "@/components/sales/SaleStatusChip";
+import { NumberRequestAction, NumberRequestsPanel } from "@/components/sales/NumberRequests";
+import { subscribeMyNumberRequests, subscribeRequestsToHolder } from "@/services/numberRequests";
+import type { NumberRequest } from "@/types";
 import ExtendPromiseButton from "@/components/work/ExtendPromiseButton";
 import { dayRevenue, saleDay, type DayRevenue } from "@/utils/salesRevenue";
 import {
@@ -481,6 +484,30 @@ export default function MyLeads() {
     [lockedLeads, leadQuery],
   );
 
+  /*
+    Number requests (2026-10-19): the ones this member made (to show where each stands) and the ones
+    waiting on them as the holder. Two small scoped listeners.
+  */
+  const [myRequests, setMyRequests] = useState<NumberRequest[]>([]);
+  const [requestsToMe, setRequestsToMe] = useState<NumberRequest[]>([]);
+  useEffect(() => {
+    if (!user?.uid) return;
+    const a = subscribeMyNumberRequests(user.uid, setMyRequests);
+    const b = subscribeRequestsToHolder(user.uid, setRequestsToMe);
+    return () => { a(); b(); };
+  }, [user?.uid]);
+  const myRequestByPhone = useMemo(() => {
+    const m = new Map<string, NumberRequest>();
+    const ms = (r: NumberRequest) => r.createdAt?.seconds || Number.MAX_SAFE_INTEGER; // a fresh write has no time yet
+    for (const r of myRequests) {
+      const k = (r.phone || "").replace(/\D/g, "");
+      const prev = m.get(k);
+      if (!prev || ms(r) >= ms(prev)) m.set(k, r);
+    }
+    return m;
+  }, [myRequests]);
+  const requestFor = (phone: string) => myRequestByPhone.get((phone || "").replace(/\D/g, "")) || null;
+
   const workable = useMemo(() => leads.filter((l) => !l.frozen), [leads]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const searchFiltered = useMemo(() => workable.filter(matchesSearch), [workable, leadQuery]);
@@ -767,6 +794,7 @@ export default function MyLeads() {
             setStatusFilter("all");
             setSearch(phone.replace(/\D/g, "").slice(-10));
           }}
+          requestFor={requestFor}
           onClose={() => setShowCustomModal(false)}
         />
       )}
@@ -854,6 +882,11 @@ export default function MyLeads() {
           }
           onClose={() => setShowRevenueBreakdown(false)}
         />
+      )}
+
+      {/* Colleagues asking for a number this member holds (2026-10-19). */}
+      {user && (
+        <NumberRequestsPanel requests={requestsToMe} actor={{ uid: user.uid, name: user.name, role: user.role }} />
       )}
 
       {/* Money still to collect — see PendingPaymentsPanel for why it sits above everything else. */}
@@ -972,10 +1005,19 @@ export default function MyLeads() {
           {hiddenMatches.length > 0 && (
             <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning space-y-0.5" data-test="hidden-search-match">
               {hiddenMatches.slice(0, 3).map((l) => (
-                <p key={l.id}>
-                  <span className="font-mono">{l.phone}</span> is with {l.takenOverBy || "another member"} now —
-                  {l.frozenReason === "duplicate_resolved" ? " they worked it first," : ""} so it is hidden from your list.
-                </p>
+                <div key={l.id}>
+                  <p>
+                    <span className="font-mono">{l.phone}</span> is hidden from your list —
+                    {l.frozenReason === "duplicate_resolved"
+                      ? " another member worked it first."
+                      : l.frozenReason === "transferred"
+                        ? " it was given to another member."
+                        : " another member holds it."}
+                  </p>
+                  {user && (
+                    <NumberRequestAction phone={l.phone} requesterLeadId={l.id} user={{ uid: user.uid, name: user.name }} myRequest={requestFor(l.phone)} />
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -2061,18 +2103,25 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
 
 /* ─── Add Custom Lead Modal ─── */
 
-function AddCustomLeadModal({ user, leads, onShowLead, onClose }: {
+function AddCustomLeadModal({ user, leads, onShowLead, requestFor, onClose }: {
   user: AppUser;
   /** The member's own leads (the session's listener), to answer "already yours" without a round trip. */
   leads: Lead[];
   /** Puts this number on screen in My Leads (searched, every day). */
   onShowLead: (phone: string) => void;
+  /** This member's latest request for a number, if any (number requests, 2026-10-19). */
+  requestFor: (phone: string) => NumberRequest | null;
   onClose: () => void;
 }) {
   const { toast } = useToast();
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  /** A colleague holds the number just tried — shown in the box with "Request this number". */
+  const [blocked, setBlocked] = useState<{ phone: string; message: string } | null>(null);
+  const digitsOf = (p: string) => normalizePhone(p || "").replace(/\D/g, "");
+  /** The member's own hidden (frozen) lead on a number — reopened if the request is approved. */
+  const ownFrozenLeadId = (p: string) => leads.find((l) => l.frozen && digitsOf(l.phone) === digitsOf(p))?.id || null;
 
   const handleCreate = async () => {
     const trimmed = phone.trim();
@@ -2107,20 +2156,16 @@ function AddCustomLeadModal({ user, leads, onShowLead, onClose }: {
         displayName: name.trim(),
       });
 
+      /*
+        Blocked by a colleague: said INSIDE the box, with who has it and "Request this number"
+        (2026-10-19) — a toast that only said "you can't" left nothing to do.
+      */
       if (result.kind === "reserved") {
-        toast({
-          title: "Number already taken",
-          description: `Already added by ${result.ownerName}. Reserved until ${format(result.until, "dd MMM, h:mm a")}. You can't add it yet.`,
-          variant: "destructive",
-        });
+        setBlocked({ phone: normalized, message: `Added by ${result.ownerName} — reserved until ${format(result.until, "dd MMM, h:mm a")}.` });
         return;
       }
       if (result.kind === "sale_frozen") {
-        toast({
-          title: "Client sold & frozen",
-          description: `Sold by ${result.saleByName}, frozen until ${format(result.until, "dd MMM yyyy")}. You can't add this client.`,
-          variant: "destructive",
-        });
+        setBlocked({ phone: normalized, message: `Sold by ${result.saleByName} — held until ${format(result.until, "dd MMM yyyy")}.` });
         return;
       }
       if (result.kind === "already_yours") {
@@ -2129,11 +2174,7 @@ function AddCustomLeadModal({ user, leads, onShowLead, onClose }: {
         return;
       }
       if (result.kind === "held_elsewhere") {
-        toast({
-          title: "Number is with another member",
-          description: `${result.ownerName} has this number now — your lead on it is closed, so you can't add it.`,
-          variant: "destructive",
-        });
+        setBlocked({ phone: normalized, message: "Your lead on this number is closed — another member has it." });
         return;
       }
       if (result.kind === "takeover") {
@@ -2185,6 +2226,7 @@ function AddCustomLeadModal({ user, leads, onShowLead, onClose }: {
                 let v = e.target.value.replace(/[^0-9+\s\-().]/g, "");
                 v = v.replace(/(?!^)\+/g, ""); // "+" only allowed at the start
                 setPhone(v);
+                setBlocked(null);
               }}
               placeholder="9876543210 or +1 415 555 0100"
               autoFocus
@@ -2206,6 +2248,18 @@ function AddCustomLeadModal({ user, leads, onShowLead, onClose }: {
               className="w-full h-10 px-4 rounded-lg bg-background border border-border text-foreground text-sm outline-none focus:border-primary"
             />
           </div>
+          {blocked && (
+            <div className="rounded-md border border-warning/40 bg-warning/10 p-2.5 text-xs text-warning leading-relaxed" data-test="add-lead-blocked">
+              <p className="font-semibold">Number is with another member</p>
+              <p>{blocked.message}</p>
+              <NumberRequestAction
+                phone={blocked.phone}
+                requesterLeadId={ownFrozenLeadId(blocked.phone)}
+                user={{ uid: user.uid, name: user.name }}
+                myRequest={requestFor(blocked.phone)}
+              />
+            </div>
+          )}
           <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2.5 leading-relaxed">
             This lead will appear in your My Leads list. Use the "Add Sale" button on the card to record the sale and earn incentives.
           </div>

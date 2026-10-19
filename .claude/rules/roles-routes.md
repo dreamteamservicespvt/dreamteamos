@@ -124,6 +124,9 @@ legacy users without the field active.
 | Deactivate / delete users | ✅ all | ✅ own team | | | ✅ own team | | |
 | View stored passwords (`member_credentials`) | ✅ | ✅ | | | ✅ | | |
 | Distribute numbers / schedule pools | | | | | ✅ | claim own | |
+| Request a number a colleague holds (2026-10-19, My Leads) | | | | | | ✅ | |
+| Give / decline a requested number — unsold (`mayDecideNumberRequest`) | ✅ (no screen) | | | | ✅ team (Leads Management) | ✅ as the holder | |
+| Give a SOLD number on request (holder's sales stay on their lead) | ✅ (no screen) | | | | ✅ | | |
 | Record / edit own sale (also after work starts, 2026-10-08 — not its service) | | | | | | ✅ | |
 | Delete a sale — only while nobody on the tech side has started it (2026-10-08) | | | | | ✅ | ✅ own | |
 | `sale_edited` popup when a started sale is edited | | ✅ | ✅ | ✅ job holder | | | |

@@ -224,6 +224,10 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-19)
 
+- 2026-10-19 (late night, 2), **local, not pushed** — **number requests**: a blocked number names the member holding
+  it and can be requested; the holder or the sales admin gives it (a sold one: the sales admin only); her old lead
+  comes back (`sales.md`, `data-model.md` `number_requests`, `roles-routes.md`; history 2026-10-19 late night 2).
+
 - 2026-10-19 (late night), **on `main`** — **My Leads fast for big lists** (duplicate scan once a session, 6 at
   a time), **search finds a number on any day**, one filter row on every tab (Duplicates too), "already yours" for a
   frozen lead now says who has it, **deadline alerts once** per order and state (`sales.md`, `orders-work.md`,

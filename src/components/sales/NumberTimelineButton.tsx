@@ -12,6 +12,7 @@ const ACTION_LABELS: Record<NumberLockAction, string> = {
   taken_over: "Taken over",
   sold: "Sale made — frozen",
   admin_override: "Lock released",
+  transferred: "Given on request",
 };
 
 const ACTION_DOT: Record<NumberLockAction, string> = {
@@ -19,6 +20,7 @@ const ACTION_DOT: Record<NumberLockAction, string> = {
   taken_over: "bg-warning",
   sold: "bg-success",
   admin_override: "bg-destructive",
+  transferred: "bg-primary",
 };
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;

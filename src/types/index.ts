@@ -334,7 +334,41 @@ export interface Lead {
 // ─── Number Lock / Reservation System ───
 // One doc per real phone number in the `numberLocks` collection (doc id = digits-only phone).
 // Reserves a number to whoever added it for 24h, allows takeover after, and freezes sold clients.
-export type NumberLockAction = "claimed" | "taken_over" | "sold" | "admin_override";
+/** `transferred` (2026-10-19): a number request was approved — the number was given from one member to another. */
+export type NumberLockAction = "claimed" | "taken_over" | "sold" | "admin_override" | "transferred";
+
+export type NumberRequestStatus = "pending" | "approved" | "declined";
+
+/**
+ * `number_requests/{nr_<phone digits>_<requesterId>}` (owner, 2026-10-19).
+ *
+ * A member asks for a number another member holds — a duplicate the other member kept, their 24-hour
+ * reservation, or a client they sold to. The holding member may give it, or the sales admin; a number the
+ * holder has SOLD to only the sales admin may give (the holder's sales stay theirs). Approving moves the
+ * number in one transaction: the requester's hidden lead reopens (or a new one is made), the holder's lead is
+ * closed (`frozenReason: "transferred"`), the lock moves. One open request per number per requester.
+ */
+export interface NumberRequest {
+  id: string;
+  phone: string;               // normalized "+91…"
+  requesterId: string;
+  requesterName: string;
+  /** The requester's own (hidden) lead on this number, reopened on approval; null = a new lead is made. */
+  requesterLeadId: string | null;
+  holderId: string;
+  holderName: string;
+  holderLeadId: string;
+  /** The holder's lead had a sale when asked — only the sales admin may give it. Re-read on approval. */
+  holderHasSale: boolean;
+  displayName?: string;        // the holder's lead name, for the lists
+  /** The holder's sales admin (users.createdBy) — sees the request on Leads Management. */
+  salesAdminId: string | null;
+  status: NumberRequestStatus;
+  createdAt: any;
+  decidedAt?: any;
+  decidedById?: string;
+  decidedByName?: string;
+}
 
 export interface NumberLockTimelineEntry {
   action: NumberLockAction;

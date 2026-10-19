@@ -95,7 +95,7 @@ function toMillis(ts: TimestampLike): number {
 }
 
 /** Standard lead document shape for a member-created custom lead. */
-function buildLeadData(user: LockActor, normalized: string, displayName?: string) {
+export function buildLeadData(user: LockActor, normalized: string, displayName?: string) {
   return {
     assignedTo: user.uid,
     assignedBy: user.uid,

@@ -423,6 +423,10 @@ service cloud.firestore {
     // list is the change that makes their rules real, and should be tested against each HR screen.)
     // Every `devos_*` collection is kept out by its prefix (2026-10-18), so a new Dev OS collection is
     // denied to browsers until it gets a rule of its own above.
+    // 2026-10-19 — `number_requests` (a member asks a colleague for a number) stays under this catch-all: the
+    // requester creates it, the holder or the sales admin decides it, and the approval's transaction writes the
+    // two members' `leads` and the `numberLocks` doc from that person's browser. Who may decide is checked in the
+    // app (utils/numberRequest.mayDecideNumberRequest) — a UI rule, like most here.
     match /{collection}/{document=**} {
       allow read, write: if isStaff() && !(collection in [
         'flow_accounts', 'flow_account_secrets', 'flow_usage', 'paid_accounts', 'paid_account_secrets', 'gemini_api_keys',

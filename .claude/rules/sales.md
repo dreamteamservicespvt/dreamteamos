@@ -45,6 +45,19 @@ call); `claimNumber`'s own-lock branch reads the lock's lead — frozen → `hel
 now"), gone → added fresh (timeline note), no `ownerLeadId` → `already_yours` as before; a searched number that is a
 hidden (frozen) lead is said under the list (`hidden-search-match`); Upsell to a frozen lead says who has it
 (`startUpsell` + My Leads' upsell arrival).
+**Number requests (owner, 2026-10-19).** Wherever a colleague blocks a number — the hidden-number line in My Leads'
+search, and Add Custom Lead's reserved / sold / closed answers (now said inside the box, `add-lead-blocked`, instead of
+a toast) — `components/sales/NumberRequests.NumberRequestAction` names the member holding it (`services/numberRequests.
+findNumberHolder`: the live lead on the phone, a sold one first; one query + one `users` read, cached a minute) and
+offers **Request this number** (→ "Requested — waiting for Ravi or the sales admin"; "Ask again" after a decline;
+"Take it back" when nobody holds it any more — her lead reopens at once). The holder sees **Number requests** at the top
+of My Leads and the sales admin at the top of Leads Management (`NumberRequestsPanel`, Give with a confirm / Decline);
+notifications `number_request` to the holder + their sales admin on asking, to the requester on the decision, to the
+holder when an admin gave it. A SOLD number (any sale on the holder's lead, re-read at approval): only the sales admin
+(or main admin) may give it; the holder's lead is closed with its sales on it. Approval (`decideNumberRequest`, one
+transaction): the requester's hidden lead reopens (notes, history) or a new lead is made, the holder's lead closes
+(`frozenReason: "transferred"`, `takenOverBy` = the requester), the lock moves to her (fresh 24 h, sale-freeze cleared,
+timeline `transferred`). A number that moved since the request closes it ("No longer with the member").
 
 **9.4 Sales recording & approvals** ✅. `components/sales/SaleForm.tsx` (the only sale form, also
 used for upsells), `SmmSaleFields`, `SaleSection`, `SaleStatusChip`;

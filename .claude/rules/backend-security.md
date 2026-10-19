@@ -272,7 +272,8 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   `work_unassigned`, `sale_approved`, `attendance_update`, `order_new_*`, `chat_message`,
   `voice_call` / `video_call`, SMM (incl. `smm_lead`, `smm_new_month`; 2026-10-03: `smm_sale_entered`,
   `smm_month_setup`, `smm_renewed`, `smm_renewal_due`, `smm_renewal_reminder`; 2026-10-05:
-  `smm_renewal_cancelled` — a renewal month removed, told to the tech admins and team leaders; 2026-10-15:
+  `number_request` (2026-10-19: a number asked for / given / declined — links `/sales/leads`, the sales admin's
+  `/sales-admin/leads`), `smm_renewal_cancelled` — a renewal month removed, told to the tech admins and team leaders; 2026-10-15:
   `smm_delivery_off` — SMM Delivery Control turned off, with the reason, to every other active main admin, key
   `smm_delivery_off_<ms>_<uid>`, link `/smm`; SMM Delivery Control (2026-10-15): `smm_urgent` / `smm_notice` — written ONLY by
   `api/smm-monitor` (the apps only display them; `smm_urgent` is deliberately NOT an `UpdatePopup` popup type — the in-app full

@@ -15,6 +15,9 @@ import { normalizePhone, formatPhoneDisplay, getCallUrl, getWhatsAppUrl } from "
 import { formatCurrency, formatDuration } from "@/utils/formatters";
 import { fetchNumberLock, applySaleFreeze, adminReleaseLock, buildLeadFreezeFields, clearedLeadFreezeFields, releaseLockForDeletedLead } from "@/services/numberLock";
 import NumberTimelineButton from "@/components/sales/NumberTimelineButton";
+import { NumberRequestsPanel } from "@/components/sales/NumberRequests";
+import { subscribeAdminNumberRequests } from "@/services/numberRequests";
+import type { NumberRequest } from "@/types";
 import { format } from "date-fns";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
@@ -62,6 +65,12 @@ export default function LeadsManagement() {
     return () => { cancelled = true; unsub?.(); };
   }, [currentUser?.uid]);
 
+  const [numberRequests, setNumberRequests] = useState<NumberRequest[]>([]);
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    return subscribeAdminNumberRequests(currentUser.uid, setNumberRequests);
+  }, [currentUser?.uid]);
+
   const getLeadsForMember = (uid: string) => leads.filter((l) => l.assignedTo === uid);
 
   // A "number search" is any query with 4+ digits — switches the view to the number-lookup panel.
@@ -82,6 +91,15 @@ export default function LeadsManagement() {
           Click a member to manage their leads, or search a phone number to find & manage it • {leads.length} total leads
         </p>
       </div>
+
+      {/* Members asking for a number a colleague holds — this admin may give any of them (2026-10-19). */}
+      {currentUser && (
+        <NumberRequestsPanel
+          requests={numberRequests}
+          actor={{ uid: currentUser.uid, name: currentUser.name, role: currentUser.role }}
+          adminView
+        />
+      )}
 
       {/* Search — members or a phone number */}
       <div className="relative max-w-sm">
