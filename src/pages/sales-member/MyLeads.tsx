@@ -2260,16 +2260,19 @@ function AddCustomLeadModal({ user, leads, onShowLead, requestFor, onClose }: {
               />
             </div>
           )}
-          <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2.5 leading-relaxed">
-            This lead will appear in your My Leads list. Use the "Add Sale" button on the card to record the sale and earn incentives.
-          </div>
+          {/* While the number is blocked, the box speaks only about that; editing the number brings these back. */}
+          {!blocked && (
+            <div className="bg-info/10 border border-info/30 text-info text-xs rounded-md p-2.5 leading-relaxed">
+              This lead will appear in your My Leads list. Use the "Add Sale" button on the card to record the sale and earn incentives.
+            </div>
+          )}
           <button
             onClick={handleCreate}
-            disabled={saving}
+            disabled={saving || !!blocked}
             className="w-full h-10 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-sm hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-            {saving ? "Creating..." : "Create Lead"}
+            {saving ? <Loader2 size={14} className="animate-spin" /> : blocked ? null : <Plus size={14} />}
+            {saving ? "Creating..." : blocked ? "Type another number to add" : "Create Lead"}
           </button>
         </div>
       </div>
