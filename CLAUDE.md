@@ -224,6 +224,10 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-19)
 
+- 2026-10-19 (evening), **local, not pushed** — **Leaderboard incentive "so far"**: a running pay period under 75% of its
+  target shows its incentive building up (it read ₹0 for everyone with a target); Sales Payroll's ₹0 rows say "₹X at 75%
+  of target" (`sales.md`, `people.md`; history 2026-10-19 evening).
+
 - 2026-10-19 (afternoon), **local, not pushed** — **Development OS fixes** from the owner's screenshots: answers revealed at
   the end; written answers and practicals graded in their own request (no more hours on "Being graded"); Career's false
   "top rank"; a rank timeline with badge pictures; an editable Profile (`/dev-os/profile`); back buttons that go back

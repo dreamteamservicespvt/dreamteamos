@@ -349,6 +349,15 @@ export function commissionByPeriod(input: {
  * the P&L's commission cost. Each period's gate is decided on ALL of that period's verified money (so far,
  * for the running one); the incentive is the period's rate on the part collected inside the window.
  * `from` / `to` are inclusive `yyyy-MM-dd`; null = unbounded.
+ *
+ * ── `todayStr`: the incentive building up in a period that has not ended (2026-10-19) ──
+ * The gate is decided when a period ENDS. Judged mid-period it compares nine days of money with the whole
+ * month's target, so the Leaderboard showed ₹0 for the two members with a target from day one of every
+ * period to the day they crossed 75% — while their own Dashboard / My Salary / Settlements already showed
+ * the incentive "so far" (`commissionBeforeTarget`). With `todayStr`, a running period still under 75%
+ * gives its incentive as `accruing` (rate × money in the window), apart from `commission`, so a screen can
+ * show it with "so far" beside it. An ENDED period under 75% stays 0 — that is what payroll pays. Without
+ * `todayStr` (the P&L's cost) nothing changes.
  */
 export function commissionInWindow(input: {
   collections: Collection[];
@@ -356,7 +365,9 @@ export function commissionInWindow(input: {
   to: string | null;
   termsFor: (period: string) => CommissionTerms;
   cycleStartDay?: number;
-}): { base: number; commission: number } {
+  /** Local `yyyy-MM-dd`: periods ending on or after it are running (their gate is not decided yet). */
+  todayStr?: string;
+}): { base: number; commission: number; accruing: number } {
   const cycleStartDay = input.cycleStartDay ?? DEFAULT_PAYROLL_CONFIG.payDayOfMonth;
   const byPeriod = new Map<string, { all: number; inWindow: number }>();
   for (const c of input.collections) {
@@ -367,16 +378,18 @@ export function commissionInWindow(input: {
     if ((!input.from || c.day >= input.from) && (!input.to || c.day <= input.to)) row.inWindow += c.amount;
     byPeriod.set(month, row);
   }
-  let base = 0, commission = 0;
+  let base = 0, commission = 0, accruing = 0;
   for (const [month, { all, inWindow }] of byPeriod) {
     if (inWindow <= 0) continue;
     base += inWindow;
     const terms = input.termsFor(month);
-    const start = payPeriodForMonth(month, cycleStartDay).start;
+    const { start, end } = payPeriodForMonth(month, cycleStartDay);
     const target = terms.dailyTarget > 0 ? monthlyTargetFor(terms.dailyTarget, new Date(`${start}T00:00:00`)) : 0;
-    if (incentiveEarned(all, target)) commission += Math.round((inWindow * terms.rate) / 100);
+    const amount = Math.round((inWindow * terms.rate) / 100);
+    if (incentiveEarned(all, target)) commission += amount;
+    else if (input.todayStr && end >= input.todayStr) accruing += amount;
   }
-  return { base, commission };
+  return { base, commission, accruing };
 }
 
 // ═══ The running period's earnings estimate (My Performance, 2026-10-15) ═══════════════════════════════

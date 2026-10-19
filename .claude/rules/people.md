@@ -163,7 +163,10 @@ recorded or not), `periodOfDay`, `periodIncentive` (the 75% gate on ALL verified
 commission on what is not excluded), `settlementCoverage` (what settlements already paid: `paidKeys`, or for older ones
 the first settlement at/after the sale's FIRST approval that the collection precedes), `commissionByPeriod` (rows newest
 first, status payroll / running / due / withheld / settled / none; only ENDED periods are due), `commissionInWindow`
-(each period's gate on its whole money, its rate on the part inside the window). Sales Payroll (`useSalesMemberPay`, + a
+(each period's gate on its whole money, its rate on the part inside the window; with `todayStr` (the Leaderboard,
+2026-10-19) a running period under 75% returns its incentive as `accruing`, apart from `commission` — the P&L passes no
+`todayStr` and is unchanged). Sales Payroll's row shows "₹X at 75% of target" under a withheld ₹0
+(`payroll-incentive-gate`; the payment is unchanged). Sales Payroll (`useSalesMemberPay`, + a
 listener on `commission_settlements`) leaves out collections Settlements paid and records them on the payment
 (`incentive.settledBase` / `settledKeys`; note `sales-payroll-settled`); a paid row is compared with what its own payment
 left out. Settlements (admin modal rewritten, member page) pay or request the due periods through

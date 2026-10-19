@@ -6,6 +6,18 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-19 (evening): the Leaderboard's incentive while the period runs** (`sales.md` §9.4, `people.md` §9.14). The
+  owner's screenshot (19 Oct): "Oct 2026 Comm." ₹0 for Kusuma (₹1,71,018 collected) and Pavani (₹52,736), ₹2,370 for
+  Govardhan (₹47,400). Cause: `commissionInWindow` judged the 75% gate on the RUNNING period's money so far against the
+  whole period's target; the two with a daily target were under it nine days in, Govardhan has no target (nothing
+  withheld). The gate is decided when a period ends, and every other sales screen (My Salary, Dashboard, Settlements' list)
+  already showed the incentive "so far". Fix: `commissionInWindow({ todayStr })` returns a running period's under-gate
+  incentive as `accruing`; the Leaderboard adds it to the Day / Month / Career cells with "so far · at 75% target"
+  (`SoFarNote`) and says so in its footer; an ended period under 75% stays ₹0. Similar: Sales Payroll's row showed a
+  withheld ₹0 with no reason — now "₹X at 75% of target" under it (what is paid is unchanged). P&L unchanged (no
+  `todayStr`). Files: `utils/salesPay.ts`, `pages/shared/Leaderboard.tsx`, `pages/sales-admin/Payroll.tsx`, new test
+  `leaderboardSoFarOct19` (4). Full suite, build, typecheck 0; real-browser harness at 390 / 1280 px.
+
 - **2026-10-19 (afternoon): Development OS — the owner's screenshots** (`devos.md` §9.23, `roles-routes.md` §10,
   `data-model.md`). (1) **"Being graded" stuck for hours**: a written answer was graded inside its own `answer` request; a
   baseline answer needs two judges, so on a slow day the request hit Vercel's 60 s and the answer waited for the next cron —

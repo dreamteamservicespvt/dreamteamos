@@ -81,15 +81,36 @@ function getSaleDate(item: SaleDetail, lead: Lead): string | null {
  * The columns used to show 5% / 10% of everything collected, with no 75% target gate and today's plan
  * for every past period — a figure no payroll or settlement ever paid. Now: each pay period's rate (the
  * plan that applied then) on the money collected in it, only when that period reached 75% of its target
- * (so far, for the period running). Revenue ranking is unchanged — it is money, not commission.
+ * Revenue ranking is unchanged — it is money, not commission.
+ *
+ * ── The period still running shows its incentive "so far" (2026-10-19) ──
+ * Judging the 75% gate mid-period compared a few days of money with the whole month's target, so every
+ * member with a target read ₹0 here (Kusuma at ₹1,71,018 collected by 19 Oct) until the day they crossed
+ * 75% — while their own Dashboard and My Salary already showed the incentive building up. A running period
+ * under 75% now counts its rate × money with `soFar` set, and the cell says "so far · at 75%"; an ENDED
+ * period under 75% stays ₹0 — that is what payroll paid.
  */
-function calcCommission(member: AppUser, leads: Lead[], from: string | null, to: string | null): number {
-  return commissionInWindow({
+function calcCommission(
+  member: AppUser, leads: Lead[], from: string | null, to: string | null, todayStr: string,
+): { amount: number; soFar: boolean } {
+  const r = commissionInWindow({
     collections: collectionsOf(leads),
     from,
     to,
     termsFor: (period) => commissionTermsFor(member, period),
-  }).commission;
+    todayStr,
+  });
+  return { amount: r.commission + r.accruing, soFar: r.accruing > 0 };
+}
+
+/** "so far · at 75%" under an incentive that is still waiting for its period's 75% target. */
+function SoFarNote({ show, className = "" }: { show: boolean; className?: string }) {
+  if (!show) return null;
+  return (
+    <span data-test="comm-so-far" className={`block text-[9px] font-normal text-muted-foreground ${className}`}>
+      so far · at 75% target
+    </span>
+  );
 }
 
 const RANK_STYLES = [
@@ -226,6 +247,10 @@ export default function Leaderboard() {
     commDay: number;
     commCareer: number;
     commMonth: number;
+    /** The figure includes a running period still under 75% of its target (`calcCommission`). */
+    commDaySoFar: boolean;
+    commCareerSoFar: boolean;
+    commMonthSoFar: boolean;
   }
 
   const stats: MemberStats[] = members.map((member) => {
@@ -272,15 +297,21 @@ export default function Leaderboard() {
       daySales = allItems.reduce((s, { item, lead }) => s + collectedOf(item, lead), 0);
     }
 
+    // The one commission rule on the same windows (verified money only, each period's gate and rate).
+    const commDay = calcCommission(member, memberLeads, dayFrom, dayTo, todayStr);
+    const commCareer = calcCommission(member, memberLeads, null, null, todayStr);
+    const commMonth = calcCommission(member, memberLeads, periodStart, periodEnd, todayStr);
     return {
       member,
       daySales,
       careerSales,
       monthSales,
-      // The one commission rule on the same windows (verified money only, each period's gate and rate).
-      commDay: calcCommission(member, memberLeads, dayFrom, dayTo),
-      commCareer: calcCommission(member, memberLeads, null, null),
-      commMonth: calcCommission(member, memberLeads, periodStart, periodEnd),
+      commDay: commDay.amount,
+      commCareer: commCareer.amount,
+      commMonth: commMonth.amount,
+      commDaySoFar: commDay.soFar,
+      commCareerSoFar: commCareer.soFar,
+      commMonthSoFar: commMonth.soFar,
     };
   });
 
@@ -289,6 +320,7 @@ export default function Leaderboard() {
   // totals. Sort keys "career" / "commCareer" follow whichever is currently on screen.
   const secondarySales = (s: MemberStats) => (granularity === "career" ? s.careerSales : s.monthSales);
   const secondaryComm = (s: MemberStats) => (granularity === "career" ? s.commCareer : s.commMonth);
+  const secondaryCommSoFar = (s: MemberStats) => (granularity === "career" ? s.commCareerSoFar : s.commMonthSoFar);
 
   /**
    * A leaderboard is ranked by money, always — and every rank has to be decided by money too.
@@ -569,6 +601,7 @@ export default function Leaderboard() {
                       </td>
                       <td className="p-3 text-right">
                         <span className={`font-mono text-sm ${s.commDay > 0 ? "text-warning font-semibold" : "text-muted-foreground"}`}>{formatCurrency(s.commDay)}</span>
+                        <SoFarNote show={s.commDaySoFar} />
                       </td>
                       <td className="p-3 text-right">
                         <span className={`font-mono text-sm ${secondaryComm(s) > 0 ? "text-primary font-semibold" : "text-muted-foreground"}`}>
@@ -577,6 +610,7 @@ export default function Leaderboard() {
                             <span className="ml-1 text-[9px] text-muted-foreground">({s.member.earningsOption === "incentive_10" ? "10%" : "5%"})</span>
                           )}
                         </span>
+                        <SoFarNote show={secondaryCommSoFar(s)} />
                       </td>
                       {isAdmin && (
                         <td className="p-3 text-center">
@@ -631,10 +665,12 @@ export default function Leaderboard() {
                     <div className="bg-muted/30 rounded-lg p-2">
                       <p className="text-muted-foreground mb-0.5">{effectiveDateStr ? "Day Incentives" : "All Inc."}</p>
                       <p className={`font-mono font-semibold ${s.commDay > 0 ? "text-warning" : "text-muted-foreground"}`}>{formatCurrency(s.commDay)}</p>
+                      <SoFarNote show={s.commDaySoFar} />
                     </div>
                     <div className="bg-muted/30 rounded-lg p-2">
                       <p className="text-muted-foreground mb-0.5">{secondaryLabel} Comm.</p>
                       <p className={`font-mono font-semibold ${secondaryComm(s) > 0 ? "text-primary" : "text-muted-foreground"}`}>{formatCurrency(secondaryComm(s))}</p>
+                      <SoFarNote show={secondaryCommSoFar(s)} />
                     </div>
                   </div>
                 </div>
@@ -645,7 +681,7 @@ export default function Leaderboard() {
       )}
 
       <p className="text-[10px] text-muted-foreground text-center">
-        Day Sales = all amounts submitted in the selected window • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${periodLabel}`} • Incentives: 5% or 10% based on member plan
+        Day Sales = all amounts submitted in the selected window • {secondaryLabel} = {granularity === "career" ? "all verified sales ever" : `verified sales in ${periodLabel}`} • Incentives: 5% or 10% based on member plan, paid when the pay period reaches 75% of its target ("so far" = the period is still running)
       </p>
     </div>
   );
