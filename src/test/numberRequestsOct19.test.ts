@@ -65,6 +65,57 @@ describe("asking for it", () => {
   });
 });
 
+describe("a number held by a member who has LEFT (live: Kusuma's 9885719740, lead 'C39')", () => {
+  it("is not 'held': the request gives it to her at once, closes the departed lead and her waiting request", async () => {
+    seed();
+    mem.__seed("leads/R1", { assignedTo: "gone_uid", phone: PHONE, displayName: "C39", status: "answered", frozen: false, saleItems: [] });
+    mem.__seed(`number_requests/${REQ}`, { phone: PHONE, requesterId: "kusuma", holderId: "gone_uid", status: "pending", salesAdminId: null });
+    const holding = await svc.findNumberHolding(PHONE, "kusuma");
+    expect(holding).toEqual({ holder: null, leftLeadIds: ["R1"] });
+    const res = await svc.requestNumber({ requester: { ...kusuma, createdBy: "sadmin" }, phone: PHONE, requesterLeadId: "K1" });
+    expect(res).toEqual({ kind: "reopened", fromLeftMember: true });
+    expect(mem.__read("leads/K1")).toMatchObject({ frozen: false, notes: "called twice" });
+    expect(mem.__read("leads/R1")).toMatchObject({ frozen: true, frozenReason: "member_left" });
+    expect(mem.__read("numberLocks/919885719740")).toMatchObject({ ownerId: "kusuma", ownerLeadId: "K1" });
+    expect(mem.__read(`number_requests/${REQ}`)).toMatchObject({ status: "approved" });
+  });
+
+  it("a switched-off member counts as left too; she gets a new lead when she had none", async () => {
+    mem.__seed("users/ravi", { uid: "ravi", name: "Ravi", isActive: false, createdBy: "sadmin" });
+    mem.__seed("leads/R1", { assignedTo: "ravi", phone: PHONE, frozen: false, saleItems: [] });
+    const res = await svc.requestNumber({ requester: kusuma, phone: PHONE, requesterLeadId: null });
+    expect(res.kind).toBe("reopened");
+    const lock = mem.__read("numberLocks/919885719740")!;
+    expect(mem.__read(`leads/${lock.ownerLeadId}`)).toMatchObject({ assignedTo: "kusuma", frozen: false });
+  });
+
+  it("the duplicate resolver never lets a departed member keep a number", async () => {
+    const { resolveNonSaleDuplicates } = await import("@/services/duplicateLeads");
+    mem.__seed("leads/R1", { assignedTo: "gone_uid", phone: PHONE, frozen: false });
+    const mine = { id: "K2", assignedTo: "kusuma", phone: PHONE, status: "answered", createdAt: { seconds: 9e9 } } as never;
+    const res = await resolveNonSaleDuplicates([mine], {
+      K2: [{ leadId: "R1", memberId: "gone_uid", saleDone: false, status: "answered" as never, createdAtSeconds: 1 }],
+    }, kusuma);
+    expect(res.resolvedMyLeadIds.has("K2")).toBe(true);
+    expect(res.frozeMineCount).toBe(0);
+    expect(mem.__read("leads/R1")).toMatchObject({ frozen: true, frozenReason: "member_left" });
+  });
+});
+
+describe("the sales admin sees requests from their own team too", () => {
+  it("lists a request by the REQUESTER's admin when the holder's admin is unknown", async () => {
+    seed();
+    mem.__seed("users/ravi", { uid: "ravi", name: "Ravi", role: "sales_member" }); // no createdBy
+    await svc.requestNumber({ requester: { ...kusuma, createdBy: "sadmin" }, phone: PHONE, requesterLeadId: "K1" });
+    const rows: unknown[][] = [];
+    const stop = svc.subscribeAdminNumberRequests("sadmin", (r) => rows.push(r));
+    await new Promise((r) => setTimeout(r, 5));
+    stop();
+    expect(rows.at(-1)).toHaveLength(1);
+    expect(notes.some((n) => n.userId === "sadmin")).toBe(true);
+  });
+});
+
 describe("deciding", () => {
   it("the holder gives an unsold number: her lead reopens, his closes, the lock moves", async () => {
     seed();

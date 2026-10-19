@@ -224,9 +224,12 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-19)
 
-- 2026-10-19 (late night, 2), **local, not pushed** — **number requests**: a blocked number names the member holding
-  it and can be requested; the holder or the sales admin gives it (a sold one: the sales admin only); her old lead
-  comes back (`sales.md`, `data-model.md` `number_requests`, `roles-routes.md`; history 2026-10-19 late night 2).
+- 2026-10-19 (late night, 3), **local, not pushed** — **departed members hold no numbers**: a number held only by a
+  deleted / switched-off member's lead is the requester's at once (Take it back), the duplicate resolver never lets
+  such a member keep one, and requests reach the REQUESTER's sales admin too (`sales.md`; history late night 3).
+- 2026-10-19 (late night, 2), **on `main`** (`c80d5ea`, the owner's push) — **number requests**: a blocked number names
+  the member holding it and can be requested; the holder or the sales admin gives it (a sold one: the sales admin only);
+  her old lead comes back (`sales.md`, `data-model.md` `number_requests`, `roles-routes.md`; history late night 2).
 
 - 2026-10-19 (late night), **on `main`** — **My Leads fast for big lists** (duplicate scan once a session, 6 at
   a time), **search finds a number on any day**, one filter row on every tab (Duplicates too), "already yours" for a
@@ -344,7 +347,7 @@ errors:** done means every listed item is fully resolved with no build, console 
 - `npm run build` ✅ (2026-10-18: main chunk ≈497 KB, vendor-firebase ≈665 KB, geminiService chunk ≈890 KB; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` ✅ 277 files, 4575 tests all pass (2026-10-19 late night, after number requests). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
+- `npx vitest run` ✅ 277 files, 4579 tests all pass (2026-10-19 late night, after departed members). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-18).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work (newest first; detail in §31): the DREAM TEAM AI Development OS (2026-10-18); dates and periods across SMM, pay, invoices and AI accounts (2026-10-15); the voice-over word contract + 10/10 loop (2026-10-15); SMM Delivery Control, all phases (2026-10-15); the Real Owner Duo (2026-10-15); bottom toasts, one-row dismiss / unread, the 90-day clean-up, the

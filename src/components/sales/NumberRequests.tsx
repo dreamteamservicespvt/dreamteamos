@@ -9,33 +9,38 @@ import { useEffect, useState } from "react";
 import { Loader2, ArrowRightLeft, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
-import { decideNumberRequest, findNumberHolder, requestNumber, type NumberHolder } from "@/services/numberRequests";
+import { decideNumberRequest, findNumberHolding, requestNumber, type NumberHolder, type NumberHolding } from "@/services/numberRequests";
 import { mayDecideNumberRequest } from "@/utils/numberRequest";
 import type { NumberRequest, UserRole } from "@/types";
 
 export function NumberRequestAction({ phone, requesterLeadId, user, myRequest, compact }: {
   phone: string;
   requesterLeadId: string | null;
-  user: { uid: string; name: string };
+  user: { uid: string; name: string; createdBy?: string | null };
   /** This member's latest request for this number, from their requests listener. */
   myRequest?: NumberRequest | null;
   compact?: boolean;
 }) {
   const { toast } = useToast();
-  const [holder, setHolder] = useState<NumberHolder | null | undefined>(undefined);
+  const [holding, setHolding] = useState<NumberHolding | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    findNumberHolder(phone, user.uid)
-      .then((h) => { if (!cancelled) setHolder(h); })
-      .catch(() => { if (!cancelled) setHolder(null); });
+    findNumberHolding(phone, user.uid)
+      .then((h) => { if (!cancelled) setHolding(h); })
+      .catch(() => { if (!cancelled) setHolding({ holder: null, leftLeadIds: [] }); });
     return () => { cancelled = true; };
   }, [phone, user.uid]);
 
-  const pending = myRequest?.status === "pending";
+  const holder: NumberHolder | null | undefined = holding === undefined ? undefined : holding.holder;
+  /** Nobody active holds it — only a departed member's lead, or nothing: hers to take, no one to ask. */
+  const free = holding !== undefined && !holding.holder;
+  const left = free && holding!.leftLeadIds.length > 0;
+  // A request waiting on someone who has left (or nobody) can never be decided: offer Take it back instead.
+  const pending = myRequest?.status === "pending" && !free;
   const declined = myRequest?.status === "declined";
-  const holderName = holder?.name || myRequest?.holderName;
+  const holderName = holder?.name;
 
   const ask = async () => {
     setBusy(true);
@@ -51,7 +56,13 @@ export function NumberRequestAction({ phone, requesterLeadId, user, myRequest, c
       } else if (res.kind === "already_pending") {
         toast({ title: "Already requested", description: `Waiting for ${res.holderName} or the sales admin.` });
       } else if (res.kind === "reopened") {
-        toast({ title: "Number is yours again", description: "Nobody else holds it now — your lead is back in your list." });
+        toast({
+          title: "Number is yours",
+          description: res.fromLeftMember
+            ? "The member who had it has left the team — it is in your list now."
+            : "Nobody else holds it now — your lead is back in your list.",
+        });
+        setHolding({ holder: null, leftLeadIds: [] });
       } else {
         toast({ title: "Nobody holds this number", description: "Add it with Add Custom Lead." });
       }
@@ -65,11 +76,13 @@ export function NumberRequestAction({ phone, requesterLeadId, user, myRequest, c
   return (
     <div className={`flex flex-wrap items-center gap-2 ${compact ? "" : "mt-1"}`} data-test="number-request">
       <span className="min-w-0">
-        {holder === undefined && !myRequest
+        {holding === undefined
           ? "Checking who has it…"
           : holderName
             ? <>Now with <b className="font-semibold">{holderName}</b>{holder?.hasSale ? " (sold)" : ""}.</>
-            : "Nobody else holds it now."}
+            : left
+              ? "The member who had it has left the team — you can take it."
+              : "Nobody else holds it now."}
       </span>
       {pending ? (
         <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground" data-test="number-request-pending">
@@ -80,12 +93,12 @@ export function NumberRequestAction({ phone, requesterLeadId, user, myRequest, c
         <button
           type="button"
           onClick={ask}
-          disabled={busy || holder === undefined}
+          disabled={busy || holding === undefined || (free && !left && !requesterLeadId)}
           data-test="number-request-button"
           className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
         >
           {busy ? <Loader2 size={13} className="animate-spin" /> : <ArrowRightLeft size={13} />}
-          {holder === null && requesterLeadId ? "Take it back" : declined ? "Ask again" : "Request this number"}
+          {free ? (requesterLeadId ? "Take it back" : "Take this number") : declined ? "Ask again" : "Request this number"}
         </button>
       )}
       {declined && !pending && (

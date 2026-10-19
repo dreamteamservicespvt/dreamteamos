@@ -36,23 +36,36 @@ export interface NumberHolder {
   displayName: string;
 }
 
-const holderCache = new Map<string, { at: number; holder: NumberHolder | null }>();
+export interface NumberHolding {
+  /** The ACTIVE colleague holding the number, or null. */
+  holder: NumberHolder | null;
+  /**
+   * Live leads on the number whose member has LEFT — their `users` document deleted, or switched off
+   * (`isActive === false`). Such a lead still blocked the number, and nobody could give it: no name, no
+   * sales admin to ask (found live 2026-10-19 — Kusuma's 9885719740 sat with a deleted member's lead "C39").
+   * They hold nothing: the number goes to whoever asks, and these leads are closed.
+   */
+  leftLeadIds: string[];
+}
+
+const holderCache = new Map<string, { at: number; holding: NumberHolding }>();
 export function __resetNumberHolderCacheForTests() { holderCache.clear(); }
 
 /**
- * The colleague who holds this number now — the live (not frozen) lead on it that is not `excludeUid`'s.
- * A sold lead first (the seller is the person to ask), else the earliest. Null = nobody else holds it.
+ * Who holds this number now — the live (not frozen) leads on it that are not `excludeUid`'s, split into the
+ * active colleague to ask (a sold lead first: the seller is the person to ask; else the earliest) and leads
+ * of members who have left. A failed `users` read counts as active (never free a number on a network error).
  */
-export async function findNumberHolder(
+export async function findNumberHolding(
   phone: string,
   excludeUid: string,
   opts: { fresh?: boolean } = {},
-): Promise<NumberHolder | null> {
+): Promise<NumberHolding> {
   const normalized = normalizePhone(phone);
-  if (!normalized) return null;
+  if (!normalized) return { holder: null, leftLeadIds: [] };
   const key = `${normalized}|${excludeUid}`;
   const cached = holderCache.get(key);
-  if (!opts.fresh && cached && Date.now() - cached.at < 60_000) return cached.holder;
+  if (!opts.fresh && cached && Date.now() - cached.at < 60_000) return cached.holding;
 
   const snap = await getDocs(query(collection(db, "leads"), where("phone", "==", normalized)));
   const live = snap.docs
@@ -60,23 +73,40 @@ export async function findNumberHolder(
     .filter((l) => l.assignedTo && l.assignedTo !== excludeUid && !l.frozen);
   live.sort((a, b) =>
     (Number(leadHasSale(b)) - Number(leadHasSale(a))) || ((a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)));
-  const lead = live[0];
-  let holder: NumberHolder | null = null;
-  if (lead) {
-    let name = "another member";
-    let salesAdminId: string | null = null;
-    try {
-      const u = await getDoc(doc(db, "users", lead.assignedTo));
-      if (u.exists()) {
-        const data = u.data() as { name?: string; createdBy?: string };
-        name = data.name || name;
-        salesAdminId = data.createdBy || null;
-      }
-    } catch { /* the name is a nicety; the request still works */ }
-    holder = { leadId: lead.id, uid: lead.assignedTo, name, hasSale: leadHasSale(lead), salesAdminId, displayName: lead.displayName || "" };
+
+  const holding: NumberHolding = { holder: null, leftLeadIds: [] };
+  const members = new Map<string, { gone: boolean; name: string; salesAdminId: string | null }>();
+  for (const lead of live) {
+    let m = members.get(lead.assignedTo);
+    if (!m) {
+      m = { gone: false, name: "another member", salesAdminId: null };
+      try {
+        const u = await getDoc(doc(db, "users", lead.assignedTo));
+        if (!u.exists()) m.gone = true;
+        else {
+          const data = u.data() as { name?: string; createdBy?: string; isActive?: boolean };
+          m.gone = data.isActive === false;
+          m.name = data.name || m.name;
+          m.salesAdminId = data.createdBy || null;
+        }
+      } catch { /* unreadable → treated as active, named generically */ }
+      members.set(lead.assignedTo, m);
+    }
+    if (m.gone) { holding.leftLeadIds.push(lead.id); continue; }
+    if (!holding.holder) {
+      holding.holder = {
+        leadId: lead.id, uid: lead.assignedTo, name: m.name, hasSale: leadHasSale(lead),
+        salesAdminId: m.salesAdminId, displayName: lead.displayName || "",
+      };
+    }
   }
-  holderCache.set(key, { at: Date.now(), holder });
-  return holder;
+  holderCache.set(key, { at: Date.now(), holding });
+  return holding;
+}
+
+/** The ACTIVE colleague holding this number (see findNumberHolding), or null. */
+export async function findNumberHolder(phone: string, excludeUid: string, opts: { fresh?: boolean } = {}): Promise<NumberHolder | null> {
+  return (await findNumberHolding(phone, excludeUid, opts)).holder;
 }
 
 /** The lock + leads writes that give a number to `to`, inside a transaction whose reads are done. */
@@ -140,41 +170,67 @@ function giveNumberInTx(tx: Transaction, p: {
 export type RequestNumberResult =
   | { kind: "requested"; holder: NumberHolder }
   | { kind: "already_pending"; holderName: string }
-  /** Nobody else holds it any more: the requester's own hidden lead was reopened at once. */
-  | { kind: "reopened" }
+  /**
+   * Nobody ACTIVE holds it: the number is the requester's at once — her hidden lead reopened (or a new lead
+   * when only a departed member's lead stood in the way), departed members' leads closed, her own waiting
+   * request on it closed.
+   */
+  | { kind: "reopened"; fromLeftMember: boolean }
   /** Nobody holds it and the requester has no lead on it: they can simply add it. */
   | { kind: "nobody" };
 
-/** Ask for a number a colleague holds. Tells the holder and their sales admin. */
+/** Ask for a number a colleague holds. Tells the holder, their sales admin and the requester's sales admin. */
 export async function requestNumber(p: {
-  requester: { uid: string; name: string };
+  requester: { uid: string; name: string; createdBy?: string | null };
   phone: string;
   /** The requester's own hidden (frozen) lead on this number, if any. */
   requesterLeadId: string | null;
 }): Promise<RequestNumberResult> {
   const phone = normalizePhone(p.phone);
-  const holder = await findNumberHolder(phone, p.requester.uid, { fresh: true });
+  const { holder, leftLeadIds } = await findNumberHolding(phone, p.requester.uid, { fresh: true });
 
   if (!holder) {
-    if (!p.requesterLeadId) return { kind: "nobody" };
-    // Nobody to ask — the colleague's lead is gone or closed. Her own lead comes back by itself.
-    const leadRef = doc(db, "leads", p.requesterLeadId);
+    if (!p.requesterLeadId && leftLeadIds.length === 0) return { kind: "nobody" };
+    // Nobody to ask — the colleague's lead is closed or its member has left. The number comes to her by itself.
     const lockRef = doc(db, "numberLocks", phoneLockId(phone));
+    const reqRef = doc(db, "number_requests", numberRequestId(phone, p.requester.uid));
     await runTransaction(db, async (tx) => {
-      const leadSnap = await tx.get(leadRef);
+      const leadSnap = p.requesterLeadId ? await tx.get(doc(db, "leads", p.requesterLeadId)) : null;
       const lockSnap = await tx.get(lockRef);
+      const reqSnap = await tx.get(reqRef);
+      const leftSnaps = [];
+      for (const id of leftLeadIds) leftSnaps.push({ id, snap: await tx.get(doc(db, "leads", id)) });
       const lock = lockSnap.exists() ? (lockSnap.data() as NumberLock) : null;
-      if (lock && lock.ownerId !== p.requester.uid && toMs(lock.reserveExpiresAt) > Date.now()) {
+      const lockByLeft = !!lock && leftSnaps.some((s) => (s.snap.data() as Lead | undefined)?.assignedTo === lock.ownerId);
+      if (lock && lock.ownerId !== p.requester.uid && !lockByLeft && toMs(lock.reserveExpiresAt) > Date.now()) {
         throw new Error("Another member has just added this number.");
+      }
+      const stillLive = leftSnaps.filter((s) => s.snap.exists() && !(s.snap.data() as Lead).frozen);
+      for (const s of stillLive.slice(1)) {
+        tx.update(doc(db, "leads", s.id), {
+          frozen: true, frozenAt: Timestamp.now(), frozenReason: "member_left", takenOverBy: p.requester.name, lastUpdated: serverTimestamp(),
+        });
       }
       giveNumberInTx(tx, {
         phone, to: p.requester,
-        toLead: { id: p.requesterLeadId!, data: leadSnap.exists() ? (leadSnap.data() as Lead) : null },
-        fromLead: null, fromName: null, lock, by: p.requester,
-        note: "Reopened — nobody else held the number",
+        toLead: p.requesterLeadId ? { id: p.requesterLeadId, data: leadSnap?.exists() ? (leadSnap.data() as Lead) : null } : null,
+        fromLead: stillLive[0] ? { id: stillLive[0].id } : null,
+        fromName: null, lock, by: p.requester,
+        note: stillLive.length ? "Taken back — the member holding it has left" : "Reopened — nobody else held the number",
       });
+      if (stillLive[0]) {
+        // giveNumberInTx marks it "transferred"; this one was a departed member's.
+        tx.update(doc(db, "leads", stillLive[0].id), { frozenReason: "member_left" });
+      }
+      if (reqSnap.exists() && (reqSnap.data() as NumberRequest).status === "pending") {
+        tx.update(reqRef, {
+          status: "approved", decidedAt: serverTimestamp(), decidedById: p.requester.uid,
+          decidedByName: "Nobody active held it",
+        });
+      }
     });
-    return { kind: "reopened" };
+    holderCache.clear();
+    return { kind: "reopened", fromLeftMember: leftLeadIds.length > 0 };
   }
 
   const id = numberRequestId(phone, p.requester.uid);
@@ -193,6 +249,7 @@ export async function requestNumber(p: {
       holderHasSale: holder.hasSale,
       displayName: holder.displayName,
       salesAdminId: holder.salesAdminId,
+      requesterAdminId: p.requester.createdBy || null,
       status: "pending",
       createdAt: serverTimestamp(),
     });
@@ -214,14 +271,15 @@ export async function requestNumber(p: {
       dedupeKey: `number_request_${id}_${stamp}_${holder.uid}`,
     }),
   ];
-  if (holder.salesAdminId) {
+  // Both teams' sales admins (usually one person): the request is on their Leads Management either way.
+  for (const adminId of new Set([holder.salesAdminId, p.requester.createdBy].filter((x): x is string => !!x))) {
     tasks.push(sendNotification({
-      userId: holder.salesAdminId,
+      userId: adminId,
       type: "number_request",
       title: "Number request",
       message: `${p.requester.name} asks ${holder.name} for ${what}${holder.hasSale ? " — sold, your decision" : ""}.`,
       link: "/sales-admin/leads",
-      dedupeKey: `number_request_${id}_${stamp}_${holder.salesAdminId}`,
+      dedupeKey: `number_request_${id}_${stamp}_${adminId}`,
     }));
   }
   await Promise.allSettled(tasks);
@@ -339,9 +397,23 @@ export function subscribeRequestsToHolder(uid: string, cb: (rows: NumberRequest[
     (s) => cb(asRequests(s)), () => cb([]));
 }
 
-/** Requests waiting in a sales admin's team. */
+/**
+ * Requests waiting in a sales admin's team — where the HOLDER is theirs, or the REQUESTER is (2026-10-19: a
+ * request whose holder's team could not be read reached no admin at all). Two scoped listeners, merged.
+ */
 export function subscribeAdminNumberRequests(adminUid: string, cb: (rows: NumberRequest[]) => void): () => void {
-  return onSnapshot(
+  let byHolder: NumberRequest[] = [];
+  let byRequester: NumberRequest[] = [];
+  const emit = () => {
+    const m = new Map<string, NumberRequest>();
+    for (const r of [...byHolder, ...byRequester]) m.set(r.id, r);
+    cb([...m.values()]);
+  };
+  const a = onSnapshot(
     query(collection(db, "number_requests"), where("salesAdminId", "==", adminUid), where("status", "==", "pending")),
-    (s) => cb(asRequests(s)), () => cb([]));
+    (s) => { byHolder = asRequests(s); emit(); }, () => { byHolder = []; emit(); });
+  const b = onSnapshot(
+    query(collection(db, "number_requests"), where("requesterAdminId", "==", adminUid), where("status", "==", "pending")),
+    (s) => { byRequester = asRequests(s); emit(); }, () => { byRequester = []; emit(); });
+  return () => { a(); b(); };
 }

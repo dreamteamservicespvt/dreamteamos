@@ -1015,7 +1015,7 @@ export default function MyLeads() {
                         : " another member holds it."}
                   </p>
                   {user && (
-                    <NumberRequestAction phone={l.phone} requesterLeadId={l.id} user={{ uid: user.uid, name: user.name }} myRequest={requestFor(l.phone)} />
+                    <NumberRequestAction phone={l.phone} requesterLeadId={l.id} user={{ uid: user.uid, name: user.name, createdBy: user.createdBy }} myRequest={requestFor(l.phone)} />
                   )}
                 </div>
               ))}
@@ -2255,7 +2255,7 @@ function AddCustomLeadModal({ user, leads, onShowLead, requestFor, onClose }: {
               <NumberRequestAction
                 phone={blocked.phone}
                 requesterLeadId={ownFrozenLeadId(blocked.phone)}
-                user={{ uid: user.uid, name: user.name }}
+                user={{ uid: user.uid, name: user.name, createdBy: user.createdBy }}
                 myRequest={requestFor(blocked.phone)}
               />
             </div>

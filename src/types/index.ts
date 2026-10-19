@@ -363,6 +363,8 @@ export interface NumberRequest {
   displayName?: string;        // the holder's lead name, for the lists
   /** The holder's sales admin (users.createdBy) — sees the request on Leads Management. */
   salesAdminId: string | null;
+  /** The requester's sales admin (their `createdBy`) — sees it too (2026-10-19). Absent on the first requests. */
+  requesterAdminId?: string | null;
   status: NumberRequestStatus;
   createdAt: any;
   decidedAt?: any;

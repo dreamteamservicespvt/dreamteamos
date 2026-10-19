@@ -150,21 +150,61 @@ export async function resolveNonSaleDuplicates(
 
   // Resolve member uids → display names so the frozen lead shows WHO kept the number
   // (1 cached read per distinct member, only when they win a duplicate).
-  const nameCache = new Map<string, string>([[me.uid, me.name]]);
-  const memberNameOf = async (uid: string): Promise<string> => {
-    if (nameCache.has(uid)) return nameCache.get(uid)!;
-    let name = "another member";
+  /*
+    Each member's name — and whether they are still here (2026-10-19). A member deleted from My Team keeps
+    their leads, and those leads won duplicates: Kusuma's own custom lead on 9885719740 was frozen in favour of
+    a deleted member's, "kept by another member", with no one left to ask. A member who has LEFT (no `users`
+    document, or switched off) never keeps a number: their unsold lead is closed instead. An unreadable profile
+    counts as present — a network error must not take a number off anybody.
+  */
+  const memberCache = new Map<string, { name: string; gone: boolean }>([[me.uid, { name: me.name, gone: false }]]);
+  const memberOf = async (uid: string): Promise<{ name: string; gone: boolean }> => {
+    if (memberCache.has(uid)) return memberCache.get(uid)!;
+    const m = { name: "another member", gone: false };
     try {
       const snap = await getDoc(doc(db, "users", uid));
-      if (snap.exists()) name = (snap.data() as any).name || name;
-    } catch { /* fall back to generic */ }
-    nameCache.set(uid, name);
-    return name;
+      if (!snap.exists()) m.gone = true;
+      else {
+        const data = snap.data() as { name?: string; isActive?: boolean };
+        m.name = data.name || m.name;
+        m.gone = data.isActive === false;
+      }
+    } catch { /* fall back to generic, present */ }
+    memberCache.set(uid, m);
+    return m;
   };
+  const memberNameOf = async (uid: string) => (await memberOf(uid)).name;
 
-  for (const [myLeadId, holders] of Object.entries(dupMap)) {
+  for (const [myLeadId, allHolders] of Object.entries(dupMap)) {
     const mine = myLeads.find((l) => l.id === myLeadId);
     if (!mine || mine.frozen || mine.duplicateCleared) continue;
+
+    // Departed members' unsold leads are closed, and they are no contender.
+    const holders: DuplicateHolder[] = [];
+    let closeFailed = false;
+    for (const h of allHolders) {
+      if (!h.saleDone && (await memberOf(h.memberId)).gone) {
+        try {
+          await updateDoc(doc(db, "leads", h.leadId), {
+            frozen: true,
+            frozenAt: Timestamp.now(),
+            frozenReason: "member_left",
+            takenOverBy: me.name,
+            lastUpdated: serverTimestamp(),
+          });
+        } catch {
+          closeFailed = true;
+          holders.push(h);
+        }
+      } else {
+        holders.push(h);
+      }
+    }
+    if (holders.length === 0) {
+      if (!closeFailed) { res.resolvedMyLeadIds.add(myLeadId); res.wonCount++; }
+      continue;
+    }
+
     // Any sale on either side → dispute flow (proof + admin decision), don't auto-resolve.
     if (mine.saleDone || holders.some((h) => h.saleDone)) continue;
 

@@ -58,6 +58,16 @@ holder when an admin gave it. A SOLD number (any sale on the holder's lead, re-r
 transaction): the requester's hidden lead reopens (notes, history) or a new lead is made, the holder's lead closes
 (`frozenReason: "transferred"`, `takenOverBy` = the requester), the lock moves to her (fresh 24 h, sale-freeze cleared,
 timeline `transferred`). A number that moved since the request closes it ("No longer with the member").
+**Members who have LEFT hold nothing (2026-10-19, found live).** Deleting a member keeps their leads, and such a lead
+still blocked the number with no name ("another member") and no sales admin to see the request — Kusuma's 9885719740
+was held by a deleted member's lead "C39", and her request reached nobody. Now `findNumberHolding` splits the live leads
+into the ACTIVE holder and `leftLeadIds` (no `users` doc, or `isActive === false`; an unreadable profile counts as
+present): with no active holder the button reads **Take it back / Take this number** (also on a request already
+waiting) and `requestNumber` gives it at once — her lead reopens or a new one is made, the departed lead closes
+(`frozenReason: "member_left"`), her waiting request closes. The duplicate resolver closes a departed member's unsold
+lead instead of letting it keep the number. Every request also carries `requesterAdminId` (the requester's
+`createdBy`): Leads Management lists requests where the holder OR the requester is in the admin's team (two scoped
+listeners, merged), and both admins are notified.
 
 **9.4 Sales recording & approvals** ✅. `components/sales/SaleForm.tsx` (the only sale form, also
 used for upsells), `SmmSaleFields`, `SaleSection`, `SaleStatusChip`;

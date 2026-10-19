@@ -6,6 +6,15 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-19 (late night, 3): departed members hold no numbers; requests reach the requester's admin** (`sales.md`
+  §9.3, `data-model.md`). Live, after the owner pushed number requests: 9885719740 showed "Now with another member" and
+  the sales admin had nothing to approve. Read-only in Kusuma's page: the holder (lead "C39") has NO `users` document —
+  a deleted member — so no name and `salesAdminId: null`; the same gap had let the duplicate resolver freeze her own
+  lead in that member's favour. `findNumberHolding` (active holder + `leftLeadIds`; deleted or switched-off = left),
+  `requestNumber` gives a number held only by departed members at once (closes their leads `member_left`, closes her
+  waiting request), the button reads Take it back / Take this number; `resolveNonSaleDuplicates` closes a departed
+  member's unsold lead instead; `requesterAdminId` + the merged admin listener. Tests in `numberRequestsOct19` (+4).
+
 - **2026-10-19 (late night, 2): number requests — who holds a number, and asking for it** (`sales.md` §9.3,
   `data-model.md`, `roles-routes.md` §8.2, `backend-security.md` §18, `docs/firestore-rules.md`). The owner, after the
   live check of 9885719740: the screen said "another member" without a name, and she could do nothing. Decided with
