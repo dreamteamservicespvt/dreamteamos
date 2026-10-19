@@ -5,7 +5,7 @@
  */
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Award, CheckCircle2, Circle, Loader2, Lock, Medal, Target, Zap } from "lucide-react";
+import { Award, CheckCircle2, Loader2, Lock, Medal, Target, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { BADGES } from "@/devos/core/badges";
@@ -14,7 +14,9 @@ import { evaluateRank, rankAssessmentOpen } from "@/devos/core/ranks";
 import type { RankLevel } from "@/devos/core/types";
 import { useCareer, useDevXp } from "@/hooks/useDevOs";
 import { useDevOs } from "./context";
-import { ACCENT_TEXT, Chip, Empty, Loading, Note, RANK_STYLE, Section, TAP, fmtDate } from "./kit";
+import { ACCENT_TEXT, Chip, Empty, GOOD_TEXT, Loading, Note, RANK_STYLE, RANK_TIER, RankEmblem, Section, TAP, fmtDate } from "./kit";
+
+const LEVELS: RankLevel[] = [1, 2, 3, 4, 5, 6];
 
 export default function CareerView() {
   const { user, profile, profileLoading, policy, run, busy, tasks } = useDevOs();
@@ -33,39 +35,82 @@ export default function CareerView() {
   };
   // A started assessment is continued, never started twice (the server answers the same way — learner.startRankAssessment).
   const openRank = tasks.find((t) => t.kind === "rank" && (t.state === "assigned" || t.state === "in_progress"));
+  // Every baseline answer is in, a written one still being graded (the baseline task is "completed", not yet applied).
+  const baselineWaiting = tasks.some((t) => t.kind === "baseline" && t.state === "completed");
   const earned = new Map(badges.map((b) => [b.badge, b]));
   const bestLevel = Math.max(0, ...Object.values(profile.dims).map((d) => d.bestLevel));
 
   return (
     <div className="space-y-4" data-test="career-view">
-      <Section title="The six ranks" hint="Earned by demonstrated skill — never by time, XP or the number of questions answered.">
-        <ol className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          {([1, 2, 3, 4, 5, 6] as RankLevel[]).map((lvl) => {
+      {/* ── A path, not a row of boxes (2026-10-19, owner: "make it like a timeline or flow chart") ── The six ranks as
+          one line you travel along — down the page on a phone, across it on a wide screen — each with its badge. */}
+      <Section title="Your rank journey" hint="Earned by demonstrated skill — never by time, XP or the number of questions answered.">
+        <ol className="flex flex-col lg:flex-row lg:items-start" data-test="rank-path">
+          {LEVELS.map((lvl, i) => {
             const reached = profile.rank.level >= lvl;
+            const current = profile.rank.level === lvl;
+            const isNext = profile.rank.level + 1 === lvl;
             const s = RANK_STYLE[lvl];
+            const lineIn = profile.rank.level >= lvl ? "bg-primary" : "bg-border";
+            const lineOut = profile.rank.level > lvl ? "bg-primary" : "bg-border";
             return (
-              <li key={lvl} className={cn("rounded-2xl border p-3 text-center", reached ? "border-transparent bg-gradient-to-br text-white shadow-sm " + s.bg : "border-border bg-card text-muted-foreground")} aria-current={profile.rank.level === lvl ? "step" : undefined}>
-                <p className="text-xs opacity-80">Rank {lvl}</p>
-                <p className="font-semibold text-sm leading-tight">{rankLabel(policy, lvl)}</p>
-                {profile.rank.level === lvl && <p className="text-[10px] mt-1 opacity-90">since {fmtDate(profile.rank.since)}</p>}
-                {!reached && <Lock className="h-3.5 w-3.5 mx-auto mt-1 opacity-60" aria-hidden />}
+              <li key={lvl} className="flex items-stretch gap-3 lg:flex-col lg:items-center lg:flex-1 lg:gap-2 min-w-0" aria-current={current ? "step" : undefined} data-test={`rank-step-${lvl}`}>
+                <div className="flex flex-col items-center lg:flex-row lg:w-full">
+                  <div className={cn("hidden lg:block h-1 flex-1 rounded-full", i === 0 ? "invisible" : lineIn)} />
+                  {/* One size for every badge (the current one is marked by its ring, which takes no layout space), so the path
+                      lines meet the badges straight at 390 px and 1440 px (a bigger current badge stepped the line). */}
+                  <div className={cn("rounded-full", current && "ring-2 ring-primary ring-offset-2 ring-offset-card")}>
+                    <RankEmblem level={lvl} size={52} locked={!reached} />
+                  </div>
+                  <div className={cn("hidden lg:block h-1 flex-1 rounded-full", i === LEVELS.length - 1 ? "invisible" : lineOut)} />
+                  {i < LEVELS.length - 1 && <div className={cn("lg:hidden w-1 flex-1 min-h-[18px]", lineOut)} />}
+                </div>
+                <div className="min-w-0 pb-4 lg:pb-0 lg:text-center lg:px-1 pt-2 lg:pt-0">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rank {lvl} · {RANK_TIER[lvl].name}</p>
+                  <p className={cn("font-semibold text-sm leading-tight", reached ? s.text : "text-muted-foreground")}>{rankLabel(policy, lvl)}</p>
+                  <p className="text-[11px] mt-0.5">
+                    {current ? <span className={GOOD_TEXT}>Your rank · since {fmtDate(profile.rank.since)}</span>
+                      : reached ? <span className="text-muted-foreground">Passed</span>
+                      : isNext ? <span className={ACCENT_TEXT}>Next to earn</span>
+                      : <span className="text-muted-foreground inline-flex items-center gap-1"><Lock className="h-3 w-3" aria-hidden /> Locked</span>}
+                  </p>
+                </div>
               </li>
             );
           })}
         </ol>
       </Section>
 
-      {evaluation?.next ? (
+      {profile.onboarding.baseline !== "complete" ? (
+        // Before 2026-10-19 this case fell through to "You hold the top rank — Ultra Pro Max", shown to a Basic person
+        // whose baseline was still open (the gates are measured from the baseline on).
+        <Section title="Finish your baseline first" hint="The gates for your next rank are measured from your baseline on." id="career-baseline-first">
+          <p className="text-sm">
+            {baselineWaiting
+              ? "All your baseline answers are in — your written answers are being graded now. Your gates appear here as soon as they are."
+              : "Answer the rest of your baseline (one short challenge per skill). Then this page shows every gate for your next rank and what to do for each."}
+          </p>
+          {!baselineWaiting && <Button className={cn(TAP, "mt-3")} onClick={() => navigate("/dev-os/play/baseline")}>Continue the baseline</Button>}
+        </Section>
+      ) : evaluation?.next ? (
         <Section title={`Next: ${rankLabel(policy, evaluation.next)}`} hint="Every gate must pass. A strong overall score can never hide a weak critical skill."
           right={<Chip tone={evaluation.eligible ? "good" : "muted"}>{evaluation.gates.filter((g) => g.passed).length} / {evaluation.gates.length} gates</Chip>}>
-          <ul className="space-y-2">
-            {evaluation.gates.map((g) => (
-              <li key={g.id} className={cn("rounded-xl border p-3 flex gap-3", g.passed ? "border-success/30 bg-success/5" : "border-border")} data-test={`gate-${g.id}`}>
-                {g.passed ? <CheckCircle2 className="h-5 w-5 text-success shrink-0" /> : <Circle className="h-5 w-5 text-muted-foreground shrink-0" />}
-                <div className="min-w-0"><p className="font-medium text-sm">{g.label}</p><p className="text-xs text-muted-foreground">{g.detail}</p>{!g.passed && g.todo && <p className={cn("text-xs mt-0.5", ACCENT_TEXT)}>{g.todo}</p>}</div>
+          {/* The gates as a flow: one step after another, ticked as each passes, ending in the promotion. */}
+          <ol className="relative" data-test="gate-flow">
+            {evaluation.gates.map((g, i) => (
+              <li key={g.id} className="flex gap-3" data-test={`gate-${g.id}`}>
+                <div className="flex flex-col items-center">
+                  {g.passed ? <CheckCircle2 className="h-6 w-6 text-success shrink-0" /> : <span className="h-6 w-6 shrink-0 rounded-full border-2 border-muted-foreground/40 grid place-items-center text-[11px] font-semibold text-muted-foreground">{i + 1}</span>}
+                  <div className={cn("w-0.5 flex-1 min-h-[12px] my-1 rounded-full", g.passed ? "bg-success/50" : "bg-border")} />
+                </div>
+                <div className="min-w-0 pb-3"><p className="font-medium text-sm">{g.label}</p><p className="text-xs text-muted-foreground">{g.detail}</p>{!g.passed && g.todo && <p className={cn("text-xs mt-0.5", ACCENT_TEXT)}>{g.todo}</p>}</div>
               </li>
             ))}
-          </ul>
+            <li className="flex gap-3 items-center">
+              <RankEmblem level={evaluation.next} size={28} locked={!evaluation.eligible} />
+              <p className="text-sm font-medium">{evaluation.eligible ? "Every gate passed — promotion is automatic" : `Promotion to ${rankLabel(policy, evaluation.next)}`}</p>
+            </li>
+          </ol>
           <div className="mt-4 rounded-xl bg-muted/40 p-3 space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
               <p className="text-sm flex items-start gap-2"><Target className="h-4 w-4 text-primary shrink-0 mt-0.5" />{openRank ? "Your rank assessment is open — continue where you left off." : assessment?.why}</p>
@@ -81,7 +126,11 @@ export default function CareerView() {
             )}
           </div>
         </Section>
-      ) : <Section title="You hold the top rank" hint="Keep your skills fresh — retention checks and leagues continue."><p className="text-sm">Ultra Pro Max — congratulations.</p></Section>}
+      ) : profile.rank.level >= 6 ? (
+        <Section title="You hold the top rank" hint="Keep your skills fresh — retention checks and leagues continue.">
+          <div className="flex items-center gap-3"><RankEmblem level={6} size={48} /><p className="text-sm">{rankLabel(policy, 6)} — congratulations.</p></div>
+        </Section>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Promotions" hint="Each is recorded with the gates it passed, the evidence and the policy version.">

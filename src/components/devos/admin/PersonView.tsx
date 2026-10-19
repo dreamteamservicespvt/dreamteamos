@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Download, Loader2, ShieldCheck } from "lucide-react";
+import { Download, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { dayLabel, istDay } from "@/devos/core/days";
 import { rankLabel } from "@/devos/core/policy";
 import type { DevAttempt, DevProfile, DevTask, TrackId, XpTransaction } from "@/devos/core/types";
 import { useDevOs } from "../context";
-import { BAD_TEXT, Bar, Chip, DifficultyDots, Empty, Loading, OUTCOME_WORD, PurposeChip, RankBadge, Ring, Section, fmtDate, fmtDateTime, timeAgo } from "../kit";
+import { BackButton, BAD_TEXT, Bar, Chip, DifficultyDots, Empty, Loading, OUTCOME_WORD, PurposeChip, RankBadge, Ring, Section, fmtDate, fmtDateTime, timeAgo } from "../kit";
 import { useAdminData } from "./AdminView";
 
 interface Detail { profile: DevProfile; attempts: DevAttempt[]; tasks: DevTask[]; xp: XpTransaction[]; rankEvents: Record<string, unknown>[]; achievements: Record<string, unknown>[]; corrections: Record<string, unknown>[] }
@@ -58,7 +58,7 @@ export default function PersonView() {
 
   return (
     <div className="space-y-4" data-test="admin-person">
-      <Link to="/dev-os/admin/people" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground min-h-[40px]"><ArrowLeft className="h-4 w-4" /> People</Link>
+      <BackButton fallback="/dev-os/admin/people" fallbackLabel="People" />
       <Section title={p.name} hint={`${p.role.replace(/_/g, " ")} · ${trackName(p.track)} track · joined ${fmtDate(p.createdAt)} · last active ${timeAgo(p.lastActiveAt)}`}
         right={<RankBadge level={p.rank.level} label={rankLabel(policy, p.rank.level)} />}>
         <div className="flex flex-wrap items-center gap-4">

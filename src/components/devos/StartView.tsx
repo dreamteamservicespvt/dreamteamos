@@ -8,11 +8,12 @@ import { ArrowLeft, ArrowRight, CheckCircle2, Eye, Loader2, Lock, Repeat, Sparkl
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { DIMENSIONS, TRACKS, MEASUREMENT_DISCLAIMER } from "@/devos/core/dimensions";
-import { ONBOARDING_QUESTIONS, suggestTrack } from "@/devos/core/tracks";
+import { DIMENSIONS, MEASUREMENT_DISCLAIMER } from "@/devos/core/dimensions";
+import { suggestTrack } from "@/devos/core/tracks";
 import type { TrackId } from "@/devos/core/types";
 import { useDevOs } from "./context";
 import { Chip, Section, TAP } from "./kit";
+import { TrackPicker, WorkQuestions } from "./PreferenceFields";
 
 export default function StartView() {
   const { user, policy, run, busy, profile } = useDevOs();
@@ -32,11 +33,6 @@ export default function StartView() {
       </Section>
     );
   }
-
-  const toggle = (q: string, id: string, multi: boolean) => setAnswers((a) => {
-    const cur = a[q] ?? [];
-    return { ...a, [q]: multi ? (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]) : [id] };
-  });
 
   const start = async () => {
     const r = await run<{ taskId: string }>("onboard", { consent: true, answers, track: chosen }, { label: "onboard" });
@@ -85,25 +81,8 @@ export default function StartView() {
 
       {step === 2 && (
         <Section title="Tell us about your work" hint="Your track comes from what you actually do — not just your title.">
-          <div className="space-y-5">
-            {ONBOARDING_QUESTIONS.map((q) => (
-              <fieldset key={q.id}>
-                <legend className="text-sm font-medium mb-2">{q.text}</legend>
-                <div className="flex flex-wrap gap-2">
-                  {q.options.map((o) => {
-                    const on = (answers[q.id] ?? []).includes(o.id);
-                    return (
-                      <button key={o.id} type="button" onClick={() => toggle(q.id, o.id, q.multi)} aria-pressed={on}
-                        className={cn("rounded-xl border px-3 py-2 text-sm text-left transition-colors min-h-[44px]", on ? "border-primary bg-primary/10 text-foreground" : "border-border hover:bg-muted")}
-                        data-test={`devos-q-${q.id}-${o.id}`}>
-                        {on && <CheckCircle2 className="h-3.5 w-3.5 inline mr-1 text-primary" />}{o.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            ))}
-          </div>
+          <WorkQuestions answers={answers} onChange={setAnswers} />
+          <p className="text-xs text-muted-foreground mt-3">You can change these and your track any time later, in your Profile.</p>
           <div className="flex justify-between mt-5">
             <Button variant="ghost" className={TAP} onClick={() => setStep(1)}><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button>
             <Button className={TAP} onClick={() => setStep(3)} data-test="devos-step2-next">Next <ArrowRight className="h-4 w-4 ml-1" /></Button>
@@ -113,19 +92,7 @@ export default function StartView() {
 
       {step === 3 && (
         <Section title="Your development track" hint="All tracks grow the same ten skills — with situations from that kind of work. An admin can change it later.">
-          <div className="grid gap-3 sm:grid-cols-3">
-            {TRACKS.map((t) => (
-              <button key={t.id} type="button" onClick={() => setTrack(t.id)} aria-pressed={chosen === t.id}
-                className={cn("rounded-2xl border p-4 text-left transition-colors", chosen === t.id ? "border-primary bg-primary/10 ring-1 ring-primary" : "border-border hover:bg-muted")}
-                data-test={`devos-track-${t.id}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold">{t.name}</p>
-                  {t.id === suggested && <Chip tone="primary">Suggested</Chip>}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{t.purpose}</p>
-              </button>
-            ))}
-          </div>
+          <TrackPicker value={chosen} suggested={suggested} onChange={setTrack} />
           <div className="mt-4 rounded-xl bg-muted/50 p-3 text-sm">
             <p className="font-medium">Next: your baseline</p>
             <p className="text-xs text-muted-foreground mt-0.5">Ten short challenges (about 20 minutes, no hints). Stop any time — every answer is saved. It only sets your starting plan; nobody "fails" a baseline.</p>

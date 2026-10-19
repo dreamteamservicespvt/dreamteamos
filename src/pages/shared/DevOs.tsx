@@ -17,6 +17,7 @@ const CareerView = lazy(() => import("@/components/devos/CareerView"));
 const ArenaView = lazy(() => import("@/components/devos/ArenaView"));
 const HistoryView = lazy(() => import("@/components/devos/HistoryView"));
 const AttemptView = lazy(() => import("@/components/devos/AttemptView"));
+const ProfileView = lazy(() => import("@/components/devos/ProfileView"));
 const AdminView = lazy(() => import("@/components/devos/admin/AdminView"));
 
 export default function DevOsPage() {
@@ -34,6 +35,7 @@ export default function DevOsPage() {
             <Route path="arena" element={<ArenaView />} />
             <Route path="history" element={<HistoryView />} />
             <Route path="history/:attemptId" element={<AttemptView />} />
+            <Route path="profile" element={<ProfileView />} />
             <Route path="admin/*" element={<AdminView />} />
             <Route path="*" element={<Navigate to="/dev-os" replace />} />
           </Routes>

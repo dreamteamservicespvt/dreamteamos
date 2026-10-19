@@ -59,7 +59,7 @@ BASIC → … → ULTRA PRO MAX (six); a rank never drops.
   (`tick.claimTickSlot`, a transaction on `devos_runs/open`; a repeat within a minute on a warm instance is answered 202
   before any read), so the worst any caller can do is make the normal, idempotent, budgeted work happen on time; `POST
   {action,…}` = `verifyIdToken` → `users/{uid}` → `Actor` → `router.dispatch`. Actions: `bootstrap onboard today
-  start next hint answer submit practice rank appeal coach privacy league.join boards catchup` and `admin.overview
+  start next hint answer submit practice rank appeal coach privacy league.join boards catchup grade profile.update` and `admin.overview
   admin.staff admin.person admin.track admin.enrol admin.policy admin.void admin.regrade admin.quarantine
   admin.questions admin.audit admin.exceptions admin.reports admin.report admin.export admin.integrity admin.tick
   admin.generate`. The router refuses a switched-off account and an external creator before anything is read.
@@ -79,16 +79,29 @@ BASIC → … → ULTRA PRO MAX (six); a rank never drops.
    and transfer checks (a skill in a new setting) chosen by the **Director** (`core/director.ts`, one plain reason
    per item).
 3. **Play** (`PlayView`): one item at a time; progressive hints (each costs 15% of the item; ones already taken come
-   back on resume); the answer is recorded before anything is shown; then the result (with the XP broken down by
-   source), the worked solution, a coach (asks the AI with the item and the worked reason, never the key beforehand)
-   and an appeal (one per answer; the answer then reads "Reviewed on …"). A timed item shows its own timer and the
+   back on resume); the answer is recorded (and scored) on the server. **No result between questions** (2026-10-19,
+   owner: a result after every question cost time and confidence): "Submit and next" goes straight to the next item, the
+   progress bar shows answered items without right / wrong colours, and the last one reads "Submit and see results". The
+   **summary reveals every answer** ("Your answers", one row per question: the answer given, the result; a tap opens the
+   worked solution, a coach (asks the AI with the item and the worked reason, never the key beforehand) and an appeal
+   (one per answer; the answer then reads "Reviewed on …")) plus the XP, badges, a promotion and "Fresh try now"
+   gathered on the way. The server still returns each result with its answer (`reveal`); only the screen waits. A timed item shows its own timer and the
    assessment's total ("mm:ss in all"); at 0:00 a panel says an answer sent within the grace is still scored and offers
    "Next question". The view's top is scrolled into view on every new item, result and summary; the summary says plainly
    when time ran out and how many items counted as 0. A practical has a Home link and keeps its typed entries as a
    per-task draft in the browser until submitted.
-4. **Skills / My path / Career / Arena / History**: ten skill cards (score, confidence, trend), the plan, the rank
-   gates with what is missing, the boards / league / mission, and every answer with its full record ("Show older
-   tasks" reaches every task). Home shows "Today's quest is done" while other tasks are open and never a finished
+4. **Skills / My path / Career / Arena / History / Profile**: ten skill cards (score, confidence, trend), the plan, the
+   rank journey as a timeline (down on a phone, across on a wide screen) with a badge picture per rank (`kit.RankEmblem`,
+   inline SVG: Bronze, Silver, Gold, Platinum, Diamond, Elite — `RANK_TIER`; also in the header badge) and the next rank's
+   gates as a numbered flow ending in the promotion; before the baseline is complete Career says "Finish your baseline
+   first" (it used to fall through to "You hold the top rank — Ultra Pro Max" for a Basic person; that card is now only
+   for rank 6); the boards / league / mission; every answer as a day-by-day timeline with its full record ("Show older
+   tasks" reaches every task); and **Profile** (`/dev-os/profile`, 2026-10-19): the track (the "category") and the
+   onboarding answers (work, tools, coding) — stored since 2026-10-18 but never shown — editable with the onboarding's
+   own controls (`PreferenceFields`); `profile.update` (`learner.updatePreferences`) saves them, a track change
+   effective-dated in `trackHistory` ("changed by the person in their profile") and audited `self_set_track`; skill
+   scores, rank and tasks already made stay. Back buttons (`kit.BackButton`, Profile, an answer, a person in the Control
+   Center; Play's "Leave") go back to the screen the person came from, and to a named fallback when opened directly. Home shows "Today's quest is done" while other tasks are open and never a finished
    league; a task's due chip gives the clock time ("due 11 PM · in 12 h", "due Sat 24 Oct, 7 PM"). The Arena says the
    league's rules ABOVE Join, because Join opens the first timed question at once. Screen conventions: days read
    "19 Oct" (`days.dayLabel`, also in task titles), times "11 PM" (`days.timeLabel`, India time); in the light theme status text is one step darker than the tokens (the brand orange and the
@@ -144,6 +157,14 @@ BASIC → … → ULTRA PRO MAX (six); a rank never drops.
     session ended — before, a session whose last question ran out never marked the entry done and the person fell out of
     the results. At the close, anyone who started and did not finish is settled first and ranked on what they answered
     (rage-quitting never protects a rating); joined but never started = not in the round.
+- **Written answers are graded in their own request** (2026-10-19): the screen sends `answer` with `defer` (saved and
+  queued, no judges — before, the next question waited 20–60 s for them, and a baseline's two judges could hit Vercel's
+  60 s and leave the answer "Being graded" for hours until a cron ran, holding the baseline, the plan and Career), then
+  `grade` (`learner.gradeMine`: the caller's OWN pending answer, or the oldest of theirs in the queue; one per request;
+  a one-minute claim `gradeClaimAt` so a reloading page never stacks AI calls or burns the bounded tries). The browser
+  asks from any screen that shows one waiting (`components/devos/useAutoGrade`: at once, then every 20 s, the same
+  answer at most once a minute) — the shell runs it while `stats.pending > 0`; Home says "Baseline done — grading your
+  written answers" instead of "Continue". The label reads "Grading…". `answer` without `defer` still grades inline.
 - **The grading queue** (`engine/queue.ts`, `devos_queue/grading`): an open answer / a practical is queued IN the
   transaction that saves it and taken out when graded; the tick grades what is older than 2 minutes (3 a run, at most
   3 tries, then `system_error` — never counted against the person); the daily roll-over re-queues anything still
@@ -228,7 +249,8 @@ Written by the server only (`notifications/{key}` with `create()`, `meta.source 
 
 ## 25. STATUS
 
-**IMPLEMENTED ✅** (2026-10-18): everything above. Verified by `devosContent` (every family × track × setting × form
+**IMPLEMENTED ✅** (2026-10-18; the reveal at the end, own-request grading, Profile, the rank timeline 2026-10-19 —
+`devosRevealAtEnd`): everything above. Verified by `devosContent` (every family × track × setting × form
 × difficulty), `devosEngine` (onboarding, no-repeat, idempotency, deadlines and time limits, hints, open answers with
 the AI down, the queue, adjudication, rank gates, the tick, practicals, appeals, leagues, integrity, the AI pool, admin
 scope, seasons, calibration, quarantine), `devosScoring` (live judge shapes), `devosAiOutput` (live writer / judge

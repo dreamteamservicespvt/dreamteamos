@@ -9,7 +9,7 @@ import { open } from "../core/crypto.js";
 import { addDays, istDay, istEndOfDay, isWorkday, lastWorkdayOfWeek, istAt, weekKeyOf } from "../core/days.js";
 import { DIMENSION_BY_ID, DIMENSION_IDS } from "../core/dimensions.js";
 import { baselineBlueprint, practiceBlueprint, questBlueprint, rankBlueprint } from "../core/director.js";
-import { emptyDimensions } from "../core/mastery.js";
+import { emptyDimensions, weightedSummary } from "../core/mastery.js";
 import { isLearnerUnder, rankLabel, type DevPolicy } from "../core/policy.js";
 import { emptySeasonScore } from "../core/progress.js";
 import { rankAssessmentOpen } from "../core/ranks.js";
@@ -17,18 +17,19 @@ import { scoreObjective } from "../core/scoring.js";
 import { seasonOf } from "../core/season.js";
 import { cleanAnswers, codingFromAnswers, suggestTrack } from "../core/tracks.js";
 import type {
-  AttemptResponse, DevAttempt, DevProfile, DevSession, DevTask, DimensionId, Exposure, Feedback, ItemKey, PublicItem, Purpose,
+  AttemptResponse, AuditEvent, DevAttempt, DevProfile, DevSession, DevTask, DimensionId, Exposure, Feedback, ItemKey, PublicItem, Purpose,
   QuestionDoc, SeasonScore, TrackId,
 } from "../core/types.js";
 import { nextChallenge } from "../content/challenges.js";
 import { serveNext } from "./bank.js";
 import { rebuildBoards, refreshBoardsIfStale } from "./competition.js";
-import { assertActive, DevError, loadPolicy, PATH, type Actor, type Deps } from "./context.js";
+import { assertActive, DevError, loadPolicy, PATH, shortId, type Actor, type Deps } from "./context.js";
 import { gradeOpen, openFeedback } from "./grading.js";
 import { signRecord } from "./integrity.js";
 import { applyAttempt, awayDays, calendarFor, closeAndSettle, settleTask } from "./progress.js";
 import { dequeueGrading, enqueueGrading, QUEUE_PATH, withQueued } from "./queue.js";
 import { recordCalibration } from "./calibration.js";
+import { gradePractical } from "./review.js";
 import type { Doc } from "./store.js";
 
 const TRACKS: TrackId[] = ["sales", "technical", "admin"];
@@ -327,6 +328,15 @@ export interface AnswerInput {
   taskId: string;
   slotIndex: number;
   response: AttemptResponse;
+  /**
+   * ── Why a written answer can skip grading here (2026-10-19) ──
+   * Answers are revealed at the END of a task now (owner: a result after every question broke the flow), so the screen
+   * goes straight to the next question. Grading a written answer inside this request held that next question for the
+   * judges' 20–60 s — and on Vercel's 60 s limit a baseline's two judges were cut off, leaving it "Being graded" for
+   * hours until a cron ran. With `defer` the answer is saved and queued (as always) and returned at once; the browser
+   * then asks `grade` in a separate request with its own time. The queue and the tick stay the safety net.
+   */
+  defer?: boolean;
 }
 
 export interface AnswerResult {
@@ -445,7 +455,7 @@ export async function answer(deps: Deps, actor: Actor, input: AnswerInput): Prom
   if (!recorded.fresh) return { attempt: recorded.attempt, session: recorded.session, xpGained: 0, badges: [], rankUp: null, taskState: null, remediationTaskId: null };
 
   if (item.type === "open" && attempt.outcome === "pending_validation") {
-    const graded = await finishOpenGrading(deps, policy, uid, attemptId);
+    const graded = input.defer ? null : await finishOpenGrading(deps, policy, uid, attemptId);
     if (graded) return graded;
     const s = (await deps.store.get(PATH.session(uid, taskId))) as unknown as DevSession;
     return { attempt: recorded.attempt, session: s, xpGained: 0, badges: [], rankUp: null, taskState: null, remediationTaskId: null };
@@ -556,6 +566,106 @@ export async function finishOpenGrading(deps: Deps, policy: DevPolicy, uid: stri
     await deps.notify.send({ uid, type: "devos_result", title: `Your answer was graded: ${scoring.score}%`, message: feedback.headline, link: `/dev-os/history/${attemptId}`, key: `devos_graded_${uid}_${attemptId}`, push: true }).catch(() => false);
   }
   return result;
+}
+
+/** How long one `grade` claim on an answer holds (a request is cut off at 60 s; the tick may take it after that). */
+export const GRADE_CLAIM_MS = 60_000;
+
+/**
+ * The learner's own written answers (and submitted practicals) that wait for a grade, graded NOW (2026-10-19): one per request (a baseline answer
+ * needs two judges — 20–60 s — inside Vercel's 60 s), the given one or the oldest of theirs in the queue. Before, an
+ * answer whose grading did not finish inside its own request waited for the next cron (up to hours) and read "Being
+ * graded" the whole time — with the baseline, and so the plan, quests and Career, held behind it. Only the caller's own
+ * answers (`actor.uid`); a claim (`gradeClaimAt`) lets one request grade an answer at a time, at most once a minute, so
+ * a reloading or double-opened page never stacks AI calls or burns its bounded tries (`gradeRetryLimit`).
+ */
+export async function gradeMine(deps: Deps, actor: Actor, target: { attemptId?: string; taskId?: string } = {}): Promise<{ graded: number; waiting: number; today?: { reason?: string } }> {
+  assertActive(actor);
+  const policy = await loadPolicy(deps);
+  const uid = actor.uid;
+  type Job = { kind: "attempt" | "task"; id: string };
+  const mine = async () => (((await deps.store.get(QUEUE_PATH))?.items as { uid: string; kind: string; id: string; since: number }[] | undefined) ?? [])
+    .filter((x) => x.uid === uid && (x.kind === "attempt" || x.kind === "task"));
+  const queued: Job[] = (await mine()).sort((a, b) => a.since - b.since).map((x) => ({ kind: x.kind as Job["kind"], id: x.id }));
+  const asked: Job[] = [
+    ...(target.attemptId ? [{ kind: "attempt" as const, id: target.attemptId }] : []),
+    ...(target.taskId ? [{ kind: "task" as const, id: target.taskId }] : []),
+  ];
+  const candidates = [...asked, ...queued.filter((q) => !asked.some((a) => a.kind === q.kind && a.id === q.id))];
+  let graded = 0;
+  let today: { reason?: string } | undefined;
+  for (const job of candidates.slice(0, 3)) {
+    if (!/^[A-Za-z0-9_.-]{1,120}$/.test(job.id)) continue;
+    const now = deps.now();
+    // Claimed in a transaction: only something of the caller's that is really waiting, and not taken in the last minute.
+    const claimed = await deps.store.tx(async (t) => {
+      if (job.kind === "attempt") {
+        const a = (await t.get(PATH.attempt(uid, job.id))) as unknown as DevAttempt | null;
+        if (!a || a.outcome !== "pending_validation" || a.response.kind !== "text") return false;
+        if ((a.gradeClaimAt ?? 0) > now - GRADE_CLAIM_MS) return false;
+        t.set(PATH.attempt(uid, job.id), { gradeClaimAt: now } as unknown as Doc, true);
+        return true;
+      }
+      const k = (await t.get(PATH.task(uid, job.id))) as unknown as DevTask | null;
+      if (!k || k.state !== "completed" || k.scoring || !k.submission) return false;
+      if ((k.gradeClaimAt ?? 0) > now - GRADE_CLAIM_MS) return false;
+      t.set(PATH.task(uid, job.id), { gradeClaimAt: now } as unknown as Doc, true);
+      return true;
+    });
+    if (!claimed) continue;
+    if (job.kind === "attempt") {
+      const r = await finishOpenGrading(deps, policy, uid, job.id);
+      if (r) {
+        graded++;
+        if (r.today) today = r.today;
+      }
+    } else if (await gradePractical(deps, policy, uid, job.id)) graded++; // it takes itself out of the queue
+    break; // one grading per request — its judges need the time
+  }
+  return { graded, waiting: (await mine()).length, ...(today ? { today } : {}) };
+}
+
+// ── The learner's own profile ───────────────────────────────────────────────────────────────────
+
+/**
+ * The person changes what they told the onboarding (their work, tools, coding) and their track (2026-10-19, owner: "keep
+ * option user also edit that category and skills preferences"). The track change is effective-dated in `trackHistory`
+ * exactly like an admin's (`adminSetTrack`) and recorded as the person's own; a track only changes the training content
+ * (situations and weights) — never a permission (FR-002). Tasks already made keep their track; new ones use the new one.
+ */
+export async function updatePreferences(deps: Deps, actor: Actor, input: { answers: unknown; track: TrackId }): Promise<{ profile: DevProfile }> {
+  assertActive(actor);
+  if (!TRACKS.includes(input.track)) throw new DevError(400, "track", "Pick Sales, Technical or Admin.");
+  const policy = await loadPolicy(deps);
+  await ensureProfile(deps, actor);
+  const now = deps.now();
+  const answers = cleanAnswers(input.answers);
+  if (!(answers.work ?? []).length) throw new DevError(400, "answers", "Pick at least one thing your work involves.");
+  const out = await deps.store.tx(async (t) => {
+    const p = (await t.get(PATH.user(actor.uid))) as unknown as DevProfile;
+    if (p.onboarding.baseline === "not_started") throw new DevError(409, "not_onboarded", "Start with the onboarding first.");
+    const suggested = suggestTrack(answers, policy.defaultTrackByRole[actor.role] ?? "admin");
+    const history = [...p.trackHistory];
+    const changed = p.track !== input.track;
+    if (changed) {
+      if (history.length) history[history.length - 1] = { ...history[history.length - 1], to: now };
+      history.push({ track: input.track, from: now, by: actor.uid, reason: "changed by the person in their profile", policyVersion: policy.version });
+    }
+    const next: DevProfile = {
+      ...p, track: input.track, trackHistory: history, codingRequired: codingFromAnswers(answers),
+      onboarding: { ...p.onboarding, answers, suggested },
+      ...(changed ? { summary: weightedSummary(p.dims, policy.weights[input.track]) } : {}),
+      updatedAt: now,
+    };
+    t.set(PATH.user(actor.uid), (await signRecord(deps.secrets, "profile", next)) as unknown as Doc);
+    return { profile: next, changed, from: p.track };
+  });
+  if (out.changed) {
+    // Audited like an admin's change (admin.audit is not imported here: admin.ts imports this module).
+    const ev: AuditEvent = { id: shortId("au_"), actor: actor.uid, actorName: actor.name, action: "self_set_track", target: actor.uid, at: now, policyVersion: policy.version, detail: `${out.from} → ${input.track}` };
+    await deps.store.set(PATH.audit(ev.id), (await signRecord(deps.secrets, "audit", ev)) as unknown as Doc).catch(() => undefined);
+  }
+  return { profile: out.profile };
 }
 
 // ── More tasks on request ───────────────────────────────────────────────────────────────────────

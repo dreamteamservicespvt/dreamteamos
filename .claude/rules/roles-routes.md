@@ -226,8 +226,9 @@ tech member is sent to `/login` by the guard. Nav: one "Invoices" item per allow
 | Route | Page | Purpose |
 |---|---|---|
 | `/dev-os` | `shared/DevOs.tsx` → `components/devos/HomeView` | The learner's day: today's quest, the weekly challenge, other tasks, practice by skill; first-run "Get started" |
-| `/dev-os/start` · `/dev-os/play/:taskId` | `StartView` · `PlayView` | Onboarding (consent, work questions, track) → baseline · one item at a time, hints, result, coach, appeal, practicals |
+| `/dev-os/start` · `/dev-os/play/:taskId` | `StartView` · `PlayView` | Onboarding (consent, work questions, track) → baseline · one item at a time, hints, no result until the end (2026-10-19), then every answer revealed with coach and appeal; practicals |
 | `/dev-os/skills` · `/path` · `/rank` · `/arena` · `/history` · `/history/:attemptId` | `SkillsView` · `PathView` · `CareerView` · `ArenaView` · `HistoryView` · `AttemptView` | Ten skill cards · the plan · rank gates + badges + the rank assessment · boards, league, team mission, privacy · every answer · one answer's full record |
+| `/dev-os/profile` | `ProfileView` | (2026-10-19) the person's track (category) and onboarding answers (work, tools, coding), editable (`profile.update`); focus skills; track history |
 | `/dev-os/admin/*` | `components/devos/admin/AdminView` (+ `PersonView`, `PolicyView`) | Control Center: Overview, People (→ a person), Questions, Automation, Reports, Audit, Exceptions, Policy — the main and tech admin; the sales admin's view is the Sales track, read-only; others never see the tab |
 One `AppLayout allowedRoles` group with the seven roles (`App.tsx`), lazy nested routes; unknown sub-paths go to
 `/dev-os`. External creators stay confined to `EXTERNAL_CREATOR_ROUTES` and are refused by the server too. Every Dev OS

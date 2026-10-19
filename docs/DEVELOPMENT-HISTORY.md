@@ -6,6 +6,22 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-19 (afternoon): Development OS — the owner's screenshots** (`devos.md` §9.23, `roles-routes.md` §10,
+  `data-model.md`). (1) **"Being graded" stuck for hours**: a written answer was graded inside its own `answer` request; a
+  baseline answer needs two judges, so on a slow day the request hit Vercel's 60 s and the answer waited for the next cron —
+  holding the baseline, the plan and Career behind it. Now `answer` / `submit` take `defer` (saved + queued at once) and the
+  browser asks a new `grade` action (`learner.gradeMine`: own answers / practicals only, one per request, a one-minute
+  claim `gradeClaimAt`) from any screen showing one waiting (`components/devos/useAutoGrade`; the shell while
+  `stats.pending > 0`). Label "Grading…"; Home says "Baseline done — grading…"; a grading task card opens its answers.
+  (2) **No result between questions**: "Submit and next"; the summary reveals every answer ("Your answers": worked
+  solution, coach, appeal), plus XP / badges / "Fresh try now". (3) **Career told a Basic person "You hold the top rank —
+  Ultra Pro Max"** while their baseline was open (a null evaluation fell to the else) — now "Finish your baseline first"; the
+  top card only at rank 6. (4) Ranks as a **timeline** with **badge pictures** (`kit.RankEmblem`: Bronze → Elite), gates as
+  a numbered flow, History as a day-by-day timeline. (5) **Profile** (`/dev-os/profile`): the onboarding answers (stored,
+  never shown) and the track, editable (`profile.update`, effective-dated, audited `self_set_track`; shared controls
+  `PreferenceFields`). (6) **Back buttons go back** (`kit.BackButton`; Play's Leave). Tests: `devosRevealAtEnd` (5), full
+  suite 273 files green, build, typecheck 0, `api/devos.ts` parsed; real-browser harness on `memoryFirestore`.
+
 - **2026-10-18 (evening): the audit work is live; the Firestore rules PUBLISHED; public sign-up off**
   (`backend-security.md` §14 / §25 / §27, `roles-routes.md` §8.1, `docs/firestore-rules.md` Status, CLAUDE.md §32 / §33).
   The owner pushed `802f09a` (with a88759a, 0ae2c2b, 4037758, 49d224c); Vercel build `1792320604656`. Checked live:

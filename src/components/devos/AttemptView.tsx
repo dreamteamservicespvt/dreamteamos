@@ -3,26 +3,28 @@
  * and review, and the facts an audit needs (rubric and policy versions, times, hints, any correction).
  */
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
 import { dimensionName } from "@/devos/core/dimensions";
 import { useDevAttempt } from "@/hooks/useDevOs";
 import { useDevOs } from "./context";
-import { Chip, DifficultyDots, Empty, Loading, PurposeChip, ScenarioText, Section, fmtDateTime } from "./kit";
+import { BackButton, Chip, DifficultyDots, Empty, Loading, PurposeChip, ScenarioText, Section, fmtDateTime, withUnit } from "./kit";
+import { useAutoGrade } from "./useAutoGrade";
 import { ResultPanel } from "./play/ResultPanel";
 
 export default function AttemptView() {
   const { attemptId } = useParams();
   const { user } = useDevOs();
   const { data: a, loading } = useDevAttempt(user.uid, attemptId);
+  useAutoGrade([a]);
   if (loading) return <Loading />;
   if (!a) return <Empty>This answer was not found. <Link className="underline" to="/dev-os/history">Back to History</Link></Empty>;
   const yours = a.response.kind === "text" ? a.response.text
     : a.response.kind === "choice" ? a.response.selected.map((i) => a.item.options?.[i]).join("; ")
-    : a.response.kind === "number" ? `${a.response.value}${a.item.unit ? ` ${a.item.unit}` : ""}`
+    : a.response.kind === "number" ? withUnit(a.response.value, a.item.unit)
     : a.response.order.map((i, n) => `${n + 1}. ${a.item.options?.[i]}`).join("\n");
   return (
     <div className="max-w-3xl mx-auto space-y-4" data-test="attempt-view">
-      <Link to="/dev-os/history" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground min-h-[40px]"><ArrowLeft className="h-4 w-4" /> History</Link>
+      {/* Back to wherever it was opened from (a task's summary, History, a notification → History). */}
+      <BackButton fallback="/dev-os/history" fallbackLabel="History" />
       <Section title={<span className="flex flex-wrap items-center gap-2">{dimensionName(a.dim)} <DifficultyDots level={a.difficulty} /></span>} right={<PurposeChip purpose={a.purpose} />}>
         <ScenarioText text={a.item.scenario} />
         <p className="font-semibold mt-3">{a.item.question}</p>

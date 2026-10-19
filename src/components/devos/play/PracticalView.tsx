@@ -15,6 +15,7 @@ import type { DevTask } from "@/devos/core/types";
 import { useDevOs } from "../context";
 import { readPracticalDraft, writePracticalDraft } from "../drafts";
 import { Chip, GOOD_TEXT, BAD_TEXT, Note, ScenarioText, Section, TAP, fmtDateTime } from "../kit";
+import { requestGrade, useAutoGradeTask } from "../useAutoGrade";
 
 type Fields = Record<string, string | number | boolean[]>;
 
@@ -23,6 +24,7 @@ export function PracticalView({ task }: { task: DevTask }) {
   const uid = user.uid;
   const navigate = useNavigate();
   const rootRef = useRef<HTMLDivElement>(null);
+  useAutoGradeTask(task);
   // Unsent evidence is kept in this browser per person and task (`../drafts`), so leaving the page loses nothing.
   const [fields, setFields] = useState<Fields>(() => readPracticalDraft<Fields>(uid, task.id) as Fields);
   const isOpen = task.state === "assigned" || task.state === "in_progress";
@@ -42,9 +44,12 @@ export function PracticalView({ task }: { task: DevTask }) {
   }).length, [fields, task.evidence]);
 
   const submit = async () => {
-    const r = await run<DevTask>("submit", { taskId: task.id, fields }, { label: "submit" });
+    // Saved and queued at once; the two judges run in a request of their own (`grade`), so a slow AI day never cuts the
+    // submit off, and the grade arrives on this page by itself (useAutoGradeTask, 2026-10-19).
+    const r = await run<DevTask>("submit", { taskId: task.id, fields, defer: true }, { label: "submit" });
     if (!r) return; // not submitted — the draft stays
     writePracticalDraft(uid, task.id, null);
+    requestGrade(task.id, "task");
     // The result opens at the top of the view (the page scrolls inside AppLayout's <main>, not the window).
     rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -56,7 +61,7 @@ export function PracticalView({ task }: { task: DevTask }) {
         <ArrowLeft className="h-4 w-4" /> {open ? "Home (what you typed is kept on this device)" : "Home"}
       </button>
       <Section title={task.title} hint={`Due ${fmtDateTime(task.dueAt)} · about ${task.estMinutes} minutes`}
-        right={<Chip tone={task.state === "passed" ? "good" : task.state === "failed" ? "bad" : task.state === "completed" ? "info" : "muted"}>{task.state === "completed" ? "Being graded" : task.state === "assigned" || task.state === "in_progress" ? "To do" : task.state[0].toUpperCase() + task.state.slice(1).replace("_", " ")}</Chip>}>
+        right={<Chip tone={task.state === "passed" ? "good" : task.state === "failed" ? "bad" : task.state === "completed" ? "info" : "muted"}>{task.state === "completed" ? "Grading…" : task.state === "assigned" || task.state === "in_progress" ? "To do" : task.state[0].toUpperCase() + task.state.slice(1).replace("_", " ")}</Chip>}>
         <p className="text-sm text-muted-foreground mb-2">{task.why}</p>
         {task.brief && <ScenarioText text={task.brief} />}
         {task.rubric && (
@@ -69,7 +74,7 @@ export function PracticalView({ task }: { task: DevTask }) {
 
       {task.state === "completed" && (
         <Section title="Grading your work" hint="Two independent graders mark it against the rubric — this usually takes under a minute.">
-          <p className="text-sm flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Waiting for the graders… you can leave this page; the result will be here.</p>
+          <p className="text-sm flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Waiting for the graders… this page updates by itself; you can also leave — the result will be here.</p>
         </Section>
       )}
 

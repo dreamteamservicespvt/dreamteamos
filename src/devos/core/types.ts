@@ -378,6 +378,9 @@ export interface DevAttempt {
   appliedAt?: number;
   /** Grading jobs tried for an open answer (bounded — policy `gradeRetryLimit`). */
   gradeTries?: number;
+  /** When the learner's own `grade` request last took this answer (2026-10-19) — one grading at a time, at most once
+   *  a minute, so a reloading page never stacks AI calls or burns the bounded tries. Not signed. */
+  gradeClaimAt?: number;
   createdAt: number;
   sig?: string;
 }
@@ -463,6 +466,8 @@ export interface DevTask {
   challengeId?: string;
   /** A practical answer the judges could not settle yet (re-graded by the tick). */
   gradeTries?: number;
+  /** When the learner's own `grade` request last took this practical (2026-10-19; one claim a minute — learner.gradeMine). */
+  gradeClaimAt?: number;
   /** A submitted practical still waiting for its grade (true from the submission until graded or given up) — what the
    *  tick's daily roll-over looks for to re-queue one the queue lost (engine/queue.ts). Absent on older tasks. */
   submissionPending?: boolean;

@@ -57,7 +57,9 @@ export function submissionText(task: Pick<DevTask, "evidence">, fields: Record<s
   }).join("\n\n");
 }
 
-export async function submitPractical(deps: Deps, actor: Actor, input: { taskId: string; fields: Record<string, unknown> }): Promise<DevTask> {
+/** `defer` (2026-10-19): save and queue only — the browser then asks `grade` in a request of its own (learner.gradeMine),
+ *  so the two judges never race the submit request's 60 s. Without it the practical is graded here, as before. */
+export async function submitPractical(deps: Deps, actor: Actor, input: { taskId: string; fields: Record<string, unknown>; defer?: boolean }): Promise<DevTask> {
   assertActive(actor);
   const policy = await loadPolicy(deps);
   const uid = actor.uid;
@@ -88,7 +90,7 @@ export async function submitPractical(deps: Deps, actor: Actor, input: { taskId:
     // Queued with the save (queue.ts): a request cut off while the judges think still gets graded by the tick.
     t.set(QUEUE_PATH, withQueued(queue, { uid, kind: "task", id: task.id }, now) as unknown as Doc);
   });
-  await gradePractical(deps, policy, uid, task.id);
+  if (!input.defer) await gradePractical(deps, policy, uid, task.id);
   return (await deps.store.get(PATH.task(uid, task.id))) as unknown as DevTask;
 }
 

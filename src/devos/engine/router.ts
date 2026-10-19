@@ -12,7 +12,7 @@ import {
 import { replenishPool, type PoolTarget } from "./aipool.js";
 import { joinLeague, refreshBoardsIfStale } from "./competition.js";
 import { assertActive, assertPlatformAdmin, DevError, loadPolicy, PATH, type Actor, type Deps } from "./context.js";
-import { answer, ensureProfile, ensureToday, hint, nextItem, onboard, setBoardPrivacy, startPractice, startRankAssessment, startTask } from "./learner.js";
+import { answer, ensureProfile, ensureToday, gradeMine, hint, nextItem, onboard, setBoardPrivacy, startPractice, startRankAssessment, startTask, updatePreferences } from "./learner.js";
 import { appeal, coach, submitPractical } from "./review.js";
 import { catchupDue, runTick } from "./tick.js";
 
@@ -44,7 +44,7 @@ function response(v: unknown): AttemptResponse {
 
 export const ACTIONS = [
   "bootstrap", "onboard", "today", "start", "next", "hint", "answer", "submit", "practice", "rank", "appeal", "coach", "privacy",
-  "league.join", "boards", "catchup",
+  "league.join", "boards", "catchup", "grade", "profile.update",
   "admin.overview", "admin.staff", "admin.person", "admin.track", "admin.enrol", "admin.policy", "admin.void", "admin.regrade",
   "admin.quarantine", "admin.questions", "admin.audit", "admin.exceptions", "admin.reports", "admin.report", "admin.export",
   "admin.integrity", "admin.tick", "admin.generate",
@@ -77,10 +77,10 @@ async function route(deps: Deps, actor: Actor, action: string, body: Record<stri
     case "start": return startTask(deps, actor, id(body.taskId, "taskId"));
     case "next": return nextItem(deps, actor, id(body.taskId, "taskId"));
     case "hint": return hint(deps, actor, id(body.taskId, "taskId"), int(body.slotIndex, "slotIndex", 0, 30));
-    case "answer": return answer(deps, actor, { taskId: id(body.taskId, "taskId"), slotIndex: int(body.slotIndex, "slotIndex", 0, 30), response: response(body.response) });
+    case "answer": return answer(deps, actor, { taskId: id(body.taskId, "taskId"), slotIndex: int(body.slotIndex, "slotIndex", 0, 30), response: response(body.response), defer: body.defer === true });
     case "submit": {
       const fields = body.fields && typeof body.fields === "object" ? (body.fields as Record<string, unknown>) : {};
-      return submitPractical(deps, actor, { taskId: id(body.taskId, "taskId"), fields });
+      return submitPractical(deps, actor, { taskId: id(body.taskId, "taskId"), fields, defer: body.defer === true });
     }
     case "practice": {
       const dim = typeof body.dim === "string" && DIMENSION_IDS.includes(body.dim as DimensionId) ? (body.dim as DimensionId) : undefined;
@@ -89,6 +89,15 @@ async function route(deps: Deps, actor: Actor, action: string, body: Record<stri
     case "rank": return startRankAssessment(deps, actor);
     case "appeal": return appeal(deps, actor, { attemptId: id(body.attemptId, "attemptId"), reason: s(body.reason, "reason", 500) });
     case "coach": return coach(deps, actor, { attemptId: id(body.attemptId, "attemptId"), ask: s(body.ask, "question", 500) });
+    case "grade": return gradeMine(deps, actor, {
+      attemptId: typeof body.attemptId === "string" ? id(body.attemptId, "attemptId") : undefined,
+      taskId: typeof body.taskId === "string" ? id(body.taskId, "taskId") : undefined,
+    });
+    case "profile.update": {
+      const track = s(body.track, "track", 20) as TrackId;
+      if (!TRACKS.includes(track)) throw new DevError(400, "track", "Pick Sales, Technical or Admin.");
+      return updatePreferences(deps, actor, { answers: body.answers, track });
+    }
     case "privacy": return setBoardPrivacy(deps, actor, body.hidden === true);
     case "league.join": return joinLeague(deps, actor);
     case "boards": {

@@ -13,7 +13,7 @@ import { BADGE_BY_ID } from "@/devos/core/badges";
 import { rankLabel } from "@/devos/core/policy";
 import type { DevAttempt, GapKind } from "@/devos/core/types";
 import { useDevOs } from "../context";
-import { ACCENT_TEXT, Chip, OUTCOME_WORD, ScenarioText, TAP } from "../kit";
+import { ACCENT_TEXT, Chip, OUTCOME_WORD, ScenarioText, TAP, withUnit } from "../kit";
 
 const GAP_WORDS: Record<GapKind, string> = {
   knowledge: "a missing piece of knowledge", assumption: "an assumption the facts did not support", evidence: "how the evidence was read",
@@ -113,7 +113,7 @@ export function ResultPanel({ attempt, extras }: { attempt: DevAttempt; extras?:
         </ul>
       )}
       {item.type === "numeric" && attempt.reveal?.value !== undefined && (
-        <p className="text-sm">Correct answer: <strong>{attempt.reveal.value.toLocaleString("en-IN")}{item.unit ? ` ${item.unit}` : ""}</strong>{attempt.response.kind === "number" && <span className="text-muted-foreground"> · yours: {attempt.response.value.toLocaleString("en-IN")}</span>}</p>
+        <p className="text-sm">Correct answer: <strong>{withUnit(attempt.reveal.value, item.unit)}</strong>{attempt.response.kind === "number" && <span className="text-muted-foreground"> · yours: {withUnit(attempt.response.value, item.unit)}</span>}</p>
       )}
       {item.type === "order" && attempt.reveal?.order && (
         <div className="text-sm"><p className="font-medium mb-1">The right order</p><ol className="list-decimal pl-5 space-y-0.5">{attempt.reveal.order.map((i) => <li key={i}>{item.options?.[i]}</li>)}</ol></div>

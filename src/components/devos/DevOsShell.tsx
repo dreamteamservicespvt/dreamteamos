@@ -5,12 +5,14 @@
  */
 import { useEffect, useRef, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { BarChart3, BrainCircuit, History, Home, Map, ShieldCheck, Swords, Trophy } from "lucide-react";
+import { BarChart3, BrainCircuit, History, Home, Map, ShieldCheck, Swords, Trophy, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rankLabel } from "@/devos/core/policy";
 import { useDevOs } from "./context";
 import { purgeOtherDrafts } from "./drafts";
 import { RankBadge } from "./kit";
+import { useAutoGrade } from "./useAutoGrade";
+import { useDevAttempts } from "@/hooks/useDevOs";
 
 const TABS = [
   { to: "/dev-os", label: "Home", icon: Home, end: true },
@@ -19,6 +21,7 @@ const TABS = [
   { to: "/dev-os/rank", label: "Career", icon: Trophy },
   { to: "/dev-os/arena", label: "Arena", icon: Swords },
   { to: "/dev-os/history", label: "History", icon: History },
+  { to: "/dev-os/profile", label: "Profile", icon: UserRound },
 ];
 
 export function DevOsShell({ children }: { children: ReactNode }) {
@@ -97,6 +100,14 @@ export function DevOsShell({ children }: { children: ReactNode }) {
         </nav>
       )}
       <div className="min-w-0">{children}</div>
+      {/* While any written answer of theirs waits for a grade, it is graded from whichever screen is open. */}
+      {active && profile && profile.stats.pending > 0 && <PendingGrader uid={user.uid} onToday={setTodayReason} />}
     </div>
   );
+}
+
+function PendingGrader({ uid, onToday }: { uid: string; onToday: (r: string | null) => void }) {
+  const { data } = useDevAttempts(uid, 20);
+  useAutoGrade(data, onToday);
+  return null;
 }

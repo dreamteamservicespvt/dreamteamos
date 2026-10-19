@@ -224,6 +224,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-19)
 
+- 2026-10-19 (afternoon), **local, not pushed** — **Development OS fixes** from the owner's screenshots: answers revealed at
+  the end; written answers and practicals graded in their own request (no more hours on "Being graded"); Career's false
+  "top rank"; a rank timeline with badge pictures; an editable Profile (`/dev-os/profile`); back buttons that go back
+  (`devos.md`; history 2026-10-19 afternoon).
+
 - 2026-10-19, **on `main` and live** (with the 2026-10-18 security work and the Dev OS's open tick; pushed by the owner as
   `802f09a`, build `1792320604656`, checked 2026-10-18 10:52 UTC: both APIs 401 without a token, `/api/devos` 200;
   the **Firestore rules PUBLISHED** 10:58 UTC — anonymous reads / writes now 403 — and public sign-up switched off,
@@ -326,9 +331,8 @@ errors:** done means every listed item is fully resolved with no build, console 
 - `npm run build` ✅ (2026-10-18: main chunk ≈497 KB, vendor-firebase ≈665 KB, geminiService chunk ≈890 KB; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` 🟡 272 files: all pass but one (2026-10-19, with the audit fixes); the one failure,
-  `smmDeliveryControlUiOct15` (the view-only Social Media Team Lead), is pre-existing — it fails on `88ee836` too. Under
-  heavy parallel load a few UI tests can time out; they pass re-run alone.
+- `npx vitest run` ✅ 273 files, 4557 tests all pass (2026-10-19 afternoon; `smmDeliveryControlUiOct15`, failing earlier
+  that day, passed in this run). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-18).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work (newest first; detail in §31): the DREAM TEAM AI Development OS (2026-10-18); dates and periods across SMM, pay, invoices and AI accounts (2026-10-15); the voice-over word contract + 10/10 loop (2026-10-15); SMM Delivery Control, all phases (2026-10-15); the Real Owner Duo (2026-10-15); bottom toasts, one-row dismiss / unread, the 90-day clean-up, the

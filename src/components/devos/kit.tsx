@@ -2,8 +2,9 @@
  * The Development OS's small UI parts. The owner's rule for status visuals (memory: plain words + one simple picture
  * per item, charts only as extras) is followed everywhere: a word, a colour, one ring or bar.
  */
-import type { ReactNode } from "react";
-import { Info, Loader2, ShieldCheck } from "lucide-react";
+import { useId, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Info, Loader2, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MEASUREMENT_DISCLAIMER } from "@/devos/core/dimensions";
 import type { Difficulty, Outcome, Purpose, RankLevel } from "@/devos/core/types";
@@ -17,17 +18,68 @@ export const RANK_STYLE: Record<RankLevel, { ring: string; text: string; bg: str
   6: { ring: "ring-rose-500/60", text: "text-rose-600 dark:text-rose-400", bg: "from-rose-400 via-fuchsia-500 to-amber-400" },
 };
 
+/**
+ * ── Each rank has its own badge (2026-10-19, owner: "keep any badge images regarding to that badge — silver, gold,
+ * elite") ── A tier a person recognises at a glance: Bronze → Silver → Gold → Platinum → Diamond → Elite, drawn as
+ * inline SVG (no image files to load or go missing, sharp at every size, the same in both themes). The rank's own name
+ * (`policy.rankLabels`) stays the title; the tier is the picture and its caption.
+ */
+export const RANK_TIER: Record<RankLevel, { name: string; from: string; to: string; edge: string; ink: string }> = {
+  1: { name: "Bronze", from: "#e0a47a", to: "#8a4b22", edge: "#5e3216", ink: "#fff4ea" },
+  2: { name: "Silver", from: "#f3f5f8", to: "#8b95a3", edge: "#5c6573", ink: "#3a414c" },
+  3: { name: "Gold", from: "#ffe27a", to: "#c98a07", edge: "#8a5d00", ink: "#5a3b00" },
+  4: { name: "Platinum", from: "#bff3ee", to: "#3c9c9a", edge: "#22625f", ink: "#0f3d3b" },
+  5: { name: "Diamond", from: "#a5d8ff", to: "#5b5bd6", edge: "#2f2f8f", ink: "#ffffff" },
+  6: { name: "Elite", from: "#ff8fb1", to: "#8b2fc9", edge: "#4c1270", ink: "#ffe58a" },
+};
+
+/** The rank's badge picture. `locked` = not reached yet (greyed, with the shape still recognisable). */
+export function RankEmblem({ level, size = 48, locked = false, className }: { level: RankLevel; size?: number; locked?: boolean; className?: string }) {
+  const t = RANK_TIER[level];
+  const uid = useId().replace(/:/g, "");
+  const g = `rk${uid}`;
+  const star = (cx: number, cy: number, r: number) => {
+    const pts: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const a = (Math.PI / 5) * i - Math.PI / 2;
+      const rr = i % 2 ? r * 0.45 : r;
+      pts.push(`${(cx + rr * Math.cos(a)).toFixed(2)},${(cy + rr * Math.sin(a)).toFixed(2)}`);
+    }
+    return <polygon points={pts.join(" ")} fill={t.ink} />;
+  };
+  // The centre mark climbs with the tier: 1–3 stars, a laurel star, a gem, a crown.
+  const mark = level <= 3
+    ? (level === 1 ? star(32, 34, 9) : level === 2 ? <>{star(25, 34, 7)}{star(39, 34, 7)}</> : <>{star(32, 28, 7)}{star(23, 39, 6)}{star(41, 39, 6)}</>)
+    : level === 4
+      ? <>{star(32, 33, 9)}<path d="M18 40c3 6 8 9 14 9s11-3 14-9" fill="none" stroke={t.ink} strokeWidth="2.4" strokeLinecap="round" /></>
+      : level === 5
+        ? <><polygon points="32,20 44,31 32,48 20,31" fill={t.ink} /><polygon points="32,20 38,31 32,48 26,31" fill={t.to} opacity=".35" /><line x1="20" y1="31" x2="44" y2="31" stroke={t.to} strokeWidth="1.4" opacity=".6" /></>
+        : <><path d="M19 42 L21 25 L27 33 L32 21 L37 33 L43 25 L45 42 Z" fill={t.ink} /><rect x="19" y="43" width="26" height="4" rx="1.5" fill={t.ink} /></>;
+  return (
+    <svg viewBox="0 0 64 64" width={size} height={size} className={cn("shrink-0 drop-shadow-sm", locked && "grayscale opacity-45", className)} aria-hidden data-test={`rank-emblem-${level}`}>
+      <defs>
+        <linearGradient id={`${g}f`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={t.from} /><stop offset="1" stopColor={t.to} /></linearGradient>
+        <linearGradient id={`${g}s`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".55" /><stop offset=".5" stopColor="#fff" stopOpacity="0" /></linearGradient>
+      </defs>
+      {/* Wings for the top two tiers. */}
+      {level >= 5 && <path d="M8 22c-4 9-2 19 6 24l3-6c-4-4-6-10-4-17zM56 22c4 9 2 19-6 24l-3-6c4-4 6-10 4-17z" fill={`url(#${g}f)`} stroke={t.edge} strokeWidth="1.2" />}
+      <path d="M32 4 L54 12 V30 C54 44 44 54 32 60 C20 54 10 44 10 30 V12 Z" fill={`url(#${g}f)`} stroke={t.edge} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M32 9 L49 15.5 V30 C49 41.5 41 49.5 32 54.5 C23 49.5 15 41.5 15 30 V15.5 Z" fill="none" stroke={t.ink} strokeOpacity=".45" strokeWidth="1.2" />
+      <path d="M32 4 L54 12 V30 C54 33 53.5 35 53 37 C40 30 24 30 11 37 C10.5 35 10 33 10 30 V12 Z" fill={`url(#${g}s)`} />
+      {mark}
+    </svg>
+  );
+}
+
 export function RankBadge({ level, label, size = "md" }: { level: RankLevel; label: string; size?: "sm" | "md" | "lg" }) {
   const s = RANK_STYLE[level];
-  const dim = size === "lg" ? "h-16 w-16 text-xl" : size === "sm" ? "h-8 w-8 text-xs" : "h-11 w-11 text-base";
+  const px = size === "lg" ? 64 : size === "sm" ? 32 : 44;
   return (
     <div className="flex items-center gap-2 min-w-0" data-test="rank-badge">
-      <div className={cn("shrink-0 rounded-2xl bg-gradient-to-br text-white font-bold grid place-items-center shadow-sm ring-2", dim, s.bg, s.ring)} aria-hidden>
-        {level}
-      </div>
+      <RankEmblem level={level} size={px} />
       {size !== "sm" && (
         <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rank</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rank {level} · {RANK_TIER[level].name}</p>
           <p className={cn("font-semibold leading-tight truncate", s.text)}>{label}</p>
         </div>
       )}
@@ -85,7 +137,7 @@ export function PurposeChip({ purpose }: { purpose: Purpose }) {
 
 export const OUTCOME_WORD: Record<Outcome, { word: string; tone: ChipTone }> = {
   passed: { word: "Passed", tone: "good" }, failed: { word: "Not yet", tone: "bad" }, expired: { word: "Expired", tone: "muted" },
-  system_error: { word: "Not counted (system)", tone: "muted" }, pending_validation: { word: "Being graded", tone: "info" }, partial: { word: "Partly", tone: "warn" },
+  system_error: { word: "Not counted (system)", tone: "muted" }, pending_validation: { word: "Grading…", tone: "info" }, partial: { word: "Partly", tone: "warn" },
 };
 
 export type ChipTone = "good" | "warn" | "bad" | "info" | "muted" | "primary";
@@ -218,3 +270,27 @@ export function timeAgo(ms: number | null | undefined, now = Date.now()): string
 }
 
 export const TAP = "min-h-[44px] sm:min-h-[38px]";
+
+/** A number with its unit as people read it: "₹5,399" (a currency sign goes first), "12 days". */
+export function withUnit(v: number, unit?: string): string {
+  const n = v.toLocaleString("en-IN");
+  if (!unit) return n;
+  return /^[₹$€£]$/.test(unit.trim()) ? `${unit.trim()}${n}` : `${n} ${unit}`;
+}
+
+/**
+ * ── A Back that goes back (2026-10-19, owner: "keep back buttons dynamic") ── It returns to the screen the person
+ * actually came from (an answer opened from a task's summary goes back to that summary, not always to History). When
+ * there is nothing in-app to go back to — a link from a notification or a fresh tab — it goes to `fallback`, named by
+ * `fallbackLabel`. React Router keeps its own position in `history.state.idx` (0 = the first page of this visit).
+ */
+export function BackButton({ fallback, fallbackLabel = "Back", className }: { fallback: string; fallbackLabel?: string; className?: string }) {
+  const navigate = useNavigate();
+  const canGoBack = typeof window !== "undefined" && ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;
+  return (
+    <button type="button" onClick={() => (canGoBack ? navigate(-1) : navigate(fallback))}
+      className={cn("inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground min-h-[40px]", className)} data-test="devos-back">
+      <ArrowLeft className="h-4 w-4" /> {canGoBack ? "Back" : fallbackLabel}
+    </button>
+  );
+}

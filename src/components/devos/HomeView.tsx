@@ -32,7 +32,9 @@ export function TaskCard({ task, now }: { task: DevTask; now: number }) {
   const kindIcon = task.kind === "challenge" || task.kind === "mission_part" || task.kind === "capstone" ? Wrench : task.kind === "remediation" ? Sparkles : task.kind === "rank" ? Target : PlayCircle;
   const Icon = kindIcon;
   const grading = task.state === "completed";
-  const label = grading ? "Being graded" : task.state === "in_progress" ? "Continue" : practical ? "Open" : "Start";
+  // Every answer is in and a written one is with the graders: the card opens the answers (revealed at the end since
+  // 2026-10-19) instead of sitting there as a disabled spinner; the shell grades it meanwhile.
+  const label = grading ? "Grading… see my answers" : task.state === "in_progress" ? "Continue" : practical ? "Open" : "Start";
   return (
     <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3 min-w-0" data-test={`task-card-${task.kind}`}>
       <div className="flex items-start gap-3 min-w-0">
@@ -50,7 +52,7 @@ export function TaskCard({ task, now }: { task: DevTask; now: number }) {
         {task.blueprint && <Chip tone="muted">{task.blueprint.length} {task.blueprint.length === 1 ? "item" : "items"}</Chip>}
         {task.dims.slice(0, 3).map((d) => <Chip key={d} tone="primary">{dimensionName(d)}</Chip>)}
       </div>
-      <Button className={cn("w-full", TAP)} variant={task.kind === "quest" ? "default" : "outline"} disabled={grading} onClick={() => navigate(`/dev-os/play/${task.id}`)} data-test={`task-open-${task.id}`}>
+      <Button className={cn("w-full", TAP)} variant={task.kind === "quest" ? "default" : "outline"} onClick={() => navigate(`/dev-os/play/${task.id}`)} data-test={`task-open-${task.id}`}>
         {grading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}{label}{!grading && <ArrowRight className="h-4 w-4 ml-1" />}
       </Button>
     </div>
@@ -106,14 +108,26 @@ export default function HomeView() {
   }
 
   if (profile.onboarding.baseline === "in_progress") {
+    // Every answer in, a written one still with the graders: "Continue" would open a finished baseline — say what is
+    // happening instead (the shell grades it meanwhile), with the answers one tap away.
+    const waiting = tasks.some((t) => t.kind === "baseline" && t.state === "completed");
     return (
       <div className="space-y-4">
-        <Section title="Finish your baseline" hint="Ten short challenges, one for each skill — it sets your starting plan. Hints are off; take your time.">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <p className="text-sm flex-1">You can stop at any point and continue later — every answer is saved.</p>
-            <Button className={TAP} onClick={() => navigate("/dev-os/play/baseline")} data-test="devos-continue-baseline">Continue the baseline <ArrowRight className="h-4 w-4 ml-1" /></Button>
-          </div>
-        </Section>
+        {waiting ? (
+          <Section title="Baseline done — grading your written answers" hint="Two independent AI graders check each written answer against its rubric, usually within a minute or two.">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3" data-test="devos-baseline-grading">
+              <p className="text-sm flex-1 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin shrink-0" /> Your plan, today's quest and your rank gates open as soon as they are graded. This page updates by itself.</p>
+              <Button variant="outline" className={TAP} onClick={() => navigate("/dev-os/play/baseline")}>See my answers</Button>
+            </div>
+          </Section>
+        ) : (
+          <Section title="Finish your baseline" hint="Ten short challenges, one for each skill — it sets your starting plan. Hints are off; take your time.">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <p className="text-sm flex-1">You can stop at any point and continue later — every answer is saved.</p>
+              <Button className={TAP} onClick={() => navigate("/dev-os/play/baseline")} data-test="devos-continue-baseline">Continue the baseline <ArrowRight className="h-4 w-4 ml-1" /></Button>
+            </div>
+          </Section>
+        )}
         <Disclaimer />
       </div>
     );
@@ -147,7 +161,7 @@ export default function HomeView() {
             <Link to="/dev-os/rank" className="rounded-2xl bg-card/80 border border-border p-3 text-center hover:bg-muted transition-colors">
               <Target className="h-4 w-4 mx-auto text-primary" aria-hidden />
               <p className="font-bold tabular-nums mt-1">{evaluation?.next ? `${passed}/${gates}` : "Top"}</p>
-              <p className="text-[11px] text-muted-foreground truncate">{evaluation?.next ? `gates to ${rankLabel(policy, evaluation.next)}` : "rank reached"}</p>
+              <p className="text-[11px] text-muted-foreground leading-tight break-words">{evaluation?.next ? `gates to ${rankLabel(policy, evaluation.next)}` : "rank reached"}</p>
             </Link>
           </div>
         </div>
