@@ -91,11 +91,11 @@ Settlements paid (`incentive-settled-note`); the member's **Settlements** lists 
 periods only; **My Performance**'s settlement panel is `commissionByPeriod`, and its "My Earnings This Period · estimate"
 is `salesPay.runningPlanEstimate` — the plan and target of the running period, each option's incentive ₹0 under 75% with
 "· ₹X at 75% of target" and a gate line (`earnings-gate`); Option 1's salary part (≤ ₹5,000) is never gated. The
-**Leaderboard**'s Day / Month / Career incentive columns use `commissionInWindow` (gated, period rate; the revenue ranking
-is unchanged). **Since 2026-10-19** the board passes `todayStr`: a period still RUNNING under 75% shows its incentive
-"so far" (`accruing` — rate × the window's money, `data-test="comm-so-far"` "so far · at 75% target" under the cell), as
-My Salary / the Dashboard already did; an ENDED period under 75% stays ₹0. (It read ₹0 for every member with a target until
-the day they crossed 75% — the gate was judged on a few days' money against the whole month's target.)
+**Leaderboard**'s Day / Month / Career incentive columns: **plan rate (5% / 10%) × the VERIFIED money collected in the
+window, with NO 75% target check** (owner, 2026-10-19 — the board as before 2026-10-15). `calcCommission` calls
+`commissionInWindow` with `dailyTarget: 0` (= no target) and the rate that applied in each period (`payTerms`). From
+2026-10-15 to 10-19 it was gated, so members with a target read ₹0 mid-month. The gate still decides what is PAID
+(Sales Payroll, Settlements, My Salary); the revenue ranking is unchanged.
 
 **9.11 Clients, feedback & upsell, reviews** ✅. `pages/shared/Clients.tsx`,
 `pages/shared/FeedbackUpsell.tsx`, `pages/sales-admin/ClientLookup.tsx`,

@@ -408,13 +408,6 @@ export default function SalesPayroll() {
                     <div className="lg:col-span-2 lg:text-right">
                       <p className="font-mono text-sm tabular-nums text-success">{formatCurrency(row.commission)}</p>
                       <p className="text-[10px] text-muted-foreground">{row.rate}% · {row.saleCount} sales</p>
-                      {/* ₹0 under the 75% gate read as "no incentive" with no reason; the reason and the
-                          amount waiting on it now sit under it (the payment is unchanged — 2026-10-19). */}
-                      {row.incentiveWithheld && (
-                        <p data-test="payroll-incentive-gate" className="text-[10px] text-muted-foreground">
-                          {formatCurrency(row.commissionBeforeTarget)} at 75% of target
-                        </p>
-                      )}
                     </div>
 
                     <div className="lg:col-span-1 lg:text-right">

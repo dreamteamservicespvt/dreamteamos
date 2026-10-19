@@ -6,7 +6,16 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
-- **2026-10-19 (evening): the Leaderboard's incentive while the period runs** (`sales.md` §9.4, `people.md` §9.14). The
+- **2026-10-19 (night): the Leaderboard's incentives back to plan rate × verified money, no target check**
+  (`sales.md` §9.4, `people.md` §9.14). The owner, after the entry below: the board must show, as before 15 Oct, Day
+  Incentives / the month's / Career commission = 5% or 10% × the verified money collected in the window, with no 75% target
+  check, and the "so far" line and the Sales Payroll note removed. `Leaderboard.calcCommission` now passes `dailyTarget: 0`
+  to `commissionInWindow` (no gate; the rate of each period's plan). The evening's `todayStr` / `accruing` in
+  `utils/salesPay`, the `SoFarNote`, the Payroll note and `leaderboardSoFarOct19` were reverted. Payroll, Settlements,
+  My Salary and the Dashboard keep the 75% gate. Test `leaderboardNoTargetOct19` (3: Kusuma ₹8,551 at 5%, Pavani 10% of
+  verified only, Govardhan ₹2,370); full suite, build, typecheck 0.
+
+- **2026-10-19 (evening, superseded the same night): the Leaderboard's incentive while the period runs** (`sales.md` §9.4, `people.md` §9.14). The
   owner's screenshot (19 Oct): "Oct 2026 Comm." ₹0 for Kusuma (₹1,71,018 collected) and Pavani (₹52,736), ₹2,370 for
   Govardhan (₹47,400). Cause: `commissionInWindow` judged the 75% gate on the RUNNING period's money so far against the
   whole period's target; the two with a daily target were under it nine days in, Govardhan has no target (nothing
