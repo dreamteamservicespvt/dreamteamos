@@ -73,6 +73,8 @@ export async function startUpsell(params: {
         // create a duplicate the number-lock machinery would then have to reconcile.
         return { ok: false, message: "This number is yours but has no lead to add a sale to. Add it from My Leads." };
       }
+      case "held_elsewhere":
+        return { ok: false, message: `${result.ownerName} has this number now — your lead on it is closed.` };
       case "reserved":
         return {
           ok: false,

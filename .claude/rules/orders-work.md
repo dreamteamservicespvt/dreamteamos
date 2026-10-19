@@ -116,7 +116,8 @@ once a session; Orders toasts "Queue tidied").
 **Deadlines:** `PromiseDeadline` chosen at sale (`presetKey`, `hours`, `startAt` = sale time,
 `dueAt`). **One extension** allowed (`canExtendPromise`, `extendOrderPromise` writes the order and
 mirrors it onto the assignment, never the sale). `notifyDueOrdersOnOpen` (Orders page open) alerts
-the assignee, seller, tech admin and team leaders when a job is near or overdue. **SMM months (2026-10-15):** an SMM
+the assignee, seller, tech admin and team leaders when a job is near or overdue — each person ONCE per order per
+state (due soon / overdue), and once more after an extension (`once` keys, 2026-10-19; it repeated every 6 h). **SMM months (2026-10-15):** an SMM
 month's order and jobs carry `monthPromise` (due at the end of the month's last own day — the day before its renewal day,
 `smm.md` §9.9); `assignSmmMonth` puts it on a sold month's order before making jobs when the order's promise is not
 `smm_month` (so Orders → Assign jobs / `AssignTracksDialog` get it too) and on open jobs that lack it; a setup save keeps

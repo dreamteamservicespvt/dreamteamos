@@ -27,6 +27,24 @@ paths:
 **sale-frozen 1–7 days**. Admins can override or release. Pools release `dailyLimit` numbers per day
 if yesterday's completion ≥ `minCompletionPercent`. The release runs only when the sales admin
 opens their Dashboard.
+**My Leads speed and search (owner, 2026-10-19, Kusuma: 2,173 leads, 1,739 sales).** (1) A SEARCH covers every day
+(and a picked date): the day window is skipped while the box has text ("Searching all days"); same on the Sales tab.
+(2) One filter layout on every tab (`FilterBar` / `StatusSelect` / `DaySelect`, `data-test` `leads-filter-bar` /
+`sales-filter-bar` / `dup-filter-bar`): on a phone the search has its OWN full row (44px, 16px text) and the two
+dropdowns share the row below, half each; from `sm` all three are one row; an ✕ clears it. (Squeezed into one row with
+the dropdowns on a 390px phone the box was 96px — measured in the harness.) Tab labels never wrap. (3) The **Duplicates** tab has the same row (its own search / status / day, opening on All Days) and
+shows 10 at a time; Sales shows 20 at a time (it rendered all 1,739). (4) The lists follow the search through
+`useDeferredValue` and are memoized; the sort and the day window compute each lead's day once per snapshot. (5) The
+**duplicate scan** runs once per SESSION (`salesLeadsStore.duplicateScan`; Recheck runs it again), starts 1.5 s after
+the page is on screen, and keeps 6 `in` queries in flight (`DUPLICATE_SCAN_CONCURRENCY`) — it fired ~218 at once on
+every visit and took 51 s live, starving "Create Lead"'s transaction. (6) **"Already yours" that showed nothing:**
+resolving a duplicate freezes the loser's lead but not the number's lock, so the lock kept naming a member whose list
+hides the lead (Kusuma, +919885719740, `duplicate_resolved`). Now: Add Custom Lead first checks the member's own
+loaded leads (an active one → "Already in your leads", the modal closes and the list is searched to it, no server
+call); `claimNumber`'s own-lock branch reads the lock's lead — frozen → `held_elsewhere` ("<name> has this number
+now"), gone → added fresh (timeline note), no `ownerLeadId` → `already_yours` as before; a searched number that is a
+hidden (frozen) lead is said under the list (`hidden-search-match`); Upsell to a frozen lead says who has it
+(`startUpsell` + My Leads' upsell arrival).
 
 **9.4 Sales recording & approvals** ✅. `components/sales/SaleForm.tsx` (the only sale form, also
 used for upsells), `SmmSaleFields`, `SaleSection`, `SaleStatusChip`;
@@ -115,7 +133,9 @@ verifies (10% loyalty discount) → member uploads a feedback video.
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
 - **Numbers:** a claim reserves for 24h; takeover is allowed after that and freezes the old lead;
-  a sale-freeze lasts 1–7 days; lock writes are transactions capped at 2 attempts.
+  a sale-freeze lasts 1–7 days; lock writes are transactions capped at 2 attempts. A lock whose lead is frozen tells
+  its owner who has the number; a lock whose lead was deleted lets its owner add the number fresh (2026-10-19).
+- **Search finds a number on any day** (owner, 2026-10-19): typing in My Leads' search ignores the day filter.
 - **Discount authority:** a member may give up to **10%** alone. Beyond that the sales admin approves
   the discount (verifying the sale approves it). **Since 2026-10-05 (owner) the sale reaches the tech side
   at once anyway** — its order is made at sale time with `saleVerified:false` ("Pending approval" on the
@@ -149,6 +169,10 @@ verifies (10% loyalty discount) → member uploads a feedback video.
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- My Leads speed (2026-10-19): the member's whole lead history still loads (one session listener, ~2,000 docs for a
+  long-serving member; the persistent cache makes later opens fast). Duplicates added by an admin during the session
+  show from the next session or Recheck. The resolver still freezes the lead of a member who ADDED the number
+  themselves when the other member's lead is older (a business-rule question, unchanged).
 - Sale identity (2026-10-08): `smmSetup` (Add SMM sale's set-up of an existing sale) still passes the
   sale's position (`itemIndex`) from a fresh read; the risk window is a delete in the same second.
   `cancelOrderForSale` (rejections) still deletes a waiting order without its chat (a re-approval reopens

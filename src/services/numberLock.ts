@@ -77,7 +77,13 @@ export type ClaimResult =
   | { kind: "takeover"; leadId: string; previousOwnerName: string }
   | { kind: "reserved"; ownerName: string; until: Date }
   | { kind: "sale_frozen"; saleByName: string; until: Date }
-  | { kind: "already_yours" };
+  | { kind: "already_yours" }
+  /**
+   * The lock still names this member, but their lead on the number is frozen — another member kept
+   * it (a resolved duplicate) or an admin locked it. Said as such instead of "already yours", which
+   * sent the member looking for a lead their list hides (2026-10-19).
+   */
+  | { kind: "held_elsewhere"; ownerName: string };
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
 
@@ -169,7 +175,42 @@ export async function claimNumber({
      * nothing. The freeze below still blocks everybody else for its full term.
      */
     if (lock.ownerId === user.uid) {
-      return { kind: "already_yours" };
+      /*
+        ── Is that lead still a working lead? (2026-10-19) ──
+        Resolving a duplicate freezes the loser's LEAD but never touches the lock, so the lock kept
+        naming a member whose list hides the number: "Already yours", and nothing to find (Kusuma,
+        9885719740). The lead the lock holds is read: frozen → say who has the number; gone → the
+        lock is stale, so the number is added fresh. No lead id on the lock (older locks) keeps the
+        old answer — creating one could duplicate a lead the member already has.
+      */
+      if (!lock.ownerLeadId) return { kind: "already_yours" };
+      const ownSnap = await tx.get(doc(db, "leads", lock.ownerLeadId));
+      if (ownSnap.exists()) {
+        const own = ownSnap.data() as { assignedTo?: string; frozen?: boolean; takenOverBy?: string };
+        if (own.assignedTo === user.uid && own.frozen) {
+          return { kind: "held_elsewhere", ownerName: own.takenOverBy || "another member" };
+        }
+        return { kind: "already_yours" };
+      }
+      tx.set(newLeadRef, buildLeadData(user, normalized, displayName));
+      tx.set(lockRef, {
+        phone: normalized,
+        ownerId: user.uid,
+        ownerName: user.name,
+        ownerLeadId: newLeadRef.id,
+        claimedAt: nowTs,
+        reserveExpiresAt,
+        saleFrozen: false,
+        saleFrozenUntil: null,
+        saleById: null,
+        saleByName: null,
+        timeline: [
+          ...(lock.timeline || []),
+          { action: "claimed", byId: user.uid, byName: user.name, at: nowTs, note: "Re-added — the lock's lead no longer existed" },
+        ],
+        updatedAt: nowTs,
+      } as NumberLock);
+      return { kind: "created", leadId: newLeadRef.id };
     }
 
     // ── Sold & still frozen → blocked for everyone ELSE, unless the freeze is orphaned ──

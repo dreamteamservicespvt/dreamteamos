@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useDeferredValue, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -7,6 +7,7 @@ import {
 import { db } from "@/services/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { useMyLeads } from "@/hooks/useMyLeads";
+import { useSalesLeadsStore } from "@/store/salesLeadsStore";
 import { useMyOrders } from "@/hooks/useMyOrders";
 import { logActivity } from "@/services/activityLog";
 import { uploadToCloudinary } from "@/services/cloudinary";
@@ -106,6 +107,125 @@ function getDayLabel(date: Date): string {
 
 type SaleRow = { lead: Lead; item: SaleDetail; itemIndex: number };
 
+/** A lead matches a search by its name, real name or any run of its phone digits. */
+function searchMatcher(q: string): (l: Lead) => boolean {
+  const lower = q.toLowerCase();
+  return (l) =>
+    !q ||
+    !!l.displayName?.toLowerCase().includes(lower) ||
+    phoneMatchesQuery(l.phone, q) ||
+    !!l.realName?.toLowerCase().includes(lower);
+}
+
+/** The status dropdown's rule, shared by the Leads and Duplicates tabs. */
+function statusMatcher(status: string): (l: Lead) => boolean {
+  return (l) => {
+    if (status === "all") return true;
+    const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+    if (status === "sale_done") return !!l.saleDone;
+    if (status === "verification_pending") return items.some((i: any) => i.verificationStatus === "pending");
+    if (status === "verified_sales") return items.some((i: any) => i.verificationStatus === "verified");
+    return l.status === status;
+  };
+}
+
+/** Counts for the status dropdown, from a list the status filter has NOT been applied to. */
+function countStatuses(src: Lead[]): Record<string, number> {
+  const counts: Record<string, number> = { all: src.length, sale_done: 0, verification_pending: 0, verified_sales: 0 };
+  for (const l of src) {
+    counts[l.status] = (counts[l.status] || 0) + 1;
+    if (l.saleDone) counts.sale_done++;
+    const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
+    if (items.some((i: any) => i.verificationStatus === "pending")) counts.verification_pending++;
+    if (items.some((i: any) => i.verificationStatus === "verified")) counts.verified_sales++;
+  }
+  return counts;
+}
+
+/*
+  Every list's filters, laid out one way (2026-10-19, owner: "the search bar is very small, put it in
+  a single row"). On a phone the search box has the whole row to itself and the two dropdowns share
+  the row under it, half each — squeezed into one row with them, the box was 96px and a typed number
+  showed "9885". From `sm` up all three sit in one row, the search taking the room that is left.
+*/
+const FILTER_SELECT =
+  "h-10 min-w-0 flex-1 sm:flex-none sm:w-auto px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary";
+
+function FilterBar({ value, onChange, placeholder, children, testId }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  children?: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2" data-test={testId}>
+      <div className="relative w-full sm:flex-1 sm:min-w-0" data-test="filter-search">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          type="search"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          enterKeyHint="search"
+          autoComplete="off"
+          className="w-full h-11 sm:h-10 pl-10 pr-10 rounded-lg bg-card border border-border text-foreground text-base sm:text-sm outline-none focus:border-primary [&::-webkit-search-cancel-button]:hidden"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            aria-label="Clear search"
+            className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+          >
+            <X size={15} />
+          </button>
+        )}
+      </div>
+      {children && <div className="flex items-center gap-2 sm:shrink-0" data-test="filter-selects">{children}</div>}
+    </div>
+  );
+}
+
+function ShowMoreButton({ remaining, step, onClick }: { remaining: number; step: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full h-10 rounded-xl bg-card border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors flex items-center justify-center gap-2"
+    >
+      <ChevronDown size={15} /> Show {Math.min(step, remaining)} more ({remaining} remaining)
+    </button>
+  );
+}
+
+function StatusSelect({ value, onChange, counts }: { value: string; onChange: (v: string) => void; counts: Record<string, number> }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Status" className={FILTER_SELECT}>
+      <option value="all">All Status ({counts.all || 0})</option>
+      {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label} ({counts[s.value] || 0})</option>)}
+      <option disabled>───────────</option>
+      <option value="sale_done">Sale Done ({counts.sale_done || 0})</option>
+      <option value="verification_pending">Verif. Pending ({counts.verification_pending || 0})</option>
+      <option value="verified_sales">Verified Sales ({counts.verified_sales || 0})</option>
+    </select>
+  );
+}
+
+function DaySelect({ value, onChange, days }: {
+  value: string;
+  onChange: (v: string) => void;
+  days: { date: Date; dateStr: string; label: string }[];
+}) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Day" className={FILTER_SELECT}>
+      {days.map((d, i) => (
+        <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
+      ))}
+      <option value="all">All Days</option>
+    </select>
+  );
+}
+
 export default function MyLeads() {
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
@@ -114,6 +234,10 @@ export default function MyLeads() {
   // Sort order only — the data itself comes from the shared listener above.
   const leads = useMemo(() => {
     const list = [...rawLeads];
+    // Each lead's last-activity time worked out once, not inside every comparison (2026-10-19):
+    // with 2,000 leads the sort called it ~40,000 times on every snapshot.
+    const activity = new Map(list.map((l) => [l.id, leadActivityMs(l)]));
+    const activityOf = (l: Lead) => activity.get(l.id) || 0;
     list.sort((a, b) => {
       // Custom entries always at the top (newest first among custom)
       if (a.isCustomEntry && !b.isCustomEntry) return -1;
@@ -129,10 +253,10 @@ export default function MyLeads() {
        * search. A lead that has been worked since it arrived floats up, newest first; everything
        * untouched keeps its queue order underneath.
        */
-      const aWorked = leadActivityMs(a) > (a.createdAt?.seconds || 0) * 1000;
-      const bWorked = leadActivityMs(b) > (b.createdAt?.seconds || 0) * 1000;
+      const aWorked = activityOf(a) > (a.createdAt?.seconds || 0) * 1000;
+      const bWorked = activityOf(b) > (b.createdAt?.seconds || 0) * 1000;
       if (aWorked !== bWorked) return aWorked ? -1 : 1;
-      if (aWorked && bWorked) return leadActivityMs(b) - leadActivityMs(a);
+      if (aWorked && bWorked) return activityOf(b) - activityOf(a);
 
       // Regular leads: oldest first (daily workflow order)
       return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
@@ -147,6 +271,17 @@ export default function MyLeads() {
   const [salesSearch, setSalesSearch] = useState("");
   const [salesDay, setSalesDay] = useState<string>("all");
   const [salesStatus, setSalesStatus] = useState<string>("all");
+  // The Duplicates tab's own filters (2026-10-19) — the same bar as Leads, opening on every day.
+  const [dupSearch, setDupSearch] = useState("");
+  const [dupStatus, setDupStatus] = useState<string>("all");
+  const [dupDay, setDupDay] = useState<string>("all");
+  /*
+    The lists follow the search a beat behind the keystroke (2026-10-19): filtering 2,000 leads on
+    every key made typing a number stutter on a phone. The box itself updates at once.
+  */
+  const leadQuery = useDeferredValue(search.trim());
+  const salesQuery = useDeferredValue(salesSearch.trim());
+  const dupQuery = useDeferredValue(dupSearch.trim());
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
   const [expandedSale, setExpandedSale] = useState<string | null>(null);
 
@@ -182,6 +317,18 @@ export default function MyLeads() {
       one number, puts exactly that card on screen.
     */
     const target = leads.find(l => l.id === upsellRequest.leadId);
+    if (target?.frozen) {
+      // A frozen lead is hidden from the list, so opening it showed nothing (2026-10-19): say why.
+      toast({
+        title: "This number is with another member",
+        description: `${target.takenOverBy || "Another member"} has it now — your lead on it is closed.`,
+        variant: "destructive",
+      });
+      const closed = new URLSearchParams(leadParams);
+      closed.delete("sale");
+      setLeadParams(closed, { replace: true });
+      return;
+    }
     setViewTab("leads");
     setSelectedDate(undefined);
     setDayFilter("all");
@@ -220,11 +367,20 @@ export default function MyLeads() {
     setLeadParams(next, { replace: true });
   }, [expandedSale, leadParams, setLeadParams]);
   const [showCustomModal, setShowCustomModal] = useState(false);
-  const [duplicateLeadIds, setDuplicateLeadIds] = useState<Set<string>>(new Set());
-  const [dupLoading, setDupLoading] = useState(true);
+  // The last duplicate scan this session, if any (see salesLeadsStore.duplicateScan).
+  const cachedScan = useSalesLeadsStore((s) => (s.duplicateScan && s.duplicateScan.uid === user?.uid ? s.duplicateScan : null));
+  const setDuplicateScan = useSalesLeadsStore((s) => s.setDuplicateScan);
+  const [duplicateLeadIds, setDuplicateLeadIds] = useState<Set<string>>(() => new Set(cachedScan?.leadIds || []));
+  const [dupLoading, setDupLoading] = useState(!cachedScan);
   // Render leads 10 at a time ("Show 10 more") — resets whenever the visible set changes.
   const [visibleLeadCount, setVisibleLeadCount] = useState(10);
-  useEffect(() => { setVisibleLeadCount(10); }, [dayFilter, statusFilter, search, selectedDate, viewTab]);
+  useEffect(() => { setVisibleLeadCount(10); }, [dayFilter, statusFilter, leadQuery, selectedDate, viewTab]);
+  // The Sales and Duplicates tabs render in pages too — Sales listed all 1,700 sales of a long-serving
+  // member at once (2026-10-19).
+  const [visibleSaleCount, setVisibleSaleCount] = useState(20);
+  useEffect(() => { setVisibleSaleCount(20); }, [salesDay, salesStatus, salesQuery, viewTab]);
+  const [visibleDupCount, setVisibleDupCount] = useState(10);
+  useEffect(() => { setVisibleDupCount(10); }, [dupDay, dupStatus, dupQuery, viewTab]);
   const pendingDeletesRef = useRef<Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval> }>>(new Map());
 
   // The member's own orders, so each sale row knows whether the tech team has started work on it
@@ -255,7 +411,9 @@ export default function MyLeads() {
       // Old admin-added duplicates with no sale on either side get auto-resolved:
       // first member to engage (status ≠ not_called) keeps the number, otherwise first added wins.
       const resolution = await resolveNonSaleDuplicates(leads, map, { uid: user.uid, name: user.name });
-      setDuplicateLeadIds(new Set(Object.keys(map).filter((id) => !resolution.resolvedMyLeadIds.has(id))));
+      const open = Object.keys(map).filter((id) => !resolution.resolvedMyLeadIds.has(id));
+      setDuplicateLeadIds(new Set(open));
+      setDuplicateScan({ uid: user.uid, leadIds: open });
       if (resolution.frozeMineCount > 0) {
         toast({
           title: "Duplicate numbers released",
@@ -275,31 +433,27 @@ export default function MyLeads() {
     }
   };
 
-  // Run the scan exactly once, after the first batch of leads has loaded.
+  /*
+    Run the scan once per SESSION (2026-10-19; it was once per visit), and only after the page is on
+    screen: started at the same instant as the page, its queries queued ahead of everything the member
+    did next. A scan already done this session is reused; "Recheck" runs a fresh one.
+  */
   useEffect(() => {
     if (!user || loading || dupRanRef.current) return;
     dupRanRef.current = true;
-    runDuplicateScan();
+    if (cachedScan) return;
+    let started = false;
+    const timer = setTimeout(() => { started = true; runDuplicateScan(); }, 1500);
+    // Left before it started (or the user changed): the next mount schedules it again.
+    return () => { clearTimeout(timer); if (!started) dupRanRef.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, loading]);
+  }, [user?.uid, loading]);
 
   // Search and status filters are kept separate: the dropdown counts must come from the
   // search+day window only, NOT the status-filtered list (otherwise selecting "Answered"
   // makes every other status count read 0).
-  const matchesSearch = (l: Lead) =>
-    !search ||
-    l.displayName?.toLowerCase().includes(search.toLowerCase()) ||
-    phoneMatchesQuery(l.phone, search) ||
-    l.realName?.toLowerCase().includes(search.toLowerCase());
-
-  const matchesStatus = (l: Lead) => {
-    if (statusFilter === "all") return true;
-    const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-    if (statusFilter === "sale_done") return !!l.saleDone;
-    if (statusFilter === "verification_pending") return items.some((i: any) => i.verificationStatus === "pending");
-    if (statusFilter === "verified_sales") return items.some((i: any) => i.verificationStatus === "verified");
-    return l.status === statusFilter;
-  };
+  const matchesSearch = searchMatcher(leadQuery);
+  const matchesStatus = statusMatcher(statusFilter);
 
   /**
    * Numbers this member is locked out of never appear in their list.
@@ -315,12 +469,23 @@ export default function MyLeads() {
    * covers every locked lead, not only the duplicates — a lead taken over by an admin is just as
    * gone from this list, and a number that disappeared with no explanation is a support call.
    */
-  const lockedOut = (l: Lead) => !!l.frozen;
-  const hiddenLockedCount = leads.filter(lockedOut).length;
+  const lockedLeads = useMemo(() => leads.filter((l) => !!l.frozen), [leads]);
+  const hiddenLockedCount = lockedLeads.length;
+  /*
+    A searched number that is one of those hidden leads is SAID, not just missing (2026-10-19): a
+    member typing a number they know they had, and getting "No leads", had no way to learn that a
+    colleague now holds it.
+  */
+  const hiddenMatches = useMemo(
+    () => (leadQuery ? lockedLeads.filter(searchMatcher(leadQuery)) : []),
+    [lockedLeads, leadQuery],
+  );
 
-  const workable = leads.filter((l) => !lockedOut(l));
-  const searchFiltered = workable.filter(matchesSearch);
-  const filtered = searchFiltered.filter(matchesStatus);
+  const workable = useMemo(() => leads.filter((l) => !l.frozen), [leads]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const searchFiltered = useMemo(() => workable.filter(matchesSearch), [workable, leadQuery]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const filtered = useMemo(() => searchFiltered.filter(matchesStatus), [searchFiltered, statusFilter]);
 
   // Last 5 days for day filter
   const recentDays = useMemo(() => {
@@ -332,21 +497,22 @@ export default function MyLeads() {
     return days;
   }, []);
 
-  // Sale rows (for sales tab) — filtered by salesSearch + salesDay
-  const allSaleRows: SaleRow[] = leads.flatMap((lead) => {
+  // Sale rows (for sales tab) — filtered by salesSearch + salesDay. A search covers every day, as on
+  // the Leads tab (2026-10-19).
+  const allSaleRows: SaleRow[] = useMemo(() => leads.flatMap((lead) => {
     const items = lead.saleItems || (lead.saleDetails ? [lead.saleDetails] : []);
     return items
       .filter((item) => {
         if (salesStatus !== "all") {
           if (item.verificationStatus !== salesStatus) return false;
         }
-        if (salesDay !== "all") {
+        if (salesDay !== "all" && !salesQuery) {
           const d = saleDay(item, lead);
           const dayDateStr = recentDays[parseInt(salesDay)]?.dateStr;
           if (!d || d !== dayDateStr) return false;
         }
-        if (salesSearch) {
-          const q = salesSearch.toLowerCase();
+        if (salesQuery) {
+          const q = salesQuery.toLowerCase();
           const matchName = lead.displayName?.toLowerCase().includes(q);
           const matchPhone = phoneMatchesQuery(lead.phone, q);
           const matchCat = item.category?.toLowerCase().includes(q);
@@ -355,7 +521,22 @@ export default function MyLeads() {
         return true;
       })
       .map((item, idx) => ({ lead, item, itemIndex: idx }));
-  });
+  }), [leads, salesStatus, salesDay, salesQuery, recentDays]);
+
+  /*
+    Each lead's day, worked out once per snapshot (2026-10-19) — the day window used to regroup the
+    whole list, twice, on every keystroke.
+  */
+  const leadDays = useMemo(() => {
+    const activity = new Map<string, string>();
+    const created = new Map<string, string>();
+    for (const l of leads) {
+      activity.set(l.id, leadActivityDay(l));
+      const ts = l.createdAt?.seconds;
+      created.set(l.id, ts ? format(new Date(ts * 1000), "yyyy-MM-dd") : "");
+    }
+    return { activity, created };
+  }, [leads]);
 
   /**
    * Group leads by the day they were last WORKED, not the day they were handed out.
@@ -377,16 +558,23 @@ export default function MyLeads() {
   };
 
   // Apply the active day window (calendar date / day dropdown, incl. "Today + uncalled past")
-  // to any list. Used twice: on the status-filtered list for display, and on the
-  // search-only list for the dropdown counts.
-  const applyDayWindow = (src: Lead[]): Lead[] => {
-    const groups = groupLeadsByDate(src);
-    if (selectedDate) return groups[format(selectedDate, "yyyy-MM-dd")] || [];
-    if (dayFilter === "all") return src;
+  // to any list. Used on the status-filtered list for display, on the search-only list for the
+  // dropdown counts, and by the Duplicates tab with its own day.
+  //
+  // A SEARCH covers every day (2026-10-19, owner): a member typing a number wants that number,
+  // wherever it is — not "No leads" because the list happened to be on Today.
+  const applyDayWindow = (src: Lead[], day = dayFilter, date = selectedDate, searching = !!leadQuery): Lead[] => {
+    if (searching) return src;
+    const dayOf = (l: Lead) => leadDays.activity.get(l.id) ?? leadActivityDay(l);
+    if (date) {
+      const wanted = format(date, "yyyy-MM-dd");
+      return src.filter((l) => dayOf(l) === wanted);
+    }
+    if (day === "all") return src;
 
-    const dayIndex = parseInt(dayFilter);
+    const dayIndex = parseInt(day);
     const dayDateStr = recentDays[dayIndex]?.dateStr;
-    const dayLeads = groups[dayDateStr] || [];
+    const dayLeads = src.filter((l) => dayOf(l) === dayDateStr);
 
     // Special: if viewing Today (index 0), also include uncalled leads from past days — each lead once.
     // A past lead sold to today while still "Not Called" is worked today AND uncalled from another day:
@@ -396,9 +584,8 @@ export default function MyLeads() {
       const uncalledPast = src.filter((l) => {
         if (inToday.has(l.id)) return false;
         if (l.status !== "not_called") return false;
-        const ts = l.createdAt?.seconds;
-        if (!ts) return false;
-        const leadDateStr = format(new Date(ts * 1000), "yyyy-MM-dd");
+        const leadDateStr = leadDays.created.get(l.id);
+        if (!leadDateStr) return false;
         return leadDateStr !== dayDateStr; // from a different day
       });
       return [...dayLeads, ...uncalledPast];
@@ -407,8 +594,18 @@ export default function MyLeads() {
     return dayLeads;
   };
 
-  const activeDayLeads = applyDayWindow(filtered);            // what's displayed
-  const dayWindowLeads = applyDayWindow(searchFiltered);      // counts/stats — independent of status filter
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const activeDayLeads = useMemo(() => applyDayWindow(filtered), [filtered, dayFilter, selectedDate, leadQuery, leadDays, recentDays]);
+  // counts/stats — independent of status filter
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const dayWindowLeads = useMemo(() => applyDayWindow(searchFiltered), [searchFiltered, dayFilter, selectedDate, leadQuery, leadDays, recentDays]);
+
+  // The Duplicates tab: the same search, status and day filters, on the numbers another member holds.
+  const dupBase = useMemo(() => leads.filter((l) => duplicateLeadIds.has(l.id)), [leads, duplicateLeadIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const dupSearched = useMemo(() => applyDayWindow(dupBase.filter(searchMatcher(dupQuery)), dupDay, undefined, !!dupQuery), [dupBase, dupQuery, dupDay, leadDays, recentDays]);
+  const dupLeads = useMemo(() => dupSearched.filter(statusMatcher(dupStatus)), [dupSearched, dupStatus]);
+  const dupStatusCounts = useMemo(() => countStatuses(dupSearched), [dupSearched]);
 
   /**
    * The money this member actually brought in over the selected window.
@@ -426,22 +623,7 @@ export default function MyLeads() {
   const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
 
   // Status counts for dropdown — from the day window WITHOUT the status filter applied
-  const statusCounts = useMemo(() => {
-    const src = dayWindowLeads;
-    const counts: Record<string, number> = { all: src.length };
-    STATUS_OPTIONS.forEach((s) => { counts[s.value] = src.filter((l) => l.status === s.value).length; });
-    counts.sale_done = src.filter((l) => l.saleDone).length;
-    counts.verification_pending = src.filter((l) => {
-      const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-      return items.some((i: any) => i.verificationStatus === "pending");
-    }).length;
-    counts.verified_sales = src.filter((l) => {
-      const items = l.saleItems || (l.saleDetails ? [l.saleDetails] : []);
-      return items.some((i: any) => i.verificationStatus === "verified");
-    }).length;
-    return counts;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, search, selectedDate, dayFilter, recentDays]);
+  const statusCounts = useMemo(() => countStatuses(dayWindowLeads), [dayWindowLeads]);
 
   // Calendar date indicators — performance per day
   const dateIndicators = useMemo(() => {
@@ -462,7 +644,7 @@ export default function MyLeads() {
   // Helper: get "From X days ago" label for leads shown in today view from past days
   const getLeadPastDayLabel = (lead: Lead): string | null => {
     // Only show label when viewing Today
-    if (selectedDate || dayFilter !== "0") return null;
+    if (selectedDate || dayFilter !== "0" || leadQuery) return null;
     const ts = lead.createdAt?.seconds;
     if (!ts) return null;
     const leadDateStr = format(new Date(ts * 1000), "yyyy-MM-dd");
@@ -575,7 +757,18 @@ export default function MyLeads() {
     <div className="space-y-6">
       {/* Custom Lead Modal */}
       {showCustomModal && user && (
-        <AddCustomLeadModal user={user} onClose={() => setShowCustomModal(false)} />
+        <AddCustomLeadModal
+          user={user}
+          leads={leads}
+          onShowLead={(phone) => {
+            setShowCustomModal(false);
+            setViewTab("leads");
+            setSelectedDate(undefined);
+            setStatusFilter("all");
+            setSearch(phone.replace(/\D/g, "").slice(-10));
+          }}
+          onClose={() => setShowCustomModal(false)}
+        />
       )}
 
       {/* Header */}
@@ -715,7 +908,8 @@ export default function MyLeads() {
       />
 
       {/* View Toggle */}
-      <div className="flex gap-1.5">
+      {/* Labels never break onto two lines; Recheck goes to the next row on a narrow phone instead. */}
+      <div className="flex flex-wrap gap-1.5 [&>button]:whitespace-nowrap">
         <button onClick={() => setViewTab("leads")}
           className={`h-8 md:h-9 px-3 md:px-4 rounded-lg text-xs md:text-sm font-medium transition-colors ${viewTab === "leads" ? "bg-primary/15 text-primary border border-primary/30" : "bg-card border border-border text-muted-foreground hover:bg-accent"}`}>
           Leads ({filtered.length})
@@ -744,36 +938,17 @@ export default function MyLeads() {
       {viewTab === "leads" && (
         <div className="space-y-4">
           {/* Search + Status dropdown + Day dropdown */}
-          <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-            <div className="relative flex-1 max-w-xs">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..."
-                className="w-full h-9 pl-9 pr-3 rounded-lg bg-card border border-border text-foreground text-sm outline-none focus:border-primary" />
-            </div>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary">
-              <option value="all">All Status ({statusCounts.all})</option>
-              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label} ({statusCounts[s.value] || 0})</option>)}
-              <option disabled>───────────</option>
-              <option value="sale_done">Sale Done ({statusCounts.sale_done || 0})</option>
-              <option value="verification_pending">Verif. Pending ({statusCounts.verification_pending || 0})</option>
-              <option value="verified_sales">Verified Sales ({statusCounts.verified_sales || 0})</option>
-            </select>
-            {!selectedDate && (
-              <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}
-                className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary">
-                {recentDays.map((d, i) => (
-                  <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
-                ))}
-                <option value="all">All Days</option>
-              </select>
-            )}
-          </div>
+          <FilterBar value={search} onChange={setSearch} placeholder="Search name or number" testId="leads-filter-bar">
+            <StatusSelect value={statusFilter} onChange={setStatusFilter} counts={statusCounts} />
+            {!selectedDate && <DaySelect value={dayFilter} onChange={setDayFilter} days={recentDays} />}
+          </FilterBar>
 
           {/* Day header + lead count */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
-              {selectedDate
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground min-w-0 truncate">
+              {leadQuery
+                ? "Searching all days"
+                : selectedDate
                 ? `Showing leads from ${format(selectedDate, "dd/MM/yyyy")}`
                 : dayFilter === "all"
                   ? "Showing all leads"
@@ -782,7 +957,7 @@ export default function MyLeads() {
                     : `Showing leads from ${recentDays[parseInt(dayFilter)]?.label}`
               }
             </p>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${activeDayLeads.length > 0 ? "bg-info/15 text-info" : "bg-muted text-muted-foreground"}`}>
+            <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${activeDayLeads.length > 0 ? "bg-info/15 text-info" : "bg-muted text-muted-foreground"}`}>
               {activeDayLeads.length} leads
             </span>
           </div>
@@ -793,6 +968,16 @@ export default function MyLeads() {
               {hiddenLockedCount} {hiddenLockedCount === 1 ? "number is" : "numbers are"} hidden —
               another member holds {hiddenLockedCount === 1 ? "it" : "them"}.
             </p>
+          )}
+          {hiddenMatches.length > 0 && (
+            <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning space-y-0.5" data-test="hidden-search-match">
+              {hiddenMatches.slice(0, 3).map((l) => (
+                <p key={l.id}>
+                  <span className="font-mono">{l.phone}</span> is with {l.takenOverBy || "another member"} now —
+                  {l.frozenReason === "duplicate_resolved" ? " they worked it first," : ""} so it is hidden from your list.
+                </p>
+              ))}
+            </div>
           )}
 
           {/* Lead Cards — rendered 10 at a time to keep the page light */}
@@ -839,37 +1024,17 @@ export default function MyLeads() {
       {viewTab === "sales" && (
         <div className="space-y-4">
           {/* Sales filters */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 max-w-xs">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                value={salesSearch}
-                onChange={(e) => setSalesSearch(e.target.value)}
-                placeholder="Search by name, phone, category..."
-                className="w-full h-9 pl-9 pr-3 rounded-lg bg-card border border-border text-foreground text-sm outline-none focus:border-primary"
-              />
-            </div>
-            <select
-              value={salesStatus}
-              onChange={(e) => setSalesStatus(e.target.value)}
-              className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary"
-            >
+          <FilterBar value={salesSearch} onChange={setSalesSearch} placeholder="Name, number or service" testId="sales-filter-bar">
+            <select value={salesStatus} onChange={(e) => setSalesStatus(e.target.value)} aria-label="Status" className={FILTER_SELECT}>
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
               <option value="verified">Verified</option>
             </select>
-            <select
-              value={salesDay}
-              onChange={(e) => setSalesDay(e.target.value)}
-              className="h-9 px-3 rounded-lg bg-card border border-border text-foreground text-xs md:text-sm outline-none focus:border-primary"
-            >
-              {recentDays.map((d, i) => (
-                <option key={d.dateStr} value={String(i)}>{d.label} ({format(d.date, "dd/MM")})</option>
-              ))}
-              <option value="all">All Days</option>
-            </select>
-          </div>
+            <DaySelect value={salesDay} onChange={setSalesDay} days={recentDays} />
+          </FilterBar>
+          {salesQuery && salesDay !== "all" && (
+            <p className="-mt-2 text-xs text-muted-foreground">Searching all days</p>
+          )}
           {allSaleRows.length === 0 ? (
           <div className="bg-card border border-border rounded-xl p-12 text-center">
             <ShoppingBag size={32} className="mx-auto text-muted-foreground/30 mb-2" />
@@ -877,7 +1042,7 @@ export default function MyLeads() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {allSaleRows.map((r, key) => (
+            {allSaleRows.slice(0, visibleSaleCount).map((r, key) => (
               <div key={`${r.lead.id}-${r.itemIndex}-${key}`} className="bg-card border border-border rounded-xl p-4 md:p-5 space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
@@ -922,26 +1087,49 @@ export default function MyLeads() {
             ))}
           </div>
         )}
+          {allSaleRows.length > visibleSaleCount && (
+            <ShowMoreButton remaining={allSaleRows.length - visibleSaleCount} step={20} onClick={() => setVisibleSaleCount((c) => c + 20)} />
+          )}
         </div>
       )}
 
       {/* ─── DUPLICATES TAB ─── */}
       {viewTab === "duplicates" && (() => {
-        const dupLeads = leads.filter((l) => duplicateLeadIds.has(l.id));
         return (
           <div className="space-y-4">
             <div className="flex items-start gap-1.5 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-xs p-2.5">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
               <span>These numbers are also held by another sales executive. If you both record a sale, you'll be asked to upload proof (call-record image or note) so the admin can decide who made the sale.</span>
             </div>
+            {dupBase.length > 0 && (
+              <>
+                <FilterBar value={dupSearch} onChange={setDupSearch} placeholder="Search name or number" testId="dup-filter-bar">
+                  <StatusSelect value={dupStatus} onChange={setDupStatus} counts={dupStatusCounts} />
+                  <DaySelect value={dupDay} onChange={setDupDay} days={recentDays} />
+                </FilterBar>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground min-w-0 truncate">
+                    {dupQuery ? "Searching all days" : dupDay === "all" ? "All duplicate numbers" : `Duplicates from ${recentDays[parseInt(dupDay)]?.label}`}
+                  </p>
+                  <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{dupLeads.length} leads</span>
+                </div>
+              </>
+            )}
             {dupLeads.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-12 text-center">
                 <AlertTriangle size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-                <p className="text-muted-foreground text-sm">No duplicate numbers — none of your numbers are held by another member.</p>
+                <p className="text-muted-foreground text-sm">
+                  {dupBase.length > 0
+                    ? "No duplicate numbers for these filters."
+                    : dupLoading
+                      ? "Checking your numbers…"
+                      : "No duplicate numbers — none of your numbers are held by another member."}
+                </p>
               </div>
             ) : (
+              <>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {dupLeads.map((lead) => (
+                {dupLeads.slice(0, visibleDupCount).map((lead) => (
                   <LeadCard
                     key={lead.id}
                     lead={lead}
@@ -959,6 +1147,10 @@ export default function MyLeads() {
                   />
                 ))}
               </div>
+              {dupLeads.length > visibleDupCount && (
+                <ShowMoreButton remaining={dupLeads.length - visibleDupCount} step={10} onClick={() => setVisibleDupCount((c) => c + 10)} />
+              )}
+              </>
             )}
           </div>
         );
@@ -1869,7 +2061,14 @@ function LeadCard({ lead, isDuplicate, pastDayLabel, updateLead, onDelete, expan
 
 /* ─── Add Custom Lead Modal ─── */
 
-function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => void }) {
+function AddCustomLeadModal({ user, leads, onShowLead, onClose }: {
+  user: AppUser;
+  /** The member's own leads (the session's listener), to answer "already yours" without a round trip. */
+  leads: Lead[];
+  /** Puts this number on screen in My Leads (searched, every day). */
+  onShowLead: (phone: string) => void;
+  onClose: () => void;
+}) {
   const { toast } = useToast();
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -1885,6 +2084,19 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
     const digitCount = normalized.replace(/[^0-9]/g, "").length;
     if (digitCount < 10 || digitCount > 15) {
       toast({ title: "Error", description: "Enter a valid phone number (10–15 digits including country code).", variant: "destructive" });
+      return;
+    }
+    /*
+      ── Already in this member's list? Show it, at once (2026-10-19) ──
+      "Already yours" used to arrive after a server round trip and then left the member to find the
+      number themselves — on Today, where an older lead is not. Their own leads are already on the
+      phone, so the answer is immediate, and the lead is put on screen.
+    */
+    const wanted = normalized.replace(/\D/g, "");
+    const own = leads.find((l) => !l.frozen && normalizePhone(l.phone || "").replace(/\D/g, "") === wanted);
+    if (own) {
+      toast({ title: "Already in your leads", description: "Showing it now." });
+      onShowLead(own.phone);
       return;
     }
     setSaving(true);
@@ -1912,7 +2124,16 @@ function AddCustomLeadModal({ user, onClose }: { user: AppUser; onClose: () => v
         return;
       }
       if (result.kind === "already_yours") {
-        toast({ title: "Already yours", description: "This number is already in your leads." });
+        toast({ title: "Already in your leads", description: "Showing it now." });
+        onShowLead(normalized);
+        return;
+      }
+      if (result.kind === "held_elsewhere") {
+        toast({
+          title: "Number is with another member",
+          description: `${result.ownerName} has this number now — your lead on it is closed, so you can't add it.`,
+          variant: "destructive",
+        });
         return;
       }
       if (result.kind === "takeover") {

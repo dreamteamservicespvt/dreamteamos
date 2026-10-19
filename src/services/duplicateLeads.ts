@@ -45,11 +45,13 @@ export async function isDuplicateSale(phone: string, excludeMemberId: string): P
   return others.some((o) => o.saleDone);
 }
 
+/** How many `in` queries the duplicate scan keeps in flight at once (see findMemberDuplicates). */
+export const DUPLICATE_SCAN_CONCURRENCY = 6;
+
 /**
  * For a member's own leads, find which ones are duplicates — i.e. another member also holds the
  * same number. Returns a map of the member's leadId → the other members' holdings on that number.
- * Batches phone lookups into `in` queries (≤10 each), all run in PARALLEL so even large lead
- * lists resolve in roughly one round-trip (the count must appear as soon as My Leads opens).
+ * Batches phone lookups into `in` queries (≤10 each), run DUPLICATE_SCAN_CONCURRENCY at a time.
  */
 export async function findMemberDuplicates(
   memberLeads: { id: string; phone: string; frozen?: boolean }[],
@@ -70,9 +72,21 @@ export async function findMemberDuplicates(
   try {
     const batches: string[][] = [];
     for (let i = 0; i < phones.length; i += 10) batches.push(phones.slice(i, i + 10));
-    const snaps = await Promise.all(
-      batches.map((batch) => getDocs(query(collection(db, "leads"), where("phone", "in", batch)))),
-    );
+    /*
+      A few at a time, not all at once (2026-10-19). A member with 2,000 leads fired ~200 queries in
+      the same instant every time My Leads opened; on a phone that queue took the whole connection,
+      so the page — and "Create Lead", whose transaction waited behind it — crawled. Six in flight
+      keeps the scan quick and leaves room for the member's own reads and writes.
+    */
+    const snaps: Awaited<ReturnType<typeof getDocs>>[] = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < batches.length) {
+        const i = next++;
+        snaps[i] = await getDocs(query(collection(db, "leads"), where("phone", "in", batches[i])));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(DUPLICATE_SCAN_CONCURRENCY, batches.length) }, worker));
 
     const othersByPhone: Record<string, DuplicateHolder[]> = {};
     snaps.forEach((snap) => {

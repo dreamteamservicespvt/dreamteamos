@@ -205,7 +205,11 @@ setupSaleMonth / applyMonthSetup`, `smmAssign.fetchMyMonthJobs`, `workDrive.mark
   the once-a-day reminders: birthdays, `smm_due`, `smm_renewal_due`, `smm_renewal_reminder`,
   `drive_folder_missing`. Without it they re-sent on every app open more than 10 minutes apart (a new
   phone alert each time, and the row back as unread after "Mark all read"). An event key without `once`
-  (`work_completed_<id>`, `work_deadline_*`) still comes back as new when it really happens again.
+  (`work_completed_<id>`) still comes back as new when it really happens again. **`work_deadline_*` is `once` since
+  2026-10-19** (owner: Kusuma got deadline alerts all day): the sweep re-sent each late order every 6 h that anybody
+  opened Orders, rewriting the row as unread with a new push. Key `work_deadline_<orderId>_<due_soon|overdue>[_ext]_<uid>`
+  — the old key, so alerts already sent count as delivered; `_ext` = an extended promise, told once more. A row the
+  90-day clean-up deleted can be sent once again if the order is still late then.
 - **The bell** (Topbar, `hooks/useNotifications.ts` → `services/notificationInbox.ts`, rules in
   `utils/notificationInbox.ts`; owner, 2026-10-13, "Mark all read and Clear all are not working").
   One listener on the newest 50 rows (`INBOX_WINDOW`; the panel shows 20) after the person's cleared

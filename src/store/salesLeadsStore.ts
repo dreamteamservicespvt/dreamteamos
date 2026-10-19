@@ -16,6 +16,13 @@ interface SalesLeadsState {
   leads: Lead[];
   loading: boolean;
   setLeads: (uid: string, leads: Lead[]) => void;
+  /**
+   * My Leads' duplicate scan, kept for the session (2026-10-19). The scan reads every lead with one
+   * of the member's numbers across the company — thousands of reads for a long-serving member — and
+   * it ran again on EVERY visit to My Leads. Now it runs once per session; "Recheck" runs it again.
+   */
+  duplicateScan: { uid: string; leadIds: string[] } | null;
+  setDuplicateScan: (scan: { uid: string; leadIds: string[] } | null) => void;
   reset: () => void;
 }
 
@@ -23,6 +30,8 @@ export const useSalesLeadsStore = create<SalesLeadsState>((set) => ({
   uid: null,
   leads: [],
   loading: true,
+  duplicateScan: null,
   setLeads: (uid, leads) => set({ uid, leads, loading: false }),
-  reset: () => set({ uid: null, leads: [], loading: true }),
+  setDuplicateScan: (duplicateScan) => set({ duplicateScan }),
+  reset: () => set({ uid: null, leads: [], loading: true, duplicateScan: null }),
 }));

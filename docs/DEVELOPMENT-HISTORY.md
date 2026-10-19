@@ -6,6 +6,21 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-19 (late night): My Leads fast for a big list; search on any day; "already yours" that showed nothing;
+  deadline alerts once** (`sales.md` §9.3, `orders-work.md` §16, `backend-security.md` §18). The owner, from Kusuma's
+  phone (2,173 leads, 1,739 sales): slow to open, "Creating…" hangs, a tiny search that only searches the chosen day,
+  +919885719740 "already in your leads" but not in the list, deadline alerts all day. Measured live (read-only, her
+  session): 6.2 s to the list; the duplicate scan — ~218 `in` queries at once on EVERY visit — finished after 51 s and
+  held the connection; the number's lead was frozen `duplicate_resolved` while its lock still named her. Fixes: the scan
+  once per session (`salesLeadsStore.duplicateScan`), 1.5 s after open, 6 queries at a time; search skips the day window
+  (Leads and Sales) with "Searching all days"; one filter layout on Leads, Sales and the new Duplicates filters
+  (`FilterBar`: the search on its own full row on a phone, dropdowns half-and-half below; one row from `sm`); Sales 20 at a time, Duplicates 10; deferred + memoized filtering, each lead's day computed once; Add
+  Custom Lead checks her own leads first and opens the one it finds; `claimNumber` own-lock branch → `held_elsewhere` /
+  re-add when the lead is gone; a searched hidden number is explained; upsell to a frozen lead explained;
+  `work_deadline_*` sent with `once` on the existing key (`_ext` after an extension). Files: `MyLeads.tsx`,
+  `numberLock.ts`, `duplicateLeads.ts`, `upsell.ts`, `orders.ts`, `salesLeadsStore.ts`. Tests `myLeadsClaimOct19` (4),
+  `deadlineOnceOct19` (2); full suite, build, typecheck 0; the phone-width UI in a local harness on fake data.
+
 - **2026-10-19 (night): the Leaderboard's incentives back to plan rate × verified money, no target check**
   (`sales.md` §9.4, `people.md` §9.14). The owner, after the entry below: the board must show, as before 15 Oct, Day
   Incentives / the month's / Career commission = 5% or 10% × the verified money collected in the window, with no 75% target

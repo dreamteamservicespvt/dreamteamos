@@ -1158,9 +1158,16 @@ export async function notifyDueOrdersOnOpen(
         type: "work_deadline",
         title: state === "overdue" ? "Delivery overdue" : "Delivery due soon",
         message: messageFor(uid),
-        // One alert per order per state per recipient: whoever opens the queue next re-runs this
-        // sweep, and without a key every admin who opened the page added another row.
-        dedupeKey: `work_deadline_${order.id}_${state}_${uid}`,
+        /*
+          One alert per order, per state, per deadline, per recipient — written ONCE (2026-10-19).
+          Without `once` the key was rewritten whole every 6 hours that anybody opened Orders: back as
+          unread, a fresh push on the phone. A salesperson with many late jobs (Kusuma) got deadline
+          alerts all day, for the same orders. The key is the one already in use, so every alert sent
+          before this counts as delivered (no burst on release); an EXTENDED promise is a new deadline
+          and gets its own key, so it is told once more.
+        */
+        dedupeKey: `work_deadline_${order.id}_${state}${order.promise.extension ? "_ext" : ""}_${uid}`,
+        once: true,
       })));
       await updateDoc(doc(db, "orders", order.id), { lastDeadlineNotifiedAt: serverTimestamp() });
     } catch (err) {
