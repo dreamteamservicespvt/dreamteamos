@@ -265,7 +265,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       pairPath: "both stand side by side beside the counter, display or shelves, bodies angled toward the camera — {A} sweeps "
         + "a whole open hand along what is beside them and talks while {B} reacts; then {B} answers with one calm open palm "
         + "toward it while {A} reacts",
-      pairStart: "both standing side by side at the same distance from the camera in front of the real counter, display or "
+      pairStart: "both standing close together side by side, about an arm's length apart, at the same distance from the camera in front of the real counter, display or "
         + "shelves the clip talks about, which run beside them fully in view, angled slightly toward each other and open to "
         + "the camera, one hand caught mid-gesture",
     },
@@ -293,7 +293,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       name: "Show it where they stand",
       pairPath: "both stand side by side right beside the product or counter; {A} points to it with a whole open hand and "
         + "talks while {B} looks and reacts, then {B} presents it with one calm open palm",
-      pairStart: "both standing side by side at the same distance from the camera right beside the real product, counter or "
+      pairStart: "both standing close together side by side, about an arm's length apart, at the same distance from the camera right beside the real product, counter or "
         + "display the clip talks about — within arm's reach and fully in view — angled toward it with the faces to the "
         + "camera, one hand caught mid-gesture",
     },
@@ -320,7 +320,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       name: "Explain where they stand",
       pairPath: "both stand side by side facing the camera at a slight angle; {A} speaks with an open, sincere gesture while "
         + "{B} listens, then {B} answers with a hand on the chest on the promise and a confident nod",
-      pairStart: "both standing side by side at the same distance from the camera on the real floor inside the business, "
+      pairStart: "both standing close together side by side, about an arm's length apart, at the same distance from the camera on the real floor inside the business, "
         + "facing the camera at a slight angle and a little toward each other, one hand caught mid-gesture",
     },
   },
@@ -336,7 +336,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
     deityName: "Bless the place",
     start: "three-quarter body (head to knees) standing facing the camera beside the business's real counter, shelves or "
       + "work area, one hand beginning to open toward it, all of it fully visible",
-    pairStart: "both standing side by side at the same distance from the camera, facing it, beside the business's real "
+    pairStart: "both standing close together side by side, about an arm's length apart, at the same distance from the camera, facing it, beside the business's real "
       + "counter, shelves or work area, which is fully visible",
   },
   walk_invite: {
@@ -362,7 +362,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       name: "Invite where they stand",
       pairPath: "both face the camera where they stand; {A} invites the viewer with an open palm, then {B} invites them in "
         + "with both palms open — an invitation, never a goodbye wave",
-      pairStart: "both standing side by side at the same distance from the camera at the business's most inviting spot, "
+      pairStart: "both standing close together side by side, about an arm's length apart, at the same distance from the camera at the business's most inviting spot, "
         + "front-on to the camera with the hands beginning to open — never in a doorway and never with the exit behind them",
     },
   },
@@ -987,7 +987,7 @@ const DEITY_START = "the full figure from head to feet inside the place, in a gr
  */
 const WISH_START = "three-quarter body (head to knees) standing facing the camera with a warm, festive smile, the hands "
   + "relaxed at the waist — not yet joined — the festive place visible behind them";
-const WISH_PAIR_START = "both standing side by side at the same distance from the camera, facing it with festive smiles, "
+const WISH_PAIR_START = "both standing close together side by side, about an arm's length apart, at the same distance from the camera, facing it with festive smiles, "
   + "the hands relaxed — not yet joined — the festive place visible behind them";
 
 /** How a composition note ends: life, not a pose. */
@@ -1438,15 +1438,20 @@ function movementNote(plan: ClipMotionPlan): string {
 }
 
 /**
- * Who leads a pair's shot: the framing drifts a little toward whoever is speaking — sideways, never closer,
- * so neither one grows. A still camera (the client's photograph) cannot drift, so it says nothing.
+ * A pair's shot through the hand-over: both stay in full view, one continuous move, never a cut or a reframe.
+ * ── Why (2026-10-23, the Flow check of every cast) ──
+ * It said "The framing drifts a little toward whoever is speaking, never closer." At the hand-over (~4 s) Veo did
+ * that as a REFRAME: the Motu & Patlu clip hard-cut to a new, closer two-shot (Patlu lost his head of height), and
+ * the Male & Female duo slid toward the man until the logo was cut off. The pair is already filmed with one sideways
+ * move at one distance; who speaks is carried by the lines' times and "only the one speaking moves their lips".
+ * A still camera (the client's photograph) says nothing.
  */
 function speakerFraming(plan: ClipMotionPlan, speech: VeoSpeech[]): string {
   if (!plan.twoHander || plan.focus !== "speaker") return "";
   const speakers = speech.filter((s) => s.speaker);
   return speakers.length === 1
-    ? ` The framing favours ${speakers[0].speaker}, never closer.`
-    : " The framing drifts a little toward whoever is speaking, never closer.";
+    ? ` Both stay in full view, ${speakers[0].speaker} leading — no cut, never closer.`
+    : " Both stay in full view through the hand-over — no cut, never closer.";
 }
 
 /**

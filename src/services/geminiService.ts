@@ -41,7 +41,7 @@ import { VOICE_NOTE_SYSTEM_PROMPT, voiceNoteUserPrompt } from "./prompts/voiceNo
 import { parseVoiceBrief, voiceBriefAsText, voiceBriefForProfile } from "@/utils/voiceBrief";
 import { audioMimeTypeOf } from "@/utils/fileHelpers";
 import { sameWords, splitScriptVerbatim, verbatimScriptText } from "@/utils/customScript";
-import { nameBoardInPlaceOfLogo, withOwnerDuoFaceLock, withOwnerFaceLock, withOwnerImageDirective } from "@/utils/frameBrand";
+import { nameBoardInPlaceOfLogo, withOnlyLogoText, withOwnerDuoFaceLock, withOwnerFaceLock, withOwnerImageDirective } from "@/utils/frameBrand";
 import { resolveModelSpec } from "@/utils/adRequirement";
 import type { AttireType, ModelGender } from "@/types/aiPlatform";
 import { parseClipPromptEdits, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
@@ -1313,6 +1313,15 @@ IMPORTANT:
   }
   // A frame prints signage: a number on it is one of the business's own or nothing.
   if (sectionType === 'mainFrame') refined = stripUnverifiedNumbers(refined, contactKeysOf(businessInfo));
+  // …and keeps "the logo is the only writing in the picture" through a refine (utils/frameBrand, 2026-10-22 night).
+  if (sectionType === 'mainFrame' && !pack?.usesClientFace) {
+    // A refine has no files: the frame's own words say which brand mark it carries.
+    const board = formData.noLogo || !/attached logo/i.test(refined) ? (formData.logoNameText?.trim() || businessInfo?.businessName || '') : undefined;
+    refined = refined
+      .split(/(\s*###\s*CLIP\s*###\s*)/i)
+      .map((part, i) => (i % 2 === 0 && part.trim() ? withOnlyLogoText(part.trim(), { nameBoard: board }) : part))
+      .join('');
+  }
   // A Real Owner Face frame keeps its face lock through a refine — the model may drop a stamp it was
   // given (utils/frameBrand.withOwnerFaceLock, 2026-10-08). Each clip's prompt, between the separators.
   // A Real Owner Duo frame keeps the duo's lock (each side ↔ its own photograph) and the line asking for
@@ -4663,6 +4672,12 @@ ${sceneContext ? `
         plate: clipPhotoPlan[i] !== undefined && clipPhotoPlan[i]?.photoIndex !== null,
       }));
     }
+    // The logo (or the name board) is the only writing in the picture — said in the copied prompt itself, for every
+    // cast (utils/frameBrand withOnlyLogoText, 2026-10-22 night: a Motu & Patlu frame invented "DTCP Approved").
+    mainFramePrompts = mainFramePrompts.map((prompt, i) => withOnlyLogoText(prompt, {
+      nameBoard: frameNoLogo ? frameNameBoard : undefined,
+      plate: clipPhotoPlan[i] !== undefined && clipPhotoPlan[i]?.photoIndex !== null,
+    }));
 
     if (clipPhotoPlan.length > 0) {
       mainFramePrompts = mainFramePrompts.map((prompt, i) => {

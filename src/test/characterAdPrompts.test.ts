@@ -507,7 +507,7 @@ describe("veo prompt", () => {
     expect(assembled).toMatch(/two-shot at eye level, the camera (?:travelling|gliding) sideways (?:with|past) them at one distance/);
     // 2026-10-22: walking, they face the camera; the life is their signature gestures, each on its words.
     expect(assembled).toContain("both walk a few steps side by side to the product or counter beside them, facing the camera; Motu points to it and talks while Patlu reacts, then Patlu presents it with an open hand");
-    expect(assembled).toContain("The framing drifts a little toward whoever is speaking, never closer.");
+    expect(assembled).toContain("Both stay in full view through the hand-over — no cut, never closer.");
     expect(assembled).toContain("Their own signature expressions and hand gestures from the show, each on the words it belongs to; both keep facing the camera");
     expect(assembled).not.toContain("throughout");
   });

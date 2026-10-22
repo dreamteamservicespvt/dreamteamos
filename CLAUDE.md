@@ -222,7 +222,15 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-22)
+## 32. CURRENT PROJECT STATE (as of 2026-10-23)
+
+- 2026-10-23 (overnight), **local, not pushed** — **AI ads audit, every ad type tested** (live Gemini ×7, ChatGPT frames,
+  5 Flow clips / 60 credits, Whisper + frame strips): 14 mistakes of the same kind fixed — a syllable limit so every
+  Telugu clip is SAID in 8 s, lakh / crore prices, no broken sentence after a number is removed, her / his, a quoted
+  name removed cleanly, the final clip's room for the judge and the short message test, the logo's name in Telugu
+  letters, no five words twice, `mariyu` for "అండ్", no product in the greeting, one framing + semi-jewellery, "the logo
+  is the only text" stamped on every frame, a pair's video "no cut, never closer" + frames "an arm's length apart"
+  (`ai-ads.md`; history 2026-10-23). The Telugu call line stays in every ad (owner).
 
 - 2026-10-22 (night), **local, not pushed** — **the six fixes checked on a real ad** (live Gemini, logo attached, ChatGPT
   frames, one Flow clip on the JPN account): five more fixes — a bare "Phone 98480 12345" label, "<place>ను … రండి",
@@ -366,7 +374,10 @@ errors:** done means every listed item is fully resolved with no build, console 
   2026-10-22, over Vite's 900 KB warning; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` ✅ 281 files, 4653 tests (2026-10-22, after the AI-ads six fixes; one SMM UI load timeout in the full run passes alone). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
+- `npx vitest run` 🟡 283 files, 4705 of 4706 tests pass (2026-10-23, after the AI-ads audit). The one failure,
+  `smmDeliveryControlUiOct15` "Live, the view-only Social Media Team Lead…" (cannot find "View only — only the people on
+  this month"), fails alone too and ALSO on `19763d6` (before the audit) — pre-existing, not yet investigated. Under
+  heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-18).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work (newest first; detail in §31): the DREAM TEAM AI Development OS (2026-10-18); dates and periods across SMM, pay, invoices and AI accounts (2026-10-15); the voice-over word contract + 10/10 loop (2026-10-15); SMM Delivery Control, all phases (2026-10-15); the Real Owner Duo (2026-10-15); bottom toasts, one-row dismiss / unread, the 90-day clean-up, the

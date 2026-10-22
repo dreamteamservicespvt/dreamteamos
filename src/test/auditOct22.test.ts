@@ -225,3 +225,21 @@ describe("a quoted name taken out of a director's action leaves a whole sentence
     expect(withoutQuotedSpeech(`She lifts her hand on the words "మా ఆఫర్", showing the counter.`)).toBe("She lifts her hand, showing the counter");
   });
 });
+
+describe("frames: the only words in the picture, and a clean background stamp", () => {
+  it("every frame says the logo (or the name board) is the only writing, before the attach line", async () => {
+    const { withOnlyLogoText, ONLY_TEXT_HEADING } = await import("@/utils/frameBrand");
+    const stamped = withOnlyLogoText("Motu and Patlu by a layout chart of open plots.\n📎 ATTACH: the logo");
+    expect(stamped).toMatch(/TEXT IN THE IMAGE: the attached logo is the ONLY new readable writing in the picture\. Every chart, layout plan, brochure/);
+    expect(stamped.indexOf(ONLY_TEXT_HEADING)).toBeLessThan(stamped.indexOf("📎"));
+    expect(withOnlyLogoText(stamped)).toBe(stamped);
+    expect(withOnlyLogoText("A shop.", { nameBoard: "Sri Sai Krishna Infra" })).toContain('the name board reading "Sri Sai Krishna Infra" is the ONLY');
+    expect(withOnlyLogoText("A shop.", { plate: true })).toContain("writing the photograph already shows stays as it is");
+  });
+  it("the planned background reads as one sentence", async () => {
+    const { withSceneBackground } = await import("@/utils/scenePlan");
+    const out = withSceneBackground("Frame.", { setting: "The well-lit corporate lounge of the office.", clips: [{ background: "The front reception desk.", elements: [] }] } as never, 0);
+    expect(out).toContain("and it belongs to the well-lit corporate lounge of the office.");
+    expect(out).not.toContain("..");
+  });
+});

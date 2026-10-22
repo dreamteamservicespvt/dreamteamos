@@ -143,5 +143,10 @@ export function withSceneBackground(prompt: string, context: SceneContext | null
   if (!context || !prompt.trim() || prompt.includes(SCENE_BACKGROUND_HEADING)) return prompt;
   const line = sceneLineFor(context, clipIndex);
   if (!line) return prompt;
-  return `${prompt.trimEnd()}\n\n${SCENE_BACKGROUND_HEADING}: ${line}. This background is different from every other clip's, and it belongs to ${context.setting || "the same place as the rest of the ad"}.`;
+  return `${prompt.trimEnd()}\n\n${SCENE_BACKGROUND_HEADING}: ${unstopped(line)}. This background is different from every other clip's, and it belongs to ${asClause(context.setting) || "the same place as the rest of the ad"}.`;
 }
+
+/** A sentence's text without its closing full stop — the stamp adds its own ("…community.." in a live frame, 2026-10-22). */
+const unstopped = (s: string) => s.trim().replace(/[.!?]+$/, "");
+/** A planner's sentence read inside the stamp's sentence: "The well-lit lounge." → "the well-lit lounge". */
+const asClause = (s?: string) => unstopped(s || "").replace(/^(The|A|An)\b/, (w) => w.toLowerCase());

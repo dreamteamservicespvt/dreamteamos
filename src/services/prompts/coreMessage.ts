@@ -161,7 +161,7 @@ export function fallbackCoreMessageBrief(businessInfo: unknown): CoreMessageBrie
   There the test is the business and what it offers, in one short phrase — the promise needs a longer ad.
 */
 function finalMessageClipTest(clip: number): string {
-  return `THE CLIP ${clip} TEST (MANDATORY): clip ${clip} is ALSO the final clip — it says the address (when there is one) and ends with the closing call line, which leaves room for only a few more words. Someone who hears ONLY clip ${clip} must know WHO the business is and WHAT it offers, said in ONE short phrase: the business name and its main product or service. The core promise, the proof points and any offer do NOT go in this clip — never squeeze them in: a clip over the word ceiling is rejected.`;
+  return `THE CLIP ${clip} TEST (MANDATORY): clip ${clip} is ALSO the final clip — it says the address (when there is one) and ends with the closing call line, which leaves room for only a few more words. Someone who hears ONLY clip ${clip} must know WHO the business is and WHAT it offers, said in ONE short phrase: the business name and its main product or service, joined to the address — the shape of "<name> — flats and plots — at <address>, come today", in the ad's own language (a live run said only "come to <name>, <address>" and the viewer never learned what it sells). The core promise, the proof points and any offer do NOT go in this clip — never squeeze them in: a clip over the word ceiling is rejected.`;
 }
 
 export function coreMessageBlock(brief: CoreMessageBrief | null | undefined, messageClip = 1, clipCount?: number): string {

@@ -429,8 +429,12 @@ cached; small images and anything the browser cannot redraw go as they are).
    float was the move, the keep sentence asked for the place "exactly as in the attached frame for the whole
    clip" and a pair "in the same positions", and the frames were posed with clasped hands.
    **The prompt is five short parts** (`assembleVeoPrompt`): `<ratio> video, one continuous 8-second shot
-   that starts from the attached frame.` · `<camera + shot>: <action>.` + (a pair) "The framing drifts a little
-   toward whoever is speaking, never closer." (one speaker: "The framing favours <name>") + the life line
+   that starts from the attached frame.` · `<camera + shot>: <action>.` + (a pair) "Both stay in full view through the hand-over — no
+   cut, never closer." (one speaker: "Both stay in full view, <name> leading — …"; until 2026-10-23 "The framing drifts a
+   little toward whoever is speaking", which Veo played as a hard cut at the hand-over in a Motu & Patlu clip — Patlu
+   lost his height — and a slide that cropped the logo in a duo clip; the retry with the new line had no cut, but Motu
+   walked a few steps to close the GAP the frame left between them, so every pair frame now starts "both standing close
+   together side by side, about an arm's length apart, at the same distance from the camera") + the life line
    (`movementNote`, 2026-10-22: "Calm, purposeful movement: each gesture lands on the words it belongs to, then the
    hands settle; the body stays facing the camera, with eye contact on the key words — clothes and hair move naturally
    (with every step, on a walk); anyone already in the background stays in place with only small, natural movements"; a
@@ -600,7 +604,12 @@ cached; small images and anything the browser cannot redraw go as they are).
    full or three-quarter shot"; the frame line was "close mid-shot only, head to upper waist", and the Flow clip started
    full-length); the hero-pose line no longer says "For professional suit outputs" in a saree ad. A festival saree frame
    carries "JEWELLERY (SEMI-JEWELLERY)" only — the festival theme's "CELEBRITY-LEVEL … heavy … worth lakhs" line
-   (`FestivalTheme.jewellery`, now `@deprecated`, unprinted) sat right above "never heavy".
+   (`FestivalTheme.jewellery`, now `@deprecated`, unprinted) sat right above "never heavy". **The only writing in the
+   picture (2026-10-23):** every frame, every cast, is stamped `TEXT IN THE IMAGE:` (`frameBrand.withOnlyLogoText`, before
+   the 📎 line, re-stamped on a frame refine): the logo (or the name board) is the only new readable writing — charts,
+   layout plans, brochures, screens, boards and banners show pictures only, never words, prices or claims; a client
+   photo keeps its own writing. A Motu & Patlu frame from ChatGPT had invented "DTCP Approved", "Clear Title", "LUXURY
+   VILLAS" — the rule was only in the writer's system prompt, which never reaches the image tool.
    **Frames are composed for the move, caught mid-movement** (`withMotionComposition`, `compositionFor`): a clip
    performed in place (most, since 2026-10-22) is caught standing facing the camera MID-GESTURE beside what its line is
    about; a walking clip's still is caught MID-STEP (one foot forward, arms in a natural swing, clear floor in the

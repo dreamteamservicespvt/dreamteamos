@@ -424,7 +424,7 @@ describe("frames built for each clip's action — caught mid-gesture, mid-step o
     expect(drawn).toContain("standing side by side as each clip's 🎬 note says");
     expect(drawn).not.toMatch(/every clip MOVES|caught MID-MOVEMENT|caught mid-step side by side as each|TURN to present/);
     expect(drawn).toContain(compositionFor(motu[1]));
-    expect(compositionFor(motu[1])).toContain("both standing side by side at the same distance from the camera");
+    expect(compositionFor(motu[1])).toContain("both standing close together side by side, about an arm's length apart, at the same distance from the camera");
     // Their words walk them in clip 2 only: that frame is caught mid-step.
     const motuWalks = planClipMotion(4, "commercial", "cartoon", { twoHander: true, lines: ["a", "Let's go inside!", "c", "d"] });
     expect(compositionFor(motuWalks[1])).toContain("both caught mid-step side by side at the same distance from the camera");
@@ -483,7 +483,7 @@ describe("the composition stamped onto every frame", () => {
     expect(compositionFor(plan[2])).toContain("three-quarter body (head to knees) standing facing the camera on the real floor");
     expect(compositionFor(plan[2])).toContain(`shot ${plan[2].angle.name.toLowerCase()} on a ${plan[2].lens} lens`);
     expect(compositionFor(plan[0])).toContain("three-quarter body (head to knees) standing facing the camera on the real floor inside the business, weight relaxed, one hand caught mid-gesture at waist height");
-    expect(compositionFor(planClipMotion(4, "commercial", "person", { twoHander: true })[0])).toContain("both standing side by side at the same distance from the camera");
+    expect(compositionFor(planClipMotion(4, "commercial", "person", { twoHander: true })[0])).toContain("both standing close together side by side, about an arm's length apart, at the same distance from the camera");
     for (const clip of [...plan, ...cartoon]) expect(compositionFor(clip), clip.staging.key).not.toMatch(/mid-step/);
     // Where the words walk them.
     expect(compositionFor(planClipMotion(4, "commercial", "person", { lines: WALK_LINES })[0])).toContain("the full figure from head to feet, caught mid-step a few steps back from the camera");
@@ -766,7 +766,7 @@ describe("the Veo prompt", () => {
     expect(p).toContain("4–8s — Patlu (on the RIGHT of the frame), with the original Patlu voice from the show (");
     expect(p).toContain("Only the one speaking moves their lips; the other listens with the mouth closed and reacts.");
     // 2026-10-22: facing the camera as they walk — no more "gestures toward what they pass".
-    expect(p).toContain("facing the camera — Motu talks while Patlu listens and reacts; then Patlu answers with an open palm toward what the line is about while Motu reacts. The framing drifts a little toward whoever is speaking, never closer.");
+    expect(p).toContain("facing the camera — Motu talks while Patlu listens and reacts; then Patlu answers with an open palm toward what the line is about while Motu reacts. Both stay in full view through the hand-over — no cut, never closer.");
     expect(p).not.toContain("toward what they pass");
     expect(p).toContain("no narrator or new voices, no two voices at once.");
     expect(spokenLinesIn(p)).toEqual(["one", "two"]);
@@ -775,7 +775,7 @@ describe("the Veo prompt", () => {
   it("lets the one speaker lead a one-line pair clip, and keeps the other's mouth closed", () => {
     const one = buildMotu(3, null, "Telugu", motu.speech([{ name: "Patlu", text: "Come today." }]));
     expect(one).toContain("Only Patlu speaks; the other keeps the mouth closed and reacts.");
-    expect(one).toContain("The framing favours Patlu, never closer.");
+    expect(one).toContain("Both stay in full view, Patlu leading — no cut, never closer.");
     expect(one).toContain("Patlu invites the viewer with an open palm, then Motu invites them in with both palms open");
     expect(pairNamesOf([{ speaker: "Patlu" }], ["Motu", "Patlu"])).toEqual({ a: "Patlu", b: "Motu" });
     expect(pairNamesOf([{ speaker: "Motu" }, { speaker: "Patlu" }])).toEqual({ a: "Motu", b: "Patlu" });
@@ -1170,7 +1170,7 @@ describe("every cast walks only where a clip's words need it — the Motu and Pa
   it("composes each frame for it — standing side by side beside what the line is about, mid-step only where it walks", () => {
     const options = { segmentCount: 4, clipSummaries: still, locationMode: "ai_generated", locationPlan: "", aspectRatio: "9:16", adType: "commercial" } as const;
     const stands = motuPlan(4, "commercial", { lines: still });
-    expect(compositionFor(stands[0])).toContain("both standing side by side at the same distance from the camera in front of the real counter, display or shelves");
+    expect(compositionFor(stands[0])).toContain("both standing close together side by side, about an arm's length apart, at the same distance from the camera in front of the real counter, display or shelves");
     expect(compositionFor(stands[1])).toContain("right beside the real product, counter or display the clip talks about — within arm's reach and fully in view");
     expect(framingForMotion(stands[1])).toContain("🎬 THIS CLIP: Show it where they stand — filmed Eye level · 35mm · Lateral Dolly");
     expect(withMotionComposition("A frame.", motuPlan(4, "commercial", { plates: [true, true, true, true] })[1], { plate: true }))
@@ -1201,7 +1201,7 @@ describe("every cast walks only where a clip's words need it — the Motu and Pa
     const [first] = motuPlan(4, "commercial", { lines: still });
     const p = build(first);
     expect(p).toContain("Slow lateral dolly two-shot at eye level, the camera gliding a short way sideways at one distance, both seen from the same angle throughout, the background sliding gently with parallax: both stand side by side beside the counter, display or shelves");
-    expect(p).toContain("The framing drifts a little toward whoever is speaking, never closer.");
+    expect(p).toContain("Both stay in full view through the hand-over — no cut, never closer.");
     expect(p).not.toMatch(STILL_WORDS);
     expect(p.split("\n\n")).toHaveLength(5);
     expect(spokenLinesIn(p)).toEqual(["ఒకటి", "రెండు"]);

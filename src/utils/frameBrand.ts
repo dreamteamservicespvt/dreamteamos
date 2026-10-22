@@ -148,3 +148,28 @@ export function withOwnerDuoFaceLock(prompt: string, slots: OwnerPhotoRef[]): st
     + `and never give both the same face. Add nothing to either face that its photograph does not show — ${marks} — and never `
     + `beautify or change either face. Only their clothes follow the outfit above.`;
 }
+
+/*
+  ── The only words in the picture (2026-10-22, night — a live Motu & Patlu frame) ──────────────────
+  The frame asked for "a large architectural layout chart of open plots" and "a brochure display stand", and
+  ChatGPT filled them with words: "DTCP Approved", "Clear Title", "Gated Community", "Investment Growth",
+  "LUXURY VILLAS", "Your Dream Tomorrow Starts Here" — claims the client never made, on a client's ad. The rule
+  "the logo is the only text" was in the frame WRITER's system prompt, which never reaches the image tool (the
+  member copies the frame prompt), the same lesson as the FACE LOCK. So every frame carries it, stamped in code.
+*/
+export const ONLY_TEXT_HEADING = "TEXT IN THE IMAGE";
+
+/**
+ * A frame prompt that says, in the copied text itself, that the logo (or the name board) is the only writing in the
+ * picture — every chart, plan, brochure, screen, board and banner shows pictures only. A client's own photograph
+ * keeps the writing it already has, and nothing new is written. Idempotent; placed before the 📎 attach line.
+ */
+export function withOnlyLogoText(prompt: string, options: { nameBoard?: string; plate?: boolean } = {}): string {
+  if (!prompt.trim() || prompt.includes(`${ONLY_TEXT_HEADING}:`)) return prompt;
+  const mark = options.nameBoard?.trim() ? `the name board reading "${options.nameBoard.trim()}"` : "the attached logo";
+  const line = `${ONLY_TEXT_HEADING}: ${mark} is the ONLY new readable writing in the picture${options.plate ? " (writing the photograph already shows stays as it is)" : ""}. `
+    + "Every chart, layout plan, brochure, screen, board, banner and price tag shows pictures, plans and shapes only — "
+    + "no words, numbers, slogans, prices, labels or claims (never \"approved\", \"clear title\", \"luxury\" or a tagline).";
+  const attach = prompt.search(/\n[^\n]*📎/u);
+  return attach >= 0 ? `${prompt.slice(0, attach)}\n\n${line}${prompt.slice(attach)}` : `${prompt.trimEnd()}\n\n${line}`;
+}

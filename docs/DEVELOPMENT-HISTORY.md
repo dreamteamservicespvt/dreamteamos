@@ -6,6 +6,45 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-23 (overnight, the owner asleep, full rights): the audit — every mistake of the same kind, every ad type
+  tested** (`ai-ads.md` §17.2 steps 3, 5, 6, spoken-word rules, §24). The owner: "find all the mistakes like them and
+  solve all them and test all", "correct promotional voice over script words per the clip … check the duo characters",
+  then "test all the types of ads voice over scripts, video quality — camera angles, dynamic video quality and frame
+  quality". Tested with the app's real engine (vite-node, live Gemini: 7 runs — Diwali 2-clip ×3, promotional 4-clip
+  ×2, Male & Female duo, Motu & Patlu), ChatGPT (pvt) for three frames, Flow (JPN, 8 s, 12 credits a clip; 5 clips,
+  60 credits) checked with Whisper word timings and 4-fps frame strips. Found and fixed (code + `src/test/auditOct22.test.ts`,
+  42 tests): **(1)** a clip that cannot be SAID in 8 s — Flow cut a 58-syllable line and just fitted 54 — so Telugu clips
+  carry ≤ 50 syllables (47 a pair; refused over 54 / 51) beside 17–20 words (`scriptContract` spokenSyllables /
+  clipSyllableIssue / the final gate, `wordContractBlock({ language })`); **(2)** "₹25 లక్షల" read "ఇరవై ఐదు రూపాయలు లక్షల",
+  "₹1.5 కోట్లు" losing its .5 (`spokenNumbers` SCALED_PRICE, "ఒక లక్ష", "లక్షలకే"); **(3)** a removed phone number
+  leaving "మా కాల్ చేయండి" / "Our phone number is." and a pincode leaving "కాకినాడ లో" (`unspokenNumbers` OWNED_LABEL_BEFORE,
+  TOWN_ENDING_AFTER_GONE); **(4)** "the presenter's hands" → "she's hands" (`motion.asSpokenOf` her / his); **(5)** a
+  quoted name taken out of a director's action leaving "a warm welcome on Her arm" (`withoutQuotedSpeech`); **(6)** an
+  in-place product push-in "to a close-up of the product … as she looks back to the lens" (her face left the shot) →
+  a medium shot keeping both; **(7)** the judge asking the final clip for ~12 words of offers it has no room for
+  (`scriptQa` finalClipRoomRule) and the message test asking who/what/WHY of a message clip that is also the final clip
+  (`coreMessage` finalMessageClipTest) — 2 of 6 Diwali runs had stopped on a 22-word final clip, the rest shipped 5.8–7.9;
+  **(8)** the business name from the logo shipped in English capitals inside the Telugu line (`businessName`
+  withNativeName + one `fast` call, "SAY THE BUSINESS NAME AS …"); **(9)** five words repeated in two clips
+  (`repeatedPhraseIssues`); **(10)** "అండ్" for "and" (now `mariyu`); **(11)** a product named in the festival greeting
+  ("మంచి flats mariyu plots అందిస్తున్న … తరఫున", `wishAudienceIssues`); **(12)** frame prompts asking "close mid-shot only"
+  AND "a full or three-quarter shot" (the clip started full-length) → three-quarter everywhere; "CELEBRITY-LEVEL heavy
+  jewellery" right above "semi-jewellery only, never heavy" → semi-jewellery only; "For professional suit outputs" in a
+  saree ad; **(13)** a Motu & Patlu frame filled with invented claims ("DTCP Approved", "Clear Title", "LUXURY VILLAS") —
+  the "logo is the only text" rule was only in the writer's system prompt → every frame now carries it
+  (`frameBrand.withOnlyLogoText`, re-stamped on refine); the scene stamp's "belongs to The … .." (`scenePlan`);
+  **(14)** pair video: "the framing drifts toward whoever is speaking" made Veo hard-CUT at the hand-over (Patlu lost his
+  height) and slide the duo until the logo was cropped → "Both stay in full view through the hand-over — no cut, no
+  reframe, never closer" (`motion.speakerFraming`); the Motu & Patlu retry (12 credits) had no cut and kept Patlu taller,
+  but the camera crept closer (the first new line had lost "never closer" — put back as "no cut, never closer") and Motu
+  walked a few steps to close the gap the frame left → pair frames start "close together side by side, about an arm's
+  length apart"; a Diwali re-run then scored 8.1 (was 5.8), greeting clean, the name in Telugu letters, clip 2 still
+  without what the business offers → the short message test shows its shape ("<name> — flats and plots — at
+  <address>, come today"). Flow results: the shortened greeting PASSED (whole line 0–7.86 s, wish at 3.9–4.7 s,
+  namaskaram 3.25–4.5 s); promotional clip 1 PASSED (glide, faces camera, welcome then present, line whole 0–7.78 s); duo
+  voices in order 0–3.1 / 3.6–7.7 s. Owner decision: the Telugu call line stays in every ad, number or not. Tests:
+  build ✅, typecheck 0, full vitest (see §32).
+
 - **2026-10-22 (night): the six fixes checked on a real ad, five more fixes** (`ai-ads.md` §17.2 steps 1, 3, 6, §24).
   The owner's §32 follow-up, done by Claude with the app's real engine (vite-node, live Gemini, 4 runs; the app's login
   needs a password Claude may not type), a logo whose name ("SRI SAI KRISHNA INFRA") differs from the sale's ("Sri Sai
