@@ -278,7 +278,8 @@ describe("voice-over prompt hardening", () => {
     expect(prompt).toContain("20 is the hard ceiling: a clip of 21 words is rejected and rewritten");
     expect(prompt).not.toMatch(/\b18 to 20\b|BETWEEN 18/);
     expect(prompt).not.toContain("EXACTLY 18");
-    expect(prompt).toContain("NEVER speak, read, or include any phone number or contact number");
+    expect(prompt).toContain("NEVER speak, read, or include any phone number, contact number, pincode or door / house / plot number");
+    expect(prompt).not.toContain("contact number only if actually provided");
     expect(prompt).toContain("PROFESSIONAL TRANSLITERATION RULE");
     expect(prompt).toContain("No duplicate clips");
   });
@@ -288,7 +289,7 @@ describe("voice-over prompt hardening", () => {
 
     expect(prompt).toContain("Every clip must contain 17–20 spoken words (aim for 18–19; 20 is the hard ceiling) — see THE WORD BUDGET below");
     expect(prompt).toContain("leave every clip that already fits exactly as it is");
-    expect(prompt).toContain("NEVER speak or include any phone number or contact number");
+    expect(prompt).toContain("NEVER speak or include any phone number, contact number, pincode or door / house / plot number");
     expect(prompt).toContain("Remove duplicated clips and repeated closings");
   });
 

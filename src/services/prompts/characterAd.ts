@@ -945,7 +945,7 @@ ${everydaySpeechRules(lang)}
 ===== NUMBER AND CTA RULES =====
 
 1. Never use digits in spoken content.
-2. NEVER speak a phone number or contact number — it is shown on screen, not spoken.
+2. NEVER speak a phone number, contact number, pincode or door number — they are shown on screen, not spoken.
 3. Only the FINAL clip carries the call to action, and ${solo ? first.name : second.name} delivers it.
 4. Do not leak CTA or "visit us / call us" language into earlier clips.
 

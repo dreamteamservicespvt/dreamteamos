@@ -12,6 +12,7 @@
  * validator, which already refuse digits.
  */
 import { withFestivalSpellings } from "./festivalNames";
+import { withoutUnspokenNumbers } from "./unspokenNumbers";
 
 // ── Telugu ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -206,10 +207,12 @@ export function fixedWordsIn(lines: string[]): string[] {
 }
 
 /**
- * All of it at once — what every spoken line goes through before it is used: numbers as words, the
- * fixed words, and (Telugu) the festival's fixed spelling — దసరా, never a transliteration of
+ * All of it at once — what every spoken line goes through before it is used: no phone number, pincode
+ * or door number at all (utils/unspokenNumbers, 2026-10-22 — they are printed on screen, never spoken;
+ * taken out BEFORE the rest become words, or a mobile would be read digit by digit), numbers as words,
+ * the fixed words, and (Telugu) the festival's fixed spelling — దసరా, never a transliteration of
  * "Dussehra" (utils/festivalNames, 2026-10-08).
  */
 export function speakableLine(text: string, language?: string): string {
-  return withFestivalSpellings(withFixedWords(spellOutNumbers(text, language)), language);
+  return withFestivalSpellings(withFixedWords(spellOutNumbers(withoutUnspokenNumbers(text), language)), language);
 }

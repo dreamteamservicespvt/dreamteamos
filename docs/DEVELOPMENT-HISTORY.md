@@ -6,6 +6,24 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-22: no pincode, door number or phone number in the voice-over** (`ai-ads.md` §17.2 step 3 and the
+  Spoken-word rules). The owner: the voice-over scripts carried PIN codes, door numbers and phone numbers, which they
+  had said are never needed. Root causes: the prompts forbade phone numbers but nothing in code held it, and
+  `spellOutNumbers` (run on every shipped line) read a phone number aloud digit by digit, a pincode as lakhs and a
+  door number as numbers. The presenter prompt's BUSINESS ANALYSIS also still said "contact number only if actually
+  provided and only in the final clip", and `spokenAddressOf` missed an unlabelled door number ("5-87/1 Main Road")
+  and a spaced pincode ("Kakinada-533 001", "Pin: 533 001"). Fix: new pure `utils/unspokenNumbers`
+  (`withoutUnspokenNumbers`, `hasUnspokenNumbers`) run first inside `speakableLine`, so every generated, repaired,
+  refined, final or pasted line loses them with their label, Telugu case ending and joiners. It keeps prices, offers,
+  years, times, "24/7", rankings and road names. `spokenAddressOf` runs each part through it and cuts a hyphen- or
+  slash-shaped leading door number. The writer, repair, review, character and refine prompts name pincodes and
+  door numbers, and the conflicting line was removed. Files: `utils/unspokenNumbers.ts` (new), `utils/spokenNumbers.ts`,
+  `utils/spokenAddress.ts`, `services/prompts.ts`, `services/prompts/characterAd.ts`, `services/prompts/refine.ts`,
+  tests `unspokenNumbers.test.ts` (new), `prompts.test.ts`. Tested: unit tests in Telugu and English (phones, pincodes,
+  door numbers, digit-word runs, what is kept, idempotence, through `speakableLine` and `spokenAddressOf`). Full vitest
+  279 files / 4601 tests: 4 failed in the parallel run; the 2 prompt tests asserting the old wording were updated, the
+  other 2 are load timeouts that pass alone. Typecheck 0 errors, build ✅. No live Gemini run.
+
 - **2026-10-22: Paste Flow accounts + "Opening day not set"** (`ai-accounts.md` §9.21, §24; `data-model.md`). The owner
   had ~87 Flow accounts in a sheet (logins without "@gmail.com", rows without a password, a password wrapped onto the
   next line, the block pasted twice, no opening days) to add as the tech admin, skipping ones already there. Claude may

@@ -2328,7 +2328,7 @@ ${everydaySpeechRules(lang)}
 ===== NUMBER AND CTA RULES =====
 
 1. Never use digits inside spoken content.
-2. NEVER speak, read, or include any phone number or contact number anywhere in the script — no English digit names, no native counting words, no number at all. The number is shown on screen, not spoken.
+2. NEVER speak, read, or include any phone number, contact number, pincode or door / house / plot number anywhere in the script — no digits, no English digit names, no native counting words. They are shown on screen, not spoken.
 3. CTA must appear ONLY in the FINAL clip. Non-final clips must have no CTA and no contact reference.
 4. The FINAL clip is the CALL-TO-ACTION — make it strong and natural, worded for THIS business, using an action such as "call now", "contact us today", "WhatsApp us today", "book now", or "don't miss this limited-time offer" (in ${lang}). Do NOT speak any phone number.
 5. The FINAL clip must END with the on-screen call CTA (this replaces reading any number):${isTelugu ? `
@@ -2395,7 +2395,6 @@ Extract and use only verified information from the provided inputs:
 • strongest differentiator
 • target audience aspiration
 • trust factor or proof point if actually provided
-• contact number only if actually provided and only in the final clip
 
 ===== BUSINESS-SPECIFIC SCRIPT RULE (MANDATORY — NO TEMPLATES) =====
 
@@ -2559,7 +2558,7 @@ ${clipLines}
 4. Remove repeated adjacent words and broken filler.
 5. Keep one core idea per non-final clip.
 6. Keep CTA only in the FINAL clip; non-final clips must have no CTA and no contact reference.
-7. NEVER speak or include any phone number or contact number anywhere — no English digit names, no native counting words, no number at all. The number is shown on screen, not spoken.
+7. NEVER speak or include any phone number, contact number, pincode or door / house / plot number anywhere — no digits, no English digit names, no native counting words. They are shown on screen, not spoken.
 8. ${finalCtaLine}
 9. ${transliterationRule}
 10. Every clip must contain ${WORD_BAND_TEXT} — see THE WORD BUDGET below. Fix a count by tightening or completing the thought, never by padding or cutting a sentence in half, and leave every clip that already fits exactly as it is.
@@ -2678,7 +2677,7 @@ Then run the CLIP ${messageClip} TEST: imagine a stranger hears ONLY clip ${mess
 • Exactly the same number of clip lines as the candidate, in the exact same "START-END: text" format.
 • Every clip must contain ${WORD_BAND_TEXT} (punctuation not counted) — a rewrite that improves the language but breaks the count is rejected by code.
 • Spoken content in pure, correct ${scriptWord} only — ${isLatin ? 'no digits' : 'no Latin letters or digits'} inside spoken content.
-• No phone/contact number is ever spoken. CTA and contact references appear ONLY in the final clip.
+• No phone/contact number, pincode or door number is ever spoken. CTA and contact references appear ONLY in the final clip.
 • The final clip must end with ${finalCtaLine}
 • No repeated adjacent words, no duplicate clips, no incomplete thoughts.
 • Use ONLY facts present in the supplied business information — never invent new claims, offers, prices, or details while rewriting.

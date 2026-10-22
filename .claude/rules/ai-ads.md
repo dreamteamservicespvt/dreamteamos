@@ -10,7 +10,7 @@ paths:
   - "src/pages/tech-member/CreateAd.tsx"
   - "src/pages/shared/Tools.tsx"
   - "docs/video-category-*"
-  - "src/utils/{adPipeline,adRequirement,adSpec,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptContract,scriptQa,speakingPosition,spokenAddress,spokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
+  - "src/utils/{adPipeline,adRequirement,adSpec,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptContract,scriptQa,speakingPosition,spokenAddress,spokenNumbers,unspokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
 ---
 
 # AI ad generation (AI Ads Platform video + poster, Cinematic Ads, Gemini pipeline) — DTS-OS module context
@@ -187,7 +187,9 @@ cached; small images and anything the browser cannot redraw go as they are).
    everyday speech, festival wish, and `utils/speakingPosition` (a line that sends the viewer
    "elsewhere" while the speaker stands inside the business). **Address (2026-10-01):** when the
    verified facts carry an address, the LAST clip says it in spoken form
-   (`utils/spokenAddress.spokenAddressOf`: landmark + area / town, never a door number or pincode,
+   (`utils/spokenAddress.spokenAddressOf`: landmark + area / town, never a door number or pincode — since
+   2026-10-22 each part also goes through `withoutUnspokenNumbers`, so "5-87/1 Main Road" and "Kakinada-533 001"
+   / "Pin: 533 001" lose their numbers too,
    ≤ 6 words, transliterated into the script's language); no clip may invent one (`addressIssues` →
    repair; `prompts/address.addressRuleBlock` on every writer, repair, edit and review prompt). Character packs use
    `prompts/characterAd.ts` dialogue prompts. **A custom script is used word for word**
@@ -507,9 +509,23 @@ cached; small images and anything the browser cannot redraw go as they are).
 7. Finalize (returns `sceneContext` and `voiceBrief` too).
 
 **Spoken-word rules, in code (`utils/spokenNumbers.ts`):** every final script line — generated,
-repaired, refined or pasted — goes through `speakableLine`: numbers become words (Telugu words in a
-Telugu script, English words in an English one, Indian lakh/crore grouping, ₹ / % / decimals / times /
-phone numbers digit by digit; other languages rely on the prompt and validator), and the Telugu word
+repaired, refined or pasted — goes through `speakableLine`. **First, no phone number, pincode or door number
+is ever spoken (2026-10-22 — the owner: "PIN code, door numbers and phone numbers were coming in the voice-over
+… no need of any of these numbers"):** `utils/unspokenNumbers.withoutUnspokenNumbers` removes them BEFORE the
+rest become words — a mobile / landline with STD code / toll-free / 10–12 digits, a "Ph: 2345678" landline, a
+pincode (6 digits or 3 + 3, labelled or bare — never after ₹ / Rs or before rupees / lakh / %), a door number
+(labelled D.No / Door No / H.No / Plot No / ఇంటి నంబర్ …, or shaped "12-3-45" / "5-87/1"; never a bare "No.1"
+or "#1"), and a number already read out as five or more digit words — together with its label ("Ph:", "Call
+us on", "ఫోన్ నంబర్", "పిన్ కోడ్"), a phone number's Telugu case ending ("…కి") and the "or" / comma / dash that
+joined it. Prices, offers, %, years, times, ranges, "24/7", ordinals and road names ("100 Feet Road", "3rd
+Cross") are kept; a line with none is returned unchanged. It applies to a member's own pasted script too. A
+generated clip that loses words falls short of the contract and is repaired like any short clip. Until then
+`spellOutNumbers` read a phone number digit by digit and a pincode as lakhs, and the presenter prompt's
+BUSINESS ANALYSIS still said "contact number only if actually provided and only in the final clip" (removed;
+every writer / repair / refine prompt now names pincodes and door numbers beside phone numbers). Then numbers
+become words (Telugu words in a
+Telugu script, English words in an English one, Indian lakh/crore grouping, ₹ / % / decimals / times;
+other languages rely on the prompt and validator), and the Telugu word
 for "and" — with every misspelling of it — is written **`mariyu`, in Latin letters**, inside the
 Telugu line (2026-09-25: the team reads the script aloud and wants one fixed spelling on the page).
 Nothing explains it anywhere: the written word IS the spelling to say, so the Veo prompt no longer

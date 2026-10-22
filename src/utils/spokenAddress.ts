@@ -15,6 +15,7 @@
  *
  * Pure — no React, no Firestore, no model call — so it is unit-tested.
  */
+import { withoutUnspokenNumbers } from "./unspokenNumbers";
 
 /** Parts of an address that are read, never spoken. */
 const DOOR_NUMBER = /^(?:(?:d|h|s)\.?\s*no\b|(?:door|plot|flat|shop|house|survey|unit|block)\.?\s*(?:no\.?)?\s*[:-]?\s*[\da-z]{0,2}\d|no\.\s*\d|#)/i;
@@ -57,9 +58,15 @@ export function spokenAddressOf(address: string | null | undefined, maxWords = M
 
   const parts: string[] = [];
   for (const raw of text.split(/[,;|]|\s+[-–]\s+/)) {
-    let part = raw.replace(PINCODE, "").replace(/\bpin(?:\s*code)?\s*[:-]?\s*$/i, "").trim();
-    // "D.No 12-3-45 Main Road" → "Main Road": a door number glued to the street is cut off it.
-    part = part.replace(/^(?:d\.?\s*no|h\.?\s*no|door\s*no|plot\s*no|flat\s*no|shop\s*no|house\s*no|#)\.?\s*[:-]?\s*[\d\-/.]+[a-z]?\b\s*/i, "").trim();
+    // Phone numbers, pincodes ("533 001", "Pin: 533 001") and door numbers go first (utils/unspokenNumbers,
+    // 2026-10-22 — a spaced pincode and an unlabelled "5-87/1 Main Road" used to reach the script).
+    let part = withoutUnspokenNumbers(raw).replace(PINCODE, "").replace(/\bpin(?:\s*code)?\s*[:-]?\s*$/i, "").trim();
+    // "D.No 12-3-45 Main Road" / "5-87 Main Road" → "Main Road": a door number glued to the street is cut
+    // off it — labelled, or unlabelled when it has a hyphen or slash ("100 Feet Road" keeps its 100).
+    part = part
+      .replace(/^(?:d\.?\s*no|h\.?\s*no|door\s*no|plot\s*no|flat\s*no|shop\s*no|house\s*no|#)\.?\s*[:-]?\s*[\d\-/.]+[a-z]?\b\s*/i, "")
+      .replace(/^\d+[a-z]?[-/][\d\-/]*\d[a-z]?\s+(?=[a-z])/i, "")
+      .trim();
     part = part.replace(/^[.\-–:\s]+|[.\-–:\s]+$/g, "");
     if (!part || DOOR_NUMBER.test(part) || NUMBER_ONLY.test(part) || REGION.test(part) || DISTRICT.test(part) || FLOOR.test(part)) continue;
     for (const [pattern, said] of EXPANSIONS) part = part.replace(pattern, said);

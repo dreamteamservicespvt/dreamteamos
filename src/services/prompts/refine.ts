@@ -124,7 +124,7 @@ ${dialogue
 • Each line belongs to the speaker named on it — never move a line, or part of one, to the other character.`
   : `• ONE short spoken sentence per clip — never two sentences, never a long run-on line.`}
 • ${isLatin ? "No digits in spoken content." : `No Latin letters and no digits in spoken content.`}
-• Never speak a phone number or contact number.
+• Never speak a phone number, contact number, pincode or door number.
 • A call to action ("call", "visit", "contact") only in the FINAL clip (clip ${clipCount}).${isTelugu && !dialogue ? ` The final clip must still end with ${finalCta}` : ""}
 • Only facts present in the script or the business information — never invent an offer, price, year or claim.
 • Clip ${messageClip} must still carry the core message: the business name, what it does and its core promise.
