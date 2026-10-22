@@ -5,7 +5,7 @@ import { ApiKeySteps } from "./ApiKeyField";
 import { addFlowAccount, updateFlowAccount, type Actor, type Person } from "@/services/aiAccounts";
 import type { FlowAccount, FlowSettings } from "@/types/aiAccounts";
 import {
-  expiryOf, hasRecordedCredits, isDate, isValidEmail, normaliseEmail, todayStr, validateFlowAccountInput, type FlowAccountInput,
+  expiryOf, hasOpeningDay, hasRecordedCredits, isDate, isValidEmail, normaliseEmail, todayStr, validateFlowAccountInput, type FlowAccountInput,
 } from "@/utils/flowCredits";
 import type { KeyCheck } from "@/utils/geminiKeys";
 import { useApiKeyEntry } from "@/hooks/useApiKeyEntry";
@@ -79,7 +79,13 @@ export default function FlowAccountDialog({
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
 
   const save = async () => {
-    const found = validateFlowAccountInput(form, today, { passwordRequired: !editing });
+    // An account pasted in without a phone or an opening day (2026-10-22) can be edited — its password
+    // filled in — without making either up; once set, they cannot be emptied again.
+    const found = validateFlowAccountInput(form, today, {
+      passwordRequired: !editing,
+      phoneOptional: editing && !account?.phone,
+      openingDayOptional: editing && !hasOpeningDay(account),
+    });
     setErrors(found);
     // The key is asked with the account: pasted, or consciously left for later.
     const keyProblem = editing || keyLater ? null
@@ -170,6 +176,7 @@ export default function FlowAccountDialog({
               : (
                 <span className="mt-1 block text-[10px] text-muted-foreground" data-test="flow-created-hint">
                   {!editing && form.createdOn === today ? "Today — change it if the account was opened earlier. " : ""}
+                  {editing && !form.createdOn ? "Not set yet — no credits can be recorded on it until it is. " : ""}
                   Its credits refresh on this day every month.
                 </span>
               )}

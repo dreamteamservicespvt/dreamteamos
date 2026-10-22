@@ -226,8 +226,8 @@ export default function CreditUsageDialog({
                     const s = accountState(a, figureDay);
                     const f = cycleFiguresOn(a, figureDay);
                     return (
-                      <option key={a.id} value={a.id} disabled={s.expired && a.id !== entry?.accountId}>
-                        {a.email} — {s.expired ? "expired" : `${f.remaining} left`}{a.id === activeId ? " · using now" : ""}
+                      <option key={a.id} value={a.id} disabled={(s.expired || s.noOpeningDay) && a.id !== entry?.accountId}>
+                        {a.email} — {s.noOpeningDay ? "opening day not set" : s.expired ? "expired" : `${f.remaining} left`}{a.id === activeId ? " · using now" : ""}
                       </option>
                     );
                   })}

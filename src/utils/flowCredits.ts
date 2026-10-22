@@ -77,9 +77,21 @@ export function daysBetween(a: string, b: string): number {
   return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
 }
 
-/** When an account stops working: its creation date plus the plan's validity. */
+/**
+ * Whether the account's opening day is known (2026-10-22).
+ *
+ * ── Why an account can have none ──
+ * The owner imported a list of accounts nobody had dated. Making a day up would set every account's
+ * credit cycle and expiry wrong, so they are stored with `createdOn: ""` and read "Opening day not
+ * set": no cycle, no expiry, and no credits can be recorded on them until someone sets the day (Edit).
+ */
+export function hasOpeningDay(account: Pick<FlowAccount, "createdOn"> | null | undefined): boolean {
+  return isDate(account?.createdOn || "");
+}
+
+/** When an account stops working: its creation date plus the plan's validity — "" with no opening day. */
 export function expiryOf(createdOn: string, validityMonths = DEFAULT_FLOW_SETTINGS.validityMonths): string {
-  return addMonths(createdOn, validityMonths);
+  return isDate(createdOn) ? addMonths(createdOn, validityMonths) : "";
 }
 
 /**
@@ -96,8 +108,9 @@ export function cycleStartOf(createdOn: string, today: string): string {
   return start;
 }
 
-/** The day the credits next refresh. */
+/** The day the credits next refresh — "" with no opening day. */
 export function nextResetOf(createdOn: string, today: string): string {
+  if (!isDate(createdOn)) return "";
   const start = cycleStartOf(createdOn, today);
   const [cy, cm] = parts(createdOn);
   const [sy, sm] = parts(start);
@@ -128,8 +141,10 @@ export interface AccountState {
   expired: boolean;
   /** Days until expiry (negative once expired). */
   daysToExpiry: number;
-  /** Usable for new work: active, not expired, credits left. */
+  /** Usable for new work: active, not expired, credits left — and its opening day set. */
   usable: boolean;
+  /** Its opening day is not set yet: no cycle, no expiry, no credits recorded on it (2026-10-22). */
+  noOpeningDay: boolean;
 }
 
 /**
@@ -158,6 +173,10 @@ export function usageDateProblem(
 ): string {
   if (!isDate(date)) return "Pick the day the clips were made.";
   if (date > today) return "The clips can't have been made on a day still to come.";
+  // No opening day = no cycle to count the credits in (2026-10-22).
+  if (account && !isDate(account.createdOn)) {
+    return `${account.email || "This account"} has no opening day yet — set it (Edit) before recording credits on it.`;
+  }
   if (account && isDate(account.createdOn) && date < account.createdOn) {
     return `${account.email || "This account"} was opened on ${account.createdOn} — clips made before that can't be on it.`;
   }
@@ -180,7 +199,7 @@ export function cycleFiguresOn(
   const next = nextResetOf(account.createdOn, day);
   const monthly = account.monthlyCredits || DEFAULT_FLOW_SETTINGS.monthlyCredits;
   const used = Math.max(0, account.usedByCycle?.[cycleStart] || 0);
-  return { cycleStart, cycleEnd: addDays(next, -1), monthly, used, remaining: Math.max(0, monthly - used) };
+  return { cycleStart, cycleEnd: next ? addDays(next, -1) : "", monthly, used, remaining: Math.max(0, monthly - used) };
 }
 
 /** A date plus whole days. */
@@ -204,6 +223,7 @@ export function accountState(account: Pick<FlowAccount, "createdOn" | "expiresOn
   const used = Math.max(0, account.usedByCycle?.[cycleStart] || 0);
   const expired = !!account.expiresOn && today >= account.expiresOn;
   const remaining = Math.max(0, monthly - used);
+  const noOpeningDay = !isDate(account.createdOn);
   return {
     cycleStart,
     nextReset: nextResetOf(account.createdOn, today),
@@ -212,7 +232,8 @@ export function accountState(account: Pick<FlowAccount, "createdOn" | "expiresOn
     remaining,
     expired,
     daysToExpiry: account.expiresOn ? daysBetween(today, account.expiresOn) : Infinity,
-    usable: account.status !== "disabled" && !expired && remaining > 0,
+    usable: account.status !== "disabled" && !expired && remaining > 0 && !noOpeningDay,
+    noOpeningDay,
   };
 }
 
@@ -278,15 +299,97 @@ export interface FlowAccountInput {
   createdOn: string;
 }
 
-/** What is wrong with a new account, field by field — {} when it can be saved. */
-export function validateFlowAccountInput(input: FlowAccountInput, today: string, options: { passwordRequired?: boolean } = {}): Partial<Record<keyof FlowAccountInput, string>> {
+/**
+ * What is wrong with an account, field by field — {} when it can be saved.
+ *
+ * `phoneOptional` / `openingDayOptional` are for editing an account imported without them (2026-10-22):
+ * its password can be filled in without making up a phone number or a day. Left empty they stay empty;
+ * typed, they must still be right.
+ */
+export function validateFlowAccountInput(
+  input: FlowAccountInput,
+  today: string,
+  options: { passwordRequired?: boolean; phoneOptional?: boolean; openingDayOptional?: boolean } = {},
+): Partial<Record<keyof FlowAccountInput, string>> {
   const errors: Partial<Record<keyof FlowAccountInput, string>> = {};
   if (!isValidEmail(input.email)) errors.email = "Enter the account's full email address.";
   if ((options.passwordRequired ?? true) && !input.password.trim()) errors.password = "Enter the account's password.";
-  if (!normalisePhone(input.phone)) errors.phone = "Enter the 10-digit mobile number the account logs in with.";
+  if (!(options.phoneOptional && !(input.phone || "").trim()) && !normalisePhone(input.phone)) {
+    errors.phone = "Enter the 10-digit mobile number the account logs in with.";
+  }
+  if (options.openingDayOptional && !input.createdOn) return errors;
   if (!isDate(input.createdOn)) errors.createdOn = "Pick the day the Flow account was opened.";
   else if (input.createdOn > today) errors.createdOn = "That day is still to come.";
   return errors;
+}
+
+// ── A pasted list of accounts (2026-10-22) ────────────────────────────────────────────────────────
+
+export interface PastedFlowAccount {
+  /** Lower-case, "@gmail.com" added to a bare login. */
+  email: string;
+  /** "" when the list gave none. */
+  password: string;
+}
+
+export interface FlowAccountPaste {
+  /** Each account once, in the order it first appears. */
+  accounts: PastedFlowAccount[];
+  /** Lines that are no account (a "=====" divider, a stray word), with their line number. */
+  skipped: { line: number; text: string }[];
+  /** Lines that repeated an account already above. */
+  repeats: number;
+}
+
+/** A Gmail login without its domain — "affreenaffreen27", "ravi.uppalapati.2005.9272". */
+const BARE_LOGIN = /^(?=.*[a-z])[a-z0-9][a-z0-9._+-]{5,}$/;
+
+/**
+ * Reads a list of accounts copied from a sheet: one account a line, the login then its password,
+ * separated by a tab or spaces.
+ *
+ * ── Why these rules (the owner's list, 2026-10-22) ──
+ * The list came from a spreadsheet with gaps: some logins have no "@gmail.com" (they are Gmail
+ * accounts — added); some rows have no password (kept with none); a sheet cell that wrapped puts the
+ * password on the NEXT line, indented, under its login (joined to it); the same account appears in
+ * two blocks, sometimes with a different password — the later one wins (the owner confirmed it for
+ * shaikaffreen0, "sri" then "@ffreen123"); a later row without a password never wipes an earlier one.
+ * A line that is not an account ("=====") is listed as skipped, never guessed into one.
+ */
+export function parseFlowAccountPaste(text: string): FlowAccountPaste {
+  const byEmail = new Map<string, PastedFlowAccount>();
+  const skipped: FlowAccountPaste["skipped"] = [];
+  let repeats = 0;
+  let last: PastedFlowAccount | null = null;
+  (text || "").split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.replace(/\s+$/, "");
+    if (!line.trim()) return;
+    const indented = /^\s/.test(line);
+    const fields = line.trim().split(/\s+/);
+    // A password on its own indented line belongs to the login above it, when that one had none.
+    if (indented && fields.length === 1 && last && !last.password) {
+      last.password = fields[0];
+      return;
+    }
+    const login = fields[0].toLowerCase();
+    const email = login.includes("@") ? (isValidEmail(login) ? login : "") : BARE_LOGIN.test(login) ? `${login}@gmail.com` : "";
+    if (!email) {
+      skipped.push({ line: i + 1, text: line.trim() });
+      last = null;
+      return;
+    }
+    const password = fields.slice(1).join(" ");
+    const seen = byEmail.get(email);
+    if (seen) {
+      repeats += 1;
+      if (password) seen.password = password;
+      last = seen;
+    } else {
+      last = { email, password };
+      byEmail.set(email, last);
+    }
+  });
+  return { accounts: [...byEmail.values()], skipped, repeats };
 }
 
 // ── Who sees and manages what ─────────────────────────────────────────────────────────────────────
@@ -368,13 +471,18 @@ export function memberSummaries(
   });
 }
 
-/** The team's totals for the overview cards. */
+/**
+ * The team's totals for the overview cards. An account with no opening day has no cycle yet, so it
+ * is counted in `undated`, not in the credits (2026-10-22).
+ */
 export function teamTotals(accounts: FlowAccount[], today: string) {
   const live = accounts.filter((a) => a.status !== "disabled");
-  const states = live.map((a) => accountState(a, today)).filter((s) => !s.expired);
+  const all = live.map((a) => accountState(a, today));
+  const states = all.filter((s) => !s.expired && !s.noOpeningDay);
   return {
     accounts: accounts.length,
     live: states.length,
+    undated: all.filter((s) => s.noOpeningDay).length,
     capacity: states.reduce((sum, s) => sum + s.monthly, 0),
     used: states.reduce((sum, s) => sum + s.used, 0),
     remaining: states.reduce((sum, s) => sum + s.remaining, 0),

@@ -59,6 +59,25 @@ runs from its opening day); each `UsageList` row "· cycle from 12 Oct"; account
 My AI Accounts "Left / Used this cycle"; the credit dialog's figures are for the chosen day's cycle (an old entry shows
 its own cycle and gives its credits back only within it). Paid ChatGPT (frames, footers, posters) and Grok (animations)
 logins carry no credit maths: name, login, password, plan, renewal date, and who has them.
+**Paste accounts + "Opening day not set" (2026-10-22, owner).** The tech admin's header button **Paste accounts**
+(`flow-paste`, `components/ai-accounts/PasteAccountsDialog`, `canSeeAllApiKeys`) takes a list copied from a sheet — one
+account a line, the login then its password — read by `flowCredits.parseFlowAccountPaste`: a bare login gets
+`@gmail.com` (`BARE_LOGIN`: ≥ 6 characters with a letter, so a stray word or password is never an account), a password
+alone on the next INDENTED line joins the login above it when that had none, a repeated account counts once and its
+later password wins (a later blank never wipes one), anything else ("=====") is listed as skipped by line number only.
+The preview shows counts and never a password (new / already in the list / without a password / skipped). Each line is
+`services/aiAccounts.importFlowAccount` in its own transaction: a NEW account is the paster's (owner = holder = adder),
+no phone, `createdOn: ""`, `expiresOn: ""`, its password if the line has one; an EXISTING account is left exactly as it
+is, except that a password is filled in (`password_changed` in its history) when none is saved — a saved password is
+never replaced from a paste. Result: added / passwords filled / left as they were / failed (paste again to retry).
+`addFlowAccount` and the import share one record builder (`newFlowAccount`). **No opening day** (`hasOpeningDay` false):
+`expiryOf` / `nextResetOf` give "", `accountState.noOpeningDay` true and `usable` false, `usageDateProblem` refuses
+credits on it ("has no opening day yet — set it (Edit)…"), the credit picker shows it disabled "opening day not set",
+`teamTotals.undated` counts it apart (Overview: "N usable · M opening day not set"; not in the credit totals), the card
+reads "Opening day not set" with a note instead of the cycle bar, the filter has "Opening day not set" (`noday`), and
+Edit saves such an account without making a phone or day up (`validateFlowAccountInput`'s `phoneOptional` /
+`openingDayOptional`, only when the stored one is empty; typed values are still checked). Setting the day on Edit sets
+the expiry as before. The add form still requires both.
 
 **Gemini API keys** ✅ (2026-10-10). Every Flow account is a Google account that makes one free Gemini key
 in AI Studio (project `aiads`, key name "Gemini API Key"); the team collects them for DTS AdGen's prompt
@@ -98,6 +117,9 @@ keys: keys 1, 12, 18 invalid, 13, 16, 23–28 leaked (11 dead).
   member's target is 30 accounts by 29 October, 2 a day; members see only the accounts they added, own
   or hold; the tech admin and team leaders manage every account; an account's creation date is fixed
   once credits are recorded on it.
+- **Pasted accounts (2026-10-22):** only the tech admin pastes; a pasted new account is the paster's with no opening
+  day; an account already in the list is never changed by a paste except to fill a password it lacks; no credits are
+  recorded on an account until its opening day is set.
 - **Credit dates (2026-10-15):** a credit entry's day, calendar month and account cycle come from the day the clips
   were made (default today) — never a day still to come, never before the account was opened; the day can be corrected
   later and the credits move to that day's cycle.

@@ -34,7 +34,7 @@ export default function FlowAccountsList({
 }) {
   const today = todayStr();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "usable" | "empty" | "expired" | "disabled" | "nokey">("all");
+  const [filter, setFilter] = useState<"all" | "usable" | "empty" | "expired" | "disabled" | "nokey" | "noday">("all");
   const [openHistory, setOpenHistory] = useState<string | null>(null);
 
   const shown = useMemo(() => {
@@ -47,7 +47,8 @@ export default function FlowAccountsList({
         || (filter === "empty" && !s.expired && a.status !== "disabled" && s.remaining === 0)
         || (filter === "expired" && s.expired)
         || (filter === "disabled" && a.status === "disabled")
-        || (filter === "nokey" && (!a.apiKey || a.apiKey.status === "failed"));
+        || (filter === "nokey" && (!a.apiKey || a.apiKey.status === "failed"))
+        || (filter === "noday" && s.noOpeningDay);
       return matches && inFilter;
     });
   }, [accounts, search, filter, today]);
@@ -68,6 +69,7 @@ export default function FlowAccountsList({
             <option value="expired">Expired</option>
             <option value="disabled">Disabled</option>
             <option value="nokey">No API key</option>
+            <option value="noday">Opening day not set</option>
           </select>
         </div>
       ) : null}
@@ -92,7 +94,9 @@ export default function FlowAccountsList({
                   <div className="min-w-0">
                     <p className="font-mono text-sm font-semibold text-foreground truncate" title={a.email}>{a.email}</p>
                     <p className="text-[11px] text-muted-foreground">
-                      📱 {a.phone || "—"} · created {prettyDate(a.createdOn)} · <span className="whitespace-nowrap">expires {prettyDate(a.expiresOn)}</span>
+                      📱 {a.phone || "—"} · {s.noOpeningDay
+                        ? <span className="font-semibold text-warning" data-test="flow-no-opening-day">Opening day not set</span>
+                        : <>created {prettyDate(a.createdOn)} · <span className="whitespace-nowrap">expires {prettyDate(a.expiresOn)}</span></>}
                     </p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-1 shrink-0">
@@ -103,6 +107,12 @@ export default function FlowAccountsList({
                   </div>
                 </div>
 
+                {s.noOpeningDay ? (
+                  // No opening day = no cycle: nothing to count credits in yet (2026-10-22).
+                  <p className="mt-3 rounded-lg border border-dashed border-warning/40 bg-warning/5 px-3 py-2 text-xs text-muted-foreground" data-test="flow-set-opening-day">
+                    Set the day this account was opened (Edit) — its {s.monthly} credits a month and its expiry count from it, and credits can be recorded on it after that.
+                  </p>
+                ) : (
                 <div className="mt-3">
                   <div className="flex items-baseline justify-between text-xs">
                     <span className="text-muted-foreground">
@@ -117,6 +127,7 @@ export default function FlowAccountsList({
                   </div>
                   <p className="mt-1 text-[10px] text-muted-foreground">Refreshes on {prettyDate(s.nextReset)}{a.lastUsedByName ? ` · last used by ${a.lastUsedByName}` : ""}</p>
                 </div>
+                )}
 
                 <div className="mt-3 grid gap-1 text-xs">
                   <div className="flex items-center justify-between gap-2 min-w-0">

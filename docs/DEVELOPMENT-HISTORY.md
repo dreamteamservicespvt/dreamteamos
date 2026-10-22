@@ -6,6 +6,20 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-22: Paste Flow accounts + "Opening day not set"** (`ai-accounts.md` §9.21, §24; `data-model.md`). The owner
+  had ~87 Flow accounts in a sheet (logins without "@gmail.com", rows without a password, a password wrapped onto the
+  next line, the block pasted twice, no opening days) to add as the tech admin, skipping ones already there. Claude may
+  not type passwords, so the tech admin's **Paste accounts** box takes the list once: new accounts are added as the
+  paster's with no phone and no opening day; existing ones are untouched except that a missing password is filled.
+  Accounts may now have no opening day: no expiry, no cycle, not usable, credits refused until it is set on Edit, counted
+  apart on the Overview. Files: `utils/flowCredits.ts` (`hasOpeningDay`, `parseFlowAccountPaste`, guards in `expiryOf` /
+  `nextResetOf` / `cycleFiguresOn` / `accountState` / `usageDateProblem` / `teamTotals`, `validateFlowAccountInput`
+  options), `services/aiAccounts.ts` (`importFlowAccount`, shared `newFlowAccount`), `components/ai-accounts/
+  PasteAccountsDialog.tsx` (new), `FlowAccountsList.tsx`, `FlowAccountDialog.tsx`, `CreditUsageDialog.tsx`,
+  `pages/shared/AiAccounts.tsx`, `pages/tech-member/MyAiAccounts.tsx`; test `flowPasteOct22.test.tsx` (11). Tested: the
+  AI Accounts tests on the in-memory Firestore; the real page in Chrome on a throwaway harness (paste preview, add,
+  re-paste fills only a missing password, a member's account untouched, Edit dates an undated account with no phone).
+
 - **2026-10-19 (late night, 3): departed members hold no numbers; requests reach the requester's admin** (`sales.md`
   §9.3, `data-model.md`). Live, after the owner pushed number requests: 9885719740 showed "Now with another member" and
   the sales admin had nothing to approve. Read-only in Kusuma's page: the holder (lead "C39") has NO `users` document —

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { KeyRound, Loader2, Plus, Settings2 } from "lucide-react";
+import { ClipboardPaste, KeyRound, Loader2, Plus, Settings2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFlowAccounts, useFlowSettings, useFlowUsage, useGeminiApiKeys, usePaidAccounts, useTechTeam } from "@/hooks/useAiAccounts";
 import FlowAccountsList, { type FlowAccountAction } from "@/components/ai-accounts/FlowAccountsList";
 import FlowAccountDialog, { prettyDate } from "@/components/ai-accounts/FlowAccountDialog";
+import PasteAccountsDialog from "@/components/ai-accounts/PasteAccountsDialog";
 import AssignDialog from "@/components/ai-accounts/AssignDialog";
 import CreditUsageDialog from "@/components/ai-accounts/CreditUsageDialog";
 import CreditCalculator from "@/components/ai-accounts/CreditCalculator";
@@ -50,7 +51,7 @@ export default function AiAccounts() {
   const [month, setMonth] = useState(today.slice(0, 7));
   const { entries } = useFlowUsage(user, month);
   const [memberFilter, setMemberFilter] = useState("");
-  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "edit" | "assign"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "settings" } | { kind: "apiKey"; accountId: string } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "paste" } |{ kind: "edit" | "assign"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "settings" } | { kind: "apiKey"; accountId: string } | null>(null);
   const keyAdmin = canSeeAllApiKeys(user);
   // The keys themselves are read only while their tab is open (one read per key).
   const { keys, loading: keysLoading } = useGeminiApiKeys(teamAdminIdOf(user), keyAdmin && tab === "keys");
@@ -109,8 +110,11 @@ export default function AiAccounts() {
           <h1 className="font-display text-lg md:text-2xl font-bold text-foreground flex items-center gap-2"><KeyRound className="h-5 w-5 text-primary" /> AI Accounts</h1>
           <p className="text-muted-foreground text-xs md:text-sm mt-1">Flow accounts and their credits, the team's account target, and the paid ChatGPT / Grok logins.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button className={buttonClass.ghost} onClick={() => setDialog({ kind: "settings" })} data-test="flow-settings"><Settings2 className="h-4 w-4" /> Settings</button>
+          {keyAdmin ? (
+            <button className={buttonClass.ghost} onClick={() => setDialog({ kind: "paste" })} data-test="flow-paste"><ClipboardPaste className="h-4 w-4" /> Paste accounts</button>
+          ) : null}
           <button className={buttonClass.primary} onClick={() => setDialog({ kind: "add" })} data-test="flow-add"><Plus className="h-4 w-4" /> Add Flow account</button>
         </div>
       </div>
@@ -131,7 +135,7 @@ export default function AiAccounts() {
         <div className="space-y-5">
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {[
-              { label: "Flow accounts", value: totals.accounts, sub: `${totals.live} usable` },
+              { label: "Flow accounts", value: totals.accounts, sub: `${totals.live} usable${totals.undated ? ` · ${totals.undated} opening day not set` : ""}` },
               // ── Why "cycle", not "month" (2026-10-15) ──
               // These add up each account's CURRENT CYCLE — it runs from the day that account was opened to
               // the day before, every month, so no two accounts' cycles line up. "This month" read as the
@@ -229,6 +233,9 @@ export default function AiAccounts() {
         // dialog is open lock its creation date at once. The service re-checks it in a transaction.
         account={dialog?.kind === "edit" ? accounts.find((a) => a.id === dialog.account.id) || dialog.account : null}
         owners={persons} accounts={accounts} />
+      {keyAdmin ? (
+        <PasteAccountsDialog open={dialog?.kind === "paste"} onClose={() => setDialog(null)} actor={user} settings={settings} accounts={accounts} />
+      ) : null}
       <ApiKeyDialog open={!!keyAccount} onClose={() => setDialog(null)} account={keyAccount} accounts={accounts} actor={user}
         onSaved={() => setDialog(null)} />
       <AssignDialog

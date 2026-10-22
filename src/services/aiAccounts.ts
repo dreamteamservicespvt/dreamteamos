@@ -64,6 +64,72 @@ export async function addFlowAccount(
   actor: Actor,
   settings: FlowSettings,
 ): Promise<string> {
+  const account = newFlowAccount(input, actor, settings);
+  const id = account.id;
+  const keyed = input.apiKey?.key.trim() ? apiKeyRecords(account, input.apiKey.key, input.apiKey.check, actor) : null;
+  if (keyed) {
+    account.apiKey = keyed.summary;
+    account.history = [...(account.history || []), event(actor, "api_key_added")];
+  }
+
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, FLOW_ACCOUNTS, id);
+    const existing = await tx.get(ref);
+    if (existing.exists()) {
+      const by = (existing.data() as FlowAccount).addedByName || "someone";
+      throw new Error(`${id} is already in the list — added by ${by}.`);
+    }
+    tx.set(ref, { ...account, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    tx.set(doc(db, FLOW_SECRETS, id), { password: input.password, updatedAt: serverTimestamp(), updatedById: actor.uid } satisfies AccountSecret);
+    if (keyed) tx.set(doc(db, GEMINI_KEYS, id), { ...keyed.record, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  });
+  return id;
+}
+
+/** What one pasted line did (see `importFlowAccount`). */
+export type FlowImportOutcome = "added" | "password_added" | "already_there";
+
+/**
+ * One account from a pasted list (2026-10-22, the tech admin's "Paste accounts"): a new account is
+ * added — owned by whoever pastes, no phone, no opening day ("Opening day not set") and its password
+ * when the list has one; an account already in the list is left as it is, except that a password is
+ * filled in when it has none saved. A saved password is never replaced from a paste — that is Edit's
+ * job, account by account.
+ *
+ * ── Why one transaction per line ──
+ * The account, its password and the "is it there / does it have a password" reads move together, so
+ * two people pasting the same list (or one pasting it twice) add each account once and never
+ * overwrite a password typed in between.
+ */
+export async function importFlowAccount(row: { email: string; password: string }, actor: Actor, settings: FlowSettings): Promise<FlowImportOutcome> {
+  const account = newFlowAccount({ email: row.email, password: row.password, phone: "", createdOn: "" }, actor, settings);
+  const password = row.password.trim() ? row.password : "";
+  return runTransaction(db, async (tx) => {
+    const ref = doc(db, FLOW_ACCOUNTS, account.id);
+    const secretRef = doc(db, FLOW_SECRETS, account.id);
+    const existing = await tx.get(ref);
+    if (!existing.exists()) {
+      tx.set(ref, { ...account, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      tx.set(secretRef, { password, updatedAt: serverTimestamp(), updatedById: actor.uid } satisfies AccountSecret);
+      return "added";
+    }
+    if (!password) return "already_there";
+    // Read only for an account that exists — the secret's rule looks its account up.
+    const secret = await tx.get(secretRef);
+    const saved = secret.exists() ? ((secret.data() as AccountSecret).password || "").trim() : "";
+    if (!password || saved) return "already_there";
+    tx.set(secretRef, { password, updatedAt: serverTimestamp(), updatedById: actor.uid } satisfies AccountSecret);
+    tx.update(ref, { updatedAt: serverTimestamp(), history: arrayUnion(event(actor, "password_changed")) });
+    return "password_added";
+  });
+}
+
+/** A new account's document, as `addFlowAccount` and `importFlowAccount` both write it. */
+function newFlowAccount(
+  input: FlowAccountInput & { notes?: string; owner?: Person },
+  actor: Actor,
+  settings: FlowSettings,
+): Omit<FlowAccount, "createdAt" | "updatedAt"> {
   const id = normaliseEmail(input.email);
   const owner: Person = input.owner || { uid: actor.uid, name: actor.name, role: actor.role };
   const account: Omit<FlowAccount, "createdAt" | "updatedAt"> = {
@@ -88,24 +154,7 @@ export async function addFlowAccount(
     history: [event(actor, "added", owner.uid !== actor.uid ? { toId: owner.uid, toName: owner.name } : {})],
   };
   account.visibleTo = visibilityOf(account);
-  const keyed = input.apiKey?.key.trim() ? apiKeyRecords(account, input.apiKey.key, input.apiKey.check, actor) : null;
-  if (keyed) {
-    account.apiKey = keyed.summary;
-    account.history = [...(account.history || []), event(actor, "api_key_added")];
-  }
-
-  await runTransaction(db, async (tx) => {
-    const ref = doc(db, FLOW_ACCOUNTS, id);
-    const existing = await tx.get(ref);
-    if (existing.exists()) {
-      const by = (existing.data() as FlowAccount).addedByName || "someone";
-      throw new Error(`${id} is already in the list — added by ${by}.`);
-    }
-    tx.set(ref, { ...account, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    tx.set(doc(db, FLOW_SECRETS, id), { password: input.password, updatedAt: serverTimestamp(), updatedById: actor.uid } satisfies AccountSecret);
-    if (keyed) tx.set(doc(db, GEMINI_KEYS, id), { ...keyed.record, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  });
-  return id;
+  return account;
 }
 
 export interface FlowAccountPatch {

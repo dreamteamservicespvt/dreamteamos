@@ -106,7 +106,7 @@ export default function MyAiAccounts() {
                 <>
                   <p className="mt-2 font-mono text-sm font-semibold text-foreground truncate" title={active.email}>{active.email}</p>
                   <p className="mt-1 text-xs text-muted-foreground"><b className={activeState.remaining > 0 ? "text-success" : "text-destructive"}>{activeState.remaining}</b> of {activeState.monthly} credits left this cycle</p>
-                  {!activeState.usable ? <p className="mt-2 text-xs text-destructive">This account is {activeState.expired ? "expired" : "out of credits"} — choose your next one below.</p>
+                  {!activeState.usable ? <p className="mt-2 text-xs text-destructive">This account is {activeState.expired ? "expired" : activeState.noOpeningDay ? "missing its opening day" : "out of credits"} — choose your next one below.</p>
                     : activeState.remaining < settings.clipCredits[8]
                       ? <p className="mt-2 text-xs text-warning" data-test="using-now-low">Not enough left for an 8-second clip — switch to your next account.</p> : null}
                 </>
