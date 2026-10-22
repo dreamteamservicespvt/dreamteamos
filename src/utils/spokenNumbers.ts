@@ -268,11 +268,26 @@ export function fixedWordsIn(lines: string[]): string[] {
  * బీహెచ్‌కే", "open" → ఓపెన్), before the numbers become words so "2BHK" is never read "రెండుBHK".
  */
 export function speakableLine(text: string, language?: string): string {
-  return withEnglishWords(
+  return withJoinedEndings(withEnglishWords(
     withFestivalSpellings(
       withFixedWords(spellOutNumbers(withTeluguLetters(withoutUnspokenNumbers(text), language), language)),
       language,
     ),
     language,
-  );
+  ), language);
+}
+
+/*
+  ── A case ending written apart (2026-10-23, the audit's live runs) ─────────────────────────────────
+  "కాకినాడ లో", "ఇన్ఫ్రా లో" — a Telugu ending is never a word of its own, and written apart it is read and counted
+  as one (the voice pauses on it; the contract counts two words). Joined to the word before — Telugu or one of the
+  English words a Telugu script writes in English letters ("flats లో" → "flatsలో") — with a joiner after a final
+  virama, as Telugu writes it. "నుండి / నుంచి" are left alone: they are commonly written apart.
+*/
+const LOOSE_ENDING = /([\u{0C00}-\u{0C7F}A-Za-z])[ \t]+(లోని|లోనే|లో|కి|కు|కే|ను|తో)(?=[\s,.!?;:]|$)/gu;
+
+/** A Telugu line with every loose case ending joined to its word. Other languages: unchanged. */
+export function withJoinedEndings(text: string, language?: string): string {
+  if (!text || langOf(language) !== "telugu") return text;
+  return text.replace(LOOSE_ENDING, (_m, last: string, ending: string) => `${last}${last === "\u{0C4D}" ? "\u{200C}" : ""}${ending}`);
 }

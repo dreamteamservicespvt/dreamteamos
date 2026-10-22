@@ -311,7 +311,10 @@ cached; small images and anything the browser cannot redraw go as they are).
    shipped the capitals inside the Telugu line. A member's own script is never changed. **No five words twice**
    (`utils/scriptContract.repeatedPhraseIssues`, `REPEATED_PHRASE_WORDS` 5): a later clip that repeats five words in a row
    of an earlier one is a clip issue (repaired; caps originality at 6) — the name, the town and the closing line may come
-   back; generated scripts only.
+   back; generated scripts only. **A loose case ending** ("కాకినాడ లో", "flats లో") is joined to its word in every Telugu
+   line (`spokenNumbers.withJoinedEndings`, last step of `speakableLine`; నుండి / నుంచి stay apart). The address call
+   writes English address words as said ("మెయిన్ రోడ్", never "ప్రధాన రహదారి"); an **English** ad says an all-capitals name
+   in title case (`sayName`, "SAY THE BUSINESS NAME AS: Sri Sai Krishna Infra").
    **English words in English letters, and no formal words (2026-10-22 — the owner: "ఫ్లాట్స్ — flats, ఫ్లాట్ — flat,
    స్లాట్స్ — slots … write this English words"; "don't add complex words like ఏర్పాట్లు — add Arrangements"; scope "your
    words + similar ones").** `utils/englishWords.ENGLISH_WORDS`: flat(s), slot(s), plot(s), villa(s), apartment(s),

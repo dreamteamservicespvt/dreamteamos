@@ -60,7 +60,7 @@ describe("every final Telugu script line spells it దసరా", () => {
   });
 
   it("is applied with the numbers and mariyu — in speakableLine — for Telugu only", () => {
-    expect(speakableLine("దుస్సెహ్రా కి 20% తగ్గింపు మరియు ఉచిత డెలివరీ", "Telugu")).toBe("దసరా కి ఇరవై శాతం తగ్గింపు mariyu ఉచిత డెలివరీ");
+    expect(speakableLine("దుస్సెహ్రా కి 20% తగ్గింపు మరియు ఉచిత డెలివరీ", "Telugu")).toBe("దసరాకి ఇరవై శాతం తగ్గింపు mariyu ఉచిత డెలివరీ"); // the loose ending joined (2026-10-23)
     expect(speakableLine("Happy Dussehra", "English")).toBe("Happy Dussehra");
   });
 });

@@ -281,7 +281,8 @@ describe("a single voice — generate, validate, repair, judge, ship", () => {
 });
 
 // ── Telugu: the fixed closing sentence counts inside its clip; a spoken phone number is caught ──
-const TE = ["మా", "షాప్", "లో", "ప్రతి", "కుటుంబం", "కోసం", "మంచి", "బట్టలు", "ఉన్నాయి", "ఈరోజే", "కొత్త", "డిజైన్లు",
+// (2026-10-23: word 3 was a loose "లో", which speakableLine now joins to its word — withJoinedEndings.)
+const TE = ["మా", "షాప్", "ఇక్కడ", "ప్రతి", "కుటుంబం", "కోసం", "మంచి", "బట్టలు", "ఉన్నాయి", "ఈరోజే", "కొత్త", "డిజైన్లు",
   "చూడండి", "ధరలు", "తక్కువ", "సేవ", "బాగుంటుంది", "మీకు", "నచ్చుతుంది", "అందరికీ", "పెద్ద", "కలెక్షన్", "రంగులు", "చీరలు"];
 const te = (from: number, n: number) => `${TE.slice(from, from + n).join(" ")}.`;
 const closing = (n: number) => `${TE.slice(10, 10 + n).join(" ")}, ${TELUGU_SCREEN_CTA}`;

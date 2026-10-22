@@ -243,3 +243,14 @@ describe("frames: the only words in the picture, and a clean background stamp", 
     expect(out).not.toContain("..");
   });
 });
+
+describe("a Telugu case ending written apart is joined to its word", () => {
+  it("joins లో / కి / కు / ను / తో, keeps నుండి apart, and leaves English alone", async () => {
+    const { withJoinedEndings } = await import("@/utils/spokenNumbers");
+    expect(withJoinedEndings("సర్పవరం కాకినాడ లో ఉన్న ఇన్ఫ్రా లో flats లో.", "Telugu")).toBe("సర్పవరం కాకినాడలో ఉన్న ఇన్ఫ్రాలో flatsలో.");
+    expect(withJoinedEndings("మా షాప్ కి రండి.", "Telugu")).toBe("మా షాప్\u{200C}కి రండి.");
+    expect(withJoinedEndings("కాకినాడ నుండి వచ్చారు.", "Telugu")).toBe("కాకినాడ నుండి వచ్చారు.");
+    expect(withJoinedEndings("Come to us.", "English")).toBe("Come to us.");
+    expect(speakableLine("కాకినాడ లో మా ఆఫీస్.", "Telugu")).toBe("కాకినాడలో మా ఆఫీస్.");
+  });
+});

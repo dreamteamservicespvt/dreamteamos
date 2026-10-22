@@ -374,7 +374,7 @@ errors:** done means every listed item is fully resolved with no build, console 
   2026-10-22, over Vite's 900 KB warning; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` 🟡 283 files, 4705 of 4706 tests pass (2026-10-23, after the AI-ads audit). The one failure,
+- `npx vitest run` 🟡 283 files, 4706 of 4707 tests pass (2026-10-23, after the AI-ads audit). The one failure,
   `smmDeliveryControlUiOct15` "Live, the view-only Social Media Team Lead…" (cannot find "View only — only the people on
   this month"), fails alone too and ALSO on `19763d6` (before the audit) — pre-existing, not yet investigated. Under
   heavy parallel load a few UI tests can time out; they pass re-run alone.

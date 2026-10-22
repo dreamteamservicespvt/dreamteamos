@@ -2867,6 +2867,8 @@ export const generateAdAssets = async (
         contents: [{ role: 'user', parts: [{ text:
           `Write this Indian shop address in ${lang} script, exactly as a local person says it aloud: "${latinAddress}". `
           + `Keep every place name; write "opposite", "near" and "beside" as the ${lang} words for them. `
+          // 2026-10-23, a live run: "Main Road" came back as the formal "ప్రధాన రహదారి" — nobody says that.
+          + `Every other English word of the address (Main Road, Colony, Nagar, Street, Complex, Bus Stand) is written as it sounds, the way people say it — never translated into a formal word. `
           + `Reply with the address only — one line, no explanation, no Latin letters, no digits.` }] }],
       }), { effort: 'fast' });
       const first = (res.text || '').trim().split(/\r?\n/)[0] || '';
@@ -2956,7 +2958,13 @@ export const generateAdAssets = async (
   /** The address in the spelling the last clip must use — "" when there is none, or it could not be fixed. */
   const sayAddress = await nativeAddressPromise;
   /** The name in the script's letters — every spoken line is written with it (see nativeNamePromise). */
-  const sayName = await nativeNamePromise;
+  // An English ad says an all-capitals name as words — "Sri Sai Krishna Infra", never "S-R-I" (2026-10-23, a live run).
+  const englishAd = (formData.language || 'Telugu').trim().toLowerCase() === 'english';
+  const sayName = englishAd
+    ? (!customScript?.trim() && /[A-Z]{2}/.test(latinName) && latinName === latinName.toUpperCase()
+      ? latinName.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase())
+      : '')
+    : await nativeNamePromise;
   const withSaidName = (text: string) => withNativeName(text, latinName, sayName);
   /** True when the client's data carries an address — then the last clip says it, else none is spoken. */
   const addressGiven = !!latinAddress;
@@ -3015,7 +3023,9 @@ export const generateAdAssets = async (
     given: addressGiven, spoken: sayAddress, latin: latinAddress, language: formData.language || 'Telugu', finalClip: segmentCount,
   }) + (sayName
     // The name's spoken spelling, with the address: every writer, repair and review prompt reads it (2026-10-22 night).
-    ? `\n• SAY THE BUSINESS NAME AS: ${sayName} — written in ${formData.language || 'Telugu'} letters exactly like this, never "${latinName}" in English letters.`
+    ? (englishAd
+      ? `\n• SAY THE BUSINESS NAME AS: ${sayName} — written exactly like this, never in capital letters.`
+      : `\n• SAY THE BUSINESS NAME AS: ${sayName} — written in ${formData.language || 'Telugu'} letters exactly like this, never "${latinName}" in English letters.`)
     : '');
   /**
    * What the address rule checks, clip by clip: the closing clip says the address when there is one

@@ -40,7 +40,11 @@
   walked a few steps to close the gap the frame left → pair frames start "close together side by side, about an arm's
   length apart"; a Diwali re-run then scored 8.1 (was 5.8), greeting clean, the name in Telugu letters, clip 2 still
   without what the business offers → the short message test shows its shape ("<name> — flats and plots — at
-  <address>, come today"). Flow results: the shortened greeting PASSED (whole line 0–7.86 s, wish at 3.9–4.7 s,
+  <address>, come today"). Then Kids duo (9.5), English promotional (9.5, ready) and a Ganesha Diwali ad (7.9): a Telugu
+  case ending written apart ("కాకినాడ లో") is now joined in `speakableLine` (`withJoinedEndings`; నుండి / నుంచి left
+  apart); the one-time address call no longer translates "Main Road" into the formal "ప్రధాన రహదారి"; an English ad says
+  an all-capitals name in title case ("Sri Sai Krishna Infra"). Open for the owner: the greeting rule makes a deity say
+  "{business} తరఫున … శుభాకాంక్షలు", speaking as the business (judge: cast 6). Flow results: the shortened greeting PASSED (whole line 0–7.86 s, wish at 3.9–4.7 s,
   namaskaram 3.25–4.5 s); promotional clip 1 PASSED (glide, faces camera, welcome then present, line whole 0–7.78 s); duo
   voices in order 0–3.1 / 3.6–7.7 s. Owner decision: the Telugu call line stays in every ad, number or not. Tests:
   build ✅, typecheck 0, full vitest (see §32).

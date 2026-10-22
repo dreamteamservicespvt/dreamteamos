@@ -17,8 +17,13 @@ Owner decision: the Telugu call line stays in EVERY ad, also with no phone numbe
   Motu used its one retry).
 - Full vitest: 4705/4706 — the one failure (`smmDeliveryControlUiOct15`, view-only lead) is PRE-EXISTING (fails on 19763d6).
 
+## Also done (later the same night)
+- Kids duo 9.5, English promotional 9.5 (ready), Ganesha Diwali 7.9 (live scripts); fixed: loose Telugu case endings
+  joined, the address call no longer translates "Main Road", an English ad says an all-caps name in title case.
+- Open for the owner: the greeting rule makes a DEITY say "{business} తరఫున … శుభాకాంక్షలు" (speaks as the business).
+
 ## Next steps, in order
-1. Test the types not covered yet (live script + one ChatGPT frame; a Flow clip only where the frame passes):
+1. Test the types still not covered (frames + Flow): Kids, deity, English (live script + one ChatGPT frame; a Flow clip only where the frame passes):
    Kids duo (`kids_duo_mixed`), a deity (`god_ganesha`), an English promotional ad, the VIDEO BOTTOM LABEL + poster images
    from a kit (`audit-promo.json` → `all` has `headerPrompt` / `posterPrompt` if re-run with run-real-ad.ts), and a
    client-photo (real location) ad. Real Owner Face needs a real owner photo — leave for the owner.
