@@ -3,7 +3,7 @@
  * back into the untouched script, and telling a real regression from a problem that was already
  * there. Pure, so every guarantee the refine flow relies on is testable without a model.
  */
-import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, PREFERRED_WORDS_PER_CLIP, isWordCountIssue } from "./scriptContract";
+import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, PREFERRED_WORDS_PER_CLIP, isSyllableIssue, isWordCountIssue } from "./scriptContract";
 
 export interface RefinePlan {
   understood: string;
@@ -259,7 +259,7 @@ export function editProblems(before: string[], after: string[], editedClips: num
     if (introduced.includes(issue)) return false;
     const clip = issue.match(/^Clip (\d+)\b/);
     if (!clip || !edited.has(Number(clip[1]) - 1)) return false;
-    return isWordCountIssue(issue) || /'s line must be \d+[–-]\d+ words/.test(issue);
+    return isWordCountIssue(issue) || isSyllableIssue(issue) || /'s line must be \d+[–-]\d+ words/.test(issue);
   });
   return [...introduced, ...leftInEdited];
 }

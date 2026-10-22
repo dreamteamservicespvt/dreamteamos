@@ -153,10 +153,11 @@ export function bandDistance(counts: number[]): number {
 /**
  * What may never ship in a script the platform wrote — checked in code on the EXACT final text, after
  * every rewrite, repair, spelling pass and formatting step. A clip outside 17–20 words, an empty clip, a
- * clip that repeats another word for word, or the wrong number of clips. (Who speaks is checked by
- * utils/dialogueFormat castIntegrityIssues for a cast.) Returns [] when the script may ship.
+ * clip that repeats another word for word, or the wrong number of clips — and, in a Telugu script (pass its
+ * `language`), a clip over the syllable CEILING, which Flow cannot say in eight seconds (2026-10-22). (Who
+ * speaks is checked by utils/dialogueFormat castIntegrityIssues for a cast.) Returns [] when the script may ship.
  */
-export function contractViolations(clipTexts: string[], expectedClips: number, cast = false): string[] {
+export function contractViolations(clipTexts: string[], expectedClips: number, cast = false, language?: string | null): string[] {
   const issues: string[] = [];
   if (clipTexts.length !== expectedClips) issues.push(`Expected exactly ${expectedClips} clips but got ${clipTexts.length}.`);
   const seen = new Map<string, number>();
@@ -169,10 +170,133 @@ export function contractViolations(clipTexts: string[], expectedClips: number, c
     }
     const countIssue = clipWordCountIssue(n, words.length, cast);
     if (countIssue) issues.push(countIssue);
+    if (language !== undefined && measuresSyllables(language)) {
+      const tooLong = clipSyllableIssue(n, spokenSyllables(text), cast, syllableLimitsFor(cast).ceiling);
+      if (tooLong) issues.push(tooLong);
+    }
     const key = words.join(" ").toLowerCase();
     const first = seen.get(key);
     if (typeof first === "number") issues.push(`Clip ${n} duplicates clip ${first}.`);
     else seen.set(key, n);
+  });
+  return issues;
+}
+
+// ── How long a clip takes to SAY (2026-10-22, measured in Flow) ───────────────────────────────────
+
+/*
+  ── Why words alone were not enough ──────────────────────────────────────────────────────────────
+  The owner's real-ad check (2026-10-22, a Telugu Diwali ad on the JPN Flow account): a greeting clip of
+  19 words / 58 syllables was CUT at 8 s — the wish word itself never said — and after it was shortened, a
+  clip of 18 words / 54 syllables was said whole but ran to 7.86 s, its last syllable clipped. Flow said 53
+  syllables in 7.98 s on the first clip. A Telugu word runs from one syllable (మా) to seven (కస్టమర్లందరికీ),
+  so 17–20 WORDS can be 45 syllables or 62. The word contract stays the owner's rule; this adds the second
+  half of "fits its clip": the line can be SAID in eight seconds.
+  Telugu only — the one language measured (English runs ~1.4 syllables a word, 20 words ≈ 28: never the
+  problem). The numbers are from those two clips, not a study: one voice aims at ≤ 50 (comfortable — about
+  6.5 a second with a breath), and a clip over 54 is refused (54 was the most Flow said in time). A
+  two-person clip loses about half a second to the hand-over: ≤ 47, refused over 51.
+*/
+/** One voice: the most syllables a Telugu clip should carry (the repairs aim under it). */
+export const MAX_SYLLABLES_PER_CLIP = 50;
+/** One voice: over this, a Telugu clip cannot be said in eight seconds and never ships. */
+export const SYLLABLE_CEILING_PER_CLIP = 54;
+/** A two-person clip, both lines together (the hand-over costs about half a second). */
+export const MAX_SYLLABLES_PER_PAIR_CLIP = 47;
+export const SYLLABLE_CEILING_PER_PAIR_CLIP = 51;
+
+const TELUGU_INDEPENDENT_VOWEL = /[\u{0C05}-\u{0C14}\u{0C60}\u{0C61}]/u;
+const TELUGU_CONSONANT = /[\u{0C15}-\u{0C39}\u{0C58}-\u{0C5A}]/u;
+const TELUGU_VIRAMA = "\u{0C4D}";
+
+/** True for the languages whose clips are held to a syllable limit (Telugu). */
+export function measuresSyllables(language?: string | null): boolean {
+  const l = (language || "Telugu").trim().toLowerCase();
+  return l === "telugu" || l === "te" || l === "";
+}
+
+/**
+ * Spoken syllables in a line: in Telugu letters, one per vowel and per consonant that is not joined to the
+ * next by a virama (an akshara — "కస్టమర్లందరికీ" is క-స్ట-మ-ర్లం-ద-రి-కీ … counted by its sounding consonants);
+ * in English letters ("mariyu", "flats"), one per vowel group. Labels and punctuation never count (the
+ * same words as the word counter).
+ */
+export function spokenSyllables(text: string): number {
+  let total = 0;
+  for (const word of spokenWordsOf(text)) {
+    const chars = [...word];
+    chars.forEach((c, i) => {
+      if (TELUGU_INDEPENDENT_VOWEL.test(c)) total += 1;
+      else if (TELUGU_CONSONANT.test(c) && chars[i + 1] !== TELUGU_VIRAMA) total += 1;
+    });
+    for (const latin of word.match(/[A-Za-z]+/g) ?? []) total += Math.max(1, (latin.toLowerCase().match(/[aeiouy]+/g) ?? []).length);
+  }
+  return total;
+}
+
+/** The syllable limits for a clip: `aim` (what the writer and the repairs aim under) and `ceiling` (never shipped). */
+export function syllableLimitsFor(cast = false): { aim: number; ceiling: number } {
+  return cast
+    ? { aim: MAX_SYLLABLES_PER_PAIR_CLIP, ceiling: SYLLABLE_CEILING_PER_PAIR_CLIP }
+    : { aim: MAX_SYLLABLES_PER_CLIP, ceiling: SYLLABLE_CEILING_PER_CLIP };
+}
+
+/**
+ * The one wording of "this clip is too long to say". It never says "has N" — the word-count repair reads
+ * that phrase (utils/voiceOverRefine repairDirection) — and it keeps the word band, so a repair shortens the
+ * WORDS it says, not their number.
+ */
+export function clipSyllableIssue(clipNumber: number, syllables: number, cast = false, limit?: number): string | null {
+  const max = limit ?? syllableLimitsFor(cast).aim;
+  if (syllables <= max) return null;
+  return `Clip ${clipNumber} is too long to say in 8 seconds: ${syllables} syllables${cast ? " across both lines together" : ""}, `
+    + `at most ${max} fit. Keep ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} words, but say it with shorter everyday words — `
+    + `swap a long word for a short one, or leave out a secondary detail; never cut the business name, the wish or the closing call line.`;
+}
+
+/** Recognises a syllable failure in an issue list (see clipSyllableIssue). */
+export function isSyllableIssue(issue: string): boolean {
+  return /^Clip \d+ is too long to say in 8 seconds\b/.test(issue);
+}
+
+/** Every clip of a script over its syllable aim (Telugu only; [] for other languages). */
+export function clipSyllableIssues(clipTexts: string[], language?: string | null, cast = false): string[] {
+  if (!measuresSyllables(language)) return [];
+  return clipTexts.map((text, i) => clipSyllableIssue(i + 1, spokenSyllables(text), cast)).filter((x): x is string => !!x);
+}
+
+/*
+  ── A phrase said twice (2026-10-22, night — the live promotional run) ─────────────────────────────
+  Clip 1 "… టూ బీహెచ్‌కే mariyu త్రీ బీహెచ్‌కే flats, plots దొరుకుతాయి" and clip 2 "… టూ బీహెచ్‌కే mariyu త్రీ బీహెచ్‌కే
+  flats …" — eight of a 32-second ad's seconds spent saying the same thing twice. Only a word-for-word duplicate CLIP
+  was caught, and the judge scored originality 9. Five words in a row said in two clips is a repeat; the business's
+  name and other fixed phrases (the closing line, the address) are allowed to come back.
+*/
+export const REPEATED_PHRASE_WORDS = 5;
+
+const normalWord = (w: string) => w.toLowerCase().replace(/[\u{200C}\u{200D}]/gu, "");
+
+/** "Clip 2 repeats clip 1's words "…" — say something new in it." for every later clip that repeats an earlier one. */
+export function repeatedPhraseIssues(clipTexts: string[], allowed: string[] = []): string[] {
+  const allowedSeqs = allowed.filter(Boolean).map((a) => spokenWordsOf(a).map(normalWord).join(" "));
+  const isAllowed = (seq: string) => allowedSeqs.some((a) => a.includes(seq));
+  const issues: string[] = [];
+  const seen = new Map<string, number>();
+  clipTexts.forEach((text, i) => {
+    const words = spokenWordsOf(text).map(normalWord);
+    const own = new Set<string>();
+    let reported = false;
+    for (let k = 0; k + REPEATED_PHRASE_WORDS <= words.length; k++) {
+      const seq = words.slice(k, k + REPEATED_PHRASE_WORDS).join(" ");
+      if (own.has(seq)) continue;
+      own.add(seq);
+      const first = seen.get(seq);
+      if (!reported && first !== undefined && first !== i + 1 && !isAllowed(seq)) {
+        issues.push(`Clip ${i + 1} repeats clip ${first}'s words "${spokenWordsOf(text).slice(k, k + REPEATED_PHRASE_WORDS).join(" ")}" — say something new in it.`);
+        reported = true;
+      }
+    }
+    for (const seq of own) if (!seen.has(seq)) seen.set(seq, i + 1);
   });
   return issues;
 }

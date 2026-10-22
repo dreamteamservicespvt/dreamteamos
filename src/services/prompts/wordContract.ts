@@ -12,7 +12,7 @@
  */
 import {
   MAX_WORDS_PER_CLIP, MAX_WORDS_PER_LINE, MIN_WORDS_PER_CLIP, MIN_WORDS_PER_LINE,
-  PREFERRED_WORDS_PER_CLIP, PREFERRED_WORDS_PER_LINE, countSpokenWords,
+  PREFERRED_WORDS_PER_CLIP, PREFERRED_WORDS_PER_LINE, countSpokenWords, measuresSyllables, syllableLimitsFor,
 } from "@/utils/scriptContract";
 
 /**
@@ -35,6 +35,8 @@ export interface WordContractOptions {
   /** The address the final clip must say, in its spoken form — counted here too. */
   address?: string;
   register?: WordContractRegister;
+  /** The script's language: a Telugu script is also told its syllable limit (utils/scriptContract, 2026-10-22). */
+  language?: string;
 }
 
 const BAND = `${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP}`;
@@ -58,6 +60,11 @@ export function wordContractBlock(options: WordContractOptions = {}): string {
     lines.push(`• A clip's TWO lines TOGETHER make the ${BAND} — never ${BAND} each. Split it evenly: about ${PREFERRED_WORDS_PER_LINE.min}–${PREFERRED_WORDS_PER_LINE.max} words for ${a ? `${a}'s line` : "the first line"} and ${PREFERRED_WORDS_PER_LINE.min}–${PREFERRED_WORDS_PER_LINE.max} for ${b ? `${b}'s` : "the answer"} (each line ${MIN_WORDS_PER_LINE}–${MAX_WORDS_PER_LINE}), so both have a real, unhurried line and the hand-over has time to breathe.`);
   } else {
     lines.push(`• The one speaker's line IS the clip: ${BAND} words in a single complete sentence.`);
+  }
+  if (options.language !== undefined && measuresSyllables(options.language)) {
+    // The live Flow check (2026-10-22): 18 words / 54 syllables just fit 8 s; 19 words / 58 syllables were cut.
+    const { aim } = syllableLimitsFor(pair);
+    lines.push(`• It must also be SAID in 8 seconds: at most ${aim} syllables (aksharas) in the clip${pair ? ", both lines together" : ""} — the voice says about six a second and stops at eight seconds, cutting whatever is left. So the ${BAND} words are SHORT everyday words: a long compound (కస్టమర్లందరికీ, శ్రేయోభిలాషులు, హృదయపూర్వక) costs as much as three short words — use a short one or leave it out. Counted in code.`);
   }
   lines.push(`• Count only what is SAID — every word of every line, including the business name, the town, the address and the closing call line. Clip labels, timestamps, speaker labels and punctuation are not words.`);
   if (closing) {

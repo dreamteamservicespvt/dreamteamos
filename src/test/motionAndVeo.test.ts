@@ -198,7 +198,8 @@ describe("the motion plan", () => {
     expect(product[1].staging.key).toBe("approach_show");
     expect(product[1].staging.name).toBe("Show it where they stand");
     expect(product[1].walks).toBe(false);
-    expect(cameraShot(product[1], "She")).toBe("Smooth, steady push-in from a three-quarter shot to a close-up of the product, the focus settling on her face as she looks back to the lens");
+    // In place her face and the product stay in the shot (2026-10-22, night — "looks back" asked for a look away).
+    expect(cameraShot(product[1], "She")).toBe("Smooth, steady push-in from a three-quarter shot to a medium shot that keeps her face and what she shows in frame");
     expect(product[1].lens).toBe("50mm");
     expect(stagingPath(product[1], "She")).toBe("She stands right beside the product or display, facing the camera, and shows it with an open hand — or lifts it a little toward the camera — on the words about it, keeping her face to the viewer");
     // A scene plan's "arc" is never planned (retired 2026-10-22).

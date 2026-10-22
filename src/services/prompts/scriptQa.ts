@@ -23,7 +23,7 @@
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { englishWordList } from "@/utils/englishWords";
-import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from "@/utils/scriptContract";
+import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, countSpokenWords } from "@/utils/scriptContract";
 
 export interface ScriptQaContext {
   language?: string;
@@ -46,6 +46,25 @@ export interface ScriptQaContext {
   clipWords?: number[];
   /** The fixed closing sentence of the final clip, when the ad has one (a Telugu single voice). */
   closingLine?: string;
+}
+
+/*
+  ── What the final clip has ROOM for (2026-10-22, the live real-ad run) ──────────────────────────
+  A two-clip Telugu Diwali ad: clip 1 is the wish, clip 2 must hold the 9-word closing call line and the
+  3-word address, so 5–8 words are left for everything else. The judge asked clip 2 for "2BHK mariyu 3BHK
+  flats, open plots, bank loan arrangements and immediate booking" — about 12 more words — scored persuasion,
+  clarity and relevance 5–6 for leaving them out, and the loop spent its three passes on what could never fit
+  (shipped at 7.9). The judge is now told the room, in code, and to judge the selling within it.
+*/
+function finalClipRoomRule(ctx: ScriptQaContext): string {
+  const closing = (ctx.closingLine || "").replace(/^["“]|["”]$/g, "").trim();
+  const address = (ctx.address || "").trim();
+  if (!closing && !address) return "";
+  const fixed = (closing ? countSpokenWords(closing) : 0) + (address ? countSpokenWords(address) : 0);
+  const room = Math.max(0, MAX_WORDS_PER_CLIP - fixed);
+  const noOfferClip = ctx.adType === "festival" && ctx.clipCount <= 2;
+  return `• THE FINAL CLIP'S ROOM: clip ${ctx.clipCount} must say ${[closing ? "the closing call line" : "", address ? "the address" : ""].filter(Boolean).join(" and ")} (${fixed} words), which leaves at most ${room} words for anything else. Never ask that clip for an offer, a list of products or a detail that cannot fit in ${room} words, and never mark it down for leaving one out — judge whether those ${room} words are the strongest, clearest invitation they can be.${noOfferClip ? ` In this ${ctx.clipCount}-clip wishes ad clip 1 is the wish, so no clip has room for a list of offers: one specific thing the business offers, said simply, is the whole selling job — judge persuasion, clarity and relevance on that.` : ""}
+`;
 }
 
 export const SCRIPT_QA_SYSTEM_PROMPT = (ctx: ScriptQaContext): string => {
@@ -79,7 +98,7 @@ ${isTelugu
 ${isTelugu ? `• "mariyu" written in Latin letters inside a Telugu line is REQUIRED — it is how the team spells "and". Never mark it as an error.
 • These English words written in English letters inside a Telugu line are REQUIRED too, the team's spelling: ${englishWordList()} (a Telugu ending joined to them, like flatsలో, is right). Never mark them as Latin letters or as English.
 ` : ""}${ctx.closingLine ? `• The closing sentence ${ctx.closingLine} is fixed. Judge the rest of the final clip, not that sentence.
-` : ""}• Numbers written as words, and no phone number spoken anywhere, are required.
+` : ""}${finalClipRoomRule(ctx)}• Numbers written as words, and no phone number spoken anywhere, are required.
 • The business's own name is spelled exactly as given, even when it is an English or unusual word.
 ${ctx.address?.trim()
   ? `• THE ADDRESS IS REQUIRED: the final clip must tell the viewer where to come — "${ctx.address.trim()}". A final clip without it is a clarity problem in that clip. Saying it is NEVER an unsupported claim.`
@@ -88,7 +107,7 @@ ${ctx.address?.trim()
 
 ${everydaySpeechRules(lang)}
 
-${ctx.brief ? `${coreMessageBlock(ctx.brief, messageClip)}\n` : ""}
+${ctx.brief ? `${coreMessageBlock(ctx.brief, messageClip, ctx.clipCount)}\n` : ""}
 ===== THE RUBRIC — SCORE EACH DIMENSION 0–10 =====
 Anchors for every dimension: 10 = nothing on this dimension would make the script better — a senior copy chief would record it exactly as written. 9 = one small improvement is possible. 8 = a few small improvements. 7 = one clear weakness. 5–6 = several weaknesses, or one serious one. 3–4 = it fails on this dimension. 0–2 = unusable.
 Award a 10 when it is TRUE and only then — never out of kindness, never because a draft is "good for a first draft". If you list a problem against a dimension, that dimension is not a 10.

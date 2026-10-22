@@ -37,7 +37,7 @@ describe("withoutUnspokenNumbers — pincodes and door numbers", () => {
     expect(withoutUnspokenNumbers("Come to Main Road, Kakinada 533001.")).toBe("Come to Main Road, Kakinada.");
     expect(withoutUnspokenNumbers("Come to Kakinada-533 001 today.")).toBe("Come to Kakinada today.");
     expect(withoutUnspokenNumbers("Kakinada, PIN: 533 001.")).toBe("Kakinada.");
-    expect(withoutUnspokenNumbers("కాకినాడ పిన్ కోడ్ 533001 లో మా షాప్.")).toBe("కాకినాడ లో మా షాప్.");
+    expect(withoutUnspokenNumbers("కాకినాడ పిన్ కోడ్ 533001 లో మా షాప్.")).toBe("కాకినాడలో మా షాప్."); // the ending stays the town's (2026-10-22, night — was "కాకినాడ లో")
   });
 
   it("removes a door number, labelled or by its shape, and keeps the street", () => {

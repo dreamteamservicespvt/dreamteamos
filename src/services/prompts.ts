@@ -414,6 +414,11 @@ export const getHeaderColorForBusiness = (businessType: string): string => {
 
 export interface FestivalTheme {
   sareeColor: string;
+  /**
+   * @deprecated No longer printed (2026-10-22): the festival frame put this "CELEBRITY-LEVEL … heavy …
+   * worth lakhs" line right above "semi-jewellery only — never heavy" (the owner's rule since 2026-05), and
+   * the image tool got both. The saree frames now carry the semi-jewellery rule alone.
+   */
   jewellery: string;
   environmentDecorations: string;
   headerColors: string;
@@ -1621,16 +1626,16 @@ ${isProfessional ? `POSE & FRAMING (HERO FIRST FRAME — MANDATORY):
 - The hero or anchor image must be EXACTLY centered with
   balanced left-right spacing
 - ${HERO_FRAME_POSE_LINE}
-- Camera at chest level, mid-shot framing only, with a calm,
+- Camera at chest level, a three-quarter shot (head to knees), with a calm,
   premium, welcoming posture`}` : `POSE & FRAMING (PREMIUM COMMERCIAL PHOTOGRAPHY — NATURAL VARIATION ALLOWED):
-• Close mid-shot only (head to upper waist / upper torso) — never full-body, never wide enough to weaken the model's presence
-• For professional suit outputs, Clip 1 must use the same hero pose as the traditional and festival anchor frames: EXACTLY centered with balanced left-right spacing, in ${HERO_FRAME_POSE}
+• A three-quarter shot (head to knees) — the model fills about 70% of the frame height; never a small head-to-feet shot that weakens her presence, never a tight crop that hides the business (one framing for every attire and for the video's push-in — 2026-10-22: this line said "close mid-shot, head to upper waist" while the attire rule and the video asked for three-quarter, and the frame came out full-length)
+• Clip 1 uses the hero pose, the same in every attire: EXACTLY centered with balanced left-right spacing, in ${HERO_FRAME_POSE}
 • From Clip 2 onward, hand position, body angle, and pose energy must change according to that clip's exact voice-over script, business proof point, and location instead of repeating the hero pose
 • Camera should remain premium and intentional — mostly chest-level or eye-level, with modest angle changes only when they improve realism and storytelling
 • Hands and posture must feel graceful and believable — allow variation based on the location and shot purpose instead of forcing the same pose every time
 • Body language must feel poised, elegant, and premium — never stiff, never mannequin-like, never awkward
 • The model must occupy roughly 70% of the total frame height in EVERY clip while still leaving enough space to clearly show the business environment
-• The framing must feel close-up and dominant in EVERY clip — the model is the hero and must visually command the frame
+• The framing must feel dominant in EVERY clip — the model is the hero and must visually command the frame
 • Direct eye contact with the camera is MANDATORY in EVERY clip — she must look straight into the lens, never away from camera, never toward products, never into the distance
 
 HAIR (LUXURY GROOMING — CONSISTENT WITHIN THE CAMPAIGN):
@@ -1661,8 +1666,7 @@ The saree MUST be **DYNAMIC and UNIQUE based on the business sector** — NOT th
 • Styling must feel film-industry celebrity level, not catalog or wedding shoot
 • The attire must complement BOTH the business type AND the ${festivalName} decorations
 
-JEWELLERY (LUXURIOUS CELEBRITY-LEVEL — MANDATORY):
-**${festivalTheme.jewellery}**
+JEWELLERY (SEMI-JEWELLERY — MANDATORY):
 For saree outputs, jewellery must stay STRICTLY semi-jewellery only — premium, elegant, feminine, clearly visible, but never heavy, never bridal, never overloaded.
 Use tasteful gold or gold-diamond semi-jewellery only: refined necklace, elegant earrings, and limited bangles when needed.
 NEVER use heavy bridal sets, temple-jewellery overload, chunky layers, or religious accessories.`) : `ATTIRE (BUSINESS-THEMED COLOR — MANDATORY — MUST BE DYNAMIC PER BUSINESS):
@@ -2517,7 +2521,7 @@ ${everydaySpeechRules(lang)}
 4. Every clip must be concise, complete and meaningful. End the sentence where it naturally ends inside the word budget below.
 5. Keep it SHORT. Each clip is ONE short spoken sentence — never two sentences squeezed into one clip, never a long run-on line. If a clip needs more than ${MAX_WORDS_PER_CLIP} words, it is carrying two ideas: keep the stronger one.
 
-${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '', address: options.address })}
+${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '', address: options.address, language: lang })}
 
 ===== QUALITY BAR =====
 
@@ -2580,7 +2584,7 @@ Extract and use only verified information from the provided inputs:
 
 Every frame of this ad shows the presenter standing INSIDE this business, among its real counters, stock and work. So every line is spoken from HERE, as the business's own voice: "here at <business>", "at our shop", "we", "our", "come to us", "visit us", "everything is right here". NEVER as if the business were somewhere else — never "go to <business>", "go there", "go to them", "let's go", "head over to", "visit that shop", "they have", "their shop". A line that points the viewer somewhere else contradicts the picture on screen.
 
-${coreMessageBlock(brief, messageClip)}
+${coreMessageBlock(brief, messageClip, segmentCount)}
 
 ===== SCRIPT STRUCTURE =====
 
@@ -2739,8 +2743,8 @@ ${clipLines}
 13. Every clip must be a complete, natural spoken sentence in everyday ${lang} — never old, literary, textbook, or literally-translated-sounding ${lang}.
 14. Every clip must sound speakable in roughly 7 to 8 seconds.
 15. Clip ${messageClip} must still carry the core message after the repair: the business name, what it does, and its core promise. Never repair a word count by removing any of those three.
-${brief ? `\n${coreMessageBlock(brief, messageClip)}\n` : ''}
-${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '' })}
+${brief ? `\n${coreMessageBlock(brief, messageClip, segmentCount)}\n` : ''}
+${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '', language: lang })}
 
 ${everydaySpeechRules(lang)}
 
@@ -2803,6 +2807,8 @@ export const VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT = (
   brief: CoreMessageBrief | null = null,
   /** 1 for a normal ad; 2 when clip 1 is a festival greeting. */
   messageClip: number = 1,
+  /** The script's clip count — when the message clip is also the last, its test is the short one (coreMessageBlock). */
+  segmentCount?: number,
 ) => {
   const lang = (language || 'Telugu').trim() || 'Telugu';
   const isTelugu = lang.toLowerCase() === 'telugu';
@@ -2829,7 +2835,7 @@ You will be given a CANDIDATE SCRIPT (already split into numbered clip lines, al
 7. GENERIC / TEMPLATED WRITING — lines that could be dropped into any other business's ad unchanged instead of using THIS business's real, specific details.
 8. A MESSAGE CLIP THAT DOES NOT LAND — clip ${messageClip} is a teaser, a bare question, a greeting or a slogan, and a stranger who hears only it cannot say who the business is, what it does, and why to choose it.
 9. WASTED WORDS — filler, empty adjectives with no fact behind them, or a line that carries no concrete fact the listener can remember or act on.
-${brief ? `\n${coreMessageBlock(brief, messageClip)}\n` : ''}
+${brief ? `\n${coreMessageBlock(brief, messageClip, segmentCount)}\n` : ''}
 ${everydaySpeechRules(lang)}
 
 ===== YOUR PROCESS (internal reasoning — do not include it in the output) =====
@@ -2838,7 +2844,7 @@ For each clip, silently read it exactly as a voice artist would say it aloud, an
 
 Then run the FIRST-LISTEN TEST on every single word. Replace every word from the NEVER list and every other word an ordinary listener in the town would pause on with the word they actually say — keeping the clip inside its word count.
 
-${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '' })}
+${wordContractBlock({ speakers: 1, closingLine: isTelugu ? `"${TELUGU_SCREEN_CTA}"` : '', language: lang })}
 
 Then run the HERE TEST: the presenter is standing INSIDE the business in every clip. Any line that sends the viewer somewhere else — "go to …", "go there", "go to them", "they have …", "their shop" — is rewritten to speak from here: "here at …", "come to us", "we", "our".
 

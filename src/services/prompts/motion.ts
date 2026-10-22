@@ -136,7 +136,7 @@ export const CAMERA_MOVES: Record<CameraMoveKey, CameraMove> = {
   push_in: {
     key: "push_in", name: "Push In", effect: "builds focus and emotion, closer on the face or the product", lens: "50mm", speed: "smooth, steady",
     action: "a smooth, steady push-in that tightens on what the frame already shows — the face, or the product being shown",
-    framing: "a full or three-quarter shot with clear room in front of the subject and the face evenly lit, so the camera can move in",
+    framing: "a three-quarter shot (head to knees) with clear room in front of the subject and the face evenly lit, so the camera can move in",
   },
   side_track: {
     key: "side_track", name: "Side Tracking Shot", effect: "travels with the walk, the background sliding past with parallax", lens: "35mm", speed: "smooth, steady",
@@ -941,6 +941,12 @@ export function cameraShot(plan: ClipMotionPlan, cast = "The cast", plural = fal
   const approaching = plan.walks && (plan.staging.key === "walk_toward" || plan.staging.key === "walk_invite");
   switch (plan.camera.key) {
     case "push_in":
+      // In place (2026-10-22, night — the audit): she shows it FACING the camera, so a close-up of the product that
+      // then "looks back to the lens" asked for a look away and a frame without her face. Both stay in the shot.
+      if (product && !plan.walks) {
+        return fillCast(`Smooth, steady push-in from a three-quarter shot to a medium shot${angle} that keeps ${face} and `
+          + `what {they} show{s} in frame`, cast, plural);
+      }
       if (product) {
         return fillCast(`Smooth, steady push-in from a three-quarter shot to a close-up of the product${angle}, the focus `
           + `settling on ${face} as {they} look{s} back to the lens`, cast, plural);
@@ -1229,11 +1235,15 @@ export function withoutQuotedSpeech(value: string): string {
     + "(?:starting|beginning|delivering|speaking|speaks|speak|says|saying|finishes|finishing|concludes|concluding|completes)?"
     + "\\s*(?:on\\s+|for\\s+|with\\s+)?(?:the\\s+)?(?:words|line|phrase)?";
   return value
-    .replace(quoted, "")
-    // A lead-in left in the middle of the sentence: "lifts on the words, showing…"
-    .replace(/\s+(?:on|with|at|for)\s+the\s+(?:words|line|phrase)(?=\s*[,;])/gi, "")
+    // A quote that ended its sentence keeps the full stop (2026-10-22, night — a live action "…a warm welcome on
+    // "<name>." Her arm then presents…" came out "…a warm welcome on Her arm then presents…").
+    .replace(quoted, (m) => (/[.!?]\s*['"’”]$/.test(m) ? "." : ""))
+    // A lead-in left in the middle of the sentence: "lifts on the words, showing…", "a warm welcome on."
+    .replace(/\s+(?:on|with|at|for)(?:\s+the\s+(?:words|line|phrase))?(?=\s*[,;.])/gi, "")
+    // …or right before the next sentence, its full stop lost: "a warm welcome on Her arm" → "a warm welcome. Her arm".
+    .replace(/\s+(?:on|with|at|for)(?:\s+the\s+(?:words|line|phrase))?\s+(?=(?:Her|His|Their|She|He|They|The)\b)/g, ". ")
     // …or at its end: "gazing into the lens while starting the line", "toward the display for".
-    .replace(new RegExp(`\\s*,?\\s*${leadIn}\\s*(?:for)?\\s*$`, "i"), "")
+    .replace(new RegExp(`\\s*,?\\s*${leadIn}\\s*(?:for)?\\s*\\.?\\s*$`, "i"), "")
     .replace(/\s+,/g, ",")
     .trim();
 }
@@ -1372,9 +1382,15 @@ const SHOW_HOME = String.raw`(?!\s+(?:flats?|house|homes?|apartments?|villas?|un
 const asSpokenOf = (value: string, cast: string) => {
   const pronoun = cast === "She" ? "she" : cast === "He" ? "he" : "";
   if (!pronoun) return value;
+  // A possessive takes the possessive pronoun — "the presenter's hands" is "her hands", never "she's hands"
+  // (2026-10-22, the audit after the real-ad check).
+  const possessive = pronoun === "she" ? "her" : "his";
   return value.replace(
-    new RegExp(String.raw`\b[Tt]he (?:model${SHOW_HOME}|presenter|brand ambassador|ambassador)\b`, "g"),
-    (m) => (m.startsWith("T") ? capitalised(pronoun) : pronoun),
+    new RegExp(String.raw`\b[Tt]he (?:model${SHOW_HOME}|presenter|brand ambassador|ambassador)\b(['’]s\b)?`, "g"),
+    (m, owns?: string) => {
+      const word = owns ? possessive : pronoun;
+      return m.startsWith("T") ? capitalised(word) : word;
+    },
   );
 };
 

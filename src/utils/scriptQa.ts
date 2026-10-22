@@ -166,6 +166,10 @@ export function parseScriptQa(raw: string): ScriptQaReport | null {
  */
 const MECHANICAL_CAPS: { test: RegExp; dimension: QaDimension; cap: number }[] = [
   { test: /must contain \d+[–-]\d+ spoken words|'s line must be \d+[–-]\d+ words/, dimension: "speakability", cap: 5 },
+  // A clip Flow cannot say in eight seconds (utils/scriptContract clipSyllableIssue, 2026-10-22).
+  { test: /is too long to say in 8 seconds/, dimension: "speakability", cap: 6 },
+  // Five words in a row said again in a later clip (utils/scriptContract repeatedPhraseIssues, 2026-10-22).
+  { test: /repeats clip \d+'s words/, dimension: "originality", cap: 6 },
   { test: /phone\/contact number|speak a phone|spoken numbers/i, dimension: "speakability", cap: 6 },
   { test: /must end with spoken punctuation/, dimension: "speakability", cap: 9 },
   { test: /Latin letters or digits|contains digits in spoken/, dimension: "language", cap: 6 },

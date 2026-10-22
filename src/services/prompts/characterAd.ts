@@ -604,7 +604,7 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
    */
   const solo = pack.characters.length === 1;
   /** The one word contract (17–20 a clip, split between the cast), in the shared words — prompts/wordContract. */
-  const budget = wordContractBlock({ speakers: pack.characters.length, names: pack.characters.map((c) => c.name), register: contractRegisterFor(pack) });
+  const budget = wordContractBlock({ speakers: pack.characters.length, names: pack.characters.map((c) => c.name), register: contractRegisterFor(pack), language: lang });
 
   const contract = Array.from({ length: segmentCount }, (_, i) => {
     const start = i * CLIP_SECONDS;
@@ -787,7 +787,7 @@ else: never "let's go to …", "go there", "go to them", "head over to …", "vi
 about the place they are standing in. A line that sends the viewer — or the speakers — somewhere
 else contradicts the picture, and the viewer notices.
 
-${coreMessageBlock(brief, isFestival && segmentCount > 1 ? 2 : 1)}
+${coreMessageBlock(brief, isFestival && segmentCount > 1 ? 2 : 1, segmentCount)}
 
 CLIP-BY-CLIP STRUCTURE:
 
@@ -1014,7 +1014,7 @@ export const CHARACTER_VOICEOVER_REPAIR_SYSTEM_PROMPT = (
   /** True when this ad has one voice in it. Prose that describes a two-hander is branched on it. */
   const solo = pack.characters.length === 1;
   /** The same budget, in the same words, as the writer — prompts/wordContract. */
-  const repairBudget = wordContractBlock({ speakers: pack.characters.length, names: pack.characters.map((c) => c.name), register: contractRegisterFor(pack) });
+  const repairBudget = wordContractBlock({ speakers: pack.characters.length, names: pack.characters.map((c) => c.name), register: contractRegisterFor(pack), language });
   const spellings = packNameSpellings(pack, language);
   const place = (placeName || "").trim();
   /** A human entry's speaker names are roles ("Girl", "Host", "Presenter", "Owner 1") — never spoken. See the writer. */

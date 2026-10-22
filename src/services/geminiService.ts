@@ -85,7 +85,7 @@ import {
   contactNumbersOf, digitsOf, factsFromProfile, phoneKey, sanitizeBusinessProfile, stripUnverifiedNumbers, verifyBusinessFacts,
   type BusinessFacts,
 } from "@/utils/businessFacts";
-import { finalBusinessName, saleBusinessNameIn, withFinalBusinessName, withoutSaleNameLine } from "@/utils/businessName";
+import { finalBusinessName, needsNativeName, saleBusinessNameIn, withFinalBusinessName, withNativeName, withoutSaleNameLine } from "@/utils/businessName";
 import { SCRIPT_QA_SYSTEM_PROMPT } from "./prompts/scriptQa";
 import {
   isBetterDraft, isPerfect, nextImprovement, parseScriptQa, qaInstructions, qaSummary, unscoredSummary, withMechanicalChecks,
@@ -93,6 +93,7 @@ import {
 } from "@/utils/scriptQa";
 import {
   bandDistance, clipWordCountIssue, clipWordCounts, clipsAtPace, contractViolations, countSpokenWords, spokenWordsOf,
+  clipSyllableIssue, clipSyllableIssues, measuresSyllables, repeatedPhraseIssues, spokenSyllables,
 } from "@/utils/scriptContract";
 import { TELUGU_SCREEN_CTA } from "./prompts/wordContract";
 import {
@@ -1520,7 +1521,9 @@ Return ONLY the JSON for clip${plan.clips.length === 1 ? '' : 's'} ${plan.clips.
   const check = (clips: DialogueClip[]) => validateDialogueClips(clips, count, speakers, {
     // The writer's own name rules — a role label is never spoken, a named character is named once.
     ...dialogueNameRules(pack, language),
-  }).concat(dialogueHardWordIssues(clips, language, ownNames, k => nameOf.get(k) ?? k));
+  }).concat(dialogueHardWordIssues(clips, language, ownNames, k => nameOf.get(k) ?? k))
+    // …and every clip said in eight seconds (Telugu; utils/scriptContract, 2026-10-22).
+    .concat(clipSyllableIssues(clips.map(clip => clip.map(line => line.text).join(' ')), language, speakers.length > 1));
   /** A speaker as the model wrote it — key, name, or position — resolved to the pack's own key. */
   const speakerKey = (raw: string, position: number) => {
     const t = raw.trim().toLowerCase();
@@ -2458,6 +2461,11 @@ const validateVoiceOverSegments = (
     // The one contract (utils/scriptContract): 17–20 spoken words, counted by the one counter.
     const countIssue = clipWordCountIssue(clipNumber, words.length);
     if (countIssue) issues.push(countIssue);
+    // …and said in eight seconds (Telugu; 2026-10-22, the live Flow check — utils/scriptContract).
+    if (measuresSyllables(language)) {
+      const tooLong = clipSyllableIssue(clipNumber, spokenSyllables(segment));
+      if (tooLong) issues.push(tooLong);
+    }
 
     if (!isFinalClip && CTA_OR_CONTACT_PATTERN.test(segment)) {
       issues.push(`Clip ${clipNumber} leaks CTA or contact language before the final clip.`);
@@ -2482,6 +2490,8 @@ const validateVoiceOverSegments = (
   });
 
   if (everyday) issues.push(...hardWordIssues(segments, language, everyday.names));
+  // Five words in a row said again in a later clip — the name, town and closing line may come back (2026-10-22).
+  if (everyday) issues.push(...repeatedPhraseIssues(segments, [...everyday.names, FINAL_SCREEN_CTA]));
   if (wishClip) issues.push(...wishAudienceIssues(segments[wishClip - 1] || '', wishClip, language));
 
   // Every ad must close with the on-screen call CTA (no spoken phone number). The exact wording
@@ -2858,6 +2868,31 @@ export const generateAdAssets = async (
     }
   })();
 
+  /**
+   * The business's name as a Telugu (or other non-English) script SAYS it — asked once, beside the address,
+   * when the final name is in English letters (utils/businessName withNativeName, 2026-10-22 night: a live run
+   * shipped "SRI SAI KRISHNA INFRA" inside the Telugu line). "" = keep the lines as written.
+   */
+  const latinName = String(businessInfo?.businessName || '').trim();
+  const nativeNamePromise: Promise<string> = (async () => {
+    const lang = (formData.language || 'Telugu').trim();
+    if (customScript?.trim() || !needsNativeName(latinName) || !lang || lang.toLowerCase() === 'english') return '';
+    try {
+      const res = await callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text:
+          `Write this Indian business name in ${lang} script, exactly as a local person says it aloud: "${latinName}". `
+          + `Keep every word of the name (an English word such as Infra, Enterprises or Traders is written as it sounds). `
+          + `Reply with the name only — one line, no explanation, no Latin letters, no digits.` }] }],
+      }), { effort: 'fast' });
+      const first = (res.text || '').trim().split(/\r?\n/)[0] || '';
+      const cleaned = first.replace(/["'`.:;!?()\[\]*]/g, '').trim();
+      return cleaned && !/[A-Za-z0-9]/.test(cleaned) ? cleaned : '';
+    } catch {
+      return '';
+    }
+  })();
+
   const hasProductImages = files.productImages && files.productImages.length > 0;
   const productImageCount = hasProductImages ? files.productImages.length : 0;
 
@@ -2911,6 +2946,9 @@ export const generateAdAssets = async (
 
   /** The address in the spelling the last clip must use — "" when there is none, or it could not be fixed. */
   const sayAddress = await nativeAddressPromise;
+  /** The name in the script's letters — every spoken line is written with it (see nativeNamePromise). */
+  const sayName = await nativeNamePromise;
+  const withSaidName = (text: string) => withNativeName(text, latinName, sayName);
   /** True when the client's data carries an address — then the last clip says it, else none is spoken. */
   const addressGiven = !!latinAddress;
 
@@ -2966,7 +3004,10 @@ export const generateAdAssets = async (
   /** The address rule every writer and repairer of a GENERATED script is given (prompts/address). */
   const addressRule = customScript?.trim() ? '' : addressRuleBlock({
     given: addressGiven, spoken: sayAddress, latin: latinAddress, language: formData.language || 'Telugu', finalClip: segmentCount,
-  });
+  }) + (sayName
+    // The name's spoken spelling, with the address: every writer, repair and review prompt reads it (2026-10-22 night).
+    ? `\n• SAY THE BUSINESS NAME AS: ${sayName} — written in ${formData.language || 'Telugu'} letters exactly like this, never "${latinName}" in English letters.`
+    : '');
   /**
    * What the address rule checks, clip by clip: the closing clip says the address when there is one
    * (in the spelling fixed above — when it could not be fixed it is asked for, not checked), and no
@@ -2989,8 +3030,8 @@ export const generateAdAssets = async (
    */
   const everyday = customScript?.trim()
     ? undefined
-    : { names: [coreMessage?.businessName, coreMessage?.place].filter(Boolean) as string[] };
-  const spoken = (script: string) => (everyday ? toSpokenEndings(script, formData.language) : script);
+    : { names: [coreMessage?.businessName, sayName, coreMessage?.place].filter(Boolean) as string[] };
+  const spoken = (script: string) => (everyday ? toSpokenEndings(withSaidName(script), formData.language) : script);
   let voiceOverScript: string;
   let parsedSegments: string[];
 
@@ -3127,6 +3168,10 @@ export const generateAdAssets = async (
         forbiddenNames,
         requiredPhrases,
       }).concat(dialogueHardWordIssues(clips, formData.language, ownNames, speakerName))
+        // Every clip said in eight seconds, both lines together (Telugu; utils/scriptContract, 2026-10-22).
+        .concat(clipSyllableIssues(clips.map(clip => clip.map(line => line.text).join(' ')), formData.language, packSpeakerList.length > 1))
+        // …and never the same five words in two clips (the cast's names and the place may come back).
+        .concat(repeatedPhraseIssues(clips.map(clip => clip.map(line => line.text).join(' ')), [...ownNames, sayName]))
         // The characters are standing inside the business in every frame — see utils/speakingPosition.
         .concat(clips.flatMap((clip, i) => clip
           .map(line => elsewhereIssue(i + 1, line.text, speakerName(line.speaker)))
@@ -3135,7 +3180,7 @@ export const generateAdAssets = async (
         .concat(addressIssues(clips.map(clip => clip.map(line => line.text).join(' ')), ownNames));
     const finish = (clips: DialogueClip[]): DialogueClip[] => fixNames(clips).map(clip => clip.map(line => ({
       ...line,
-      text: speakableLine(toSpokenEndings(line.text, formData.language), formData.language),
+      text: speakableLine(toSpokenEndings(withSaidName(line.text), formData.language), formData.language),
     })));
     return { check, finish, promptPlace: spokenPlace || placeName };
   };
@@ -3464,7 +3509,7 @@ A STRICT QUALITY CHECK FOUND THESE PROBLEMS — FIX EVERY ONE, and keep everythi
 ${mustFix.map(m => `- ${m}`).join('\n')}
 ` : ''}
 Review it now and return the JSON verdict.` }] }],
-            config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language, coreMessage, messageClip) + addressRule, responseMimeType: "application/json" }
+            config: { systemInstruction: VOICEOVER_QUALITY_REVIEW_SYSTEM_PROMPT(formData.language, coreMessage, messageClip, segmentCount) + addressRule, responseMimeType: "application/json" }
           });
         }, { effort: 'deep' });
         const parsed = JSON.parse(reviewResponse.text || '{}');
@@ -3629,6 +3674,8 @@ Review it now and return the JSON verdict.` }] }],
   const castNote = pack ? castNoteFor(pack) : '';
   /** A two-person clip is counted across both lines together (utils/scriptContract). */
   const contractCast = packSpeakerList.length > 1;
+  /** The script language the final gate measures syllables in (Telugu by default, like every check). */
+  const contractLanguage = formData.language || "Telugu";
   /** The fixed closing sentence the judge must not penalise — a Telugu single-voice ad only. */
   const closingLine = !pack && isTeluguScript(formData.language) ? `"${FINAL_SCREEN_CTA}"` : '';
   let scriptQa: ScriptQaSummary | null = null;
@@ -3744,7 +3791,7 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
       const text = cfg.textOf(draft);
       const clipTexts = cfg.clipTextsOf(draft);
       const clipWords = clipWordCounts(clipTexts);
-      const violations = contractViolations(clipTexts, segmentCount, contractCast);
+      const violations = contractViolations(clipTexts, segmentCount, contractCast, contractLanguage);
       const mechanical = cfg.mechanicalOf(draft);
       const broken = cfg.castIssuesOf?.(draft).length ?? 0;
       // A draft that is not this cast's is never judged — no score can make it usable (2026-10-08).
@@ -3991,7 +4038,7 @@ Segment 2: <text>`;
       const reviewed = await runVoiceOverQualityReview(finalVoiceOver.formatted);
       if (reviewed !== finalVoiceOver.formatted) {
         const candidate = await applyVoiceOverRepairIfNeeded(reviewed);
-        if (contractViolations(candidate.segments, segmentCount).length === 0 && voiceIssuesOf(candidate).length <= best.mechanical.length) {
+        if (contractViolations(candidate.segments, segmentCount, false, contractLanguage).length === 0 && voiceIssuesOf(candidate).length <= best.mechanical.length) {
           finalVoiceOver = candidate;
           scriptQa = unscoredSummary(scriptQa?.drafts ?? 1, voiceIssuesOf(candidate), {
             passes: scriptQa?.passes, stopReason: scriptQa?.stopReason,
@@ -4026,9 +4073,9 @@ Segment 2: <text>`;
   */
   if (!customScript?.trim()) {
     const shippedClips = pack ? dialogueClips.map(clip => clip.map(line => line.text).join(' ')) : parsedSegments;
-    const violations = contractViolations(shippedClips, segmentCount, contractCast);
+    const violations = contractViolations(shippedClips, segmentCount, contractCast, contractLanguage);
     if (violations.length > 0) {
-      throw new Error(`The voice-over could not be fitted to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words in every clip, even after it was repaired and written again: `
+      throw new Error(`The voice-over could not be fitted to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words in every clip (each said in eight seconds), even after it was repaired and written again: `
         + `${violations.slice(0, 3).join(' ')} No frame or video prompt was made from it. Press Generate to write it again.`);
     }
     // Nothing may change the words after they were checked; if anything ever did, the kit must not claim the check.

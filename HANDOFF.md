@@ -1,49 +1,46 @@
-# HANDOFF — AI ads: real-ad check → audit for the same kind of mistakes (2026-10-22, night)
+# HANDOFF — AI ads: audit + test ALL ad types (2026-10-23, overnight, autonomous)
 
-## Goal (the owner's words)
-"Find all the mistakes like them and solve all them and test all" — after the real Telugu festival ad check found
-lines that cannot be said in time, code word-swaps that broke grammar or meaning, and a phone kept inside an address.
-Test = live Gemini runs + real images (ChatGPT, pvt account) + Flow clips (JPN account) checked frame by frame and with
-Whisper. The owner said "don't ask me, do it yourself" (but never type passwords; ask only for business-rule changes).
+## Goal (the owner's words, 2026-10-22 night)
+"Find all the mistakes like them and solve all them and test all"; then "correct promotional voice over script words
+per the clip and test all, also check the duo characters"; then (going to sleep): "don't ask me anything, don't stop …
+test all the types of ads voice over scripts, video quality — camera angles, dynamic video quality and frame quality
+… find the issue and solve all of them". Full rights: Chrome — ChatGPT = thedreamteamservicespvt@gmail.com (browser
+"SRINU-dts"), Flow = dreamteamservicesjpn@gmail.com (browser "dts jp", picked with `switch_browser`). Never type
+passwords. Flow budget (CLAUDE.md): x1 per clip, ≤ 1 retry, ~100 credits per ad (12 credits a clip).
+Owner decision: the Telugu call line "మరిన్ని వివరాల కోసం స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి" stays in EVERY ad,
+also with no phone number (asked; answered "Keep the call line always" and "this needed").
 
-## Done (local commits on `main`, not pushed)
-- The six 2026-10-22 fixes held on a real ad (logo name, Diwali dressing, faces camera, no walk/turn, namaskaram cue).
-- Five more fixes + tests (`src/test/realAdOct22.test.ts`): bare "Phone" label; "<place>ను … రండి" → కి; "the model
-  flat" kept; phone cut from the typed address; Telugu greeting shortened (owner: drop శ్రేయోభిలాషులు + హృదయపూర్వక).
-  Details: `docs/DEVELOPMENT-HISTORY.md` (2026-10-22 night), `.claude/rules/ai-ads.md` §24.
+## Done (uncommitted, in the working tree)
+- Greeting re-test in Flow (12 credits): PASS — whole line said 0–7.86 s, wish at 3.9–4.7 s, namaskaram 3.25–4.5 s.
+  Files: `<work>/real-ad/flow/clip1b.mp4`, `clip1b-te.json`, `strip1b.jpg`.
+- Fixes + tests (`src/test/auditOct22.test.ts`, 36 tests): syllable limit per clip (`utils/scriptContract`
+  spokenSyllables / clipSyllableIssue / contract gate; prompts told via wordContractBlock({language})); prices with
+  lakh/crore (`spokenNumbers` SCALED_PRICE); removed numbers leave no broken sentence (`unspokenNumbers`
+  OWNED_LABEL_BEFORE, TOWN_ENDING_AFTER_GONE); "the presenter's" → her/his (`motion.asSpokenOf`); judge told the final
+  clip's room (`prompts/scriptQa` finalClipRoomRule); core-message short test when the message clip is the final clip
+  (`prompts/coreMessage` finalMessageClipTest); one framing (three-quarter) + semi-jewellery only in frame prompts;
+  business name said in the script's letters (`utils/businessName` withNativeName + geminiService nativeNamePromise);
+  five words repeated in two clips flagged (`repeatedPhraseIssues`). Old tests updated: `unspokenNumbers.test.ts` line 40.
+- Context partly updated: `.claude/rules/ai-ads.md` (§17.2 step 3, spoken-word rules, director, frames, §24).
+  NOT yet: the native name, repeated phrase, core-message short test in ai-ads.md; history entry; CLAUDE.md §32.
 
-## Next steps, in order
-1. **Re-test the greeting live:** `npx vite-node <work>/real-ad/run-real-ad.ts` (writes `kit.json`), then one Flow clip of
-   clip 1 (frame 1 is ready: `<work>/real-ad/images/frame1.png`). Whisper must hear the WHOLE line ending in
-   శుభాకాంక్షలు and the palms must join on it. Budget: 12 credits a clip, at most 1 retry.
-2. **The audit** (the owner's request). Candidates already seen:
-   - Final clip = the fixed call line `TELUGU_SCREEN_CTA` (9 words, ~22 syllables) + the spoken address (≤ 6 words) —
-     measure syllables over real addresses; Flow says ~53 syllables in 8 s (6.6/s), ~46 is comfortable.
-   - The call line says "call the number on the screen" even when NO number is verified (runs 1–2) → owner decision.
-   - Frame prompt contradictions (frame 1 of `kit.json`): "Close mid-shot only … never full-body" vs the motion stamp
-     "a full or three-quarter shot"; JEWELLERY "heavy kundan … worth lakhs" vs "semi-jewellery only, never heavy";
-     "For professional suit outputs, Clip 1 …" inside a saree ad.
-   - The quality gate shipped scripts at 6.2 / 6.4 / 6.9 "stalled" (formal "వ్యాపార సంస్థ", weak clip 2).
-   - Every code text-substitution on shipped lines (`speakableLine` chain: unspokenNumbers, englishWords /
-     withTeluguLetters, spokenNumbers, festivalNames; `motion.asSpokenOf`; `everydaySpeech`) — look for the same
-     class as "ను … రండి" and "she flat": a swap that breaks grammar or meaning.
-   - Label and poster images not made yet (prompts: `<work>/real-ad/kit.json` `label`, `poster`).
-3. Update the context (§30 step 8), run build + full vitest + typecheck, commit locally, delete this file.
+## In progress / next
+1. Read the 4 live runs: `<work>/real-ad/audit-{festival,promo,duo,motu}.json` (runner `run-audit.ts`, args name adType
+   pack seconds). Check words 17–20, syllables (`scratchpad syl.cjs` or spokenSyllables), score, Latin letters, repeats.
+2. Images + video for each ad type: frames in ChatGPT (pvt), clips in Flow (JPN) — single presenter promo, Male &
+   Female duo, Motu & Patlu; frame-check strips (ffmpeg fps=4 tile) + Whisper (`flow/transcribe_wav.py`, needs
+   `PYTHONIOENCODING=utf-8`). Fix what is found.
+3. Context (ai-ads.md rest, DEVELOPMENT-HISTORY entry at top, CLAUDE.md §32), build + full vitest + tsc, commit
+   locally, delete this file.
 
 ## Where things are
 - `<work>` = `C:\Users\chala\.claude\projects\c--Users-chala-Desktop-DTS-OS\work\2026-10-22-ai-ads`
-  - `real-ad/run-real-ad.ts` (live run with `logo.png`; Node FileReader stand-in), `kit.json` (run 4, before the greeting
-    fix), `kit-run1/2/3*.json`, `images/frame1.png`, `frame2.png`, `flow/clip1.mp4`, `flow/clip1-te.json`,
-    `flow/strip4fps.jpg`, `flow/transcribe_wav.py`.
-- Progress page: https://claude.ai/artifact/1FsgdNWSjz7nd5gj8ympVr (scratchpad copy in `<work>/festival-ad-check.html`).
+- Progress page: https://claude.ai/artifact/1FsgdNWSjz7nd5gj8ympVr (source `<work>/festival-ad-check.html`).
+- Flow project "Oct 22 - 22:37" holds frame1.png. Download a clip: open it → download icon → 720p; lands in Downloads.
 
 ## Gotchas
-- **Chrome:** ChatGPT (pvt) = browser "SRINU-dts" (deviceId 372ab4c1-6feb-4832-92af-4f9b7052d3ad); Flow (JPN) = "dts
-  jp" — connect with `switch_browser` (the owner clicks Connect). A Chrome window that is hidden or minimised freezes
-  (screenshots / JS time out): raise it with PowerShell `SetForegroundWindow` on the Chrome process whose title matches.
-- Upload files only from the session scratchpad (copy them there first). Long text: load it via a temporary
-  `<input type=file>` + `file_upload`, then paste with a ClipboardEvent (ChatGPT) or `execCommand('insertText')` (Flow).
-  Flow takes media by a dispatched `drop` event; the Start slot then picks it.
-- `~/.claude/video/tools/transcribe.py` fails (PyAV no longer takes `metadata_errors`) — use
-  `<work>/real-ad/flow/transcribe_wav.py <16k mono wav> <out.json> te`.
-- 9876543210 is on the placeholder list — use 98480 12345 in test briefs.
+- Chrome device ids (select_browser, no question needed): Flow / dts jp = 05ff8459-fb1d-4775-a69d-0a64efe1840c,
+  ChatGPT / SRINU-dts = 372ab4c1-6feb-4832-92af-4f9b7052d3ad.
+- A hidden Chrome window freezes: raise it via PowerShell EnumWindows/SetForegroundWindow by title.
+- Heredocs / node -e mangle backslashes and quotes — use the Edit tool for regex code.
+- The full vitest run has a flaky SMM UI timeout (`smmDeliveryControlUiOct15`) — passes alone.

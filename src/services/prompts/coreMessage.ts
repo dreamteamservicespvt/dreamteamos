@@ -152,7 +152,19 @@ export function fallbackCoreMessageBrief(businessInfo: unknown): CoreMessageBrie
  * `messageClip` is where the core message is spoken: clip 1 in a normal ad, clip 2 in a Festival
  * Wishes ad whose clip 1 is the greeting.
  */
-export function coreMessageBlock(brief: CoreMessageBrief | null | undefined, messageClip = 1): string {
+/*
+  ── When the message clip is also the FINAL clip (2026-10-22, night — live runs) ──────────────────────
+  A two-clip festival ad (clip 1 the wish) and a one-clip ad put the message in the clip that must also say the
+  address and end with the fixed call line: 9 + 4 words of a 20-word clip. The full test (who, what AND why) asked
+  for ~12 more words there; the writer and the repairs kept squeezing the promise in, and two of six live Diwali
+  runs stopped on a 22-word final clip, while the ones that shipped scored 7.7–7.9 for "missing the promise".
+  There the test is the business and what it offers, in one short phrase — the promise needs a longer ad.
+*/
+function finalMessageClipTest(clip: number): string {
+  return `THE CLIP ${clip} TEST (MANDATORY): clip ${clip} is ALSO the final clip — it says the address (when there is one) and ends with the closing call line, which leaves room for only a few more words. Someone who hears ONLY clip ${clip} must know WHO the business is and WHAT it offers, said in ONE short phrase: the business name and its main product or service. The core promise, the proof points and any offer do NOT go in this clip — never squeeze them in: a clip over the word ceiling is rejected.`;
+}
+
+export function coreMessageBlock(brief: CoreMessageBrief | null | undefined, messageClip = 1, clipCount?: number): string {
   if (!brief) return "";
   const lines = [
     `• Business: ${brief.businessName}${brief.place ? ` (${brief.place})` : ""}`,
@@ -171,10 +183,10 @@ the script is written in the ad's own language, naturally, never as a translatio
 
 ${lines.join("\n")}
 
-THE CLIP ${messageClip} TEST (MANDATORY): someone who hears ONLY clip ${messageClip}, once, with no picture, must
+${messageClip === clipCount ? finalMessageClipTest(messageClip) : `THE CLIP ${messageClip} TEST (MANDATORY): someone who hears ONLY clip ${messageClip}, once, with no picture, must
 be able to say WHO the business is, WHAT it does, and WHY they should choose it — the core promise.
 If clip ${messageClip} fails that test, rewrite clip ${messageClip}. A hook may be the way clip ${messageClip} opens; it is never a
-replacement for the message.
+replacement for the message.`}
 
 EVERY WORD SELLS:
 • Every clip carries at least one concrete fact from this brief or the business information.

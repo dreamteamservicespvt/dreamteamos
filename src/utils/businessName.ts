@@ -144,3 +144,39 @@ export function withFinalBusinessName(profile: Record<string, unknown>, final: F
     ...(reference && reference !== final.name ? { saleReference: reference } : {}),
   };
 }
+
+/*
+  ── The name as it is SAID (2026-10-22, night — the live promotional run) ──────────────────────────
+  The final name comes from the logo, so it is often English capitals ("SRI SAI KRISHNA INFRA"). A Telugu
+  script is told both "spell the business name exactly as given" and "no Latin letters", so one run wrote
+  శ్రీ సాయి కృష్ణ ఇన్‌ఫ్రా and the next shipped "SRI SAI KRISHNA INFRA" inside the Telugu line — refused by the
+  validator, capped by the judge, and read letter by letter by a voice. The run now fixes the name's spelling
+  in the script's letters once (one `fast` call, like the address) and every spoken line is written with it.
+*/
+
+/** True when a name needs a spelling in a non-Latin script's letters (it has English letters). */
+export function needsNativeName(name?: string | null): boolean {
+  return !!name && /[A-Za-z]/.test(name);
+}
+
+/**
+ * A spoken line with the business's English-letter name written in the script's own letters, a case ending
+ * kept joined ("SRI SAI KRISHNA INFRAలో" → "శ్రీ సాయి కృష్ణ ఇన్‌ఫ్రాలో"). Matches the name in any case, with
+ * spaces, dots or hyphens between its words. A line without the name, or no native spelling: unchanged.
+ */
+export function withNativeName(text: string, latinName?: string | null, nativeName?: string | null): string {
+  const words = (latinName || "").match(/[A-Za-z0-9&']+/g);
+  if (!text || !words?.length || !nativeName?.trim()) return text;
+  const pattern = new RegExp(
+    String.raw`(?<![A-Za-z])${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(String.raw`[\s.\-]*`)}\.?(?![A-Za-z])`,
+    "gi",
+  );
+  // A Telugu case ending the writer left after the English name joins the spoken one: "INFRA లో" → "ఇన్‌ఫ్రాలో".
+  const native = nativeName.trim();
+  const joiner = native.endsWith("\u{0C4D}") ? "\u{200C}" : "";
+  const looseEnding = new RegExp(
+    `${native.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[ \\t]+(లోని|లో|కి|కు|ను|తో|నుండి|నుంచి)(?![\\u0C00-\\u0C7F])`,
+    "gu",
+  );
+  return text.replace(pattern, native).replace(looseEnding, (_m, ending: string) => `${native}${joiner}${ending}`);
+}

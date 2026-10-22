@@ -107,6 +107,46 @@ const rupees = (n: number, lang: Lang) =>
   lang === "telugu" ? `${words(n, lang)} ${n === 1 ? "రూపాయి" : "రూపాయలు"}` : `${words(n, lang)} ${n === 1 ? "rupee" : "rupees"}`;
 const toInt = (raw: string) => Number(raw.replace(/,/g, ""));
 
+/*
+  ── A price with its scale (2026-10-22, the audit after the real-ad check) ─────────────────────────
+  "₹25 లక్షల నుండి flats" was read "ఇరవై ఐదు రూపాయలు లక్షల నుండి" — twenty-five RUPEES lakhs — because the
+  price rule turned "₹25" into rupees before it saw the scale after it; and "₹1.5 కోట్లు" lost its ".5" (the
+  price rule dropped decimals) and became "ఒక రూపాయి కోట్లు". A builder's ad says its price in lakhs and crores,
+  so the scale belongs to the amount and the rupees are understood: "ఇరవై ఐదు లక్షల నుండి", "ఒకటిన్నర కోట్లు",
+  "twenty-five lakhs". A Telugu scale word keeps its case ending ("లక్షలకే"); a Latin one in a Telugu line is
+  said in Telugu ("₹30L" → "ముప్పై లక్షలు"). Single letters (L, K, Cr) count only after ₹ / Rs — "4K video".
+*/
+const TE_SCALE = String.raw`లక్షలు|లక్షల|లక్ష|కోట్లు|కోట్ల|కోటి|వేలు|వేల|వెయ్యి`;
+const LATIN_SCALE_WORD = String.raw`lakhs|lakh|lacs|lac|crores|crore|thousand`;
+const SCALED_PRICE = new RegExp(
+  String.raw`(?:(?:₹|\bRs\.?|\bINR)\s*(\d[\d,]*(?:\.\d+)?)\s*(${TE_SCALE}|${LATIN_SCALE_WORD}|cr\.?|L|K)|(\d[\d,]*(?:\.\d+)?)\s*(${TE_SCALE}|${LATIN_SCALE_WORD}))(?![A-Za-z])`,
+  "gi",
+);
+
+/** An amount said before its scale: 25 → ఇరవై ఐదు, 1.5 → ఒకటిన్నర / one point five. */
+function amountWords(raw: string, lang: Lang): string {
+  const [whole, fraction] = raw.replace(/,/g, "").split(".");
+  const n = Number(whole);
+  // Before a scale Telugu counts with "ఒక": ఒక లక్ష, ఇరవై ఒక లక్షలు — never "ఒకటి లక్ష".
+  const head = lang === "telugu" && n < 100 && !(fraction && !/^0+$/.test(fraction)) ? teBelow100(n, true) : words(n, lang);
+  if (!fraction || /^0+$/.test(fraction)) return head;
+  // "and a half" is how Telugu says .5 after a number ending in ు or ి: రెండున్నర, ఒకటిన్నర, పదిన్నర.
+  if (lang === "telugu" && fraction === "5" && /[ుి]$/.test(head)) return `${head}న్నర`;
+  return `${head} ${lang === "telugu" ? "పాయింట్" : "point"} ${digitWords(fraction, lang)}`;
+}
+
+/** The scale as the line's language says it: a Telugu scale word as written; a Latin one in Telugu or English words. */
+function scaleWords(scale: string, amount: number, lang: Lang): string {
+  if (/[\u{0C00}-\u{0C7F}]/u.test(scale)) return scale;
+  const s = scale.toLowerCase().replace(/\.$/, "");
+  const one = amount <= 1;
+  const kind = /^(?:l|lakhs?|lacs?)$/.test(s) ? "lakh" : /^(?:cr|crores?)$/.test(s) ? "crore" : "thousand";
+  if (lang === "telugu") {
+    return kind === "lakh" ? (one ? "లక్ష" : "లక్షలు") : kind === "crore" ? (one ? "కోటి" : "కోట్లు") : (one ? "వెయ్యి" : "వేలు");
+  }
+  return kind === "lakh" ? (one ? "lakh" : "lakhs") : kind === "crore" ? "crore" : "thousand";
+}
+
 /**
  * A line with every number written as the words that are spoken, in that line's language.
  * Returns the line unchanged for a language this has no words for.
@@ -121,6 +161,11 @@ export function spellOutNumbers(text: string, language?: string): string {
   const point = lang === "telugu" ? "పాయింట్" : "point";
   const percent = lang === "telugu" ? "శాతం" : "percent";
   return text
+    // A price with its scale first — ₹25 లక్షల, ₹1.5 crore, Rs 30L (see SCALED_PRICE).
+    .replace(SCALED_PRICE, (_m, n1, s1, n2, s2) => {
+      const n = n1 ?? n2, scale = s1 ?? s2;
+      return `${amountWords(n, lang)} ${scaleWords(scale, Number(n.replace(/,/g, "")), lang)}`;
+    })
     // Prices: ₹ / Rs / INR before, or /- after.
     .replace(/(?:₹|\bRs\.?|\bINR)\s*(\d[\d,]*)(?:\.\d+)?(?:\s*\/-)?/gi, (_, n) => rupees(toInt(n), lang))
     .replace(/(\d[\d,]*)\s*\/-/g, (_, n) => rupees(toInt(n), lang))
@@ -138,7 +183,8 @@ export function spellOutNumbers(text: string, language?: string): string {
     // Everything else, including Indian comma grouping (1,00,000).
     .replace(/\d(?:[\d,]*\d)?/g, (m) => words(toInt(m), lang))
     // "999 కే" was written with a space; the spoken price takes the case ending: రూపాయలకే, రూపాయలకి.
-    .replace(/రూపాయలు\s+(కే|కి|కు)(?=[\s.,!?]|$)/g, "రూపాయల$1")
+    // The same for a scale (2026-10-22): "₹30L కే" → ముప్పై లక్షలకే, never "లక్షలు కే".
+    .replace(/(రూపాయ|లక్ష|కోట్|వే)లు\s+(కే|కి|కు)(?=[\s.,!?]|$)/g, "$1ల$2")
     .replace(/[ \t]{2,}/g, " ");
 }
 
@@ -170,6 +216,9 @@ export const FIXED_WORDS: { word: string; say: string; variants: RegExp }[] = [
         // The Telugu spelling itself, and every wrong vowel length the writer has produced,
         // with or without a space in the middle.
         "మరియు", "మరీయు", "మరియూ", "మరీయూ", "మరియుు", "మర్యు",
+        // The English "and" in Telugu letters (2026-10-22, night — a live duo line "స్కూల్స్ అండ్ బస్ స్టాండ్"): a word
+        // of its own only, never the letters inside another word.
+        "(?<![\\u0C00-\\u0C7F])అండ్(?![\\u0C00-\\u0C7F])",
         "మరి\\s+యు", "మరి\\s+యూ", "మరీ\\s+యు", "మరీ\\s+యూ",
         // Latin misspellings of the same word.
         "\\bmariyoo\\b", "\\bmariu\\b", "\\bmariyu\\b",

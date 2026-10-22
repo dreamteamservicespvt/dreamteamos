@@ -84,6 +84,22 @@ const LABEL_BEFORE = new RegExp(
   String.raw`(?:${NOT_AFTER_WORD}(?:(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*(?:no\.?|number|num)\.?\s*[:\-–]?|(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*[:\-–]|(?:ph|phone|mobile|mob|cell|tel|landline|helpline)\.?|(?:ఫోన్|మొబైల్|వాట్సా?ప్|కాంటాక్ట్|సెల్)\s*${TE_NUMBER}?\s*[:\-–]?|${TE_NUMBER}\s*[:\-–]?)|📞|☎️?|📱)\s*${G}`,
   "giu",
 );
+/*
+  ── A removed number must not leave a broken sentence (2026-10-22, the audit after the real-ad check) ──
+  "మా ఫోన్ నంబర్ 98480 12345కి కాల్ చేయండి" came out "మా కాల్ చేయండి" ("our call do"), "మా నంబర్: 98480 12345."
+  came out "మా.", "Our phone number is 98480 12345." came out "Our phone number is." and "కాకినాడ 533005 లో"
+  came out "కాకినాడ లో". Two rules keep the sentence whole:
+  • "our / my / the … number (is)" and "మా / మన" go WITH the label — "మా ఫోన్ నంబర్ …కి కాల్ చేయండి" → "కాల్ చేయండి",
+    and a sentence that was only "Our phone number is …" / "మా నంబర్: …" goes whole;
+  • a town keeps the case ending its removed pincode carried: "కాకినాడలో".
+*/
+/** The owner word or article before a label: "Our phone number is", "the number", "మా నంబర్", "మా". */
+const OWNED_LABEL_BEFORE = new RegExp(
+  String.raw`${NOT_AFTER_WORD}(?:(?:our|my|the)\s+(?:(?:phone|mobile|contact|whats\s*app|cell)\s+)?(?:no\.?|number)(?:\s+is)?|(?:our|my)\s+(?:phone|mobile|contact|whats\s*app|cell)(?:\s+is)?|(?:మా|మన)(?:\s+(?:(?:ఫోన్|మొబైల్|వాట్సా?ప్|కాంటాక్ట్|సెల్)\s*)?(?:నంబర్|నెంబర్|నెం\.?)?)?)\s*[:\-–]?\s*${G}`,
+  "giu",
+);
+/** A Telugu case ending after a removed pincode belongs to the town before it. */
+const TOWN_ENDING_AFTER_GONE = new RegExp(String.raw`([\u{0C00}-\u{0C7F}])[ \t]*${G}[ \t]*(లోని|లో|కి|కు|నుండి|నుంచి|దగ్గర)${NOT_BEFORE_WORD}`, "gu");
 /** A dash gluing a word to a removed number. */
 const DASH_BEFORE = new RegExp(String.raw`(?<=[\p{L}\p{M}])[ \t]*[-–][ \t]*${G}`, "gu");
 /** "on" / "at" before a removed phone number. */
@@ -132,6 +148,8 @@ export function withoutUnspokenNumbers(text: string): string {
     // town's ("కాకినాడ 533001 లో").
     .replace(SUFFIX_AFTER_PHONE, PHONE_GONE)
     .replace(/\u{E002}/gu, GONE)
+    .replace(TOWN_ENDING_AFTER_GONE, (_m, last: string, ending: string) => `${last}${last === "\u{0C4D}" ? "\u{200C}" : ""}${ending}`)
+    .replace(OWNED_LABEL_BEFORE, GONE)
     .replace(LABEL_BEFORE, GONE)
     .replace(GONE_RUN, GONE)
     // "Kakinada-533 001 today" → "Kakinada today".

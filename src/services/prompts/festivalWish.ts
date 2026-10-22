@@ -98,5 +98,20 @@ export function wishAudienceIssues(clipText: string, clipNumber: number, languag
       + `Use short, everyday words and keep the clip inside its word count.`,
     );
   }
+  // The wish sells nothing (2026-10-22, night — a live run shipped "మీ అందరికీ మంచి flats mariyu plots అందిస్తున్న
+  // శ్రీ సాయి కృష్ణ ఇన్ఫ్రా తరఫున …" at 5.8): a product word in the greeting clip is a fault the repair removes.
+  const product = clipText.match(GREETING_PRODUCT_WORDS);
+  if (product) {
+    issues.push(
+      `Clip ${clipNumber} is the festival wish and sells nothing, but it names "${product[0]}". Take the product out of the `
+      + `greeting — after the wish, say a warm wish for the viewer's family instead — keeping the clip inside its word count.`,
+    );
+  }
   return issues;
 }
+
+/** The products and offers a greeting clip never names: the English words a Telugu script writes in English letters, and offers. */
+const GREETING_PRODUCT_WORDS = new RegExp(
+  String.raw`(?<![A-Za-z])(?:flats?|plots?|villas?|apartments?|bookings?|slots?|facilities)(?![A-Za-z])|ఆఫర్|డిస్కౌంట్|తగ్గింపు`,
+  "i",
+);

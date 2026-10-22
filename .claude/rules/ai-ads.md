@@ -286,6 +286,32 @@ cached; small images and anything the browser cannot redraw go as they are).
    could score it. Row 4 shows "Quality check 10/10" / "best draft" / "not scored", the passes, the eight scores, and a
    **Words per clip** row counted live from the script as it stands (green 17–20, amber outside); when the script was
    changed after the check (a refine, a final script) it says so ("these scores are for the generated version").
+   **Said in eight seconds — syllables (2026-10-22, night, from the live Flow check: 18 words / 54 syllables said in
+   7.86 s, 19 words / 58 syllables cut at 8 s).** `utils/scriptContract.spokenSyllables` counts Telugu aksharas (a
+   consonant joined by a virama is not its own; Latin words by vowel groups) on the same words as the counter;
+   `measuresSyllables` = Telugu only. `MAX_SYLLABLES_PER_CLIP` 50 / `MAX_SYLLABLES_PER_PAIR_CLIP` 47 (both lines
+   together) is the aim: `clipSyllableIssue` ("Clip N is too long to say in 8 seconds: S syllables, at most M fit. Keep
+   17–20 words, but … shorter everyday words …" — never "has N", which the word-count repair parses) is raised by the
+   single-voice validator and both cast checks (writer and refine, `clipSyllableIssues`), repaired clip by clip like any
+   clip issue, caps the judge's speakability at 6 (`MECHANICAL_CAPS`), and counts against a refine's edited clips
+   (`editProblems`). `SYLLABLE_CEILING_PER_CLIP` 54 / `_PAIR_CLIP` 51 is in the FINAL GATE: `contractViolations(…,
+   language)` (the run passes `contractLanguage`) — a Telugu clip over it stops the run like a word-count violation.
+   `wordContractBlock({ language })` tells every Telugu writer, repair, review, refine and character prompt the aim
+   ("a long compound … costs as much as three short words"). **The judge knows the final clip's room** (`prompts/scriptQa`
+   `finalClipRoomRule`: the closing line + address words, the rest ≤ 20 − them; in a ≤ 2-clip wishes ad no clip has room
+   for a list of offers) — run 5 shipped at 7.9 after three passes spent asking clip 2 for 12 more words of offers.
+   **The message clip that is also the final clip** (a 2-clip festival ad, a 1-clip ad) gets the SHORT core-message test
+   (`prompts/coreMessage.finalMessageClipTest`, `coreMessageBlock(brief, messageClip, clipCount)` from the writer, repair,
+   review, refine, judge and character prompts): the name and what it offers in one short phrase — no promise, proof or
+   offer — because the full who / what / why test there made two of six live Diwali runs stop on a 22-word final clip.
+   **The name in the script's letters** (`utils/businessName.withNativeName`, geminiService `nativeNamePromise`, one
+   `fast` call beside the address one): a final name in English letters ("SRI SAI KRISHNA INFRA", from the logo) is
+   written once in the script's letters, told to every writer / repair / review (with the address rule: "SAY THE BUSINESS
+   NAME AS …") and swapped in code on every generated line (single voice `spoken`, a cast's `finish`) — a live promo run
+   shipped the capitals inside the Telugu line. A member's own script is never changed. **No five words twice**
+   (`utils/scriptContract.repeatedPhraseIssues`, `REPEATED_PHRASE_WORDS` 5): a later clip that repeats five words in a row
+   of an earlier one is a clip issue (repaired; caps originality at 6) — the name, the town and the closing line may come
+   back; generated scripts only.
    **English words in English letters, and no formal words (2026-10-22 — the owner: "ఫ్లాట్స్ — flats, ఫ్లాట్ — flat,
    స్లాట్స్ — slots … write this English words"; "don't add complex words like ఏర్పాట్లు — add Arrangements"; scope "your
    words + similar ones").** `utils/englishWords.ENGLISH_WORDS`: flat(s), slot(s), plot(s), villa(s), apartment(s),
@@ -568,6 +594,13 @@ cached; small images and anything the browser cannot redraw go as they are).
    location; the tab chips show "👤 1·2" / "👤" (and "+👤" beside a store thumbnail); the copy toast and tooltip say
    "then attach owner photo 1, then owner photo 2". A store photo's zone stops at the "  +  " join (it used to swallow
    the owner text).
+   **One framing, one jewellery rule (2026-10-22, night — frame 1 of the real ad said both):** the model frame prompt's
+   POSE & FRAMING says a three-quarter shot (head to knees, ~70% of the frame height — never a small head-to-feet shot,
+   never a tight crop), the same as the attire rules and the push-in's framing (`CAMERA_MOVES.push_in.framing`, was "a
+   full or three-quarter shot"; the frame line was "close mid-shot only, head to upper waist", and the Flow clip started
+   full-length); the hero-pose line no longer says "For professional suit outputs" in a saree ad. A festival saree frame
+   carries "JEWELLERY (SEMI-JEWELLERY)" only — the festival theme's "CELEBRITY-LEVEL … heavy … worth lakhs" line
+   (`FestivalTheme.jewellery`, now `@deprecated`, unprinted) sat right above "never heavy".
    **Frames are composed for the move, caught mid-movement** (`withMotionComposition`, `compositionFor`): a clip
    performed in place (most, since 2026-10-22) is caught standing facing the camera MID-GESTURE beside what its line is
    about; a walking clip's still is caught MID-STEP (one foot forward, arms in a natural swing, clear floor in the
@@ -593,7 +626,8 @@ cached; small images and anything the browser cannot redraw go as they are).
    "both / together / side by side") and an in-place clip must not; a pair never leans in, rises (a HAND, arm, palm or brow rising is a gesture — since 2026-10-10), jumps, stretches or
    walks toward the camera (`PAIR_TOWARD`). The word lists match a PERSON, not things in the frame (a
    mannequin, a temple statue, a saree's full length, "runs her hand along the silk" are allowed). Quoted
-   words are removed, and "the model" becomes she / he. Otherwise the plan's own action (`stagingPath`). The
+   words are removed, and "the model" becomes she / he — a possessive her / his ("the presenter's hands" → "her hands",
+2026-10-22 night; it was "she's hands"), and a model flat / house / villa stays a thing. Otherwise the plan's own action (`stagingPath`). The
    catalogue's planted-feet lines ("his feet stay exactly where they are", "holds her ground", "never chased")
    are filtered out of what the director reads (`withoutStillness`; a face's "crow's feet stay exactly as the
    reference shows" is kept). **An English ad is spoken in Indian English with an Andhra Pradesh accent**
@@ -612,12 +646,20 @@ pincode (6 digits or 3 + 3, labelled or bare — never after ₹ / Rs or before 
 or "#1"), and a number already read out as five or more digit words — together with its label ("Ph:", "Call
 us on", "ఫోన్ నంబర్", "పిన్ కోడ్"), a phone number's Telugu case ending ("…కి") and the "or" / comma / dash that
 joined it. Prices, offers, %, years, times, ranges, "24/7", ordinals and road names ("100 Feet Road", "3rd
-Cross") are kept; a line with none is returned unchanged. It applies to a member's own pasted script too. A
+Cross") are kept; a line with none is returned unchanged. **A removed number never leaves a broken sentence (2026-10-22,
+night):** a Telugu "నంబర్" label whose number carried the case ending keeps the label and takes the ending ("మా ఫోన్ నంబర్
+98480 12345కి కాల్ చేయండి" → "మా ఫోన్ నంబర్‌కి కాల్ చేయండి", was "మా కాల్ చేయండి"); "our / my / the … number (is)" and
+"మా / మన" go with the label when the number was all the sentence said ("Our phone number is X." and "మా నంబర్: X." go
+whole — they left "Our phone number is." / "మా."); a town keeps its removed pincode's case ending ("కాకినాడ 533005 లో" →
+"కాకినాడలో", a joiner after a final virama). It applies to a member's own pasted script too. A
 generated clip that loses words falls short of the contract and is repaired like any short clip. Until then
 `spellOutNumbers` read a phone number digit by digit and a pincode as lakhs, and the presenter prompt's
 BUSINESS ANALYSIS still said "contact number only if actually provided and only in the final clip" (removed;
 every writer / repair / refine prompt now names pincodes and door numbers beside phone numbers). Then numbers
-become words (Telugu words in a
+become words (since 2026-10-22, night: a price with its scale first — `SCALED_PRICE`: "₹25 లక్షల" → "ఇరవై ఐదు
+లక్షల", "₹1.5 కోట్లు" → "ఒకటిన్నర కోట్లు", "Rs 30L" → "ముప్పై లక్షలు", "₹1 లక్ష" → "ఒక లక్ష", a Telugu scale's ending kept,
+"లక్షలు కే" joined to "లక్షలకే"; single letters L / K / Cr only after ₹ / Rs; it used to read "ఇరవై ఐదు రూపాయలు లక్షల" and
+drop the decimals) (Telugu words in a
 Telugu script, English words in an English one, Indian lakh/crore grouping, ₹ / % / decimals / times;
 other languages rely on the prompt and validator), and the Telugu word
 for "and" — with every misspelling of it — is written **`mariyu`, in Latin letters**, inside the
@@ -880,6 +922,17 @@ attribution (`Clip.voScript` is one string).
   తరఫున మా మిత్రులు, కస్టమర్లందరికీ {festival} శుభాకాంక్షలు" — never శ్రేయోభిలాషులు or హృదయపూర్వక (Flow cut the wish
   word itself when the greeting carried them at 17–20 words). Checked in code (`festivalWish.wishAudienceIssues`); the
   17–20-word contract is unchanged. Other languages keep "friends, well-wishers and customers".
+- **AI ads — every clip can be SAID in 8 seconds (owner, 2026-10-22, night: "correct promotional voice over script words
+  per the clip … check the duo characters also"):** besides its 17–20 words, a Telugu clip carries at most 50 syllables
+  (aksharas) for one voice and 47 for a two-person clip (both lines together) — the repairs aim under that — and a
+  clip over 54 (one voice) / 51 (a pair) never ships (the run stops: Press Generate). Measured on Flow: 54 syllables
+  were said in 7.86 s, 58 were cut at 8 s. Short everyday words meet both rules. Other languages are not measured.
+- **AI ads — the closing call line stays in every Telugu ad (owner, 2026-10-22, night):** "మరిన్ని వివరాల కోసం
+  స్క్రీన్‌పై ఉన్న నంబర్‌కు ఇప్పుడే కాల్ చేయండి" ends every Telugu single-voice ad, also when the business gave no number
+  (the owner chose it over a "come to us" line).
+- **AI ads — prices with lakhs and crores are said as the amount (2026-10-22, night):** "₹25 లక్షల నుండి" is spoken
+  "ఇరవై ఐదు లక్షల నుండి" (never "… రూపాయలు లక్షల"), "₹1.5 కోట్లు" "ఒకటిన్నర కోట్లు", "₹30L కే" "ముప్పై లక్షలకే",
+  "₹1 లక్ష" "ఒక లక్ష"; English "₹25 lakhs" → "twenty-five lakhs".
 - **AI ads — the festival's theme (owner, 2026-10-22):** a festival video's every frame, its bottom label and its
   poster carry THAT festival's own decorations, colours, floor and light (the greeting frame the most festive, the
   business still recognisable in the others); a client's own photo gets the decorations added onto its real walls and
