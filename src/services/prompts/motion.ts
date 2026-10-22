@@ -1365,11 +1365,17 @@ const withoutQuotedText = (value: string) => value.replace(/\s*["“][^"”]{1,8
 /**
  * "The model turns…" — the director's name for a single presenter — read as the prompt names her
  * everywhere else ("she"), so the action does not introduce a "model" the frame does not have.
+ * A model flat / house / villa is a THING (a builder's show flat, 2026-10-22 live check: "gesturing toward the
+ * model flat" came out "gesturing toward she flat"), so "model" followed by a noun of that kind is kept.
  */
+const SHOW_HOME = String.raw`(?!\s+(?:flats?|house|homes?|apartments?|villas?|units?|rooms?|kitchens?|bedrooms?|plots?|plans?|layouts?|cars?|bikes?|phones?)\b)`;
 const asSpokenOf = (value: string, cast: string) => {
   const pronoun = cast === "She" ? "she" : cast === "He" ? "he" : "";
   if (!pronoun) return value;
-  return value.replace(/\b[Tt]he (?:model|presenter|brand ambassador|ambassador)\b/g, (m) => (m.startsWith("T") ? capitalised(pronoun) : pronoun));
+  return value.replace(
+    new RegExp(String.raw`\b[Tt]he (?:model${SHOW_HOME}|presenter|brand ambassador|ambassador)\b`, "g"),
+    (m) => (m.startsWith("T") ? capitalised(pronoun) : pronoun),
+  );
 };
 
 /**

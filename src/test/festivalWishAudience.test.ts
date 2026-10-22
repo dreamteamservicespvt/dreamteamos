@@ -10,15 +10,15 @@ import { findHardWords } from "@/services/prompts/everydaySpeech";
 import { clipIndexesFromIssues } from "@/utils/voiceOverRefine";
 
 /**
- * A festival wish is addressed to the business's own people — మిత్రులు, శ్రేయోభిలాషులు and
- * customers — the way the team writes it on every card. Scripts were opening with a generic "to you
+ * A festival wish is addressed to the business's own people — మిత్రులు and customers (శ్రేయోభిలాషులు and
+ * హృదయపూర్వక dropped on 2026-10-22 so the wish fits its 8 seconds) — the way the team writes it on every card. Scripts were opening with a generic "to you
  * and your family" instead, which is anyone's greeting rather than this business's.
  */
 
 describe("the greeting's address", () => {
-  it("names all three groups, as a comma list", () => {
-    expect(WISH_AUDIENCE_LINE).toBe("మిత్రులు, శ్రేయోభిలాషులు, కస్టమర్లందరికీ");
-    expect(WISH_AUDIENCE_TELUGU.map((g) => g.english)).toEqual(["friends", "well-wishers", "customers"]);
+  it("names both groups, as a comma list", () => {
+    expect(WISH_AUDIENCE_LINE).toBe("మిత్రులు, కస్టమర్లందరికీ");
+    expect(WISH_AUDIENCE_TELUGU.map((g) => g.english)).toEqual(["friends", "customers"]);
   });
 
   // The address is a plain comma list — the team's own wording.
@@ -35,9 +35,9 @@ describe("the greeting's address", () => {
 });
 
 describe("checking the wish clip really greets them", () => {
-  const wish = `మా మిత్రులు, శ్రేయోభిలాషులు, కస్టమర్లందరికీ లక్ష్మీ స్వీట్స్ తరఫున దీపావళి శుభాకాంక్షలు.`;
+  const wish = `లక్ష్మీ స్వీట్స్ తరఫున మా మిత్రులు, కస్టమర్లందరికీ దీపావళి శుభాకాంక్షలు.`;
 
-  it("passes a wish that greets all three", () => {
+  it("passes a wish that greets both", () => {
     expect(wishAudienceIssues(wish, 1, "Telugu")).toEqual([]);
   });
 
@@ -45,7 +45,6 @@ describe("checking the wish clip really greets them", () => {
     const issues = wishAudienceIssues("మా కస్టమర్లందరికీ దీపావళి శుభాకాంక్షలు.", 1, "Telugu");
     expect(issues).toHaveLength(1);
     expect(issues[0]).toContain('"మిత్రులు" (friends)');
-    expect(issues[0]).toContain('"శ్రేయోభిలాషులు" (well-wishers)');
     expect(issues[0]).not.toContain("(customers)");
     // It reads as a clip problem, so the clip-level repair picks it up.
     expect(clipIndexesFromIssues(issues, 4)).toEqual([0]);

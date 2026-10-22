@@ -3094,8 +3094,9 @@ export const generateAdAssets = async (
         }]
       : [];
     /**
-     * A festival ad greets the business's own people by name — మిత్రులు, శ్రేయోభిలాషులు, కస్టమర్లు —
-     * so each group is required in the wish clip, the same way the town is required in its own.
+     * A festival ad greets the business's own people by name — మిత్రులు, కస్టమర్లు (శ్రేయోభిలాషులు dropped on
+     * 2026-10-22 so the wish fits its 8 seconds, prompts/festivalWish) — so each group is required in the wish
+     * clip, the same way the town is required in its own.
      */
     if (formData.adType === 'festival' && isTeluguScript(formData.language)) {
       for (const group of WISH_AUDIENCE_TELUGU) {
@@ -3103,7 +3104,7 @@ export const generateAdAssets = async (
           label: `The ${group.english} in the wish ("${group.spoken}")`,
           tokens: [group.stem],
           clip: 1,
-          hint: `The wish greets all three: "${WISH_AUDIENCE_TELUGU.map((g) => g.spoken).join(", ")}".`,
+          hint: `The wish greets both: "${WISH_AUDIENCE_TELUGU.map((g) => g.spoken).join(", ")}".`,
         });
       }
     }

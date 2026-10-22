@@ -224,6 +224,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-22)
 
+- 2026-10-22 (night), **local, not pushed** — **the six fixes checked on a real ad** (live Gemini, logo attached, ChatGPT
+  frames, one Flow clip on the JPN account): five more fixes — a bare "Phone 98480 12345" label, "<place>ను … రండి",
+  "the model flat" → "she flat", a phone inside the typed address, and the **Telugu greeting shortened** (the owner: drop
+  శ్రేయోభిలాషులు and హృదయపూర్వక — Flow cut the wish word at 8 s). `HANDOFF.md` holds the audit that follows (`ai-ads.md`;
+  history 2026-10-22 night).
 - 2026-10-22, **local, not pushed** — **AI ads, six fixes**: English words (flats, plots, arrangements …) in English
   letters in a Telugu voice-over and no formal words, enforced in code both ways; **every cast moves only when the words
   need it** (faces the camera, no turning, the arc retired); the **namaskaram on the wish words**; the **festival theme**

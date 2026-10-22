@@ -67,7 +67,7 @@ describe("every final Telugu script line spells it దసరా", () => {
 
 describe("the script prompts name it దసరా", () => {
   it("the Telugu greeting and its rule carry the Telugu name and the spelling rule", () => {
-    expect(wishOpeningLine("Dussehra", "Telugu")).toContain("కస్టమర్లందరికీ దసరా హృదయపూర్వక శుభాకాంక్షలు");
+    expect(wishOpeningLine("Dussehra", "Telugu")).toContain("కస్టమర్లందరికీ దసరా శుభాకాంక్షలు");
     expect(wishOpeningLine("Dussehra", "Telugu")).not.toContain("Dussehra");
     const rule = wishAudienceRule("Dussehra", "Telugu");
     expect(rule).toContain("the one sending the దసరా wish.");

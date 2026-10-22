@@ -74,9 +74,14 @@ const DIGIT_WORD_RUN = new RegExp(String.raw`${NOT_AFTER_WORD}${DIGIT_WORD}(?:[\
 
 // ── the surroundings a removed number takes with it ─────────────────────────────────────────────────
 
-/** "Ph:", "Phone No.", "WhatsApp:", "ఫోన్ నంబర్", "📞" just before it. "Call" and "WhatsApp us" stay — they are the action. */
+/**
+ * "Ph:", "Phone No.", "WhatsApp:", "ఫోన్ నంబర్", "📞" just before it. "Call" and "WhatsApp us" stay — they are the action.
+ * A bare noun label goes too ("Phone 98765 43210", "Mobile …", "Ph. …" — 2026-10-22, the live check: a typed
+ * "Kakinada-533005. Phone 9876543210." left "Kakinada. Phone", and the spoken address said "కాకినాడ ఫోన్");
+ * "Contact" and "WhatsApp" need their colon or "No." for that, since bare they can be the action itself.
+ */
 const LABEL_BEFORE = new RegExp(
-  String.raw`(?:${NOT_AFTER_WORD}(?:(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*(?:no\.?|number|num)\.?\s*[:\-–]?|(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*[:\-–]|(?:ఫోన్|మొబైల్|వాట్సా?ప్|కాంటాక్ట్|సెల్)\s*${TE_NUMBER}?\s*[:\-–]?|${TE_NUMBER}\s*[:\-–]?)|📞|☎️?|📱)\s*${G}`,
+  String.raw`(?:${NOT_AFTER_WORD}(?:(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*(?:no\.?|number|num)\.?\s*[:\-–]?|(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*[:\-–]|(?:ph|phone|mobile|mob|cell|tel|landline|helpline)\.?|(?:ఫోన్|మొబైల్|వాట్సా?ప్|కాంటాక్ట్|సెల్)\s*${TE_NUMBER}?\s*[:\-–]?|${TE_NUMBER}\s*[:\-–]?)|📞|☎️?|📱)\s*${G}`,
   "giu",
 );
 /** A dash gluing a word to a removed number. */
@@ -136,12 +141,13 @@ export function withoutUnspokenNumbers(text: string): string {
     .replace(JOIN_BEFORE_END, "")
     .replace(/\u{E001}/gu, "")
     .replace(/[ \t]{2,}/g, " ")
+    // A sentence that was only a number: "Come. Ph: 2345678. Soon." → "Come. Soon." — before the space in
+    // front of a full stop is taken out, which would leave "Come.. Soon." (an ellipsis has no spaces, so it stays).
+    .replace(/([.!?])(?:[ \t]+[.!?](?![.!?]))+/g, "$1")
     .replace(/[ \t]+([,.!?;:)])/g, "$1")
     .replace(/\([ \t]*\)/g, "")
     .replace(/,(?:[ \t]*,)+/g, ",")
     .replace(/[,;:][ \t]*([.!?])/g, "$1")
-    // A sentence that was only a number: "Come. Ph: 2345678. Soon." → "Come. Soon."
-    .replace(/([.!?])(?:[ \t]+[.!?](?![.!?]))+/g, "$1")
     .replace(/^[\s,.!?;:\-–]+/, "")
     .replace(/[ \t,;:\-–]+$/, "")
     .trim();

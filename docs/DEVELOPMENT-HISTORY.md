@@ -6,6 +6,29 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-22 (night): the six fixes checked on a real ad, five more fixes** (`ai-ads.md` §17.2 steps 1, 3, 6, §24).
+  The owner's §32 follow-up, done by Claude with the app's real engine (vite-node, live Gemini, 4 runs; the app's login
+  needs a password Claude may not type), a logo whose name ("SRI SAI KRISHNA INFRA") differs from the sale's ("Sri Sai
+  Constructions"), ChatGPT (pvt account) for frames 1–2 and one Flow clip (JPN account, Omni 1.1 Flash, 8 s, 12 credits),
+  checked frame by frame and with Whisper. Held: the logo's name everywhere, the Diwali dressing on both frames / label /
+  poster, faces the camera, no walk or turn, the namaskaram at its estimated time, flats / plots in English letters.
+  Found and fixed: (1) a typed "… Kakinada-533005. Phone 98480 12345." lost the number but kept "Phone" — the spoken
+  address said "కాకినాడ ఫోన్" (`unspokenNumbers` LABEL_BEFORE takes a bare Phone / Mobile / Cell / Tel / Ph. label; a
+  doubled full stop collapses before spaces are tidied); (2) the hard-word swap సందర్శించండి → రండి left "ఇన్‌ఫ్రాను …
+  రండి" (`everydaySpeech.findHardWords` flags "<place>ను [adverb] రండి" → "<place>కి", and the message says which case
+  the place takes); (3) the director's "the model flat" became "she flat" (`motion.asSpokenOf` keeps "model" before
+  flat / house / villa / plan …); (4) a phone written on the `Address:` line stayed inside the verified address and was
+  printed in the label's address strip (`businessFacts.withoutContactTail`, also on the job's typed address); (5) **the
+  Telugu greeting** — Whisper: Flow said 53 syllables in 7.98 s and cut the wish word శుభాకాంక్షలు (the greeting alone
+  12 words / ~43 syllables, padded to 19 / 58 by the 17–20 contract). The owner kept the contract and dropped
+  శ్రేయోభిలాషులు and హృదయపూర్వక: "{business} తరఫున మా మిత్రులు, కస్టమర్లందరికీ {festival} శుభాకాంక్షలు"
+  (`prompts/festivalWish` WISH_AUDIENCE_TELUGU, WISH_DROPPED_TELUGU, checked in `wishAudienceIssues`). Files:
+  `utils/unspokenNumbers.ts`, `utils/businessFacts.ts`, `services/prompts/everydaySpeech.ts`, `services/prompts/motion.ts`,
+  `services/prompts/festivalWish.ts`, `services/geminiService.ts`; tests `realAdOct22.test.ts` (new, 11),
+  `festivalWishAudience`, `festivalNames`. Tested: the related suites, typecheck 0, build ✅, full vitest (see §32). Not
+  re-run live after (5): the next Flow clip must show the whole wish. Open (HANDOFF.md): the audit for the same kind of
+  mistake elsewhere.
+
 - **2026-10-22: AI ads, six fixes from the owner** (`ai-ads.md` §17.2 steps 1, 3, 4, 5, 6, §24, §25, §27). (1–2) A Telugu
   voice-over writes flat(s), slot(s), plot(s), villa(s), apartment(s), booking(s), arrangement(s) and facilities in
   ENGLISH letters ("your words + similar ones") and drops formal words (ఏర్పాట్లు, సౌకర్యాలు + 13 more with what people

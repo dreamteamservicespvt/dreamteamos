@@ -876,6 +876,10 @@ attribution (`Clip.voScript` is one string).
   (ఓపెన్, బ్యాంక్ లోన్, పార్కింగ్, టూ బీహెచ్‌కే …). Both are corrected in code on every final line, a member's pasted script
   included. Formal Telugu words nobody says to a customer (ఏర్పాట్లు, సౌకర్యాలు, అత్యాధునిక, సరసమైన, విశాలమైన …) are
   replaced by what people say.
+- **AI ads — the Telugu greeting fits its clip (owner, 2026-10-22, night):** a Telugu festival wish is "{business}
+  తరఫున మా మిత్రులు, కస్టమర్లందరికీ {festival} శుభాకాంక్షలు" — never శ్రేయోభిలాషులు or హృదయపూర్వక (Flow cut the wish
+  word itself when the greeting carried them at 17–20 words). Checked in code (`festivalWish.wishAudienceIssues`); the
+  17–20-word contract is unchanged. Other languages keep "friends, well-wishers and customers".
 - **AI ads — the festival's theme (owner, 2026-10-22):** a festival video's every frame, its bottom label and its
   poster carry THAT festival's own decorations, colours, floor and light (the greeting frame the most festive, the
   business still recognisable in the others); a client's own photo gets the decorations added onto its real walls and

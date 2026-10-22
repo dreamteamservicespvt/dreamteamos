@@ -343,6 +343,16 @@ export function addressInProfile(profile: unknown): string {
   return result;
 }
 
+/**
+ * A phone label and what follows it, written on the address line: "…, Kakinada-533005. Phone 98480 12345.",
+ * ", Ph: 0884-…", " | WhatsApp 98480…". The address is used word for word, so until 2026-10-22 (the live check) the
+ * number rode along inside it — the label printed it in its address strip AND its pill. The number itself is still
+ * read from the typed text as a contact; only the address stops before it.
+ */
+const CONTACT_TAIL = /\s*[,.;|/–-]?\s*(?:\(?\s*)?(?<![\p{L}])(?:ph|phone|phones|mob|mobile|cell|tel|telephone|contact|whats\s*app|call|landline|ఫోన్|మొబైల్|వాట్సా?ప్)\.?\s*(?:no\.?|number|num|నంబర్|నెంబర్)?\.?\s*[:\-–]?\s*[+(]?\d.*$/isu;
+export const withoutContactTail = (address: string): string =>
+  address.replace(CONTACT_TAIL, "").replace(/[\s,.;|/–-]+$/u, "").trim();
+
 /** The labelled address line a member typed: "Address: …", "Addr - …", "చిరునామా: …", "Location: …". */
 export function addressInText(text: string): string {
   if (!text) return "";
@@ -351,10 +361,10 @@ export function addressInText(text: string): string {
   for (let i = 0; i < lines.length; i++) {
     const m = label.exec(lines[i]);
     if (!m) continue;
-    const rest = lines[i].slice(m[0].length).trim();
+    const rest = withoutContactTail(lines[i].slice(m[0].length).trim());
     if (rest && !EMPTY_VALUE.test(rest)) return rest;
     // "Address:" on its own line, the address on the next.
-    const next = lines[i + 1]?.trim();
+    const next = withoutContactTail(lines[i + 1]?.trim() ?? "");
     if (!rest && next && !EMPTY_VALUE.test(next) && !/:\s*$/.test(next)) return next;
   }
   return "";
@@ -426,7 +436,7 @@ export function verifyBusinessFacts(input: FactInputs): BusinessFacts {
   // 4 · the address
   let address = "";
   let addressSource: BusinessFacts["addressSource"] = "";
-  const typedAddress = input.typedAddress?.trim() || addressInText(input.typedText);
+  const typedAddress = withoutContactTail(input.typedAddress?.trim() ?? "") || addressInText(input.typedText);
   if (typedAddress && !EMPTY_VALUE.test(typedAddress) && !STAND_IN_ADDRESS.test(typedAddress)) {
     address = typedAddress;
     addressSource = "typed";

@@ -178,7 +178,15 @@ export function findHardWords(text: string, language?: string, names: string[] =
   const active = HARD_TELUGU_WORDS.filter((entry) => !isPartOfAName(entry, names.filter(Boolean)));
   const hits: HardWordHit[] = [];
   const seen = new Set<string>();
-  for (const token of text.split(/\s+/)) {
+  const tokens = text.split(/\s+/);
+  tokens.forEach((token, i) => {
+    const place = placeBeforeRandi(tokens, i);
+    if (place && !seen.has(place)) {
+      seen.add(place);
+      hits.push({ found: place, say: `${place.slice(0, -OBJECT_CASE.length)}కి` });
+    }
+  });
+  for (const token of tokens) {
     const word = bare(token);
     if (!word || !TELUGU.test(word) || seen.has(word)) continue;
     const entry = active.find((e) => matches(e, word));
@@ -190,6 +198,29 @@ export function findHardWords(text: string, language?: string, names: string[] =
   return hits;
 }
 
+/*
+  ── A place before రండి takes కి (2026-10-22) ──
+  The swap సందర్శించండి → రండి is a different verb with a different case: "షాప్‌ను సందర్శించండి" (visit the
+  shop) becomes "షాప్‌కి రండి" (come to the shop). The live check shipped "శ్రీ సాయి కృష్ణ ఇన్‌ఫ్రాను ఇప్పుడే రండి":
+  the writer swapped the verb word for word, as the message told it to, and left the place in the object
+  case. So the message says which case the place takes, and the leftover ను before రండి is caught here too.
+  Only an adverb may stand between them — "flatsను చూడటానికి రండి" (come to see the flats) is right.
+*/
+const OBJECT_CASE = "ను";
+const COME = "రండి";
+const COME_ADVERBS = new Set(["ఇప్పుడే", "ఇప్పుడు", "ఈరోజే", "ఈరోజు", "వెంటనే", "త్వరగా", "తప్పకుండా", "ఒకసారి"]);
+/** A token without the punctuation at its edges; joiners (ZWNJ) inside the word are kept, as the script has them. */
+const trimmed = (token: string) => token.replace(/^[^\p{L}\p{M}]+|[^\p{L}\p{M}]+$/gu, "");
+
+/** The word at `i` when it is a place in the object case (…ను) said straight before రండి, else "". */
+function placeBeforeRandi(tokens: string[], i: number): string {
+  const word = trimmed(tokens[i] || "");
+  if (word !== tokens[i] || !word.endsWith(OBJECT_CASE) || bare(word).length <= OBJECT_CASE.length + 1) return "";
+  const next = bare(tokens[i + 1] || "");
+  if (next === COME) return word;
+  return COME_ADVERBS.has(next) && bare(tokens[i + 2] || "") === COME ? word : "";
+}
+
 const HARD_WORD_MARK = "uses words people do not say in everyday";
 
 /** The validation message for a clip — or one character's line — that uses hard words. */
@@ -197,7 +228,10 @@ export function hardWordIssue(clipNumber: number, hits: HardWordHit[], language 
   const lang = (language || "Telugu").trim() || "Telugu";
   const who = speaker ? `: ${speaker}'s line` : "";
   const swaps = hits.map((h) => `"${h.found}" → say "${h.say}"`).join(", ");
-  return `Clip ${clipNumber}${who} ${HARD_WORD_MARK} ${lang} — ${swaps}. Swap each for the everyday word, keep the meaning, and keep the clip inside its word count.`;
+  const come = hits.some((h) => h.say === COME || h.say === `${h.found.slice(0, -OBJECT_CASE.length)}కి`)
+    ? ` With ${COME} the place takes కి, never ${OBJECT_CASE}: "మా షాప్‌కి ${COME}", not "మా షాప్‌ను ${COME}".`
+    : "";
+  return `Clip ${clipNumber}${who} ${HARD_WORD_MARK} ${lang} — ${swaps}. Swap each for the everyday word, keep the meaning, and keep the clip inside its word count.${come}`;
 }
 
 /**
