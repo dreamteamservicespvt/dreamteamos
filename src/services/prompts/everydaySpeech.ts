@@ -16,6 +16,7 @@
  * everyone already understands (ఉచితం, సేవ, ప్రత్యేకంగా, అద్భుతమైన) is left alone: every flag
  * costs a repair call, and a false one would rewrite a good line.
  */
+import { englishWordsRule } from "@/utils/englishWords";
 
 export interface HardWord {
   /** The bookish word, as shown to the writer. */
@@ -98,6 +99,25 @@ export const HARD_TELUGU_WORDS: HardWord[] = [
   { word: "పరిశుభ్రంగా", say: "శుభ్రంగా", stems: ["పరిశుభ్ర"] },
   { word: "సేవలందిస్తాం", say: "సర్వీస్ చేస్తాం", parts: ["సేవలంది"] },
   { word: "తప్పక", say: "తప్పకుండా", forms: ["తప్పక"] },
+  /*
+    2026-10-22 — the owner: "don't add complex words in the script like ఏర్పాట్లు … never add complex words in the
+    voice over script". ఏర్పాట్లు, సదుపాయాలు and సౌకర్యాలు need no repair: they are written in English letters in code
+    (utils/englishWords — "arrangements", "facilities"). These are the other formal words ad scripts reach for —
+    property, price and service words — each with what people say.
+  */
+  { word: "అత్యాధునిక", say: "లేటెస్ట్", stems: ["అత్యాధునిక", "అధునాతన", "ఆధునాతన"], shown: true },
+  { word: "సరసమైన", say: "తక్కువ", stems: ["సరసమైన", "సరసమై"], names: ["saras"], shown: true },
+  { word: "విశాలమైన", say: "పెద్ద", stems: ["విశాలమైన", "విశాలంగా", "విశాలమై"], names: ["vishal", "visal"], shown: true },
+  { word: "సౌకర్యవంతమైన", say: "హాయిగా ఉండే", stems: ["సౌకర్యవంత"] },
+  { word: "ఆహ్లాదకరమైన", say: "హాయిగా", stems: ["ఆహ్లాదకర"] },
+  { word: "పరిష్కారం", say: "సొల్యూషన్", stems: ["పరిష్కార"] },
+  { word: "సౌలభ్యం", say: "ఈజీ", stems: ["సౌలభ్య"] },
+  { word: "సమగ్ర", say: "పూర్తి", stems: ["సమగ్ర"] },
+  { word: "నైపుణ్యం", say: "అనుభవం", stems: ["నైపుణ్య"] },
+  { word: "కల్పిస్తున్నాం", say: "ఇస్తున్నాం", stems: ["కల్పిస్త", "కల్పించ"] },
+  { word: "సమీపంలో", say: "దగ్గర్లో", stems: ["సమీప"], names: ["sameep", "samip"] },
+  { word: "స్థిరాస్తి", say: "రియల్ ఎస్టేట్", stems: ["స్థిరాస్త"] },
+  { word: "నిర్మాణం", say: "కన్‌స్ట్రక్షన్", stems: ["నిర్మాణ"], names: ["nirman"] },
   // Written-Telugu grammar words nobody says out loud.
   // మరియు is NOT here: the team wants it written exactly mariyu (in Latin) whenever a line
   // needs it — see utils/spokenNumbers FIXED_WORDS. It used to be swapped for ఇంకా.
@@ -275,7 +295,9 @@ Write the way an EDUCATED, WELL-SPOKEN Telugu person talks to a customer they re
 ${firstListen}
 
 • Everyday Telugu words first: చాలా, మంచి, కొత్త, వెంటనే, దగ్గర, దొరుకుతుంది, నమ్మకమైన, రండి.
-• An English word only when everyone in town already says it in English — ఫ్రీ, ఆఫర్, సర్వీస్, డెలివరీ, ఆర్డర్, షాప్, ఫ్రెష్, స్పెషల్, క్వాలిటీ — written in Telugu script. Never English that only city people use (ప్రీమియం, ఎక్స్‌క్లూజివ్, ప్రొఫెషనల్, ఇన్నోవేటివ్), and never swap a simple Telugu word for English: కొత్త stays కొత్త, never న్యూ.
+• An English word only when everyone in town already says it in English — ఫ్రీ, ఆఫర్, సర్వీస్, డెలివరీ, ఆర్డర్, షాప్, ఫ్రెష్, స్పెషల్, క్వాలిటీ — written in Telugu script (except the few below, which are written in English letters). Never English that only city people use (ప్రీమియం, ఎక్స్‌క్లూజివ్, ప్రొఫెషనల్, ఇన్నోవేటివ్), and never swap a simple Telugu word for English: కొత్త stays కొత్త, never న్యూ.
+• ${englishWordsRule("Telugu")}
+• Never a complex or formal word — when the plain Telugu word is not obvious, use the English word people actually say (arrangements, not ఏర్పాట్లు).
 • Spoken verb endings, never written ones: చేస్తాం, ఇస్తాం, ఉన్నాం — never చేస్తాము, ఇస్తాము, ఉన్నాము.
 • Active voice: చేస్తాం, ఇస్తాం, ఉంది — never చేయబడును, అందించబడుతుంది, కలదు.
 • Short, simple words in one easy sentence.

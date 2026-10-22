@@ -29,8 +29,11 @@ import {
   buildBrandMarkDirective,
   getBrandMark,
   getFestivalTheme,
+  festivalLook,
+  festivalLookLine,
   type BrandSurface
 } from "./prompts";
+import { withFestivalDressing } from "@/utils/festivalDressing";
 import { SCENE_PLAN_SYSTEM_PROMPT, scenePlanUserPrompt } from "./prompts/scenePlan";
 import { motionChoicesOf, parseScenePlan, repeatedBackgrounds, sceneLineFor, scenePlanBlock, withSceneBackground } from "@/utils/scenePlan";
 import { elsewhereIssue } from "@/utils/speakingPosition";
@@ -82,6 +85,7 @@ import {
   contactNumbersOf, digitsOf, factsFromProfile, phoneKey, sanitizeBusinessProfile, stripUnverifiedNumbers, verifyBusinessFacts,
   type BusinessFacts,
 } from "@/utils/businessFacts";
+import { finalBusinessName, saleBusinessNameIn, withFinalBusinessName, withoutSaleNameLine } from "@/utils/businessName";
 import { SCRIPT_QA_SYSTEM_PROMPT } from "./prompts/scriptQa";
 import {
   isBetterDraft, isPerfect, nextImprovement, parseScriptQa, qaInstructions, qaSummary, unscoredSummary, withMechanicalChecks,
@@ -122,7 +126,7 @@ import {
 import { DEFAULT_POSTER_SIZE } from "@/utils/posterSpec";
 import {
   assembleConceptPoster, conceptFromPoster, formatLanguageOf, parsePosterAnalysis, parsePosterRefineAnswer, posterAdTypeById,
-  posterAdTypeName, printedPosterContacts, readConceptPosterPrompt, refineConceptPoster, usablePosterRefine,
+  posterAdTypeName, posterFestivalLine, printedPosterContacts, readConceptPosterPrompt, refineConceptPoster, usablePosterRefine,
   type ConceptPoster, type PosterAnalysis,
 } from "@/utils/posterAdType";
 import {
@@ -789,7 +793,7 @@ const labelDesignInputs = (formData: AdFormData, sceneContext: SceneContext | nu
   const festival = formData.adType === 'festival' && formData.festivalName?.trim() ? getFestivalTheme(formData.festivalName) : null;
   return {
     festivalTheme: festival
-      ? { colors: festival.headerColors, patterns: festival.headerPatterns, elements: festival.culturalElements }
+      ? { colors: festival.headerColors, patterns: festival.headerPatterns, elements: festival.culturalElements, accents: festival.headerAccents, mood: festival.mood }
       : undefined,
     context: sceneContext || coreMessage
       ? {
@@ -958,12 +962,23 @@ export const writeVideoPosterPrompt = async (
   });
   const poster = assembleConceptPoster({
     analysis, businessInfo, businessName, brief: formData.textInstructions, occasion, phones, address,
+    // A festival ad's poster carries the festival's own look (2026-10-22).
+    festival: posterFestivalFor(occasion, true),
     posterSize: VIDEO_POSTER_SIZE,
     hasLogo: !formData.noLogo && opts.hasLogoFile !== false,
     nameBoardText: formData.logoNameText?.trim() || businessName,
     textLanguage: 'English',
   });
   return stripUnverifiedNumbers(poster.prompt, keys);
+};
+
+/**
+ * A poster's Festival line (utils/posterAdType.posterFestivalLine, 2026-10-22): the occasion's look from the catalogue —
+ * for a festival video always, for Poster Creation and a refine only when the catalogue knows the occasion.
+ */
+const posterFestivalFor = (occasion: string | undefined, always = false): string => {
+  const look = festivalLook(occasion);
+  return look && (always || look.known) ? posterFestivalLine(look) : '';
 };
 
 /**
@@ -1021,6 +1036,7 @@ const refinePoster = async (input: {
     fixedTypeId: input.fixedTypeId,
     verifiedPhones: phones, verifiedAddress: address,
     businessInfo, businessName, brief: formData.textInstructions, occasion: input.occasion,
+    festival: posterFestivalFor(input.occasion),
     posterSize: input.posterSize,
     hasLogo: input.hasLogo,
     nameBoardText: formData.logoNameText?.trim() || businessName,
@@ -1122,7 +1138,9 @@ export const deriveCoreMessage = async (businessInfo: any, formData: AdFormData)
     `Special category: ${pack ? pack.label : 'none — a model presents the business'}`,
     `Background: ${formData.locationMode === 'real_provided' ? "the client's own premises, from their photographs" : 'built for the business'}`,
   ].join('\n');
-  const brief = formData.textInstructions?.trim();
+  // The sale's name is a reference only (utils/businessName): the core message names the business by the profile's name.
+  const brief = withoutSaleNameLine(formData.textInstructions);
+  const finalName = extractBusinessNameFromInfo(businessInfo);
 
   if (API_KEYS.length > 0) {
     try {
@@ -1131,7 +1149,7 @@ export const deriveCoreMessage = async (businessInfo: any, formData: AdFormData)
         contents: [{ role: 'user', parts: [{ text:
 `BUSINESS INFORMATION (extracted from the client's Assets & Files):
 ${JSON.stringify(businessInfo, null, 2)}
-${brief ? `\nTHE MEMBER'S WRITTEN BRIEF (the client's own instructions — these come first):\n${brief}\n` : ''}
+${finalName ? `\nTHE BUSINESS'S NAME (final — as printed on its own logo, card, flyer or board): ${finalName}\n` : ''}${brief ? `\nTHE MEMBER'S WRITTEN BRIEF (the client's own instructions — these come first):\n${brief}\n` : ''}
 AD CONFIGURATION:
 ${configuration}
 
@@ -1139,7 +1157,7 @@ Decide the core message now and return the JSON.` }] }],
         config: { systemInstruction: CORE_MESSAGE_SYSTEM_PROMPT, responseMimeType: 'application/json' },
       }), { effort: 'standard' });
       const parsed = parseCoreMessageBrief(response.text || '');
-      if (parsed) return parsed;
+      if (parsed) return finalName ? { ...parsed, businessName: finalName } : parsed;
     } catch (err) {
       console.warn('Core message step failed; building the brief from the extracted profile.', err);
     }
@@ -1202,6 +1220,7 @@ export const refineSection = async (
             aspectRatio: formData.aspectRatio === '16:9' ? '16:9' : '9:16',
             adType: formData.adType,
             festivalName: formData.festivalName,
+            festivalLook: formData.adType === 'festival' ? festivalLookLine(festivalLook(formData.festivalName)) : '',
             businessContext: JSON.stringify(businessInfo),
             wardrobe: packWardrobe(pack, formData),
           })
@@ -1958,12 +1977,33 @@ const verifyExtraction = (businessInfo: any, typedText: string, files: FileStore
   };
   const facts = verifyBusinessFacts({ ...input, profile: businessInfo });
   if (facts.rejected.length > 0) console.info('Contact details the extraction reported that are NOT used (not verified):', facts.rejected);
-  return { businessInfo: sanitizeBusinessProfile(businessInfo, facts, input), facts };
+  // The business's FINAL name (owner, 2026-10-22): the one printed on the client's own material, the sale's name
+  // only as a fallback (utils/businessName). Read before the profile is cleaned, written after, so every later
+  // prompt — script, label, poster, name board, cast — reads the same one.
+  const typed = saleBusinessNameIn(typedText);
+  const final = finalBusinessName({
+    extracted: extractBusinessNameFromInfo(businessInfo),
+    source: businessInfo && typeof businessInfo === 'object' ? (businessInfo as any).businessNameSource : undefined,
+    typed,
+    assets: {
+      logo: !!files.logo,
+      visitingCard: (files.visitingCard?.length || 0) > 0,
+      flyer: (files.flyersPosters?.length || 0) > 0,
+      storePhoto: (files.storeImage?.length || 0) > 0,
+      voiceNote: (files.voiceRecording?.length || 0) > 0,
+    },
+  });
+  if (typed && final.name && final.name !== typed) console.info(`Business name: "${final.name}" (from ${final.from}); the sale's reference was "${typed}".`);
+  return { businessInfo: withFinalBusinessName(sanitizeBusinessProfile(businessInfo, facts, input), final, typed), facts };
 };
 
-/** How the team's typed BUSINESS CONTENT is labelled for the model — the authoritative facts. */
+/**
+ * How the team's typed BUSINESS CONTENT is labelled for the model — the authoritative facts, except the business's
+ * NAME: the sale's name in it is only a reference, and the name printed on the client's own material wins
+ * (owner, 2026-10-22 — utils/businessName).
+ */
 const businessContentPart = (text: string) =>
-  ({ text: `BUSINESS CONTENT typed by the team (authoritative — business details, offers, the call to action, contact information): ${text}` });
+  ({ text: `BUSINESS CONTENT typed by the team (authoritative — business details, offers, the call to action, contact information; but its business name from the sale is only a REFERENCE — take the business's name as printed on the logo, visiting card, flyer or shop board when one of them shows it): ${text}` });
 
 export const extractBusinessOnly = async (
   formData: AdFormData,
@@ -1991,18 +2031,18 @@ export const extractBusinessOnly = async (
   }
   if (files.logo) {
     parts.push({ inlineData: { mimeType: files.logo.type, data: await fileToBase64(files.logo) } });
-    parts.push({ text: "This is the Business Logo. CRITICAL: Place this EXACT logo image as-is in the scene. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. Use the attached image pixel-for-pixel." });
+    parts.push({ text: "This is the Business Logo. Read the business name written in it (its wordmark), if it has one — that is the business's real name. CRITICAL: Place this EXACT logo image as-is in the scene. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. Use the attached image pixel-for-pixel." });
   }
   if (files.visitingCard && files.visitingCard.length > 0) {
     for (let i = 0; i < files.visitingCard.length; i++) {
       parts.push({ inlineData: { mimeType: files.visitingCard[i].type, data: await fileToBase64(files.visitingCard[i]) } });
-      parts.push({ text: `This is the Visiting Card (${i === 0 ? 'Front' : 'Back'}).` });
+      parts.push({ text: `This is the Visiting Card (${i === 0 ? 'Front' : 'Back'}). The business name printed on it is the business's real name.` });
     }
   }
   if (files.storeImage && files.storeImage.length > 0) {
     for (let i = 0; i < files.storeImage.length; i++) {
       parts.push({ inlineData: { mimeType: files.storeImage[i].type, data: await fileToBase64(files.storeImage[i]) } });
-      parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}).` });
+      parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}). If its name board or signage shows the business's name, read it exactly.` });
     }
   }
   if (files.productImages && files.productImages.length > 0) {
@@ -2096,6 +2136,8 @@ export const generatePosterConcepts = async (
   });
   const poster = assembleConceptPoster({
     analysis, fixedTypeId, businessInfo, businessName, brief: formData.textInstructions, occasion, phones, address,
+    // A festival occasion's own look (2026-10-22) — only for an occasion the catalogue knows (not "Engineers' Day").
+    festival: posterFestivalFor(occasion),
     posterSize: formData.posterSize || DEFAULT_POSTER_SIZE,
     // "No logo" ticked, or no logo file: the business name is the wordmark.
     hasLogo: !!files.logo && !formData.noLogo,
@@ -2655,7 +2697,7 @@ export const generateAdAssets = async (
           data: await fileToBase64(files.logo)
         }
       });
-      parts.push({ text: "This is the Business Logo. CRITICAL: Place this EXACT logo image as-is in the scene. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. Use the attached image pixel-for-pixel." });
+      parts.push({ text: "This is the Business Logo. Read the business name written in it (its wordmark), if it has one — that is the business's real name. CRITICAL: Place this EXACT logo image as-is in the scene. Do NOT recreate, redesign, redraw, recolor, simplify, or modify this logo in ANY way. Use the attached image pixel-for-pixel." });
     }
 
     // Process Visiting Card
@@ -2667,7 +2709,7 @@ export const generateAdAssets = async (
             data: await fileToBase64(files.visitingCard[i])
           }
         });
-        parts.push({ text: `This is the Visiting Card (${i === 0 ? 'Front' : 'Back'}).` });
+        parts.push({ text: `This is the Visiting Card (${i === 0 ? 'Front' : 'Back'}). The business name printed on it is the business's real name.` });
       }
     }
 
@@ -2680,7 +2722,7 @@ export const generateAdAssets = async (
             data: await fileToBase64(files.storeImage[i])
           }
         });
-        parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}).` });
+        parts.push({ text: `This is a Store/Office Image (${i + 1} of ${files.storeImage.length}). If its name board or signage shows the business's name, read it exactly.` });
       }
     }
 
@@ -3505,10 +3547,10 @@ Review it now and return the JSON verdict.` }] }],
       : `the ${formData.gender === 'male' ? 'male' : 'female'} brand ambassador`;
     const systemInstruction = SCENE_PLAN_SYSTEM_PROMPT({
       clipCount: segmentCount, adType: formData.adType, festivalName: formData.festivalName, subject,
+      festivalLook: formData.adType === 'festival' ? festivalLookLine(festivalLook(formData.festivalName)) : '',
       twoHander: !!pack && pack.characters.length > 1, deity: packPerformer(pack) === 'deity',
+      // Every cast: the planner also judges whether each clip's words need a walk (prompts/motion planClipMotion).
       cartoon: packPerformer(pack) === 'cartoon',
-      // Motu and Patlu: the planner also judges whether each clip's words need a walk (prompts/motion planClipMotion).
-      walksWhenNeeded: !!pack?.walksOnlyWhenNeeded,
     });
     const userPrompt = scenePlanUserPrompt({
       businessContent: formData.textInstructions || '',
@@ -3517,6 +3559,7 @@ Review it now and return the JSON verdict.` }] }],
       clipLines,
       adType: formData.adType,
       festivalName: formData.festivalName,
+      festivalLook: formData.adType === 'festival' ? festivalLookLine(festivalLook(formData.festivalName)) : '',
     });
     let best: SceneContext | null = null;
     let repeats: number[] = [];
@@ -4018,6 +4061,8 @@ Segment 2: <text>`;
    * the member looking for a file that does not exist (utils/frameBrand).
    */
   const frameNoLogo = !!formData.noLogo || !files.logo;
+  /** A festival ad's look — every frame's FESTIVAL DRESSING, the scene plan and the frame writer read it (2026-10-22). */
+  const frameFestivalLook = formData.adType === 'festival' ? festivalLook(formData.festivalName) : null;
   const frameNameBoard = resolveNameBoardText(formData, businessInfo);
   const frameBrand = getBrandMark(frameNoLogo, frameNameBoard);
   /** A Real Owner Face ad is built from the owner's own photo, uploaded in its own slot. */
@@ -4151,6 +4196,7 @@ Segment 2: <text>`;
           : resolvedLocationPlan,
         aspectRatio: formData.aspectRatio === '16:9' ? '16:9' : '9:16',
         adType: formData.adType,
+        festivalLook: festivalLookLine(frameFestivalLook),
         festivalName: formData.festivalName,
         hasLogo: !frameNoLogo,
         businessContext: serializedBusinessInfo,
@@ -4209,7 +4255,7 @@ Segment 2: <text>`;
     ? `
   LOCATION SOURCE — THE CLIENT'S OWN PREMISES, EACH PHOTOGRAPH A BACKGROUND PLATE (ABSOLUTE, OVERRIDES EVERY ENVIRONMENT RULE BELOW):
   The client has supplied ${clientLocations.length} photograph${clientLocations.length === 1 ? '' : 's'} of their actual business, attached here and attached again by the member to each clip's image prompt. Every clip stands in one of those real photographs — never in an invented, generic, or "typical for this business type" interior.
-  • ${backgroundPlateRule("that clip's attached photograph")}.
+  • ${backgroundPlateRule("that clip's attached photograph", formData.adType === 'festival' ? formData.festivalName : undefined)}.
   • A modest real shop stays a modest real shop; making it look like a showroom is the failure this override exists to prevent. Never a stock interior, a studio backdrop, a location invented from the business profile, or several of their spaces merged into one.
   • Where any rule below says "reception", "front desk", "logo wall", "business zone", "a different area" or names a camera framing, read it as that clip's photograph and its own framing. The attire and pose rules still apply; the place, the angle and the framing are the photograph's.
   CLIP-BY-CLIP PHOTOGRAPH PLAN (each clip uses its own photograph as listed; a photograph listed twice is the same real place, staged anew):
@@ -4315,12 +4361,12 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
   HAIR COLOR LOCK RULE: The ${p.person} must have strictly natural rich black hair in Clip 1 and that exact black hair color must stay locked for the full campaign. Reject brown, auburn, burgundy, copper, highlighted, sun-browned, or lighting-shifted hair. If any prompt drifts away from natural rich black hair, rewrite it before output.
   REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top. In commercial mode, every clip must rebuild the real premises as the dominant base layer, then use the strongest business-proof surface for that exact voice-over segment, then premium atmosphere from real materials, real light, and real fixtures.
   COMMERCIAL QUALITY RULE: For commercial ads, strictly follow the realism formula: Face Anchor + Light Source + Skin Truth + Scene Depth + Camera Physics. If any one is missing, the frame is not acceptable.
-  ${formData.attireType === 'traditional' ? `TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage, never festival-styled. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception in ${HERO_FRAME_POSE}; frame her as a three-quarter shot from head to thighs/knees clearly filling about 70% of the frame, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.` : ''}
-  ${(formData.attireType === 'professional' || formData.attireType === 'shirt_pant') ? `PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, zero festival cues, and the strongest business-proof surfaces in frame. The suit ${p.person} must be strictly ${p.ageYearsWords} years old, distinctly Indian, ${p.isMale ? 'leading-man-level handsome' : 'actress-level beautiful'}, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different ${p.personYoung} — never reuse the same recurring face. ${p.Pronoun === 'He' ? 'His' : 'Her'} hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a medium full / three-quarter standing shot occupying roughly 70% of the frame, directly in front of the business's own reception, in ${HERO_FRAME_POSE}. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. ${p.isMale ? 'The man must wear only minimal masculine accessories: a wristwatch and an optional slim ring — NO necklace, NO earrings, NO bangles, and NO bindi.' : 'The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead.'} Frame ${p.object} as a three-quarter shot from head to thighs/knees so ${p.pronoun} clearly fills about 70% of the frame, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 70% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.` : ''}
+  ${formData.attireType === 'traditional' ? `TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage${formData.adType === 'festival' ? '' : ', never festival-styled'}. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter${formData.adType === 'festival' ? ` — and, in this ${formData.festivalName || 'festival'} ad, the festival decorations each frame's FESTIVAL DRESSING names` : ''}. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception in ${HERO_FRAME_POSE}; frame her as a three-quarter shot from head to thighs/knees clearly filling about 70% of the frame, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.` : ''}
+  ${(formData.attireType === 'professional' || formData.attireType === 'shirt_pant') ? `PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, ${formData.adType === 'festival' ? `the ${formData.festivalName || 'festival'} cues only in the decorations around her (FESTIVAL DRESSING)` : 'zero festival cues'}, and the strongest business-proof surfaces in frame. The suit ${p.person} must be strictly ${p.ageYearsWords} years old, distinctly Indian, ${p.isMale ? 'leading-man-level handsome' : 'actress-level beautiful'}, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different ${p.personYoung} — never reuse the same recurring face. ${p.Pronoun === 'He' ? 'His' : 'Her'} hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a medium full / three-quarter standing shot occupying roughly 70% of the frame, directly in front of the business's own reception, in ${HERO_FRAME_POSE}. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. ${p.isMale ? 'The man must wear only minimal masculine accessories: a wristwatch and an optional slim ring — NO necklace, NO earrings, NO bangles, and NO bindi.' : 'The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead.'} Frame ${p.object} as a three-quarter shot from head to thighs/knees so ${p.pronoun} clearly fills about 70% of the frame, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 70% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.` : ''}
   ${isCustomAttireMainFrame ? `CUSTOM ATTIRE RULE: Dress the ${p.person} in the EXACT custom attire specified in the MODEL SPEC / ATTIRE above — same outfit, same colours, same details in every clip. Do NOT substitute a suit, saree, or any default wardrobe. Keep ${p.isMale ? 'clean masculine grooming with only a wristwatch and an optional slim ring' : 'tasteful, minimal, premium styling'}, direct eye contact, ~70% frame height, and no invented background text.` : ''}
   MAIN FRAME FRAMING RULE: In EVERY clip, the subject must be centered, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
   LOGO RULE: Use only the attached logo exactly as provided, installed on the most believable physical surface for that clip's zone, kept small-to-medium, sharp and clearly readable, fully visible and never cropped, blocked, blurred, stretched, tilted, redesigned, or pasted like an overlay. Prioritize these surface types: ${realisticLogoPlacementGuidance}
-  NO BACKGROUND TEXT RULE (ALL CLIPS — STRICT): In EVERY clip (Clip 1 and all continuation clips), the attached logo is the ONLY text anywhere in the image. NEVER invent or render any other text on walls, desks, screens, boards, or props — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years. The image generator mis-spells such text, so it must not appear. Also do NOT add blank/empty boards, frames, or screens. Each continuation clip's background must be a REAL location/zone of the same business that matches that clip's voice-over line, built only from real physical objects (equipment, products, counters, furniture, fixtures, plants).
+  NO BACKGROUND TEXT RULE (ALL CLIPS — STRICT): In EVERY clip (Clip 1 and all continuation clips), the attached logo is the ONLY text anywhere in the image. NEVER invent or render any other text on walls, desks, screens, boards, or props — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years. The image generator mis-spells such text, so it must not appear. Also do NOT add blank/empty boards, frames, or screens. Each continuation clip's background must be a REAL location/zone of the same business that matches that clip's voice-over line, built only from real physical objects (equipment, products, counters, furniture, fixtures, plants${formData.adType === 'festival' ? `, and the ${formData.festivalName || 'festival'} decorations FESTIVAL DRESSING names` : ''}).
   CONTINUATION FRAME RULE: For every clip after Clip 1, write the prompt as if the image generator is also receiving the attached Clip 1 reference frame image.
   ${mainFrameProductLine}
   
@@ -4561,12 +4607,20 @@ ${sceneContext ? `
     if (sceneContext) mainFramePrompts = mainFramePrompts.map((prompt, i) => withSceneBackground(prompt, sceneContext, i));
     // No logo file: anything the model still wrote about "the attached logo" becomes the name board.
     if (frameNoLogo) mainFramePrompts = mainFramePrompts.map(prompt => nameBoardInPlaceOfLogo(prompt, frameNameBoard));
+    // A festival ad: every frame dressed for its festival — the greeting clip the most festive, a client photo with the
+    // decorations added onto it (utils/festivalDressing, owner 2026-10-22: "frame background … not getting the festival theme").
+    if (frameFestivalLook) {
+      mainFramePrompts = mainFramePrompts.map((prompt, i) => withFestivalDressing(prompt, frameFestivalLook, {
+        wish: i === 0 && segmentCount > 1,
+        plate: clipPhotoPlan[i] !== undefined && clipPhotoPlan[i]?.photoIndex !== null,
+      }));
+    }
 
     if (clipPhotoPlan.length > 0) {
       mainFramePrompts = mainFramePrompts.map((prompt, i) => {
         const plan = clipPhotoPlan[i];
         // The photo is the background, used — not redrawn — and only enhanced to 8K (backgroundPlateRule).
-        return plan ? `${attachmentDirective(plan, clientLocations)}\n\n${withBackgroundPlate(prompt, plan)}` : prompt;
+        return plan ? `${attachmentDirective(plan, clientLocations)}\n\n${withBackgroundPlate(prompt, plan, { festival: frameFestivalLook?.name })}` : prompt;
       });
     }
     /*
@@ -4751,15 +4805,14 @@ const veoClipsFromScript = (
 
 /**
  * The motion plan's inputs for a run: each clip's spoken words, the scene plan's choices, the cast size,
- * the clips shot in a client photograph and whether the cast walks only where a clip needs it (Motu and
- * Patlu, CharacterPack.walksOnlyWhenNeeded). The frame side and the video side both build it here.
+ * and the clips shot in a client photograph (every cast walks only where a clip needs it since 2026-10-22 —
+ * prompts/motion history 8). The frame side and the video side both build it here.
  */
 const motionOptionsFor = (pack: CharacterPack | null, lines: string[], sceneContext?: SceneContext | null, plates: boolean[] = []) => ({
   lines,
   choices: motionChoicesOf(sceneContext),
   twoHander: !!pack && pack.characters.length > 1,
   plates,
-  walksWhenNeeded: !!pack?.walksOnlyWhenNeeded,
 });
 
 /**

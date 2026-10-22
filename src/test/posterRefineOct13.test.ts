@@ -36,9 +36,10 @@ describe("the Changes line in the prompt", () => {
     });
     expect(p).toBe(`Create a minimalist and creative ad in Shadow Metaphor Ads. Business Information: Sri Sai Academy — EAMCET coaching. ${POSTER_PROMPT_CLOSE}\n\nChanges: Use red and gold colours. Add the headline "Admissions Open 2026".\n\nFormat: ${FORMAT}`);
     expect(posterPromptProblems(p)).toEqual([]);
+    // 2026-10-22: the parts also carry the Festival line — "" for a poster that is not for a festival.
     expect(readConceptPosterPrompt(p)).toEqual({
       adTypeId: "shadow_metaphor", adTypeName: "Shadow Metaphor Ads", businessInformation: "Sri Sai Academy — EAMCET coaching",
-      changes: 'Use red and gold colours. Add the headline "Admissions Open 2026"', format: FORMAT,
+      festival: "", changes: 'Use red and gold colours. Add the headline "Admissions Open 2026"', format: FORMAT,
     });
   });
 

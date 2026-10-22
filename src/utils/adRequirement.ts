@@ -12,6 +12,7 @@ import { AttireType, ModelGender, ATTIRE_OPTIONS_BY_GENDER } from "@/types/aiPla
 import { DURATIONS, END_CREDITS_SECONDS, durationFromSeconds, getClipCount, hasPoster, priceForClips } from "./assignmentDuration";
 import { PACKAGES, isAdCategory, categoryLabel, effectiveAdCategory, productionCategory } from "./serviceCatalog";
 import { PRICING } from "./pricing";
+import { saleNameLine } from "./businessName";
 import {
   getCharacterPack, isCustomPack, isHumanPack, isKidsPack, isOwnerDuoPack, ownerPhotoSlots, packCastGender, packHighlight, packModelGender,
 } from "@/services/characterPacks";
@@ -564,6 +565,9 @@ export function briefAsInstructions(
   /**
    * The rest of what the job says about the client. The business NAME is the one fact the model must
    * never guess — a run that read only a logo named the business after whatever the logo looked like.
+   * But the sale's name is the salesperson's REFERENCE, not the final name (owner, 2026-10-22: "it is not
+   * the final name of the business"), so it is written as one (utils/businessName.saleNameLine): the name
+   * printed on the logo, card, flyer or shop board wins, and this one is used only when none shows a name.
    * The client's notes were shown on the member's job card and never reached the generator at all.
    * Both are optional, and absent they leave the text exactly as it always was.
    */
@@ -575,7 +579,7 @@ export function briefAsInstructions(
   const notes = extras.notes?.trim();
   if (!info && !address && !notes) return "";
   return [
-    name ? `Business name: ${name}` : null,
+    name ? saleNameLine(name) : null,
     info ? `Business info & what to include (from the sale):\n${info}` : null,
     address ? `Address: ${address}` : null,
     notes ? `Client's notes (from the sale):\n${notes}` : null,

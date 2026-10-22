@@ -118,8 +118,12 @@ export interface LowerThirdInput {
   hasWhatsApp?: boolean;
   /** True when the client sent photographs of the premises, which may sit at the right edge. */
   hasPremisesPhoto?: boolean;
-  /** A festival ad: that festival's own palette and symbols (prompts.getFestivalTheme) — visual only. */
-  festivalTheme?: { colors: string; patterns: string; elements: string };
+  /**
+   * A festival ad: that festival's own palette, pattern, symbols, finish and mood (prompts.getFestivalTheme) — visual
+   * only. Since 2026-10-22 it LEADS the label's look (the owner: "the bottom label … not getting the related festival
+   * theme" — the brand colours were told to "always lead" and the festival got "one or two, small, at the edges").
+   */
+  festivalTheme?: { colors: string; patterns: string; elements: string; accents?: string; mood?: string };
   /** What this video is about and says, so the label's mood matches it — never written on the label. */
   context?: { motive?: string; mood?: string; coreMessage?: string };
 }
@@ -248,7 +252,7 @@ export function LOWER_THIRD_SYSTEM_PROMPT(input: LowerThirdInput): string {
     : "- LEFT: the attached logo, used EXACTLY as provided and never redrawn, recoloured or cropped, inside a premium circular (or "
       + "softly rounded) glass container with a metallic rim and a gentle inner shadow.";
 
-  return `VIDEO BOTTOM LABEL — design a PREMIUM label: a transparent PNG strip laid over the BOTTOM of a finished ${adType === "festival" ? "festival " : ""}advertisement video.
+  return `VIDEO BOTTOM LABEL — design a PREMIUM label: a transparent PNG strip laid over the BOTTOM of a finished ${adType === "festival" ? `${festivalName ? `${festivalName} ` : ""}festival ` : ""}advertisement video.
 
 This is NOT a poster, NOT a 9:16 image, NOT a top header and NOT a full video frame. It is one wide label, cut out, with nothing around it.
 
@@ -278,15 +282,24 @@ ${contactBlock(contactCount, !!input.hasWhatsApp)}
     : "NO address strip at all. No address was provided, so that strip does not exist — close the space cleanly and let the label sit shorter. Never draw an empty bar."}
 - The zones overlap and interlock with soft curves and layered depth — a floating, asymmetric composition, never a row of equal boxes.
 
-===== THEME — ${businessType.toUpperCase()} =====
+${festivalTheme ? `===== FESTIVAL THEME (VISUAL ONLY) — ${festivalName.toUpperCase()} — THIS LABEL'S LOOK =====
 
-- Accents for this trade: ${theme.motifs}. Keep them small and sparing — at the edges, behind the raised module, or along the label's curve. Never behind the text, never as a pattern across the whole label.
-- Colour: the brand's OWN colours, taken from the logo, always lead. ${theme.palette} is the supporting direction, not a replacement.
+This label belongs to a ${festivalName} video and must read as ${festivalName} at first glance — the festival's look LEADS and the trade's accents step back:
+- colours ${festivalTheme.colors}; patterns ${festivalTheme.patterns}; symbols ${festivalTheme.elements}.
+- Colour: the label's glass, gradient and glow are in ${festivalName}'s colours above; the brand's own colours from the logo stay as the accent (the rim, a highlight, the name) — never a plain brand-coloured bar.
+- Symbols: two or three of ${festivalName}'s symbols, finely drawn in metallic or glowing detail — along the label's top curve, around the brand circle and on the edge of the raised contact module. Never behind the text and never covering a pill.
+- Pattern: ${festivalName}'s pattern as a fine, low-contrast texture inside the glass.${festivalTheme.accents ? ` Finish: ${festivalTheme.accents}.` : ""}${festivalTheme.mood ? ` Mood: ${festivalTheme.mood}.` : ""}
+- Do NOT write the festival's name, a greeting, wishes or a date anywhere on the label — the video says those; the label only brands the business.
+
+` : ""}===== THEME — ${businessType.toUpperCase()} =====
+
+- Accents for this trade: ${theme.motifs}. Keep them small and sparing — at the edges, behind the raised module, or along the label's curve${festivalTheme ? `, and only where ${festivalName}'s symbols leave room` : ""}. Never behind the text, never as a pattern across the whole label.
+- Colour: ${festivalTheme ? `${festivalName}'s colours lead (see FESTIVAL THEME above); the brand's OWN colours, taken from the logo, are the accent.` : `the brand's OWN colours, taken from the logo, always lead. ${theme.palette} is the supporting direction, not a replacement.`}
 ${input.hasPremisesPhoto
     ? "- The client's own premises photograph may sit as a soft, cleanly masked cut-out at the far right edge, blending into the raised module. It stays behind the contact pills and never covers any text."
     : "- NO photographs: this label is graphic only. Never invent a building, a shopfront, an office or people."}
 ${festivalTheme
-    ? `- FESTIVAL THEME (VISUAL ONLY) — this label belongs to a ${festivalName} video, so its colour and accents follow that festival exactly: colours ${festivalTheme.colors}; patterns ${festivalTheme.patterns}; symbols ${festivalTheme.elements} (one or two, small, at the edges). Do NOT write the festival's name, a greeting, wishes or a date anywhere on the label — the video says those; the label only brands the business.\n`
+    ? ""
     : festive ? `- FESTIVAL ACCENT (VISUAL ONLY): ${festive}, with a slightly warmer glow. Do NOT write the festival's name, a greeting, wishes or a date anywhere on the label — the video says those; the label only brands the business.\n` : ""}${videoMood
     ? `- THIS VIDEO: ${videoMood}. Let the label's colour temperature, glow and accents suit it — calm and sacred for a devotional video, warm and generous for a food or community video, bolder for an offer. Never write any of it on the label.\n`
     : ""}
@@ -322,5 +335,6 @@ NEVER place: a slogan, a tagline, a promise, feature icons or feature words (pri
     ? "Is there exactly ONE contact pill, its number written once, digit for digit as listed below, and no other phone number anywhere?"
     : contactCount > 1
       ? `Are there exactly ${COUNT_WORDS[contactCount] ?? contactCount} contact pills, each number written once, digit for digit as listed below, and no other phone number anywhere?`
-      : "Is there no phone number anywhere on the label?"}`;
+      : "Is there no phone number anywhere on the label?"}${festivalTheme ? `
+8. Does it read as ${festivalName} at first glance — its colours in the glass and two or three of its symbols at the edges — with no festival name, greeting or date written anywhere?` : ""}`;
 }

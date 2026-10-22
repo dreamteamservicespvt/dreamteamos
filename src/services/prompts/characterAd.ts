@@ -7,6 +7,7 @@ import { wordContractBlock, type WordContractRegister } from "./wordContract";
 import { packLocationSubject, packStagingRole, realLocationFormula } from "./realLocation";
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
+import { latinLettersException } from "@/utils/englishWords";
 import { wishAudienceRule } from "./festivalWish";
 import { festivalNameIn } from "@/utils/festivalNames";
 import {
@@ -916,7 +917,7 @@ ${isLatin
   ? `1. Spoken content must be clean, natural, conversational English as spoken in a premium Indian TV cartoon ad.
 2. Keep brand names exactly as written.
 3. Never stiff, bookish, or corporate. These are cartoon characters talking, not a brochure.`
-  : `1. Spoken content must be 100% correct, native, pixel-perfect ${lang} script. No Latin letters in spoken content (English-origin words are allowed only when written in ${lang} script).
+  : `1. Spoken content must be 100% correct, native, pixel-perfect ${lang} script. No Latin letters in spoken content${latinLettersException(lang)} (English-origin words are allowed only when written in ${lang} script).
 2. Brand names must be transliterated into ${lang} script naturally.
 3. Use the words people in the town actually say — everyday ${lang}, or the English word everyone already uses, written in ${lang} script — never a heavy literary ${lang} translation. Write how a popular ${lang} cartoon actually speaks: the way kids and grandparents both talk.
 4. Never archaic, devotional, bookish, or government-style ${lang}.`}
@@ -1085,6 +1086,8 @@ export interface CharacterFramePromptInput {
   aspectRatio: "9:16" | "16:9";
   adType: string;
   festivalName?: string;
+  /** A festival ad's look in one line (prompts.festivalLookLine, 2026-10-22). */
+  festivalLook?: string;
   /** True when the client's logo file is attached to the request. */
   hasLogo?: boolean;
   businessContext?: string;
@@ -1275,7 +1278,7 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   const {
     segmentCount, clipSummaries, locationMode, locationPlan,
     aspectRatio, adType, festivalName, hasLogo = false, businessContext = "", wardrobe, motionPlan = [],
-    nameBoard = "", sceneBackgrounds = [], sceneMotive = "", photoClips = [], castSheet = "",
+    nameBoard = "", sceneBackgrounds = [], sceneMotive = "", photoClips = [], castSheet = "", festivalLook = "",
   } = input;
   const clipContext = clipSummaries.map((s, i) => `  Clip ${i + 1}: ${s}`).join("\n");
   const orientation = aspectRatio === "16:9" ? "horizontal (landscape)" : "vertical (portrait)";
@@ -1305,12 +1308,11 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   const pairNoun = ownerDuo ? "owners" : "characters";
   const shots = shotsForClipCount(segmentCount);
   /**
-   * Motu and Patlu walk only where a clip's words take them somewhere (CharacterPack.walksOnlyWhenNeeded,
-   * 2026-10-10): every frame catches them STANDING side by side, mid-gesture, beside what its line is about —
-   * mid-step only where the clip's 🎬 note walks — because the video continues the pose a frame starts from,
-   * and a frame caught mid-step started the walk that redrew them.
+   * Every cast walks only where a clip's words take them somewhere (Motu and Patlu from 2026-10-10, every cast since
+   * 2026-10-22 — prompts/motion history 8): every frame catches them STANDING, facing the camera, mid-gesture, beside
+   * what its line is about — mid-step only where the clip's 🎬 note walks — because the video continues the pose a
+   * frame starts from, and a frame caught mid-step starts a walk.
    */
-  const standsByDefault = motionPlan.some((p) => p.walksWhenNeeded);
   const someWalk = motionPlan.some((p) => p.walks);
 
   /**
@@ -1341,7 +1343,7 @@ No logo was provided. Do not invent one, and do not put any text, signage or let
   // The shared real-premises formula (prompts/realLocation) — the same block the human-model frame
   // prompt reads, told who it is placing so a lone deity is never lit as "the two characters".
   const locationBlock = locationMode === "real_provided"
-    ? realLocationFormula(packLocationSubject(pack), locationPlan)
+    ? realLocationFormula(packLocationSubject(pack), locationPlan, adType === "festival" ? festivalName : undefined)
     : `===== LOCATION: GENERATED FROM THE BUSINESS PROFILE =====
 
 No client photographs were provided, so build a believable, photoreal location for this exact kind
@@ -1360,7 +1362,7 @@ clip — each showing ${solo ? `${cast} alone` : `BOTH ${pairNoun} together`} in
 
 • Aspect ratio: ${aspectRatio} ${orientation} — compose and frame EVERY clip for this canvas.
 • Clips: ${segmentCount}, ${CLIP_SECONDS} seconds each.
-• Ad type: ${adType === "festival" ? `festival greeting for ${festivalName || "the festival"} — layer the festival cues naturally over the real premises, never replace them` : "commercial — the business and what it sells must be unmistakable"}.
+• Ad type: ${adType === "festival" ? `festival greeting for ${festivalName || "the festival"} — layer the festival cues naturally over the real premises, never replace them: every frame's place is dressed for ${festivalName || "the festival"}${festivalLook?.trim() ? ` (${festivalLook.trim()})` : ""}, the greeting clip the most festive (each finished frame also carries its FESTIVAL DRESSING)` : "commercial — the business and what it sells must be unmistakable"}.
 
 Every prompt must state the ${aspectRatio} ${orientation} framing explicitly, and stage
 ${solo ? `${cast}` : `the two ${pairNoun}`} and the business zone to fill that shape properly — no composition borrowed from a
@@ -1368,30 +1370,21 @@ different aspect ratio.
 
 ${characterCastBlock(pack, wardrobe, castSheet)}
 
-${characterDirectionBlock(pack, "frame")}${standsByDefault ? `
+${characterDirectionBlock(pack, "frame")}${motionPlan.length ? `
 
-Each clip's video starts from THIS still and shows only what it shows, following its own 🎬 note. ${cast} are drawn
-characters, and every step makes the video model redraw their bodies — that is how their heights and outfits changed —
-so they perform each clip WHERE THEY STAND, side by side beside what its line is about: the one speaking reacts or
-explains with the whole upper body and both hands, the other answers calmly, filmed with the camera the note names.${someWalk ? `
-They walk together, side by side, only in a clip whose 🎬 note walks.` : ""}
+Each clip's video starts from THIS still and shows only what it shows, following its own 🎬 note. ${cast} ${solo ? "performs" : "perform"} each
+clip ${solo ? "IN PLACE, standing" : "WHERE they stand, side by side,"} beside what its line is about, facing the camera — every
+gesture on the words it belongs to, and nothing the line does not call for — filmed with the camera the note names:
+every step and every turn is one more thing the video model can get wrong (bodies redrawn, heights and outfits
+changing, a body turning round).${someWalk ? `
+They walk${solo ? "" : " together, side by side,"} only in a clip whose 🎬 note walks.` : ""}
 The variety of the ad comes from YOUR frames: each clip is a different real part of the business. The video can only
 animate what the frame shows, so each frame must already contain what its clip needs, caught MID-GESTURE — a hand
-mid-gesture, mid-reaction, never a stiff, posed stance, because the video continues the pose it starts from: what the
-line is about right beside them, within arm's reach and fully in view${someWalk ? "; for a walking clip only, both caught mid-step with clear open floor ahead of them" : ""};
-both at the same distance from the camera; clear space around the bodies; every object fully in view. Where the
+mid-gesture, mid-reaction, facing the camera, never a stiff, posed stance, because the video continues the pose it
+starts from: what the line is about right beside them, within arm's reach and fully in view${someWalk ? `; for a walking clip only, ${solo ? "" : "both "}caught mid-step with clear open floor ahead of them` : ""};
+${solo ? "" : "both at the same distance from the camera; "}clear space around the bodies; every object fully in view. Where the
 direction above describes walking somewhere, arriving or leading the way, the 🎬 note decides instead. Everything else
-in that direction still applies.` : motionPlan.length ? `
-
-Each clip's video starts from THIS still and shows only what it shows, following its own 🎬 note — and every clip MOVES
-like a shot from a real commercial: ${solo ? cast : "the characters"} ${motionPlan.some((p) => p.walks) ? `WALK${solo ? "" : " together, side by side,"} through the place — ${solo ? "toward the camera, " : ""}along the counter or display, or to the product — ` : ""}PRESENT
-what the line is about or TURN to present the place, filmed with the camera the note names.
-The variety of the ad comes from YOUR frames: each clip is a different real part of the business. The video can only
-animate what the frame shows, so each frame must already contain what its clip needs, caught MID-MOVEMENT — mid-step, a
-hand mid-gesture, never a stiff, posed stance, because the video continues the pose it starts from: for a product, the
-product in view a few steps away or within reach; for a walk, clear open floor where they walk${solo ? "" : ", both at the same distance from the camera"};
-clear space around the bodies; every object fully in view. Where the direction above describes walking somewhere,
-arriving or leading the way, the 🎬 note decides instead. Everything else in that direction still applies.` : ownerDuo ? `
+in that direction still applies.` : ownerDuo ? `
 
 Each clip's video starts from THIS still: the two owners say the clip's lines to the camera in turn, with natural,
 appropriate gestures — the clients' own faces, filmed as they are (2026-10-14). So every frame catches both standing in
@@ -1451,12 +1444,9 @@ ${solo
   ? `Stage them as the business's two owners mid-conversation, STANDING IN PLACE side by side — never mid-step,
   never walking — angled slightly towards each other but open to camera, the one who is speaking caught
   mid-gesture and the other listening. Both faces large, frontal and clear; neither face hidden by, or overlapping, the other.`
-  : standsByDefault
-  ? `Stage them as a two-hander, mid-conversation and mid-gesture — standing side by side as each clip's 🎬 note says
+  : `Stage them as a two-hander, mid-conversation and mid-gesture — standing side by side as each clip's 🎬 note says
   (mid-step only where the note walks), angled slightly towards each other but open to camera. The one who is speaking is
-  the more animated of the two.`
-  : `Stage them as a two-hander, mid-conversation and mid-movement — caught mid-step side by side as each clip's 🎬 note says,
-  angled slightly towards each other but open to camera. The one who is speaking is the more animated of the two.`}
+  the more animated of the two.`}
 • They must be the focus, but the business must be unmistakable behind them.
 • Both stand on the real floor, side by side, at the SAME distance from the camera — neither one nearer
   the lens — beside a real counter, shelf or door frame that their height can be read against.${pack.scaleAnchor ? `
@@ -1526,8 +1516,6 @@ export const CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT = (
     performer: packPerformer(pack),
     // A pair walks only together and is filmed only from the side — the director is told so (prompts/motion PAIR_MOVES).
     twoHander: pack.characters.length > 1,
-    // Motu and Patlu walk only in a clip whose words take them somewhere (CharacterPack.walksOnlyWhenNeeded).
-    walksWhenNeeded: !!pack.walksOnlyWhenNeeded && pack.characters.length > 1,
   });
 };
 
@@ -1572,10 +1560,9 @@ export const packVeoSubject = (
       ? `both ${pack.family === "kids" ? "children's" : "people's"} exact faces, hair, outfits, ages and heights`
       : solo
       ? "the character exactly as in the frame, with the same design, colours, proportions and height"
-      // Their clothes changed in the videos (CharacterPack.walksOnlyWhenNeeded, 2026-10-10), so the outfits are named.
-      : pack.walksOnlyWhenNeeded
-        ? "both characters exactly as drawn, with the same designs, outfits, colours, builds and heights"
-        : "both characters exactly as drawn, with the same designs, colours, builds and heights";
+      // Motu and Patlu's clothes changed in the videos (2026-10-10), so the outfits are named — for every drawn pair
+      // since 2026-10-22.
+      : "both characters exactly as drawn, with the same designs, outfits, colours, builds and heights";
   const voiceOf = (name: string, voice: string) => cartoon
     ? `the original ${name} voice from the show (${voice})`
     : voice;

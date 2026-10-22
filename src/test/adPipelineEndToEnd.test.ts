@@ -13,6 +13,10 @@ import { VEO_FRAME_LOCK } from "@/services/prompts/motion";
  *   • Motu and Patlu carry the same scale anchor in the frame and the video, filmed from the side at one
  *     distance — and since 2026-10-10 walk only in a clip whose words take them somewhere;
  *   • every video prompt directs motion only, and every clip moves the way its frame was composed for.
+ *
+ * 2026-10-22 (prompts/motion history 8 — the owner: "move only when the words need it"): every cast, not only Motu
+ * and Patlu, walks only in a clip whose words take it somewhere, so these runs' clips are performed where the cast
+ * stands, facing the camera, unless a line says "let's go …"; the arc is retired.
  */
 
 type Call = { sys: string; user: string; json: boolean; images: number };
@@ -142,15 +146,17 @@ describe("a client's store photo is the background plate (problem 6)", () => {
       expect(prompt).not.toMatch(/open stretch of floor|ATTACH NOTHING/);
     }
     // The video never shows more of a client's photo than was photographed: the camera pushes in, or holds
-    // still while she walks — never a side track, a glide or an arc — from a frame composed with her mid-step.
-    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Walk along the display (");
-    expect(out.mainFramePrompts[1]).toContain("the subject placed into it caught mid-step on open, clear floor, with room to walk");
-    expect(out.veoPrompts[0]).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot: she walks slowly toward the camera");
-    expect(out.veoPrompts[1]).toContain("Steady medium-wide shot from a still camera as she walks along: she walks slowly along the counter, display or shelves beside her");
+    // still while she walks — never a side track, a glide or an arc. 2026-10-22: no line here takes her anywhere, so
+    // every clip is a push-in where she stands, from a frame composed with her standing facing the camera.
+    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Present the display (");
+    expect(out.mainFramePrompts[1]).toContain("the subject placed into it on the real floor, facing the camera beside what they present");
+    expect(out.veoPrompts[0]).toContain("Smooth, steady push-in from a three-quarter shot to a medium close-up: she stands facing the camera and speaks straight to the viewer");
+    expect(out.veoPrompts[1]).toContain("Smooth, steady push-in from a three-quarter shot to a medium close-up: she stands beside the counter, display or shelves, facing the camera, and presents it");
     for (const prompt of out.veoPrompts) {
-      expect(prompt).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light`);
+      expect(prompt).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; she performs where she stands, facing the camera`);
       expect(prompt).not.toMatch(/tracking|lateral dolly|arc shot/i);
       expect(prompt).toMatch(/push-in|still camera/i);
+      expect(prompt.split("\n\n")[1]).not.toMatch(/\bwalks?\b/);
     }
   });
 });
@@ -166,16 +172,40 @@ describe("every video prompt starts from its frame and moves inside it (problem 
       // The frame prompt said "beside the real counter, shelves of stock behind" — the video never repeats it.
       expect(prompt).not.toContain("shelves of stock behind");
       expect(prompt).not.toMatch(/Pull Back|Orbit|Crane|walk-?back|street|road|FRAME BOUNDARY/i);
-      expect(prompt.split(/\s+/).length).toBeLessThanOrEqual(210);
+      // 2026-10-22: ≤ 210 before — the gesture-on-the-words life line and four more negatives add about twenty words
+      // (252 measured with these 18–20-word English lines).
+      expect(prompt.split(/\s+/).length).toBeLessThanOrEqual(260);
     });
-    // The same plan on both sides: each frame is composed for the action its video performs.
-    expect(out.mainFramePrompts[0]).toContain("COMPOSITION FOR MOTION: this pose opens the clip (Walk toward the camera,");
-    expect(out.veoPrompts[0]).toContain("she walks slowly toward the camera across the open floor");
-    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Walk along the display (");
-    expect(out.veoPrompts[1]).toContain("Smooth side-tracking shot from a three-quarter front angle, the camera travelling sideways alongside her");
-    expect(out.veoPrompts[1]).toContain("she walks slowly along the counter, display or shelves beside her");
-    expect(out.mainFramePrompts[2]).toContain("COMPOSITION FOR MOTION: Walk in and invite (");
-    expect(out.veoPrompts[2]).toContain("she walks the last few steps toward the camera and invites the viewer in");
+    // The same plan on both sides: each frame is composed for the action its video performs. 2026-10-22: no line here
+    // takes her anywhere, so each beat is performed where she stands — a push-in or a short glide, never a walk.
+    expect(out.mainFramePrompts[0]).toContain("COMPOSITION FOR MOTION: this pose opens the clip (Speak to the camera,");
+    expect(out.veoPrompts[0]).toContain("she stands facing the camera and speaks straight to the viewer");
+    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Present the display (");
+    expect(out.veoPrompts[1]).toContain("Slow lateral dolly, the camera gliding a short way sideways at one distance, her seen from the same angle throughout");
+    expect(out.veoPrompts[1]).toContain("she stands beside the counter, display or shelves, facing the camera, and presents it with one open hand on the words about it");
+    expect(out.mainFramePrompts[2]).toContain("COMPOSITION FOR MOTION: Invite where they stand (");
+    expect(out.veoPrompts[2]).toContain("she stands facing the camera and invites the viewer in on the invitation");
+    for (const prompt of out.veoPrompts) expect(prompt.split("\n\n")[1]).not.toMatch(/\bwalks?\b/);
+  });
+
+  // 2026-10-22: a clip whose words take her somewhere is the one that walks — composed mid-step in its frame and
+  // walked in its video, from the same spoken words on both sides.
+  it("walks only the clip whose words take her somewhere — the frame and the video agree", async () => {
+    const WALKING = "Come with me, let's go inside and see every brand of television and washing machine on our shelves today.";
+    script = { writer: `clip-1[0-8sec]: ${CLIP1}\nclip-2[8-16sec]: ${WALKING}\nclip-3[16-24sec]: ${CLIP2_PLAIN.replace("Every", "Each")}` };
+    const out = await run(form({ duration: 24 }));
+    expect(out.voiceOverScript).toContain(WALKING);
+    // The line names what she shows ("every brand"), so its beat is "Approach and show" — walked, because the words
+    // take her somewhere; the frame catches her mid-step toward the product.
+    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Approach and show (");
+    expect(out.mainFramePrompts[1]).toContain("three-quarter body caught mid-step toward the real product, counter or display the clip talks about");
+    expect(out.veoPrompts[1]).toContain(": she walks a few steps to the product or display beside her, facing the camera, and shows it with an open hand");
+    expect(out.veoPrompts[1]).toContain("she moves within that place");
+    expect(out.veoPrompts[1]).toContain("no frozen or static pose");
+    for (const i of [0, 2]) {
+      expect(out.mainFramePrompts[i]).not.toMatch(/mid-step/);
+      expect(out.veoPrompts[i]).toContain("she performs where she stands, facing the camera");
+    }
   });
 });
 
@@ -227,11 +257,13 @@ describe("a human duo is one fixed pair of people (problem 1)", () => {
     };
     const out = await run(form({ characterPack: "human_duo_female", duration: 24 }));
     expect(out.veoPrompts).toHaveLength(3);
-    // Planned from the spoken words alone: the promise ("trust", "twenty years") is walked up to and said. Read
-    // with the names, "the woman in the … saree" would have made it a product shot instead.
-    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Walk, stop and explain (");
-    expect(out.veoPrompts[1]).toContain("both take a few unhurried steps side by side across the floor and stop together");
-    expect(out.veoPrompts[1]).toContain("Slow lateral dolly two-shot at eye level, the camera gliding sideways past them at one distance");
+    // Planned from the spoken words alone: the promise ("trust", "twenty years") is explained to the camera. Read
+    // with the names, "the woman in the … saree" would have made it a product shot instead. 2026-10-22: no line
+    // walks them, so it is explained where they stand, on the short glide that keeps both at one angle.
+    expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Explain where they stand (");
+    expect(out.veoPrompts[1]).toContain("both stand side by side facing the camera at a slight angle;");
+    expect(out.veoPrompts[1]).toContain("answers with a hand on the chest on the promise and a confident nod");
+    expect(out.veoPrompts[1]).toContain("Slow lateral dolly two-shot at eye level, the camera gliding a short way sideways at one distance, both seen from the same angle throughout");
   });
 });
 
@@ -310,10 +342,12 @@ describe("Motu and Patlu keep their heights (problem 3)", () => {
     };
     const out = await run(form({ characterPack: "duo_motu_patlu" }));
     const frameCall = calls.find((c) => /CHARACTER|two-hander/i.test(c.sys) && /###CLIP###/.test(c.sys))!;
-    expect(frameCall.sys).toContain("so they perform each clip WHERE THEY STAND");
+    // 2026-10-22: the same words every pack's frame prompt now carries.
+    expect(frameCall.sys).toContain("Motu and Patlu perform each\nclip WHERE they stand, side by side, beside what its line is about, facing the camera");
     expect(frameCall.sys).not.toContain("every clip MOVES");
     for (const prompt of out.mainFramePrompts) {
-      expect(prompt).toMatch(/COMPOSITION FOR MOTION: (?:Present the display|Show it where they stand|Explain where they stand|Invite where they stand|Turn and present) \(/);
+      // turn_present's in-place name is "Present where they stand" since 2026-10-22 (it was "Turn and present").
+      expect(prompt).toMatch(/COMPOSITION FOR MOTION: (?:Present the display|Show it where they stand|Explain where they stand|Invite where they stand|Present where they stand) \(/);
       expect(prompt).not.toMatch(/mid-step/);
     }
     for (const prompt of out.veoPrompts) {

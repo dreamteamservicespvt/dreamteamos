@@ -90,7 +90,14 @@ export const BACKGROUND_PLATE_HEADING = "BACKGROUND PLATE";
  * Shared by the stamp below and the location formula (prompts/realLocation), so the system prompt and
  * every finished frame say the same thing in the same words.
  */
-export function backgroundPlateRule(photo = "the attached store/office photograph"): string {
+export function backgroundPlateRule(photo = "the attached store/office photograph", festival?: string | null): string {
+  // A festival ad (2026-10-22): the festival's decorations are the one thing added to the photographed place besides the
+  // cast and the logo — onto what is already there, nothing moved (utils/festivalDressing). Without this the rule below
+  // forbade them outright, and a festival ad shot in the client's photos had no festival in its frames.
+  const festive = festival?.trim()
+    ? ` — and, for this ${festival.trim()} ad, the festival decorations its FESTIVAL DRESSING names, placed onto the `
+      + `photograph's own walls, counters, entrance and floor without moving, hiding or replacing anything`
+    : "";
   return `Use ${photo} AS the background, exactly as it is: the same room, the same layout, walls, floor, ceiling, `
     + `counters, shelves, racks, stock, products, signage, colours and light, seen from the same camera angle, `
     + `perspective and framing. Only ENHANCE it — upscale it to 8K, sharpen it, remove noise, blur and compression `
@@ -99,7 +106,7 @@ export function backgroundPlateRule(photo = "the attached store/office photograp
     + `NOT add, remove, move or restyle a single object. The only things added are the cast of this frame — standing on `
     + `its real floor at true real-world scale against its real objects, lit by its own light (same direction, softness `
     + `and colour temperature) and casting soft contact shadows, so they look photographed in that room, not pasted `
-    + `onto it — and the logo or name board, on a surface the photograph already has`;
+    + `onto it — and the logo or name board, on a surface the photograph already has${festive}`;
 }
 
 /**
@@ -108,9 +115,9 @@ export function backgroundPlateRule(photo = "the attached store/office photograp
  * still wrote a fresh description of a shop, and the image generator drew that description instead of
  * the photo. Idempotent; a clip with no photo is returned unchanged.
  */
-export function withBackgroundPlate(prompt: string, location: ClipLocation | undefined): string {
+export function withBackgroundPlate(prompt: string, location: ClipLocation | undefined, options: { festival?: string | null } = {}): string {
   if (!prompt.trim() || !location || location.photoIndex === null || prompt.includes(BACKGROUND_PLATE_HEADING)) return prompt;
-  return `${prompt.trimEnd()}\n\n${BACKGROUND_PLATE_HEADING} (STRICT): ${backgroundPlateRule(`the attached Store/Office Image #${location.photoIndex + 1}`)}.`;
+  return `${prompt.trimEnd()}\n\n${BACKGROUND_PLATE_HEADING} (STRICT): ${backgroundPlateRule(`the attached Store/Office Image #${location.photoIndex + 1}`, options.festival)}.`;
 }
 
 /**

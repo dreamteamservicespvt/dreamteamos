@@ -3,6 +3,7 @@ import { MAX_WORDS_PER_CLIP } from '@/utils/scriptContract';
 import { TELUGU_SCREEN_CTA, WORD_BAND_TEXT, wordContractBlock } from './prompts/wordContract';
 import { coreMessageBlock, type CoreMessageBrief } from './prompts/coreMessage';
 import { everydaySpeechRules } from './prompts/everydaySpeech';
+import { latinLettersException } from '@/utils/englishWords';
 import { wishAudienceRule, wishOpeningLine } from './prompts/festivalWish';
 import { VEO_DIRECTION_SYSTEM_PROMPT, cameraLabel, compositionFor, framingForMotion, type ClipMotionPlan } from './prompts/motion';
 
@@ -423,6 +424,12 @@ export interface FestivalTheme {
   lightingStyle: string;
   floorDecor: string;
   backgroundElements: string;
+  /**
+   * True on the generic theme an occasion with no treatment of its own falls to (a birthday, a shop opening,
+   * Muharram, Gandhi Jayanti …): its "rangoli, brass lamps, religious imagery" is not that occasion's look, so
+   * the label, frames and poster name the occasion and let the model use its own traditions (festivalLook).
+   */
+  generic?: boolean;
 }
 
 export const getFestivalTheme = (festivalName: string): FestivalTheme => {
@@ -797,7 +804,7 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
   }
 
   // Eid
-  if (name.includes('eid') || name.includes('ramadan') || name.includes('ramzan')) {
+  if (name.includes('eid') || name.includes('ramadan') || name.includes('ramzan') || name.includes('bakrid') || name.includes('bakri eid') || name.includes('adha')) {
     return {
       sareeColor: 'elegant emerald green or royal blue silk saree with heavy gold and silver zari work — luxurious, dignified, symbolizing prosperity and celebration',
       jewellery: 'LUXURIOUS EXPENSIVE CELEBRITY-LEVEL JEWELLERY — Heavy elegant gold necklace with diamond/precious stone accents, large ornate gold jhumka earrings with diamonds, heavy gold bangles stack. Must look like expensive red-carpet level jewellery worth lakhs — pure gold and diamonds only',
@@ -876,8 +883,100 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
     };
   }
 
+  // Krishna Janmashtami / Gokulashtami (2026-10-22 — sold in the occasion list, had no look of its own)
+  if (name.includes('janmashtami') || name.includes('janmastami') || name.includes('gokulashtami') || name.includes('krishnashtami') || name.includes('krishna')) {
+    return {
+      sareeColor: 'peacock blue or royal yellow silk saree with a gold zari border and subtle peacock-feather motifs — the colours of Lord Krishna',
+      jewellery: 'elegant heavy gold necklace, gold jhumkas and gold bangles — pure gold, tasteful',
+      environmentDecorations: `The space is dressed for **Krishna Janmashtami**:
+  - **A decorated cradle (jhoola)** for baby Krishna, wrapped in flowers
+  - **Peacock feathers** in arrangements and as accents
+  - **A small earthen pot of butter (makhan matki)** hung on a decorated string
+  - **Marigold and tulsi garlands** framing the space
+  - **Lit brass diyas** on ledges and the counter
+  - **A flute (bansuri)** placed as a decorative element
+  - **Tiny baby-Krishna footprints** painted in rice paste at the entrance`,
+      headerColors: 'Peacock blue to royal yellow gradient with gold accents — Krishna\'s palette',
+      headerPatterns: 'Subtle peacock-feather, flute and butter-pot motifs as watermark elements at 10-15% opacity',
+      headerAccents: 'Gold accents, a peacock-feather flourish, a soft festive glow',
+      mood: 'Joyful, devotional, playful — the celebration of Krishna\'s birth',
+      culturalElements: 'Peacock feathers, a flute, a butter pot (matki), a decorated cradle, tulsi garlands, baby-Krishna footprints',
+      lightingStyle: 'Warm golden diya light with a soft peacock-blue evening tint',
+      floorDecor: 'Little rice-paste footprints of baby Krishna leading inside, with a small kolam',
+      backgroundElements: 'The business stays recognisable, dressed for Janmashtami with the cradle, peacock feathers and diyas',
+    };
+  }
+
+  // Sri Rama Navami
+  if (name.includes('rama navami') || name.includes('ram navami') || name.includes('ramanavami') || name.includes('sri rama')) {
+    return {
+      sareeColor: 'saffron or deep yellow silk saree with a rich gold zari border — auspicious and devotional',
+      jewellery: 'traditional gold necklace, gold jhumkas and gold bangles — pure gold, tasteful',
+      environmentDecorations: `The space is dressed for **Sri Rama Navami**:
+  - **A framed picture of Sri Rama, Sita, Lakshmana and Hanuman** adorned with fresh garlands
+  - **Mango-leaf thoranam** across the top of the entrance
+  - **Marigold and jasmine garlands** framing the space
+  - **Lit brass deepams** on ledges and the counter
+  - **Saffron flags** with a small bow-and-arrow emblem as a subtle accent
+  - **A brass plate of panakam and vadapappu** (the festival's prasadam)`,
+      headerColors: 'Saffron to deep gold gradient with maroon accents — Rama Navami\'s devotional palette',
+      headerPatterns: 'Subtle bow-and-arrow, lotus and thoranam motifs as watermark elements at 10-15% opacity',
+      headerAccents: 'Gold accents, a saffron glow',
+      mood: 'Devotional, auspicious, warm — the celebration of Sri Rama\'s birth',
+      culturalElements: 'Mango-leaf thoranam, marigold garlands, brass deepams, saffron flags, a bow-and-arrow emblem, panakam',
+      lightingStyle: 'Warm golden morning light with brass-lamp glow',
+      floorDecor: 'A traditional muggu (rangoli) with flower petals at the entrance',
+      backgroundElements: 'The business stays recognisable, dressed for Sri Rama Navami with thoranam, garlands and lamps',
+    };
+  }
+
+  // Karthika Pournami / Karthigai Deepam
+  if (name.includes('karthika') || name.includes('kartika') || name.includes('karthigai') || name.includes('kartik purnima') || name.includes('pournami')) {
+    return {
+      sareeColor: 'deep red or maroon silk saree with a gold zari border — glowing in lamp light',
+      jewellery: 'traditional gold necklace, gold jhumkas and gold bangles — pure gold, tasteful',
+      environmentDecorations: `The space is dressed for **Karthika Pournami**:
+  - **Rows of lit clay deepams** along the steps, ledges, counter and entrance — the festival of lamps
+  - **Floating diyas in a brass urli** of water with flower petals
+  - **Marigold and jasmine garlands**
+  - **A small decorated tulsi pot** with a lamp beside it
+  - **Banana-leaf and flower arrangements** at the entrance`,
+      headerColors: 'Deep maroon to warm gold gradient glowing like lamp light',
+      headerPatterns: 'Subtle deepam-row and full-moon motifs as watermark elements at 10-15% opacity',
+      headerAccents: 'Gold accents, a soft lamp glow, a full-moon highlight',
+      mood: 'Serene, devotional, glowing — an evening of lamps under the full moon',
+      culturalElements: 'Rows of clay deepams, floating diyas in an urli, a full moon, a tulsi pot, marigold garlands',
+      lightingStyle: 'Evening light lit by many small lamp flames — warm, glowing, serene',
+      floorDecor: 'A kolam outlined with rows of small lit deepams',
+      backgroundElements: 'The business stays recognisable, glowing with rows of lit deepams',
+    };
+  }
+
+  // Akshaya Tritiya — the day to buy gold
+  if (name.includes('akshaya') || name.includes('akha teej') || name.includes('tritiya')) {
+    return {
+      sareeColor: 'rich yellow or red Kanchipuram silk saree with heavy gold zari — prosperity and auspiciousness',
+      jewellery: 'elegant gold necklace, gold jhumkas and gold bangles — pure gold, tasteful',
+      environmentDecorations: `The space is dressed for **Akshaya Tritiya**:
+  - **Gold-coloured flower garlands** (marigold and chrysanthemum)
+  - **A kalash with mango leaves and a coconut** on a decorated plate
+  - **Lit brass deepams** on the counter
+  - **A brass plate with gold coins, rice and turmeric** — the auspicious offering
+  - **Mango-leaf thoranam** across the top of the entrance`,
+      headerColors: 'Rich gold to warm yellow gradient with deep red accents — prosperity\'s palette',
+      headerPatterns: 'Subtle kalash, gold-coin and lotus motifs as watermark elements at 10-15% opacity',
+      headerAccents: 'Gold metallic accents and a warm sparkle',
+      mood: 'Auspicious, prosperous, bright — the day new beginnings and gold bring lasting luck',
+      culturalElements: 'A kalash with mango leaves, gold coins, a lotus, marigold garlands, brass deepams, a mango-leaf thoranam',
+      lightingStyle: 'Bright, warm golden light with a soft sparkle on gold',
+      floorDecor: 'A bright rangoli with a kalash and lotus motif at the entrance',
+      backgroundElements: 'The business stays recognisable, dressed for Akshaya Tritiya with the kalash, garlands and lamps',
+    };
+  }
+
   // Generic / Default festival
   return {
+    generic: true,
     sareeColor: `rich festive silk saree in colors that traditionally represent ${festivalName} celebrations — premium festival-appropriate silk with gold zari work`,
     jewellery: `LUXURIOUS EXPENSIVE CELEBRITY-LEVEL JEWELLERY — Heavy ornate gold necklace with diamond/kundan studded pendant, large gold jhumka earrings with precious stones, heavy gold bangles stack. Must look like expensive red-carpet level jewellery worth lakhs — pure gold and diamonds only`,
     environmentDecorations: `The ENTIRE background must be transformed into an immersive **${festivalName} celebration setup**:
@@ -901,6 +1000,79 @@ export const getFestivalTheme = (festivalName: string): FestivalTheme => {
     backgroundElements: `Festival decorations should DOMINATE the background — cultural elements, flowers, lamps should completely transform the space into a ${festivalName} celebration venue with company logo visible but secondary to the festive setup`
   };
 };
+
+/** The occasion's own theme, or null when it has none (getFestivalTheme's generic fallback). */
+export const festivalThemeFor = (festivalName?: string | null): FestivalTheme | null => {
+  const name = (festivalName || '').trim();
+  if (!name) return null;
+  const theme = getFestivalTheme(name);
+  return theme.generic ? null : theme;
+};
+
+/**
+ * One festival's look in a few short phrases — what the label, every frame, the scene plan and the poster
+ * carry (owner, 2026-10-22: "for the festival videos the bottom label, frame background and the poster are not
+ * getting the related festival theme"). Built from the catalogue above: the decorations are the bold items of
+ * `environmentDecorations`, which nothing read before. An occasion with no treatment of its own is named, with its
+ * own traditions left to the model — never another festival's mango leaves and brass lamps.
+ */
+export interface FestivalLook {
+  /** The occasion as the team picked it, e.g. "Diwali". */
+  name: string;
+  /** True when the catalogue has this occasion's own look. */
+  known: boolean;
+  /** "hundreds of lit diyas (earthen oil lamps), marigold and rose garlands, string fairy lights, …" */
+  decorations: string;
+  /** Its colours. */
+  colours: string;
+  /** Its symbols. */
+  symbols: string;
+  /** The floor's decoration. */
+  floor: string;
+  /** The light. */
+  light: string;
+  mood: string;
+}
+
+const lowerFirst = (s: string) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+const firstClause = (s: string) => s.split(/\s+—\s+|;\s+/)[0].trim().replace(/[.\s]+$/, '');
+
+export const festivalLook = (festivalName?: string | null): FestivalLook | null => {
+  const name = (festivalName || '').trim();
+  if (!name) return null;
+  const theme = festivalThemeFor(name);
+  if (!theme) {
+    return {
+      name, known: false,
+      decorations: `${name}'s own traditional decorations, flowers and lights`,
+      colours: `the colours traditionally associated with ${name}`,
+      symbols: `${name}'s own traditional symbols`,
+      floor: `a decoration for ${name} where it is traditional`,
+      light: 'warm, festive light',
+      mood: `festive, warm and authentic to ${name}`,
+    };
+  }
+  const decorations = [...theme.environmentDecorations.matchAll(/\*\*([^*]+)\*\*/g)]
+    .map((m) => m[1].trim())
+    .filter((d) => !/celebration setup$|^krishna janmashtami$|^sri rama navami$|^karthika pournami$|^akshaya tritiya$/i.test(d))
+    .slice(0, 6)
+    .map(lowerFirst)
+    .join(', ');
+  return {
+    name, known: true,
+    decorations: decorations || theme.culturalElements,
+    colours: theme.headerColors.trim().replace(/[.\s]+$/, ''),
+    symbols: theme.culturalElements,
+    floor: firstClause(theme.floorDecor),
+    light: firstClause(theme.lightingStyle),
+    mood: firstClause(theme.mood),
+  };
+};
+
+/** The look in one line, for a prompt: "Diwali's look — decorations: …; colours: …; floor: …; light: …". "" for none. */
+export const festivalLookLine = (look: FestivalLook | null | undefined): string => (look
+  ? `${look.name}'s look — decorations: ${look.decorations}; colours: ${look.colours}; floor: ${look.floor}; light: ${look.light}`
+  : '');
 
 // ===== END OF FESTIVAL THEME SYSTEM =====
 
@@ -1135,7 +1307,7 @@ export const getAdTypeMode = (adType: string, festivalName = '') => {
  * from — the owner's hospital clip kept its hands clasped for most of its eight seconds (2026-10-05). The
  * face, the centred framing and the look are unchanged; only the stance opens (prompts/motion, history 6).
  */
-export const HERO_FRAME_POSE = "a natural, open welcoming pose caught as if about to step forward — the weight on one foot, one hand opening in a small welcoming gesture at waist height and the other relaxed at the side (no crossed arms, no pockets, no stiffly clasped hands)";
+export const HERO_FRAME_POSE = "a natural, open welcoming pose facing the camera — the weight relaxed, one hand opening in a small welcoming gesture at waist height and the other relaxed at the side (no crossed arms, no pockets, no stiffly clasped hands)";
 
 /** The same, opening a bullet line. */
 const HERO_FRAME_POSE_LINE = HERO_FRAME_POSE.charAt(0).toUpperCase() + HERO_FRAME_POSE.slice(1);
@@ -1933,15 +2105,15 @@ Each chosen spot must match the exact service claim, business proof point, or em
 
 ${motionPlan?.length ? `===== FRAMES BUILT FOR MOTION (EACH FRAME IS THE FIRST MOMENT OF ITS CLIP) =====
 
-Each frame below becomes an 8-second video that starts from THAT frame and shows only what it shows — and every clip MOVES like a shot from a real commercial: the ambassador ${motionPlan.some((m) => m.walks) ? 'WALKS through the place — toward the camera, along the counter or display, or to the product — ' : ''}PRESENTS what the line is about${motionPlan.some((m) => !m.walks) ? ' or TURNS to present the place' : ''}, filmed with ONE camera move — a push-in${motionPlan.some((m) => m.camera.key === 'side_track') ? ', a side-tracking shot that travels with her walk' : ''}, a sideways glide or a short arc. Each clip's 🎬 note says which, and with which camera angle, lens and move. The variety of the ad comes from YOUR frames — every clip is a different real part of the business (the entrance seen from inside, the counter, the display, the work area) — and the video can only use what the frame shows: anything it would have to invent (a room beyond the edge, a product out of view, floor that is not there) is where tables vanish and people walk into walls. Compose every frame for its own clip:
+Each frame below becomes an 8-second video that starts from THAT frame and shows only what it shows — and every clip is a filmed shot from a real commercial: the ambassador PERFORMS the line where she stands, facing the camera — every gesture on the words it belongs to, nothing the line does not call for, never turning round${motionPlan.some((m) => m.walks) ? ' — and WALKS only in a clip whose 🎬 note walks (her words take her somewhere)' : ''}, filmed with ONE camera move — a push-in${motionPlan.some((m) => m.camera.key === 'side_track') ? ', a side-tracking shot that travels with her walk' : ''} or a short sideways glide that keeps her at one angle. Each clip's 🎬 note says which, and with which camera angle, lens and move. The variety of the ad comes from YOUR frames — every clip is a different real part of the business (the entrance seen from inside, the counter, the display, the work area) — and the video can only use what the frame shows: anything it would have to invent (a room beyond the edge, a product out of view, floor that is not there) is where tables vanish and people walk into walls. Compose every frame for its own clip:
 
-• READY FOR ITS CLIP: follow each clip's 🎬 note exactly — caught MID-MOVEMENT, never a stiff, posed stance: mid-step with one foot forward, the body angled the way she is going, a hand mid-gesture, the face toward the camera; clear space around the arms and nothing touching the body. (Veo continues the pose a frame starts from — a posed frame makes a static video.)
+• READY FOR ITS CLIP: follow each clip's 🎬 note exactly — caught MID-GESTURE, never a stiff, posed stance: standing facing the camera with a hand mid-gesture toward what the line is about (mid-step only where the note walks); clear space around the arms and nothing touching the body. (Veo continues the pose a frame starts from — a posed frame makes a static video, and a frame caught mid-step starts a walk.)
 ${motionPlan.some((m) => m.walks) ? `• A WALK NEEDS ITS FLOOR: a walking clip shows the clear, open floor she walks on — in front of her toward the camera, or along the counter or display beside her — fully in view, with nothing in the way.
-` : ''}• THE THING TO SHOW IN VIEW: the product, counter or equipment the clip talks about sits a few steps away or within reach and fully in view, so she can walk to it, point to it or lift it.
+` : ''}• THE THING TO SHOW IN VIEW: the product, counter or equipment the clip talks about sits a few steps away or within reach and fully in view, so she can point to it or lift it where she stands.
 • EVERYTHING WHOLE AND IN VIEW: tables, counters, shelves and products are fully inside the frame and clear of her body — nothing cut off at her elbow, nothing she is leaning into.
 • THREE-QUARTER BODY (head to knees) — with the face large, clear and evenly lit${motionPlan.some((m) => m.walks) ? ' (a walking clip: as its 🎬 note says)' : ''}.
 • A HEIGHT REFERENCE: a fixed real thing behind her — the counter edge, a door frame, a shelf line — that her height can be read against in every clip. Keep her feet and the floor visible wherever the framing allows.
-• DEPTH: real objects at two or three distances — something near the camera, the subject in the middle ground, the premises behind — so a push-in, a sideways glide or an arc has depth and parallax to work with.
+• DEPTH: real objects at two or three distances — something near the camera, the subject in the middle ground, the premises behind — so a push-in or a sideways glide has depth and parallax to work with.
 • SHARP, EVEN LIGHT on the subject and the logo, so motion never drops them into shadow.
 • Clip 1 keeps its hero framing, in ${HERO_FRAME_POSE}.
 • INSIDE THE BUSINESS, ALWAYS: every frame is set indoors, inside the premises, facing INTO them — never the street, the footpath, the car park, the outside of the building, a doorway, or a shot looking in from outside.
@@ -2034,7 +2206,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    
    **✅ THEN FOCUS 100% ON THESE (the ONLY things you should describe):**
   • 📍 ${realLocation ? `THE LOCATION — ${location}. Open the prompt by naming that photograph, then describe the real objects actually visible in it. Do NOT choose, invent or move to a different zone; the client photographed this space for this clip.` : scene ? `THIS CLIP'S PLANNED BACKGROUND — ${location}. Open the prompt with it and describe the real objects in it. It is different from every other clip's background — do not fall back to a zone already used.` : `The NEW LOCATION within the SAME business — a different REAL area/zone that best matches the meaning of Clip ${clipNum}'s voice-over line (show the real place the script is talking about), never one already used by an earlier clip. Describe it as a real, operational spot with real physical objects.`}
-  • 🔍 What's visible in the background: ONLY real, in-use, naturally-present objects this business actually has — e.g. shelves stacked with real books, real equipment / machines / tools, work counters, desks, seating, stock, materials, plants — shown as solid real objects with NO readable text on them. Do NOT invent any decorative wall content.
+  • 🔍 What's visible in the background: ONLY real, in-use, naturally-present objects this business actually has — e.g. shelves stacked with real books, real equipment / machines / tools, work counters, desks, seating, stock, materials, plants — shown as solid real objects with NO readable text on them. Do NOT invent any decorative wall content${adType === AdType.FESTIVAL ? ` — except, in this ${festivalName || 'festival'} ad, the festival decorations named in the frame's FESTIVAL DRESSING (no text on them)` : ''}.
   • 🚫 TEXT RULE (STRICT — VERY IMPORTANT): ${brand.ref} is the ONLY text anywhere in the frame. Do NOT add or invent ANY other text — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years on the walls, desks, screens, or anywhere. (The image generator mis-spells such text, so it must NEVER appear.)
   • 🚫 NO FRAMES / DISPLAYS / PLACEHOLDERS (STRICT — VERY IMPORTANT): do NOT create ANY wall frames, picture frames, photo frames, certificate frames, achievement / award / "success" / proof / display walls, photo walls, notice boards, posters, standees, brochures, or screens — NEITHER empty NOR filled. They are ALL forbidden. NEVER write phrases like "empty frames", "frames to hold photos", "displays without text", "achievement display", "wall displays", or similar — those create ugly empty cardboard panels. Walls stay clean (plain wall + real architecture) carrying ONLY ${brand.ref}; communicate the business through REAL in-use objects, never through any display or frame.
   • 🧍 The new POSE — body angle, hand position, interaction with environment elements at this location in a way that matches the clip's selling point
@@ -2182,11 +2354,11 @@ POSE: Subject positioned on the right side using rule-of-thirds, one hand gestur
 
 NEW LOCATION: ${p.Pronoun} has moved to a different real area of the premises that matches this clip's script line — for example a service / work zone with the business's real equipment, counters, and fixtures around ${p.object}. Behind ${p.object} are ONLY real physical objects (no text, no signage, no posters, no boards). ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} is mounted small-to-medium on the far wall, fully visible, sharp, readable, and unmodified.
 
-${adType === AdType.FESTIVAL ? `Festival decorations from the office are still visible — mango leaf thoranam above the display, marigold garlands framing the monitor, brass deepam on the desk corner, rangoli patterns continuing on the floor.
+${adType === AdType.FESTIVAL ? `Festival decorations from the office are still visible — ${festivalLook(festivalName)?.decorations || 'the festival\'s own decorations'} around the real fixtures, and ${festivalLook(festivalName)?.floor || 'its floor decoration'} continuing on the floor.
 
-LIGHTING: Cool blue-tinted ambient light from the display screens blends with warm golden festival lamp glow — creating a unique tech-meets-tradition atmosphere.
+LIGHTING: ${festivalLook(festivalName)?.light || 'warm, festive light'}, blending with the premises' own light.
 
-MOOD: Professional, aspirational — showcasing the company's innovative capabilities while celebrating ${festivalName || 'the festival'}.` : `REAL ENVIRONMENT LAYER: A real, in-use functional area of the business is visible — e.g. shelves with real books / stock, real equipment, machines, work counters, tools, seating, or operational objects — so the business is obvious from the real surroundings. NEVER show any frames, photo / achievement / award / display walls, certificates, posters, boards, or screens (empty or filled), and no invented text — ${brand.ref} is the ONLY text.
+MOOD: Professional, aspirational — the business's real work, celebrating ${festivalName || 'the festival'}.` : `REAL ENVIRONMENT LAYER: A real, in-use functional area of the business is visible — e.g. shelves with real books / stock, real equipment, machines, work counters, tools, seating, or operational objects — so the business is obvious from the real surroundings. NEVER show any frames, photo / achievement / award / display walls, certificates, posters, boards, or screens (empty or filled), and no invented text — ${brand.ref} is the ONLY text.
 
 LIGHTING: Natural daylight from the left window mixes with soft practical interior lighting and believable reflections on real materials — polished, premium, and fully photographic.
 
@@ -2452,7 +2624,7 @@ Verify all of the following before writing the final answer:
 • No incomplete thoughts
 • No CTA before the final clip
 • No contact reference before the final clip
-• ${isLatin ? 'No digits inside spoken content (spell numbers as words)' : `No Latin letters or digits inside spoken content — only native ${lang} script`}
+• ${isLatin ? 'No digits inside spoken content (spell numbers as words)' : `No Latin letters or digits inside spoken content — only native ${lang} script${latinLettersException(lang)}`}
 • Every clip has ${WORD_BAND_TEXT} — counted, not guessed, the closing line and the address included
 • No phone number or contact number is spoken anywhere in the script
 • The final clip ends with the exact on-screen call CTA line
@@ -2554,7 +2726,7 @@ ${clipLines}
 
 1. Use only facts present in the provided business information or current script when they are clearly valid.
 2. Do NOT invent claims, cities, addresses, offers, prices, years, or services.
-3. Remove all ${isLatin ? 'digit characters' : 'Latin letters, digit characters,'} and malformed hybrid phrases from spoken content.
+3. Remove all ${isLatin ? 'digit characters' : `Latin letters${latinLettersException(lang)}, digit characters,`} and malformed hybrid phrases from spoken content.
 4. Remove repeated adjacent words and broken filler.
 5. Keep one core idea per non-final clip.
 6. Keep CTA only in the FINAL clip; non-final clips must have no CTA and no contact reference.
@@ -2676,7 +2848,7 @@ Then run the CLIP ${messageClip} TEST: imagine a stranger hears ONLY clip ${mess
 
 • Exactly the same number of clip lines as the candidate, in the exact same "START-END: text" format.
 • Every clip must contain ${WORD_BAND_TEXT} (punctuation not counted) — a rewrite that improves the language but breaks the count is rejected by code.
-• Spoken content in pure, correct ${scriptWord} only — ${isLatin ? 'no digits' : 'no Latin letters or digits'} inside spoken content.
+• Spoken content in pure, correct ${scriptWord} only — ${isLatin ? 'no digits' : `no Latin letters or digits${latinLettersException(lang)}`} inside spoken content.
 • No phone/contact number, pincode or door number is ever spoken. CTA and contact references appear ONLY in the final clip.
 • The final clip must end with ${finalCtaLine}
 • No repeated adjacent words, no duplicate clips, no incomplete thoughts.
@@ -2822,6 +2994,9 @@ export const EXTRACTION_SYSTEM_PROMPT = `Analyze all provided files (images, aud
 ABSOLUTE TRUTH RULE (NON-NEGOTIABLE):
 Extract ONLY information that is genuinely present in the provided files / text. NEVER invent, guess, autocomplete, or fabricate any value — especially never make up an address, street, area, city, pincode, phone number, email, website, or owner name. If a field is not clearly present in the inputs, output EXACTLY "Not provided" for it. A plausible-sounding guess is still a fabrication and is strictly forbidden.
 
+THE BUSINESS NAME — WHERE IT COMES FROM (MANDATORY):
+The business's FINAL name is the one PRINTED on its own material — the name written in the logo (its wordmark), on the visiting card, on a flyer or poster, or on the shop's name board / signage in a store photo. Read it there, letter for letter, in the words and spelling printed (when several show it, the fullest form the logo or the shop board shows; else the card's). A business name typed by the team — a line "Business name from the sale (a reference only …)" or "Business name:" in BUSINESS CONTENT — is only a REFERENCE that tells you which business this is: it may be a short form, a nickname, the owner's name or misspelt. Use it as the name ONLY when no attached file shows one. Never blend the two into a new name.
+
 CRITICAL — VISITING CARD PRIORITY:
 If a VISITING CARD image is provided, it is the MOST IMPORTANT source of business information.
 Extract EVERY SINGLE detail from it — business name, owner name, designation, ALL phone numbers (mobile, landline, WhatsApp), email addresses, website URL, COMPLETE address, tagline, services listed, and any other text visible on the card.
@@ -2846,7 +3021,7 @@ Map these details into Product Categories, Key Offerings, and Specific products 
 EXTRACT THE FOLLOWING (mark as "Not provided" if not available):
 
 1. BUSINESS IDENTITY:
-   - Business Name (EXACT as on visiting card):
+   - Business Name (EXACT as printed on the logo, visiting card, flyer or shop board — see THE BUSINESS NAME above):
    - Owner / Proprietor Name (from visiting card):
    - Designation / Title (from visiting card):
    - Brand Tagline (from visiting card):
@@ -2869,7 +3044,7 @@ EXTRACT THE FOLLOWING (mark as "Not provided" if not available):
 4. BRAND AESTHETICS:
    - Brand Color Palette (from overall branding, NOT from describing the logo):
    - Design Style (modern/traditional/luxury/corporate):
-   - NOTE: Do NOT extract or describe logo colors, logo text, or logo visual elements. The logo will be used directly from the attached file.
+   - NOTE: Do NOT extract or describe logo colors or logo visual elements — the logo will be used directly from the attached file. The business NAME written in the logo is the one exception: read it for "businessName" above.
 
 5. SPECIAL REQUIREMENTS (From Audio or Text):
    - Client-specified model placement:
@@ -2888,4 +3063,4 @@ EXTRACT THE FOLLOWING (mark as "Not provided" if not available):
    - Target audience indicators:
 
 OUTPUT FORMAT:
-Return ONLY a valid JSON object matching the above structure. Do not wrap in markdown code blocks.`;
+Return ONLY a valid JSON object matching the above structure. Its FIRST two keys are "businessName" (the final name — see THE BUSINESS NAME) and "businessNameSource" (exactly one of "logo", "visiting card", "flyer", "store photo", "voice note", "typed reference", "Not provided" — where you read that name). Do not wrap in markdown code blocks.`;

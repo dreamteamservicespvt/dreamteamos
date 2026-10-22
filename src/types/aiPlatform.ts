@@ -218,10 +218,9 @@ export interface SceneContext {
    * before the 2026-10-05 dynamic pass is read as today's equivalent, `stagingKeyOf`) and fall back to the
    * code plan when absent. `focus` is no longer chosen — a pair's framing always follows the speaker.
    *
-   * `walk` (2026-10-10) is asked only for a cast that walks only when a clip needs it (Motu and Patlu,
-   * `CharacterPack.walksOnlyWhenNeeded`): true when the clip's own words take them somewhere ("let's go
-   * inside"), false when it is performed where they stand. Absent — any other cast, a plan saved before, or
-   * the planner left it out — the code reads the line instead (prompts/motion `lineNeedsWalk`).
+   * `walk` (2026-10-10 for Motu and Patlu, every cast since 2026-10-22): true when the clip's own words take
+   * them somewhere ("let's go inside"), false when it is performed where they stand. Absent — a deity, a plan
+   * saved before, or the planner left it out — the code reads the line instead (prompts/motion `lineNeedsWalk`).
    */
   clips: {
     clip: number; background: string; elements: string[];

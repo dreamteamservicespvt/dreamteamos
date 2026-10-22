@@ -68,7 +68,7 @@ export function packStagingRole(pack: CharacterPack): string {
  * The formula itself. `locationPlan` is the per-clip photograph assignment
  * (utils/locationAssignment.describeClipLocations), appended as the ground truth it refers to.
  */
-export function realLocationFormula(subject: RealLocationSubject, locationPlan: string): string {
+export function realLocationFormula(subject: RealLocationSubject, locationPlan: string, festival?: string | null): string {
   const Who = subject.who.charAt(0).toUpperCase() + subject.who.slice(1);
   return `===== LOCATION: THE CLIENT'S REAL PHOTOGRAPHS — EACH ONE IS A BACKGROUND PLATE (STRICT) =====
 
@@ -77,7 +77,7 @@ IS the clip's background — the image generator receives it with the prompt and
 shop like it.
 
 • Each clip has been assigned ONE specific photograph (below). That clip's frame is THAT photograph.
-• ${backgroundPlateRule("the clip's attached photograph")}.
+• ${backgroundPlateRule("the clip's attached photograph", festival)}.
 • ${Who} ${subject.plural ? "are" : "is"} placed INTO the photograph: on its actual floor, at believable real-world scale
   against its real counters, shelves and door frames, matching its eye level and perspective.
 • Write each prompt as instructions to keep the photograph and place ${subject.who} into it. Do NOT describe the

@@ -183,6 +183,10 @@ export interface CharacterPack {
    * from its own idea of them, and Patlu's height and their clothes drifted. Standing, they keep the frame's
    * drawing. The same entries' video prompts also name the outfits in the keep sentence and forbid morphing.
    * The owner chose Motu and Patlu only; another entry gets the same behaviour by carrying this field.
+   *
+   * @deprecated 2026-10-22 — EVERY cast now walks only where a clip's words need it (the owner's choice after
+   * "unwanted, irrelevant movements and turning or rotating", prompts/motion history 8), so the field no longer
+   * changes anything. Kept typed because the catalogue (TS + JSON) still carries it on Motu and Patlu.
    */
   walksOnlyWhenNeeded?: boolean;
   /** Hard negatives repeated verbatim in every frame and video prompt. */

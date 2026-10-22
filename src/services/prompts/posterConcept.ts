@@ -17,6 +17,8 @@
  * Used by Poster Creation (`geminiService.generatePosterConcepts` / `refinePosterConcept`) and by the
  * video kit's "3. Poster Design" row (`writeVideoPosterPrompt`, `refineSection` case "poster").
  */
+// The brief's sale-name line is a reference only (utils/businessName, 2026-10-22): BUSINESS NAME above is the final one.
+import { withoutSaleNameLine } from "@/utils/businessName";
 import { POSTER_AD_TYPES, MAX_BENEFIT_WORDS, MAX_CHANGES_WORDS, MAX_SUMMARY_WORDS, type PosterAdType } from "@/utils/posterAdType";
 
 /** The eight, one line each, ids first — what the model chooses from. */
@@ -88,8 +90,8 @@ export const POSTER_ANALYSIS_USER_PROMPT = (p: PosterAnalysisUserInput): string 
 AD TYPE AND CAMPAIGN PURPOSE: ${posterPurposeLine(p.occasion)}
 BUSINESS NAME: ${p.businessName || "as in the business information"}
 
-${p.clientBrief?.trim() ? `THE CLIENT'S OWN BRIEF (the requirements — honour them):
-${p.clientBrief.trim()}
+${withoutSaleNameLine(p.clientBrief) ? `THE CLIENT'S OWN BRIEF (the requirements — honour them):
+${withoutSaleNameLine(p.clientBrief)}
 
 ` : ""}BUSINESS INFORMATION:
 ${JSON.stringify(p.businessInfo ?? {}, null, 2)}`;

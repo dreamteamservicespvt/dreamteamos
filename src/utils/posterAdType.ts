@@ -454,16 +454,43 @@ export const POSTER_PROMPT_CLOSE = "Create one strong visual concept/metaphor th
  * Assembled here and only here — a model never writes it, so it can never come back longer, in another
  * order, with two types or with a double full stop. A refined poster may carry one "Changes:" line between
  * them (refineConceptPoster); a poster nobody refined has none, so it reads exactly as the owner wrote it.
+ * A FESTIVAL poster (2026-10-22 — the owner: "the poster is not getting the related festival theme") carries one
+ * "Festival:" line right after the three sentences (posterFestivalLine): the festival's own look, worked into the
+ * one concept. The three sentences never change.
  */
-export function conceptPosterPrompt(input: { adTypeName: string; businessInformation: string; format: string; changes?: string }): string {
+export function conceptPosterPrompt(input: { adTypeName: string; businessInformation: string; format: string; changes?: string; festival?: string }): string {
   const type = withoutEnding(input.adTypeName);
   const info = withoutEnding(input.businessInformation.replace(/\s+/g, " "));
+  const festival = withoutEnding((input.festival || "").replace(/\s+/g, " "));
   const changes = withoutEnding((input.changes || "").replace(/\s+/g, " "));
   const format = `${input.format.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "")}.`;
-  return `${POSTER_PROMPT_LEAD} ${type}. Business Information: ${info}. ${POSTER_PROMPT_CLOSE}${changes ? `\n\nChanges: ${changes}.` : ""}\n\nFormat: ${format}`;
+  return `${POSTER_PROMPT_LEAD} ${type}. Business Information: ${info}. ${POSTER_PROMPT_CLOSE}${festival ? `\n\nFestival: ${festival}.` : ""}${changes ? `\n\nChanges: ${changes}.` : ""}\n\nFormat: ${format}`;
 }
 
-const PROMPT_SHAPE = /^Create a minimalist and creative ad in (.+?)\. Business Information: ([\s\S]+?)\. Create one strong visual concept\/metaphor that communicates the main product\/service benefit\.(?:\n\nChanges: (.+))?\n\nFormat: (.+)$/;
+/** What the Festival line needs of a festival's look (prompts.FestivalLook) — utils never reads the catalogue. */
+export interface PosterFestivalLook {
+  name: string;
+  known: boolean;
+  decorations: string;
+  colours: string;
+}
+
+/**
+ * The poster's Festival line (2026-10-22): the festival's decorations and colours worked into the ONE visual concept,
+ * with its usual greeting allowed as the headline. An occasion the catalogue has no look for is named with its own
+ * traditions. "" when there is no festival.
+ */
+export function posterFestivalLine(look: PosterFestivalLook | null | undefined): string {
+  if (!look?.name?.trim()) return "";
+  const name = look.name.trim();
+  const unend = (t: string) => t.trim().replace(/[\s.;,]+$/, "");
+  const a = /^[aeiou]/i.test(name) ? "an" : "a";
+  return look.known
+    ? `${a} ${name} poster in ${name}'s own look — ${unend(look.decorations)} worked into the one visual concept; colours ${unend(look.colours).replace(/^./, (c) => c.toLowerCase())}; ${name}'s usual greeting may be the headline`
+    : `${a} ${name} poster in ${name}'s own traditional look and colours, worked into the one visual concept; its usual greeting may be the headline`;
+}
+
+const PROMPT_SHAPE = /^Create a minimalist and creative ad in (.+?)\. Business Information: ([\s\S]+?)\. Create one strong visual concept\/metaphor that communicates the main product\/service benefit\.(?:\n\nFestival: (.+))?(?:\n\nChanges: (.+))?\n\nFormat: (.+)$/;
 
 export interface ConceptPosterParts {
   adTypeId: string;
@@ -471,6 +498,8 @@ export interface ConceptPosterParts {
   businessInformation: string;
   /** The Changes line without its closing full stop; "" when the poster carries none. */
   changes: string;
+  /** The Festival line without its closing full stop; "" when the poster carries none (2026-10-22). */
+  festival: string;
   format: string;
 }
 
@@ -480,7 +509,7 @@ export function readConceptPosterPrompt(text: string): ConceptPosterParts | null
   if (!m) return null;
   const type = POSTER_AD_TYPES.find((t) => t.name === m[1]);
   if (!type) return null;
-  return { adTypeId: type.id, adTypeName: type.name, businessInformation: m[2], changes: withoutEnding(m[3] || ""), format: m[4] };
+  return { adTypeId: type.id, adTypeName: type.name, businessInformation: m[2], festival: withoutEnding(m[3] || ""), changes: withoutEnding(m[4] || ""), format: m[5] };
 }
 
 /**
@@ -489,6 +518,8 @@ export function readConceptPosterPrompt(text: string): ConceptPosterParts | null
  * A refined poster may add its Changes line (at most MAX_CHANGES_WORDS, plus its label) on top.
  */
 const MAX_PROMPT_WORDS = 200;
+/** The Festival line's own allowance on top (posterFestivalLine is about 30–50 words). */
+const MAX_FESTIVAL_WORDS = 70;
 
 /** What is wrong with a poster prompt, in words — [] when it follows the owner's structure exactly. */
 export function posterPromptProblems(text: string): string[] {
@@ -499,15 +530,16 @@ export function posterPromptProblems(text: string): string[] {
   else {
     if (!POSTER_AD_TYPES.some((type) => type.name === m[1])) problems.push(`"${m[1]}" is not one of the eight ad types`);
     if (!withoutEnding(m[2])) problems.push("the business information is empty");
-    if (m[3] !== undefined && !(withoutEnding(m[3]) && /\.$/.test(m[3].trim()))) problems.push("the Changes line is not one finished line");
-    if (!/\.$/.test(m[4].trim()) || m[4].includes("\n")) problems.push("the Format line is not one finished line");
+    if (m[3] !== undefined && !(withoutEnding(m[3]) && /\.$/.test(m[3].trim()))) problems.push("the Festival line is not one finished line");
+    if (m[4] !== undefined && !(withoutEnding(m[4]) && /\.$/.test(m[4].trim()))) problems.push("the Changes line is not one finished line");
+    if (!/\.$/.test(m[5].trim()) || m[5].includes("\n")) problems.push("the Format line is not one finished line");
   }
   const named = POSTER_AD_TYPES.reduce((n, type) => n + (t.split(type.name).length - 1), 0);
   if (named !== 1) problems.push(`it names ${named} ad types — exactly one is allowed`);
   if (/\.\s*\./.test(t)) problems.push("it has a double full stop");
   if (/[ \t]+$/m.test(t)) problems.push("a line ends in spaces");
   const words = t.split(/\s+/).filter(Boolean).length;
-  const limit = MAX_PROMPT_WORDS + (m?.[3] ? MAX_CHANGES_WORDS + 1 : 0);
+  const limit = MAX_PROMPT_WORDS + (m?.[3] ? MAX_FESTIVAL_WORDS + 1 : 0) + (m?.[4] ? MAX_CHANGES_WORDS + 1 : 0);
   if (words > limit) problems.push(`it is ${words} words long — at most ${limit}`);
   return problems;
 }
@@ -718,6 +750,8 @@ export interface ConceptPoster {
   businessInformation: string;
   /** The Changes line a refine wrote (2026-10-13); "" for a poster nobody refined. */
   changes: string;
+  /** The Festival line (2026-10-22); "" for a poster that is not for a festival. */
+  festival: string;
   format: string;
   prompt: string;
   chosenBy: PosterTypeChoice;
@@ -743,6 +777,8 @@ export interface ConceptPosterInput extends PosterFormatInput {
   address?: string;
   /** A refine's Changes line (cleanPosterChanges); absent or "" for a new poster. */
   changes?: string;
+  /** The Festival line (posterFestivalLine) — a festival poster's own look (2026-10-22); absent or "" otherwise. */
+  festival?: string;
 }
 
 const sentence = (text: string) => {
@@ -826,6 +862,8 @@ export function assembleConceptPoster(input: ConceptPosterInput): ConceptPoster 
     withoutEnding(tidyPunctuation(stripUnverifiedNumbers((input.changes || "").replace(/\s+/g, " ").trim(), []))),
     format,
   );
+  // The Festival line carries no number either (it is code's, from the catalogue — the check is the last defence).
+  const festival = withoutEnding(stripUnverifiedNumbers((input.festival || "").replace(/\s+/g, " ").trim(), allowed));
   return {
     adType: type.id,
     adTypeName: type.name,
@@ -833,8 +871,9 @@ export function assembleConceptPoster(input: ConceptPosterInput): ConceptPoster 
     benefit,
     businessInformation,
     changes,
+    festival,
     format,
-    prompt: conceptPosterPrompt({ adTypeName: type.name, businessInformation, format, changes }),
+    prompt: conceptPosterPrompt({ adTypeName: type.name, businessInformation, format, changes, festival }),
     chosenBy,
   };
 }
@@ -1018,6 +1057,8 @@ export interface PosterRefineInput extends PosterFormatInput {
   brief?: string;
   occasion?: string;
   occasionLine?: string;
+  /** The Festival line a festival poster carries (posterFestivalLine) — used when the prompt has none yet. */
+  festival?: string;
 }
 
 /**
@@ -1068,6 +1109,7 @@ export function refineConceptPoster(input: PosterRefineInput): { poster: Concept
     nameBoardText: input.nameBoardText,
     textLanguage,
     changes,
+    festival: current?.festival || input.festival || "",
   });
   const modelNote = modelLine(answer.notApplied, 45);
   // The app's own contact note is exact (which number, where to add it); a model note about the same thing

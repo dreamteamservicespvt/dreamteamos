@@ -30,6 +30,13 @@ import { veoEditProblems } from "@/utils/veoRefine";
  *
  * The one exception (2026-10-10): Motu and Patlu walk only in a clip whose words take them somewhere — walking
  * redrew them, and their heights and clothes drifted. See "Motu and Patlu walk only where a clip's words need it".
+ *
+ * 2026-10-22 (the owner: "unwanted, irrelevant movements and turning or rotating"; prompts/motion history 8): the
+ * Motu and Patlu rule is now EVERY cast's — a clip walks only where its own words take the cast somewhere, and every
+ * other clip is its beat performed where they stand, facing the camera, each gesture on its words. The arc shot is
+ * retired, nobody turns round, and the festival namaskaram is placed by code ON the wish words (wishCue,
+ * utils/wishGesture). The tests that asserted "most clips walk" now assert that rule; the walking cases use lines
+ * that do take the cast somewhere (WALK_LINES).
  */
 
 /** A move that shows MORE than the still, or moves the camera backward — what built the invented shops (history 2 and 4), and what the owner banned. */
@@ -47,8 +54,22 @@ const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
 const PERFORMERS: Performer[] = ["person", "cartoon", "deity"];
 
-/** The moves that move the camera — everything but the still camera of a client's photo. */
-const MOVING = ["push_in", "side_track", "lateral_dolly", "arc"];
+/**
+ * The moves that move the camera — everything but the still camera of a client's photo. 2026-10-22: the arc is
+ * retired (it read as the presenter rotating) — no plan picks it, so it is no longer one of them.
+ */
+const MOVING = ["push_in", "side_track", "lateral_dolly"];
+
+/**
+ * Lines whose words take one presenter somewhere (lineNeedsWalk) — since 2026-10-22 the only clips that walk.
+ * Clip 3's ("Trusted for years.") does not, so it stays where she stands.
+ */
+const WALK_LINES = ["Come with me, let's go inside!", "Follow me to the counter.", "Trusted for years.", "Let's go in — come this way, please."];
+/** The same for a pair: clip 1 and the last clip walk them, clips 2–3 do not. */
+const PAIR_WALK_LINES = ["Come with me, let's go along the racks!", "b", "c", "Let's go inside, come this way!"];
+
+/** A body turn — round, to or away from the lens; a turn of the palm, head or hand is a gesture (motion TURNS). */
+const BODY_TURN = /\bturn(?:s|ed|ing)?\b(?!\s+(?:the|her|his|their|its)\s+(?:palm|palms|head|hand|hands)\b)/i;
 
 describe("what each clip is for", () => {
   it("opens with the message and closes with the call to action", () => {
@@ -74,6 +95,9 @@ describe("every clip moves — the anti-static rule", () => {
     expect(castKindOf("deity", true)).toBe("drawn_pair");
   });
 
+  // 2026-10-22: no "most clips walk" any more — none of these plans has a line that takes anyone anywhere, so every
+  // clip is its beat performed where they stand, still a filmed shot: a camera that moves, or (only in the client's
+  // own photo) a still camera on a pair performing where it stands. The arc is never planned.
   it("gives every clip a real action and a camera that follows it — every cast, length, ad type and photo mix", () => {
     for (const performer of PERFORMERS) for (const twoHander of [false, true]) for (const adType of ["commercial", "festival"]) {
       for (let n = 1; n <= 8; n++) {
@@ -81,41 +105,47 @@ describe("every clip moves — the anti-static rule", () => {
           const plates = Array.from({ length: n }, (_, i) => photos === "all" || (photos === "mixed" && i % 2 === 1));
           const plan = planClipMotion(n, adType, performer, { twoHander, plates });
           const kind = castKindOf(performer, twoHander);
+          const pair = kind === "pair" || kind === "drawn_pair";
           const label = `${performer}${twoHander ? " pair" : ""} ${adType} ${n} ${photos}`;
           expect(plan, label).toHaveLength(n);
           for (const clip of plan) {
             const at = `${label}, clip ${clip.clip + 1}`;
-            // Never a talking portrait: the cast walks, or the camera moves — and a still camera only ever films
-            // a walk in the client's own photograph.
-            expect(clip.walks || MOVING.includes(clip.camera.key), at).toBe(true);
-            if (clip.camera.key === "static_locked") {
-              expect(clip.walks, at).toBe(true);
-              expect(clip.plate, at).toBe(true);
-            }
+            // Never a talking portrait: the camera moves — or, only in the client's own photograph, a still camera
+            // films a walk or a pair performing where it stands (their own performance carries the shot).
+            expect(MOVING.includes(clip.camera.key) || (clip.plate && clip.camera.key === "static_locked"), at).toBe(true);
+            if (clip.camera.key === "static_locked") expect(clip.walks || pair, at).toBe(true);
+            expect(clip.camera.key, at).not.toBe("arc");
             // The camera never moves backward and never shows more than the still.
             expect(cameraShot(clip, "She"), at).not.toMatch(NEVER_MOVES);
             expect(clip.camera.action, at).not.toMatch(NEVER_MOVES);
-            if (kind === "deity") expect(clip.walks, at).toBe(false);
-            if (kind === "pair" || kind === "drawn_pair") {
+            // No line takes them anywhere, so nobody walks — every cast, the deity and the greeting included.
+            expect(clip.walks, at).toBe(false);
+            expect(clip.staging.walks, at).toBe(false);
+            expect(clip.walksWhenNeeded, at).toBe(true);
+            if (pair) {
               expect(PAIR_MOVES, at).toContain(clip.camera.key);
               expect(clip.angle.key, at).toBe("eye_level");
               expect(clip.staging.key, at).not.toBe("walk_toward");
             }
             if (clip.plate) expect(["push_in", "static_locked"], at).toContain(clip.camera.key);
           }
-          // Most clips of a cast that may walk do walk — the movement the videos lacked.
-          if (kind !== "deity") expect(plan.filter((c) => c.walks).length, label).toBeGreaterThanOrEqual(Math.ceil(n / 2));
         }
       }
     }
   });
 
-  it("opens the ad on the move and closes walking in to invite — never a goodbye", () => {
+  // 2026-10-22: the same beats — each performed where they stand unless its words walk them.
+  it("opens the ad speaking to the camera and closes inviting the viewer in — on a walk only when the words walk — never a goodbye", () => {
     expect(planClipMotion(4, "commercial")[0].staging.key).toBe("walk_toward");
     expect(planClipMotion(4, "commercial", "cartoon")[0].staging.key).toBe("walk_toward");
     expect(planClipMotion(4, "commercial", "person", { twoHander: true })[0].staging.key).toBe("walk_across");
     expect(planClipMotion(4, "commercial", "cartoon", { twoHander: true })[0].staging.key).toBe("walk_across");
     expect(planClipMotion(4, "commercial", "deity")[0].staging.key).toBe("turn_present");
+    expect(planClipMotion(4, "commercial")[0].staging.name).toBe("Speak to the camera");
+    expect(planClipMotion(4, "commercial").at(-1)!.staging.name).toBe("Invite where they stand");
+    const walking = planClipMotion(4, "commercial", "person", { lines: WALK_LINES });
+    expect(walking[0].staging.name).toBe("Walk toward the camera");
+    expect(walking.at(-1)!.staging.name).toBe("Walk in and invite");
     for (const performer of PERFORMERS) for (const twoHander of [false, true]) {
       const plan = planClipMotion(4, "commercial", performer, { twoHander });
       expect(plan.at(-1)!.staging.key).toBe("walk_invite");
@@ -123,20 +153,36 @@ describe("every clip moves — the anti-static rule", () => {
     }
   });
 
-  it("greets a festival with a namaste — turning to the camera, or for a pair after a few steps together", () => {
+  // 2026-10-22 (the owner: "when she is saying the wishes, the cast need to do the namaskaram … exactly when she is
+  // saying"): the greeting faces the camera with the hands relaxed — no namaste in the action, no turn, no walk — and
+  // the namaskaram is added by code ON the wish words (wishCue). It used to open the clip, seconds before the wish.
+  it("greets a festival facing the camera, the hands relaxed until the wish — the namaskaram comes on the wish words", () => {
     const single = planClipMotion(4, "festival");
     expect(single[0].staging.key).toBe("turn_present");
+    expect(single[0].staging.name).toBe("Greet the viewer");
+    expect(single[0].walks).toBe(false);
     expect(MOVING).toContain(single[0].camera.key);
-    expect(stagingPath(single[0], "She")).toContain("She turns to the camera with a festive smile, greets the viewer with a namaste and a small bow");
+    const greeting = stagingPath(single[0], "She");
+    expect(greeting).toBe("She faces the camera with a warm, festive smile and greets the viewer, the hands relaxed until the wish");
+    expect(greeting).not.toMatch(/namaste|namaskar|\bbow|\bturns?\b/i);
     const pair = planClipMotion(4, "festival", "person", { twoHander: true });
-    expect(pair[0].walks).toBe(true);
-    expect(stagingPath(pair[0], "x", true, { a: "Priya", b: "Kavya" })).toContain("Priya greets the viewer with a namaste and a festive smile");
-    expect(stagingPath(planClipMotion(1, "commercial")[0], "He")).toContain("He walks slowly toward the camera talking warmly, with an open palm on the business name");
+    expect(pair[0].walks).toBe(false);
+    expect(pair[0].staging.name).toBe("Greet the viewer");
+    // Even words that would walk them leave the greeting where they stand.
+    expect(planClipMotion(4, "festival", "person", { twoHander: true, lines: ["Come, let's go inside!", "b", "c", "d"] })[0].walks).toBe(false);
+    expect(stagingPath(pair[0], "x", true, { a: "Priya", b: "Kavya" })).toBe("both stand side by side facing the camera with festive smiles; Priya greets the viewer while Kavya listens and smiles, the hands relaxed until the wish");
+    // The greeting's still: the hands relaxed, NOT yet joined — a still in namaskaram makes Veo hold it all clip.
+    expect(compositionFor(single[0])).toContain("standing facing the camera with a warm, festive smile, the hands relaxed at the waist — not yet joined");
+    expect(compositionFor(pair[0])).toContain("facing it with festive smiles, the hands relaxed — not yet joined");
+    // The one-clip ad speaks where it stands — and walks only when its words take him somewhere.
+    expect(stagingPath(planClipMotion(1, "commercial")[0], "He")).toBe("He faces the camera and speaks warmly, an open palm on the business name, and ends by opening both palms toward the viewer in an invitation and a nod — never a goodbye wave");
+    expect(stagingPath(planClipMotion(1, "commercial", "person", { lines: ["Come with me, let's go inside!"] })[0], "He")).toContain("He walks slowly toward the camera talking warmly, with an open palm on the business name");
   });
 });
 
 describe("the motion plan", () => {
-  it("reads each line for what it asks: a product to walk to, the place to walk along, a promise to walk up and say", () => {
+  // 2026-10-22: the beat is still read from the line; it is performed where she stands unless the words walk her.
+  it("reads each line for what it asks: a product to show, the place to present, a promise to explain", () => {
     expect(stagingForLine("See our new silk saree collection.", "proof", "person")).toBe("approach_show");
     expect(stagingForLine("మా కొత్త కలెక్షన్ చూడండి.", "proof", "person")).toBe("approach_show");
     expect(stagingForLine("Come inside our big showroom.", "proof", "person")).toBe("walk_across");
@@ -144,12 +190,19 @@ describe("the motion plan", () => {
     expect(stagingForLine("Trusted by families for twenty years.", "proof", "person")).toBe("walk_stop_present");
     expect(stagingForLine("anything", "trust", "person")).toBe("walk_stop_present");
     expect(stagingForLine("anything", "wish", "person")).toBe("turn_present");
+    // Clip 1 takes the short glide it was given, so the product clip takes the push-in to a close-up of the product
+    // — where she stands, and she looks (never turns) back to the lens (2026-10-22).
     const product = planClipMotion(3, "commercial", "person", {
-      lines: ["Namaste.", "See our gold jewellery designs.", "Visit us."], choices: [{ camera: "arc" }, { camera: "push_in" }],
+      lines: ["Namaste.", "See our gold jewellery designs.", "Visit us."], choices: [{ camera: "lateral_dolly" }, { camera: "push_in" }],
     });
     expect(product[1].staging.key).toBe("approach_show");
-    expect(cameraShot(product[1], "She")).toBe("Smooth, steady push-in from a three-quarter shot to a close-up of the product, the focus settling on her face as she turns back to the lens");
+    expect(product[1].staging.name).toBe("Show it where they stand");
+    expect(product[1].walks).toBe(false);
+    expect(cameraShot(product[1], "She")).toBe("Smooth, steady push-in from a three-quarter shot to a close-up of the product, the focus settling on her face as she looks back to the lens");
     expect(product[1].lens).toBe("50mm");
+    expect(stagingPath(product[1], "She")).toBe("She stands right beside the product or display, facing the camera, and shows it with an open hand — or lifts it a little toward the camera — on the words about it, keeping her face to the viewer");
+    // A scene plan's "arc" is never planned (retired 2026-10-22).
+    expect(planClipMotion(3, "commercial", "person", { choices: [{ camera: "arc" }, { camera: "arc" }, { camera: "arc" }] }).some((c) => c.camera.key === "arc")).toBe(false);
   });
 
   it("takes the scene plan's choices where this cast may use them — and reads a plan saved before the dynamic pass", () => {
@@ -163,7 +216,12 @@ describe("the motion plan", () => {
       ],
     });
     expect(plan[0].staging.key).toBe("approach_show");
-    expect(plan[0].camera.key).toBe("arc");
+    // 2026-10-22: the arc is retired — no table offers it, so the scene plan's "arc" gives way to the first move this
+    // clip may take where she stands; a SAVED plan's arc is filmed as the short glide (cameraShot).
+    expect(plan[0].camera.key).toBe("push_in");
+    expect(plan.some((c) => c.camera.key === "arc")).toBe(false);
+    expect(cameraShot({ ...plan[0], camera: CAMERA_MOVES.arc }, "She")).toBe(cameraShot({ ...plan[0], camera: CAMERA_MOVES.lateral_dolly }, "She"));
+    expect(cameraShot({ ...plan[0], camera: CAMERA_MOVES.arc }, "She")).toContain("the camera gliding a short way sideways at one distance, her seen from the same angle throughout");
     expect(plan[0].angle.key).toBe("low_angle");
     // A saved walk is today's walk toward the camera — and the saved walk-back camera is never used.
     expect(plan[1].staging.key).toBe("walk_toward");
@@ -181,18 +239,29 @@ describe("the motion plan", () => {
     expect(stagingKeyOf(undefined)).toBeNull();
   });
 
-  it("never stages or films two neighbouring clips the same way, for any cast", () => {
+  // 2026-10-22: a cast filmed where it stands has fewer moves. One presenter and a deity alternate a push-in with a
+  // short glide; a pair standing in AI scenes has ONE move — the short glide that keeps both at one angle — so it
+  // repeats (the rule: avoid the neighbour's move wherever another is available).
+  it("never stages two neighbouring clips the same way, and never films them the same way where the cast has another move", () => {
     for (const performer of PERFORMERS) for (const twoHander of [false, true]) for (const n of [2, 3, 4, 6, 8, 15]) {
       const plan = planClipMotion(n, "commercial", performer, { twoHander });
       for (let i = 1; i < plan.length; i++) {
         const label = `${performer}${twoHander ? " pair" : ""} ${n}, clip ${i + 1}`;
         expect(plan[i].staging.key, label).not.toBe(plan[i - 1].staging.key);
-        expect(plan[i].camera.key, label).not.toBe(plan[i - 1].camera.key);
+        if (twoHander) expect(plan[i].camera.key, label).toBe("lateral_dolly");
+        else expect(plan[i].camera.key, label).not.toBe(plan[i - 1].camera.key);
       }
     }
-    // One presenter in the client's photo still alternates a push-in with a still camera.
+    // A pair whose words walk them is filmed travelling with them on those clips, gliding past them on the others.
+    expect(planClipMotion(4, "commercial", "person", { twoHander: true, lines: PAIR_WALK_LINES }).map((c) => c.camera.key))
+      .toEqual(["side_track", "lateral_dolly", "lateral_dolly", "side_track"]);
+    // One presenter in the client's photo: a push-in where she stands (the only move there) — and a still camera only
+    // on the clips her words walk, so those still alternate.
     const photo = planClipMotion(6, "commercial", "person", { plates: [true, true, true, true, true, true] });
-    for (let i = 1; i < photo.length; i++) expect(photo[i].camera.key, `photo clip ${i + 1}`).not.toBe(photo[i - 1].camera.key);
+    expect(photo.every((c) => c.camera.key === "push_in" && !c.walks)).toBe(true);
+    const walkingPhoto = planClipMotion(4, "commercial", "person", { lines: WALK_LINES, plates: [true, true, true, true] });
+    expect(walkingPhoto.map((c) => c.camera.key)).toEqual(["push_in", "static_locked", "push_in", "static_locked"]);
+    for (let i = 1; i < walkingPhoto.length; i++) expect(walkingPhoto[i].camera.key, `photo clip ${i + 1}`).not.toBe(walkingPhoto[i - 1].camera.key);
   });
 
   it("is the same every time, so a regenerated clip keeps its shot", () => {
@@ -249,6 +318,16 @@ describe("the motion plan", () => {
       // A pair always moves together, never toward the camera.
       if (staging.walks) expect(staging.pairPath, staging.key).toMatch(/\bboth\b[^;]*\bside by side\b/);
       expect(staging.pairPath, staging.key).not.toMatch(/\b(?:walks?|steps?) (?:\w+ ){0,3}toward the camera\b/);
+      // 2026-10-22: the same beat performed where they stand never walks, and no action turns the body — a turn of
+      // the palm or the head is a gesture (history 8: "turning or rotating").
+      for (const template of [staging.inPlace?.path, staging.inPlace?.start, staging.pairInPlace?.pairPath, staging.pairInPlace?.pairStart]) {
+        if (template) expect(fillCast(template, "She"), staging.key).not.toMatch(WALK_WORDS);
+      }
+      for (const template of [staging.path, staging.pairPath, staging.deityPath ?? "", staging.inPlace?.path ?? "", staging.pairInPlace?.pairPath ?? ""]) {
+        expect(fillCast(template, "She"), staging.key).not.toMatch(BODY_TURN);
+      }
+      // Every beat but turn_present (already in place) has its in-place form for one performer.
+      if (staging.key !== "turn_present") expect(staging.inPlace?.name, staging.key).toBeTruthy();
     }
     expect(Object.keys(SHOT_ANGLES)).toEqual(["eye_level", "low_angle", "high_angle"]);
     expect(planClipMotion(4, "commercial", "deity")[1].gesture).toContain("never touching, holding or presenting it");
@@ -256,11 +335,18 @@ describe("the motion plan", () => {
 
   it("writes the action for whoever performs, with the right pronouns, names and the clip's own role", () => {
     const plan = planClipMotion(4, "commercial");
-    expect(stagingPath(plan[0], "She")).toMatch(/^She walks slowly toward the camera across the open floor, talking naturally/);
+    // 2026-10-22: no line walks her, so clip 1 is spoken where she stands; words that take her somewhere walk her.
+    expect(stagingPath(plan[0], "She")).toBe("She stands facing the camera and speaks straight to the viewer — an open palm on the business name, then the hand settles, with a warm smile and eye contact");
+    expect(stagingPath(planClipMotion(4, "commercial", "person", { lines: WALK_LINES })[0], "She")).toMatch(/^She walks slowly toward the camera across the open floor, facing the lens and talking naturally/);
     expect(fillCast(STAGINGS.walk_across.path, "He")).toContain("He walks slowly along the counter, display or shelves beside him");
-    expect(fillCast(STAGINGS.turn_present.path, "Both characters", true)).toContain("Both characters turn from the place behind them to the camera");
+    // turn_present keeps its key (a saved plan carries it) but no longer turns: "Present where they stand".
+    expect(STAGINGS.turn_present.name).toBe("Present where they stand");
+    expect(fillCast(STAGINGS.turn_present.path, "Both characters", true)).toBe("Both characters stand facing the camera and present the business's real counter, shelves or work area beside them with one open hand as they speak about it, then bring the hand to the chest and open the palm toward the viewer");
     const pair = planClipMotion(4, "commercial", "person", { twoHander: true });
-    expect(stagingPath(pair[0], "x", true, { a: "Priya", b: "Kavya" })).toBe("both walk slowly side by side along the counter, display or open floor beside them, bodies angled toward the camera — Priya talks and gestures toward what they pass while Kavya reacts; then Kavya answers with an open palm while Priya reacts");
+    expect(stagingPath(pair[0], "x", true, { a: "Priya", b: "Kavya" })).toBe("both stand side by side beside the counter, display or shelves, bodies angled toward the camera — Priya sweeps a whole open hand along what is beside them and talks while Kavya reacts; then Kavya answers with one calm open palm toward it while Priya reacts");
+    // Walking, the pair faces the camera — no more "gestures toward what they pass" (2026-10-22).
+    const walkingPair = planClipMotion(4, "commercial", "person", { twoHander: true, lines: PAIR_WALK_LINES });
+    expect(stagingPath(walkingPair[0], "x", true, { a: "Priya", b: "Kavya" })).toBe("both walk slowly side by side along the counter, display or open floor beside them, facing the camera — Priya talks while Kavya listens and reacts; then Kavya answers with an open palm toward what the line is about while Priya reacts");
     const deity = planClipMotion(4, "commercial", "deity");
     expect(stagingPath(deity[0], "Ganesha")).toBe("Ganesha sweeps the blessing palm slowly over the place, then turns the palm toward the viewer");
     // A deity's clips are named as blessings — the 🎬 note on its frame never asks it to walk.
@@ -269,40 +355,54 @@ describe("the motion plan", () => {
   });
 });
 
-describe("frames built for each clip's action — caught mid-movement", () => {
+describe("frames built for each clip's action — caught mid-gesture, mid-step only where the words walk", () => {
   const lines = ["Namaste.", "Come inside our showroom.", "Trusted for years.", "Visit us."];
   const plan = planClipMotion(4, "commercial", "person", { lines });
   const modelFrame = (p: ClipMotionPlan[] = plan) =>
     MULTI_FRAME_SYSTEM_PROMPT("professional", "commercial", "", 4, lines, "", "female", "", false, "", undefined, p);
 
-  it("composes each frame for its own clip — mid-step, the floor for a walk, the product in view", () => {
+  // 2026-10-22: none of these lines walks her ("Come inside our showroom" is an invitation to the viewer), so every
+  // frame stands her facing the camera, mid-gesture; a clip whose words take her somewhere is caught mid-step.
+  it("composes each frame for its own clip — standing facing the camera mid-gesture, the product in view, mid-step only where the words walk", () => {
     expect(plan.map((c) => c.staging.key)).toEqual(["walk_toward", "walk_across", "walk_stop_present", "walk_invite"]);
+    expect(plan.map((c) => c.staging.name)).toEqual(["Speak to the camera", "Present the display", "Explain to the camera", "Invite where they stand"]);
     const p = modelFrame();
     expect(p).toContain("FRAMES BUILT FOR MOTION (EACH FRAME IS THE FIRST MOMENT OF ITS CLIP)");
-    expect(p).toContain("every clip MOVES like a shot from a real commercial");
-    expect(p).toContain("caught MID-MOVEMENT, never a stiff, posed stance");
-    expect(p).toContain("A WALK NEEDS ITS FLOOR");
+    expect(p).toContain("every clip is a filmed shot from a real commercial: the ambassador PERFORMS the line where she stands, facing the camera");
+    expect(p).toContain("never turning round");
+    expect(p).toContain("caught MID-GESTURE, never a stiff, posed stance");
+    expect(p).not.toContain("A WALK NEEDS ITS FLOOR");
     expect(p).toContain("THE THING TO SHOW IN VIEW");
     expect(p).toContain("INSIDE THE BUSINESS, ALWAYS");
-    expect(p).not.toMatch(/nobody walks|always in place|two or three steps|rack focus|gentle float|front-clasp/i);
+    expect(p).not.toMatch(/nobody walks|always in place|two or three steps|rack focus|gentle float|front-clasp|every clip MOVES|a short arc|or an arc/i);
     for (const clip of plan.slice(1)) {
       expect(p).toContain(framingForMotion(clip));
       expect(p).toContain(`🧍 POSE: ${clip.staging.start}`);
     }
-    expect(framingForMotion(plan[1])).toContain("the full figure caught mid-step from a three-quarter front angle");
+    expect(framingForMotion(plan[1])).toContain("three-quarter body (head to knees) standing facing the camera right beside the real counter, display or shelves");
     expect(framingForMotion(plan[1])).toContain("never a stiff, posed stance");
+    expect(framingForMotion(plan[1])).not.toMatch(/mid-step/);
+    // Words that take her somewhere: those clips walk, caught mid-step, and the frame asks for their floor.
+    const walking = planClipMotion(4, "commercial", "person", { lines: WALK_LINES });
+    const w = modelFrame(walking);
+    expect(w).toContain("WALKS only in a clip whose 🎬 note walks (her words take her somewhere)");
+    expect(w).toContain("A WALK NEEDS ITS FLOOR");
+    expect(framingForMotion(walking[1])).toContain("the full figure caught mid-step from a three-quarter front angle");
   });
 
   it("asks for no floor when no clip walks", () => {
     expect(modelFrame(planClipMotion(4, "commercial", "deity", { lines }))).not.toContain("A WALK NEEDS ITS FLOOR");
   });
 
-  // Clip 1's image is the face every later frame is matched to — now caught as she is about to step forward.
-  it("keeps the hero framing on clip 1 in an open pose, never the front-clasp", () => {
+  // Clip 1's image is the face every later frame is matched to — an open pose. 2026-10-22: facing the camera, the
+  // weight relaxed — no longer "caught as if about to step forward", which starts a walk the line may not call for.
+  it("keeps the hero framing on clip 1 in an open pose facing the camera, never the front-clasp", () => {
     const p = modelFrame();
     expect(p).toContain(`🎬 THIS CLIP: ${plan[0].staging.name} — filmed ${cameraLabel(plan[0])}. Keep the hero framing and pose exactly`);
     expect(p).toContain(HERO_FRAME_POSE);
     expect(p).not.toContain("front-clasp");
+    expect(HERO_FRAME_POSE).toContain("a natural, open welcoming pose facing the camera");
+    expect(HERO_FRAME_POSE).not.toMatch(/step forward|weight on one foot/);
   });
 
   it("leaves a frame prompt without a plan exactly as before", () => {
@@ -312,23 +412,30 @@ describe("frames built for each clip's action — caught mid-movement", () => {
     expect(p).toContain("Mandatory direct eye contact to the camera while holding this new pose");
   });
 
-  it("does the same for a character pack — a pair walks together, side by side, mid-step; a deity blesses in place", () => {
+  // 2026-10-22: every pack — not only Motu and Patlu — performs WHERE it stands, facing the camera, caught mid-gesture,
+  // and walks only in a clip whose 🎬 note walks; no pack is told any more that "every clip MOVES" or to TURN.
+  it("does the same for a character pack — every cast stands facing the camera mid-gesture, mid-step only where a clip walks; a deity blesses in place", () => {
     const options = { segmentCount: 4, clipSummaries: lines, locationMode: "ai_generated", locationPlan: "", aspectRatio: "9:16", adType: "commercial" } as const;
     const motu = planClipMotion(4, "commercial", "cartoon", { twoHander: true, lines });
     const drawn = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(getCharacterPack("duo_motu_patlu")!, { ...options, motionPlan: motu });
-    expect(drawn).toContain("every clip MOVES");
-    expect(drawn).toContain("the characters WALK together, side by side, through the place — along the counter or display, or to the product");
-    expect(drawn).toContain("caught MID-MOVEMENT");
-    expect(drawn).toContain("caught mid-step side by side as each clip's 🎬 note says");
+    expect(drawn).toContain("Motu and Patlu perform each\nclip WHERE they stand, side by side, beside what its line is about, facing the camera");
+    expect(drawn).toContain("caught MID-GESTURE");
+    expect(drawn).toContain("standing side by side as each clip's 🎬 note says");
+    expect(drawn).not.toMatch(/every clip MOVES|caught MID-MOVEMENT|caught mid-step side by side as each|TURN to present/);
     expect(drawn).toContain(compositionFor(motu[1]));
-    expect(compositionFor(motu[1])).toContain("both caught mid-step side by side at the same distance from the camera");
+    expect(compositionFor(motu[1])).toContain("both standing side by side at the same distance from the camera");
+    // Their words walk them in clip 2 only: that frame is caught mid-step.
+    const motuWalks = planClipMotion(4, "commercial", "cartoon", { twoHander: true, lines: ["a", "Let's go inside!", "c", "d"] });
+    expect(compositionFor(motuWalks[1])).toContain("both caught mid-step side by side at the same distance from the camera");
     const solo = planClipMotion(4, "commercial", "cartoon", { lines });
     const single = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(getCharacterPack("solo_motu")!, { ...options, motionPlan: solo });
-    expect(single).toContain("WALK through the place — toward the camera, along the counter or display, or to the product");
+    expect(single).toContain("clip IN PLACE, standing beside what its line is about, facing the camera");
+    expect(single).not.toMatch(/WALK through the place|every clip MOVES/);
     const ganesha = planClipMotion(4, "commercial", "deity", { lines });
     const deity = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(getCharacterPack("god_ganesha")!, { ...options, motionPlan: ganesha });
     expect(deity).not.toContain("WALK through the place");
-    expect(deity).toContain("PRESENT\nwhat the line is about or TURN to present the place");
+    expect(deity).not.toContain("TURN to present the place");
+    expect(deity).toContain("clip IN PLACE, standing beside what its line is about, facing the camera");
     expect(compositionFor(ganesha[0])).toContain("a graceful blessing pose caught mid-gesture");
   });
 });
@@ -347,13 +454,18 @@ describe("the composition stamped onto every frame", () => {
     expect(stamped).toBe(`The hero frame.\n\n${MOTION_COMPOSITION_HEADING}: this pose opens the clip (${plan[0].staging.name}, ${cameraLabel(plan[0])}) — ${plan[0].camera.framing}; every object fully inside the frame and clear of the body.`);
   });
 
-  it("keeps a client photo's own framing, and places the cast mid-step on open floor", () => {
+  // 2026-10-22: placed into the photo standing, facing the camera — mid-step only on a clip whose words walk them.
+  it("keeps a client photo's own framing — the cast placed into it facing the camera, mid-step only where the clip walks", () => {
     const photo = planClipMotion(4, "commercial", "person", { plates: [true, true, true, true] });
-    expect(withMotionComposition("A frame.", photo[0], { plate: true })).toContain("the photograph's own framing and camera angle, unchanged; the subject placed into it caught mid-step on open, clear floor, with room to walk and nothing between them and the camera");
+    expect(withMotionComposition("A frame.", photo[0], { plate: true })).toContain("the photograph's own framing and camera angle, unchanged; the subject placed into it on the real floor, facing the camera beside what they present");
+    const walkingPhoto = planClipMotion(4, "commercial", "person", { lines: WALK_LINES, plates: [true, true, true, true] });
+    expect(withMotionComposition("A frame.", walkingPhoto[0], { plate: true })).toContain("the photograph's own framing and camera angle, unchanged; the subject placed into it caught mid-step on open, clear floor, with room to walk and nothing between them and the camera");
     const pairPhoto = planClipMotion(4, "commercial", "cartoon", { twoHander: true, plates: [true, true, true, true] });
-    expect(withMotionComposition("A frame.", pairPhoto[0], { plate: true })).toContain("both placed into it side by side, caught mid-step on the real floor, with room to walk a few steps across it");
+    expect(withMotionComposition("A frame.", pairPhoto[0], { plate: true })).toContain("both placed into it side by side at the same distance from the camera, standing on the real floor right beside what the line is about, one hand caught mid-gesture");
+    const pairWalks = planClipMotion(4, "commercial", "cartoon", { twoHander: true, lines: PAIR_WALK_LINES, plates: [true, true, true, true] });
+    expect(withMotionComposition("A frame.", pairWalks[0], { plate: true })).toContain("both placed into it side by side, caught mid-step on the real floor, with room to walk a few steps across it");
     const deityPhoto = planClipMotion(4, "commercial", "deity", { plates: [true, true, true, true] });
-    expect(withMotionComposition("A frame.", deityPhoto[0], { plate: true })).toContain("the subject placed into it on the real floor, turned slightly toward what they present");
+    expect(withMotionComposition("A frame.", deityPhoto[0], { plate: true })).toContain("the subject placed into it on the real floor, facing the camera beside what they present");
   });
 
   it("never stamps twice, and leaves an empty prompt alone", () => {
@@ -363,20 +475,29 @@ describe("the composition stamped onto every frame", () => {
     expect(withMotionComposition("A frame.", undefined)).toBe("A frame.");
   });
 
-  it("frames a drawn character head to feet, a real person three-quarter, a pair side by side, a deity in place", () => {
+  // 2026-10-22: standing, facing the camera, in every clip whose words do not walk them; mid-step only on a walk.
+  it("frames a drawn character head to feet, a real person three-quarter, a pair side by side, a deity in place — mid-step only on a walk", () => {
     const cartoon = planClipMotion(4, "commercial", "cartoon");
-    expect(compositionFor(cartoon[2])).toContain("the full figure from head to feet caught mid-step");
-    expect(compositionFor(plan[2])).toContain("three-quarter body caught mid-step");
+    expect(compositionFor(cartoon[2])).toContain("the full figure from head to feet standing facing the camera on the real floor");
+    expect(compositionFor(plan[2])).toContain("three-quarter body (head to knees) standing facing the camera on the real floor");
     expect(compositionFor(plan[2])).toContain(`shot ${plan[2].angle.name.toLowerCase()} on a ${plan[2].lens} lens`);
-    expect(compositionFor(plan[0])).toContain("the full figure from head to feet, caught mid-step a few steps back from the camera");
-    expect(compositionFor(planClipMotion(4, "commercial", "person", { twoHander: true })[0])).toContain("both caught mid-step side by side");
+    expect(compositionFor(plan[0])).toContain("three-quarter body (head to knees) standing facing the camera on the real floor inside the business, weight relaxed, one hand caught mid-gesture at waist height");
+    expect(compositionFor(planClipMotion(4, "commercial", "person", { twoHander: true })[0])).toContain("both standing side by side at the same distance from the camera");
+    for (const clip of [...plan, ...cartoon]) expect(compositionFor(clip), clip.staging.key).not.toMatch(/mid-step/);
+    // Where the words walk them.
+    expect(compositionFor(planClipMotion(4, "commercial", "person", { lines: WALK_LINES })[0])).toContain("the full figure from head to feet, caught mid-step a few steps back from the camera");
+    expect(compositionFor(planClipMotion(4, "commercial", "cartoon", { lines: WALK_LINES })[1])).toContain("the full figure caught mid-step");
+    expect(compositionFor(planClipMotion(4, "commercial", "person", { twoHander: true, lines: PAIR_WALK_LINES })[0])).toContain("both caught mid-step side by side");
     expect(compositionFor(planClipMotion(4, "commercial", "deity")[0])).toContain("in a graceful blessing pose caught mid-gesture");
   });
 });
 
 describe("the Veo prompt", () => {
   const lines = ["Namaste.", "Come inside our showroom.", "Trusted for years.", "Visit us."];
+  // 2026-10-22: no line here walks her — every clip is performed where she stands.
   const plan = planClipMotion(4, "commercial", "person", { lines });
+  /** The same ad with words that take her somewhere: clips 1, 2 and 4 walk; clip 3 ("Trusted for years.") does not. */
+  const walking = planClipMotion(4, "commercial", "person", { lines: WALK_LINES });
   const model = modelVeoSubject("female");
   const line = "శ్రీ సాయి మోటార్స్ లో మీ బైక్ సర్వీస్ అదే రోజు.";
   const build = (direction?: any, clip = 0, spoken = line, p: ClipMotionPlan = plan[clip], language = "Telugu") => assembleVeoPrompt({
@@ -397,17 +518,22 @@ describe("the Veo prompt", () => {
   /** A clip performed in place — the scene plan chose to turn and present. */
   const turn = planClipMotion(4, "commercial", "person", { choices: [null, { staging: "turn_present" }] })[1];
 
+  // 2026-10-22 (history 8): the life line is gestures on their words with the body facing the camera — "natural body
+  // movement throughout" read as licence to move; the keep sentence says where she stands unless the clip walks; the
+  // negative adds no turning around or rotating, no turning away, no random or repeated gestures and no morphing.
   it("is five short parts in order — what it is, the camera and the action, the voice, the keep sentence, the negative", () => {
-    for (const clip of plan) {
-      const p = build(null, clip.clip);
+    for (const clip of [...plan, ...walking]) {
+      const p = build(null, clip.clip, line, clip);
       const parts = p.split("\n\n");
-      expect(parts, `clip ${clip.clip + 1}`).toHaveLength(5);
+      const at = `${clip.walks ? "walking" : "in place"} clip ${clip.clip + 1}`;
+      expect(parts, at).toHaveLength(5);
       expect(parts[0]).toBe("9:16 vertical video, one continuous 8-second shot that starts from the attached frame.");
       expect(parts[1].startsWith(`${cameraShot(clip, "She")}: she `), parts[1]).toBe(true);
-      expect(parts[1]).toContain("Natural body movement throughout, with eye contact on the key words — clothes and hair move with every step; anyone already in the background carries on naturally.");
+      expect(parts[1], at).toContain(`Calm, purposeful movement: each gesture lands on the words it belongs to, then the hands settle; the body stays facing the camera, with eye contact on the key words — clothes and hair move ${clip.walks ? "with every step" : "naturally"}; anyone already in the background stays in place with only small, natural movements.`);
+      expect(parts[1], at).not.toContain("Natural body movement throughout");
       expect(parts[2]).toBe(`With a very sweet, warm, confident female voice, she says in Telugu:\n"${line}"`);
-      expect(parts[3]).toBe(`Keep her exact face, hair, outfit and height, and the same place, logo, colours and light ${VEO_FRAME_LOCK}; she moves within that place, and nothing new is added to it.`);
-      expect(parts[4]).toBe("Negative prompt: No text or subtitles on screen, no background music or echo, no cuts, no camera shake, no frozen or static pose, no change of location or background, no unnatural movement, no extra people, no goodbye wave.");
+      expect(parts[3], at).toBe(`Keep her exact face, hair, outfit and height, and the same place, logo, colours and light ${VEO_FRAME_LOCK}; ${clip.walks ? "she moves within that place" : "she performs where she stands, facing the camera"}, and nothing new is added to it.`);
+      expect(parts[4], at).toBe(`Negative prompt: No text or subtitles on screen, no background music or echo, no cuts, no camera shake, ${clip.walks ? "no frozen or static pose" : "no frozen pose"}, no change of location or background, no unnatural movement, no turning around or rotating, no turning away from the camera, no random or repeated gestures, no morphing, no extra people, no goodbye wave.`);
       expect(spokenLinesIn(p)).toEqual([line]);
     }
   });
@@ -437,39 +563,68 @@ describe("the Veo prompt", () => {
   });
 
   /** On 2026-10-05 the prompt was 1,568 words for one presenter and 2,297 for Motu and Patlu. */
+  // 2026-10-22: ≤ 190 / ≤ 360 before; the gesture-on-the-words life line and the four new negatives add about twenty
+  // words (one presenter 204–228, Motu and Patlu 372–387 measured), and a festival greeting carries its timed
+  // namaskaram on top (one presenter about 240 with a one-word line).
   it("is short — every category, every clip", () => {
     for (const n of [2, 4, 6, 8]) {
-      for (const p of planClipMotion(n, "commercial")) expect(words(build(null, 0, "x", p)), `model ${n}`).toBeLessThanOrEqual(190);
+      for (const p of planClipMotion(n, "commercial")) expect(words(build(null, 0, "x", p)), `model ${n}`).toBeLessThanOrEqual(230);
+      for (const p of planClipMotion(n, "commercial", "person", { lines: WALK_LINES })) expect(words(build(null, 0, "x", p)), `model walking ${n}`).toBeLessThanOrEqual(230);
+      for (const p of planClipMotion(n, "festival")) expect(words(build(null, 0, "x", p)), `model festival ${n}`).toBeLessThanOrEqual(245);
     }
-    for (const i of [0, 1, 2, 3]) expect(words(buildMotu(i)), `motu ${i}`).toBeLessThanOrEqual(360);
+    for (const i of [0, 1, 2, 3]) expect(words(buildMotu(i)), `motu ${i}`).toBeLessThanOrEqual(390);
   });
 
-  it("walks: toward the camera on a push-in, along the display on a side track, the last steps in to invite", () => {
-    expect(build(null, 0)).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot: she walks slowly toward the camera across the open floor");
-    expect(build(null, 1)).toContain("Smooth side-tracking shot from a three-quarter front angle, the camera travelling sideways alongside her, the background sliding past with parallax: she walks slowly along the counter, display or shelves beside her");
-    expect(build(null, 3)).toContain("she walks the last few steps toward the camera and invites the viewer in");
+  // 2026-10-22: these walk because their words take her somewhere (WALK_LINES); the same beats without such words are
+  // performed where she stands.
+  it("walks only where the words take her: toward the camera on a push-in, along the display on a side track, the last steps in to invite", () => {
+    expect(build(null, 0, line, walking[0])).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot: she walks slowly toward the camera across the open floor");
+    expect(build(null, 1, line, walking[1])).toContain("Smooth side-tracking shot from a three-quarter front angle, the camera travelling sideways alongside her, the background sliding past with parallax: she walks slowly along the counter, display or shelves beside her");
+    expect(build(null, 3, line, walking[3])).toContain("Smooth, steady push-in as she comes closer, ending in a medium close-up: she walks the last few steps toward the camera and invites the viewer in");
+    expect(walking.map((c) => c.walks)).toEqual([true, true, false, true]);
+    // Without such words: the same beats where she stands — a push-in or a short glide, no steps.
+    expect(build(null, 0)).toContain("Smooth, steady push-in from a three-quarter shot to a medium close-up: she stands facing the camera and speaks straight to the viewer — an open palm on the business name");
+    expect(build(null, 1)).toContain("Slow lateral dolly, the camera gliding a short way sideways at one distance, her seen from the same angle throughout, foreground and background sliding gently with parallax: she stands beside the counter, display or shelves, facing the camera, and presents it with one open hand on the words about it");
+    for (const clip of plan) expect(build(null, clip.clip).split("\n\n")[1], `clip ${clip.clip + 1}`).not.toMatch(WALK_WORDS);
   });
 
-  it("films a client's photo without showing more of it — a push-in, or a still camera while she walks — and keeps it as photographed", () => {
+  it("films a client's photo without showing more of it — a push-in where she stands, a still camera only while she walks — and keeps it as photographed", () => {
     const photo = planClipMotion(4, "commercial", "person", { lines, plates: [true, true, true, true] });
-    const first = build(null, 0, line, photo[0]);
+    // 2026-10-22: no line walks her, so every clip is a push-in where she stands.
+    for (const c of photo) {
+      expect(c.camera.key, `clip ${c.clip + 1}`).toBe("push_in");
+      expect(build(null, c.clip, line, c)).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; she performs where she stands, facing the camera, and nothing new is added to it`);
+    }
+    expect(build(null, 0, line, photo[0])).toContain("Smooth, steady push-in from a three-quarter shot to a medium close-up: she stands facing the camera and speaks straight to the viewer");
+    // Words that walk her: a push-in as she comes closer, or a still camera while she walks.
+    const walkingPhoto = planClipMotion(4, "commercial", "person", { lines: WALK_LINES, plates: [true, true, true, true] });
+    const first = build(null, 0, line, walkingPhoto[0]);
     expect(first).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot: she walks slowly toward the camera");
     expect(first).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; she moves within it, and nothing new is added to it`);
-    const still = photo.find((c) => c.camera.key === "static_locked")!;
-    expect(still.walks).toBe(true);
-    expect(build(null, still.clip, line, still)).toMatch(/\n\n(?:Steady medium-wide shot from a still camera as she walks along|Still camera, full shot to medium shot as she comes closer): she walks/);
-    for (const c of photo) expect(build(null, c.clip, line, c)).not.toMatch(/side-tracking|lateral dolly|arc shot/i);
+    const stills = walkingPhoto.filter((c) => c.camera.key === "static_locked");
+    expect(stills.length).toBeGreaterThan(0);
+    for (const still of stills) {
+      expect(still.walks).toBe(true);
+      expect(build(null, still.clip, line, still)).toMatch(/\n\n(?:Steady medium-wide shot from a still camera as she walks along|Still camera, full shot to medium shot as she comes closer): she walks/);
+    }
+    for (const c of [...photo, ...walkingPhoto]) expect(build(null, c.clip, line, c)).not.toMatch(/side-tracking|lateral dolly|arc shot/i);
   });
 
-  it("uses the director's action when it is safe and true to the plan — a longer walk is fine now", () => {
+  // 2026-10-22: a walk is the director's only on a clip whose words walk her, and no action may turn her body — the
+  // "then turns to the lens with a smile" ending this test used to accept is refused now (TURNS).
+  it("uses the director's action when it is safe and true to the plan — a longer walk is fine on a walking clip", () => {
     const walk = "She walks slowly toward the camera across the open boutique floor, glancing at the dress rail as she passes, then opens her palm toward the new dresses";
-    expect(build({ action: walk }, 0)).toContain(": she walks slowly toward the camera across the open boutique floor, glancing at the dress rail as she passes");
-    const along = "She walks five unhurried steps along the glass counter, her hand gliding over the gold necklaces, then turns to the lens with a smile.";
-    expect(build({ action: along }, 1)).toContain(": she walks five unhurried steps along the glass counter, her hand gliding over the gold necklaces, then turns to the lens with a smile. Natural");
-    expect(build({ action: along }, 1)).not.toMatch(/\.\./);
+    expect(build({ action: walk }, 0, line, walking[0])).toContain(": she walks slowly toward the camera across the open boutique floor, glancing at the dress rail as she passes");
+    const along = "She walks five unhurried steps along the glass counter, her hand gliding over the gold necklaces, then smiles at the lens.";
+    expect(build({ action: along }, 1, line, walking[1])).toContain(": she walks five unhurried steps along the glass counter, her hand gliding over the gold necklaces, then smiles at the lens. Calm");
+    expect(build({ action: along }, 1, line, walking[1])).not.toMatch(/\.\./);
+    const turning = along.replace("then smiles at the lens", "then turns to the lens with a smile");
+    expect(resolveDirection(walking[1], { action: turning }, "She").action).toBe(stagingPath(walking[1], "She"));
+    // The same walk on a clip performed where she stands is refused.
+    expect(resolveDirection(plan[0], { action: walk }, "She").action).toBe(stagingPath(plan[0], "She"));
   });
 
-  it("refuses an action that leaves, climbs, tours the whole place, freezes, runs, backs away, waves, names a camera move or changes the light", () => {
+  it("refuses an action that leaves, climbs, tours the whole place, freezes, runs, backs away, waves, turns round, does a namaste, names a camera move or changes the light", () => {
     const refused = [
       "she walks out of the shop and onto the road",
       "she walks to the entrance and opens the door",
@@ -485,8 +640,17 @@ describe("the Veo prompt", () => {
       "she runs toward the camera with excitement",
       "she walks backward away from the counter",
       "she steps back and smiles at the lens",
+      // 2026-10-22 (history 8): the body never turns round, spins or rotates, and the namaskaram is the code's (wishCue).
+      "she turns around to show the shelves behind her",
+      "she spins slowly with a smile",
+      "she rotates to face the display",
+      "she twirls in her saree as she speaks",
+      "she pivots toward the counter and presents it",
+      "she sways from side to side as she talks",
+      "she joins her palms in a namaste and smiles",
+      "she folds her hands and bows to the viewer",
     ];
-    for (const clip of [...plan, turn]) {
+    for (const clip of [...plan, ...walking, turn]) {
       for (const action of refused) {
         expect(resolveDirection(clip, { action }, "She").action, `${clip.staging.key}: ${action}`).toBe(stagingPath(clip, "She"));
       }
@@ -496,36 +660,53 @@ describe("the Veo prompt", () => {
   // A live run (2026-10-05) refused "her hand toward the bridal saree on the mannequin" as a frozen pose.
   it("keeps an in-place action that only names a thing in the frame — a mannequin, a statue, a saree's length — or a gesture", () => {
     expect(turn.staging.key).toBe("turn_present");
+    expect(turn.staging.name).toBe("Present where they stand");
     expect(turn.walks).toBe(false);
     for (const action of [
       "She turns her head and upper body toward the ornate mannequin, her hand gesturing toward the bridal saree displayed.",
       "She raises her palm toward the temple statue behind her with a gentle smile.",
       "She points to the frozen desserts in the glass counter and smiles at the lens.",
-      "She unfolds the silk saree to show its full length, then turns back to the lens.",
+      // 2026-10-22: "…, then turns back to the lens" is a body turn now (refused below) — she smiles back at it instead.
+      "She unfolds the silk saree to show its full length, then smiles back at the lens.",
       "She crosses her arms with a confident smile, then opens one palm toward the viewer.",
       "She lifts the necklace from on top of the glass counter toward the lens.",
       "She unfolds the pallu to reveal its zari border, then smiles at the lens.",
       "She runs her hand along the silk saree on the counter, then smiles at the lens.",
+      // A turn of the head or the palm is a gesture, not the body turning (motion TURNS).
+      "She turns her head toward the shelf and presents it with an open palm.",
+      "She turns her palm toward the viewer on the promise.",
     ]) expect(resolveDirection(turn, { action }, "She").action, action).toBe(action.replace(/\.$/, ""));
+    expect(resolveDirection(turn, { action: "She unfolds the silk saree to show its full length, then turns back to the lens." }, "She").action)
+      .toBe(stagingPath(turn, "She"));
   });
 
   it("names a single presenter as the prompt does, and takes any quoted words out of the action", () => {
-    expect(resolveDirection(turn, { action: 'The model turns toward the "SRI LAKSHMI SILKS" sign, then the model smiles at the lens.' }, "She").action)
-      .toBe("She turns toward the sign, then she smiles at the lens");
+    // 2026-10-22: "The model turns toward the sign" turned the body — the action now points.
+    expect(resolveDirection(turn, { action: 'The model points toward the "SRI LAKSHMI SILKS" sign, then the model smiles at the lens.' }, "She").action)
+      .toBe("She points toward the sign, then she smiles at the lens");
     expect(resolveDirection(turn, { action: "The model nods." }, "He").action).toBe("He nods");
   });
 
+  // 2026-10-22: plan[1] is performed where she stands now (no line walks her); walking[1]'s words walk her.
   it("walks on a walking clip, and only there", () => {
     expect(resolveDirection(turn, { action: "she walks two steps toward the camera" }, "She").action).toBe(stagingPath(turn, "She"));
-    expect(resolveDirection(plan[1], { action: "she smiles and points at the shelf behind her" }, "She").action).toBe(stagingPath(plan[1], "She"));
+    expect(resolveDirection(plan[1], { action: "she walks slowly along the shelves" }, "She").action).toBe(stagingPath(plan[1], "She"));
+    expect(resolveDirection(plan[1], { action: "she smiles and points at the shelf beside her" }, "She").action).toBe("she smiles and points at the shelf beside her");
+    expect(resolveDirection(walking[1], { action: "she smiles and points at the shelf behind her" }, "She").action).toBe(stagingPath(walking[1], "She"));
     const deity = planClipMotion(4, "commercial", "deity")[0];
     expect(resolveDirection(deity, { action: "Ganesha walks slowly toward the viewer" }, "Ganesha").action).toBe(stagingPath(deity, "Ganesha"));
   });
 
   it("walks a pair only together, side by side — never one alone, never toward the lens, never growing", () => {
-    const pair = planClipMotion(4, "commercial", "person", { twoHander: true });
+    // 2026-10-22: a pair walks only where its words take it somewhere (PAIR_WALK_LINES: clip 1 does).
+    const pair = planClipMotion(4, "commercial", "person", { twoHander: true, lines: PAIR_WALK_LINES });
     const names = { a: "Priya", b: "Kavya" };
     const walk = pair[0];
+    expect(walk.walks).toBe(true);
+    // Standing, the same walk is refused.
+    const standing = planClipMotion(4, "commercial", "person", { twoHander: true })[0];
+    expect(resolveDirection(standing, { action: "Both walk side by side along the saree racks, Priya pointing at the silk sarees" }, "x", true, names).action)
+      .toBe(stagingPath(standing, "x", true, names));
     expect(resolveDirection(walk, { action: "Priya walks along the counter while Kavya waits" }, "x", true, names).action).toBe(stagingPath(walk, "x", true, names));
     expect(resolveDirection(walk, { action: "Both walk together toward the camera, then Kavya points to the sarees" }, "x", true, names).action).toBe(stagingPath(walk, "x", true, names));
     const along = "Both walk side by side along the saree racks, Priya pointing at the silk sarees while Kavya smiles; then Kavya opens a palm toward the counter";
@@ -583,7 +764,9 @@ describe("the Veo prompt", () => {
     expect(p).toContain("0–4s — Motu (on the LEFT of the frame), with the original Motu voice from the show (");
     expect(p).toContain("4–8s — Patlu (on the RIGHT of the frame), with the original Patlu voice from the show (");
     expect(p).toContain("Only the one speaking moves their lips; the other listens with the mouth closed and reacts.");
-    expect(p).toContain("— Motu talks and gestures toward what they pass while Patlu reacts; then Patlu answers with an open palm while Motu reacts. The framing drifts a little toward whoever is speaking, never closer.");
+    // 2026-10-22: facing the camera as they walk — no more "gestures toward what they pass".
+    expect(p).toContain("facing the camera — Motu talks while Patlu listens and reacts; then Patlu answers with an open palm toward what the line is about while Motu reacts. The framing drifts a little toward whoever is speaking, never closer.");
+    expect(p).not.toContain("toward what they pass");
     expect(p).toContain("no narrator or new voices, no two voices at once.");
     expect(spokenLinesIn(p)).toEqual(["one", "two"]);
   });
@@ -664,7 +847,9 @@ describe("the Veo prompt", () => {
       });
       expect(p).toContain("Slow, graceful, majestic movement throughout; every gesture is a blessing, never touching or holding products, money or a phone");
       expect(p).toContain("With a voice that is deep, warm and unhurried, with a gentle smile inside it, Ganesha says in Telugu:");
-      expect(p).toContain("Ganesha moves within that place");
+      // 2026-10-22: a deity never walks, so its keep sentence says it performs in place, facing the camera.
+      expect(p).toContain("Ganesha performs in place, facing the camera");
+      expect(p).toContain("no turning around or rotating");
       expect(MOVING).toContain(clip.camera.key);
       expect(p).not.toMatch(WALK_WORDS);
       expect(p).not.toContain("their face");
@@ -675,7 +860,9 @@ describe("the Veo prompt", () => {
 
   it("closes on an invitation in — never a goodbye", () => {
     for (const p of plan.map((c) => build(null, c.clip))) expect(p).toContain("no goodbye wave");
-    expect(build(null, 3)).toContain("invites the viewer in, both palms opening toward the lens in a warm come-in gesture");
+    // 2026-10-22: where she stands — or, when her words walk her, the last steps in.
+    expect(build(null, 3)).toContain("she stands facing the camera and invites the viewer in on the invitation — both palms opening toward the lens in a warm come-in gesture with a nod");
+    expect(build(null, 3, line, walking[3])).toContain("she walks the last few steps toward the camera and invites the viewer in, both palms opening toward the lens in a warm come-in gesture");
     expect(build(null, 3)).not.toMatch(GOODBYE);
     expect(build({ action: "she walks toward the camera and waves at it with a smile" }, 3)).not.toContain("waves at it");
   });
@@ -691,16 +878,25 @@ describe("the Veo prompt", () => {
 });
 
 describe("the director call", () => {
-  it("directs only the ACTION of each clip — a real walk where the plan walks, never the camera, never the look", () => {
+  // 2026-10-22 (history 8): every director — not only Motu and Patlu's — is told they walk only where the planned
+  // action walks, always face the camera, put each gesture on its words, and never do a namaste (the code does).
+  it("directs only the ACTION of each clip — a walk only where the plan walks, always facing the camera, never the camera, never the look", () => {
     const p = VEO_SEGMENT_SYSTEM_PROMPT(4, "female");
     expect(p).toContain("You direct the ACTION of short image-to-video clips");
     expect(p).toContain("starts from ONE attached still");
-    expect(p).toContain("never a talking portrait");
+    expect(p).toContain("never a frozen portrait, and never movement the line does not call for");
+    expect(p).toContain("EVERY GESTURE BELONGS TO THE WORDS IT IS SAID WITH");
+    expect(p).toContain("ALWAYS FACING THE CAMERA: the body never turns round, turns away, spins or rotates; only the head or a hand may turn a little toward what is shown.");
+    expect(p).toContain("THEY WALK ONLY WHERE THE PLANNED ACTION WALKS — in a clip whose words take them somewhere.");
+    expect(p).toContain("NEVER A NAMASTE, FOLDED HANDS OR A BOW: on a festival wish the code adds the namaskaram itself, timed to the exact words of the wish.");
+    // Asked or not, the old switch changes nothing (@deprecated).
+    expect(VEO_DIRECTION_SYSTEM_PROMPT({ clipCount: 2, aspectRatio: "9:16", subject: "she", walksWhenNeeded: true }))
+      .toBe(VEO_DIRECTION_SYSTEM_PROMPT({ clipCount: 2, aspectRatio: "9:16", subject: "she" }));
     expect(p).toContain("PLANNED ACTION — what the model (a woman) does in this clip, and whether and where they walk. Keep it; make it specific to THIS frame.");
     expect(p).toContain("CAMERA — the camera move, already decided. You never change it");
     expect(p).toContain("A WALK (when the PLANNED ACTION walks): a slow, natural walk on the floor the frame shows");
     expect(p).toContain("never away from the camera, never running, never walking backward.");
-    expect(p).toContain('IN PLACE (when the PLANNED ACTION says "no steps")');
+    expect(p).toContain('IN PLACE (when the PLANNED ACTION says "no steps" — most clips)');
     expect(p).toContain("They may greet or gesture to people the FRAME already shows; never add anyone.");
     expect(p).toContain("Never describe a face, hair, clothes, the room or the light");
     expect(p).toContain("Never name a camera move or a shot. Never quote anything — not the spoken words, not a sign or a label.");
@@ -741,17 +937,35 @@ describe("the director call", () => {
     expect(CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4)).toContain("A deity never walks. A deity moves slowly and majestically, and every gesture is a blessing");
   });
 
+  // 2026-10-22: only a clip whose words take them somewhere walks — every other hint is "no steps".
   it("tells the director where each clip walks — or that it does not", () => {
-    const single = planClipMotion(4, "commercial");
+    for (const clip of planClipMotion(4, "commercial")) expect(walkHint(clip)).toBe("performed where they stand, no steps");
+    const single = planClipMotion(4, "commercial", "person", { lines: WALK_LINES });
     expect(walkHint(single[0])).toBe("a slow walk toward the camera on the open floor the frame shows");
     expect(walkHint(single[1])).toBe("a slow walk along the counter, display or open floor the frame shows beside them");
+    expect(walkHint(single[2])).toBe("performed where they stand, no steps");
     expect(walkHint(single[3])).toBe("the last few steps toward the camera on the open floor the frame shows");
-    const pair = planClipMotion(4, "commercial", "person", { twoHander: true });
+    const pair = planClipMotion(4, "commercial", "person", { twoHander: true, lines: PAIR_WALK_LINES });
     expect(walkHint(pair[0])).toBe("both together, side by side, a slow walk along the counter, display or open floor the frame shows beside them");
-    expect(walkHint(pair[3])).toBe("both together, side by side, a few steps across the floor the frame shows, then both turn to the camera");
-    const photo = planClipMotion(4, "commercial", "person", { twoHander: true, plates: [true, true, true, true] });
+    expect(walkHint(pair[1])).toBe("performed where they stand, no steps");
+    expect(walkHint(pair[3])).toMatch(/^both together, side by side, a few steps across the floor the frame shows/);
+    const photo = planClipMotion(4, "commercial", "person", { twoHander: true, lines: PAIR_WALK_LINES, plates: [true, true, true, true] });
     expect(walkHint(photo[0])).toContain("(the camera stays still — only a few steps)");
-    for (const clip of planClipMotion(4, "commercial", "deity")) expect(walkHint(clip)).toBe("performed where they stand, no steps");
+    for (const clip of planClipMotion(4, "commercial", "deity", { lines: WALK_LINES })) expect(walkHint(clip)).toBe("performed where they stand, no steps");
+  });
+
+  /**
+   * 2026-10-22 — the body never turns (history 8: "turning or rotating"), and actionUsable refuses "both turn to the
+   * camera" (TURNS). Fixed 2026-10-22: the hint a walking pair's
+   * LAST clip gives the director now ends "…, then both stop, facing the camera" (walkHint, walk_invite) — before, a director that
+   * followed it had its action thrown away for the plan's.
+   */
+  it("never asks the director for a body turn in a walk hint", () => {
+    for (const twoHander of [false, true]) {
+      for (const clip of planClipMotion(4, "commercial", "person", { twoHander, lines: twoHander ? PAIR_WALK_LINES : WALK_LINES })) {
+        expect(walkHint(clip), `${twoHander ? "pair " : ""}clip ${clip.clip + 1}`).not.toMatch(BODY_TURN);
+      }
+    }
   });
 });
 
@@ -832,8 +1046,12 @@ describe("character direction without the stillness or the travel", () => {
  * model cannot keep a drawn body through a walk: it redraws both characters on every frame. Motu and Patlu
  * (CharacterPack.walksOnlyWhenNeeded) now walk only in a clip whose words take them somewhere, and perform every other
  * clip where they stand, beside what its line is about — in the frame, the scene plan, the director and the prompt.
+ *
+ * 2026-10-22 — the owner chose this rule for EVERY cast ("move only when the words need it", prompts/motion history 8):
+ * the pack flag no longer changes anything, and every other pair, solo, real person and the scene planner now behave as
+ * Motu and Patlu do here. The tests below keep Motu and Patlu as the worked example and check the others too.
  */
-describe("Motu and Patlu walk only where a clip's words need it", () => {
+describe("every cast walks only where a clip's words need it — the Motu and Patlu rule (2026-10-10), for every cast since 2026-10-22", () => {
   const pack = getCharacterPack("duo_motu_patlu")!;
   const motuPlan = (n: number, adType = "commercial", extra: { lines?: string[]; plates?: boolean[]; choices?: (MotionChoice | null)[] } = {}) =>
     planClipMotion(n, adType, packPerformer(pack), { twoHander: true, walksWhenNeeded: true, ...extra });
@@ -847,15 +1065,24 @@ describe("Motu and Patlu walk only where a clip's words need it", () => {
     sides: subject.sides, pairNames: subject.pairNames,
   });
 
-  it("is switched on for Motu and Patlu only — the owner's choice", () => {
+  // Was "is switched on for Motu and Patlu only — the owner's choice" (2026-10-10). 2026-10-22: the owner chose it for
+  // every cast, so the flag the catalogue still carries on Motu and Patlu (@deprecated) no longer changes the plan.
+  it("applies to every cast now — the pack flag that switched it on for Motu and Patlu no longer changes anything", () => {
     expect(pack.walksOnlyWhenNeeded).toBe(true);
     // Every sale since the start carries the old id; it resolves to the same entry.
     expect(getCharacterPack("motu_patlu")!.walksOnlyWhenNeeded).toBe(true);
     for (const id of ["duo_doraemon_nobita", "duo_bheem_chutki", "duo_tom_jerry", "solo_motu", "solo_patlu", "human_duo_mixed", "kids_duo_girls", "god_ganesha", "normal_female"]) {
       expect(getCharacterPack(id)?.walksOnlyWhenNeeded, id).toBeFalsy();
     }
-    // Without the flag a drawn pair walks exactly as before.
-    expect(planClipMotion(4, "commercial", "cartoon", { twoHander: true, lines: still }).filter((c) => c.walks).length).toBeGreaterThanOrEqual(2);
+    // Without the flag, any cast stands where no line takes it anywhere — and the old switch is accepted and ignored.
+    for (const [performer, twoHander] of [["cartoon", true], ["person", true], ["cartoon", false], ["person", false], ["deity", false]] as [Performer, boolean][]) {
+      const label = `${performer}${twoHander ? " pair" : ""}`;
+      const plan = planClipMotion(4, "commercial", performer, { twoHander, lines: still });
+      expect(plan.filter((c) => c.walks).length, label).toBe(0);
+      expect(plan.every((c) => c.walksWhenNeeded), label).toBe(true);
+      expect(planClipMotion(4, "commercial", performer, { twoHander, lines: still, walksWhenNeeded: false }), label).toEqual(plan);
+      expect(planClipMotion(4, "commercial", performer, { twoHander, lines: still, walksWhenNeeded: true }), label).toEqual(plan);
+    }
   });
 
   it("performs every clip where they stand when no line takes them anywhere — every length, ad type and photo mix", () => {
@@ -932,8 +1159,9 @@ describe("Motu and Patlu walk only where a clip's words need it", () => {
     expect(turned[1].walks).toBe(true);
     const festival = motuPlan(4, "festival", { lines: ["Let's go and wish everyone!", "a", "b", "c"], choices: [{ walk: true }] });
     expect(festival[0].walks).toBe(false);
-    expect(stagingPath(festival[0], "x", true, { a: "Motu", b: "Patlu" })).toBe("both turn to the camera together where they stand; Motu greets the viewer with a namaste and a festive smile, then Patlu answers with both hands opening in a warm, festive gesture");
-    expect(stagingPath(motuPlan(1)[0], "x", true, { a: "Motu", b: "Patlu" })).toContain("then both turn to the camera where they stand and Patlu invites the viewer in with both palms open — an invitation, never a goodbye wave");
+    // 2026-10-22: facing the camera, no turn and no namaste in the action — the namaskaram is timed to the wish (wishCue).
+    expect(stagingPath(festival[0], "x", true, { a: "Motu", b: "Patlu" })).toBe("both stand side by side facing the camera with festive smiles; Motu greets the viewer while Patlu listens and smiles, the hands relaxed until the wish");
+    expect(stagingPath(motuPlan(1)[0], "x", true, { a: "Motu", b: "Patlu" })).toBe("Motu speaks with an open palm on the business name as Patlu reacts; then Patlu invites the viewer in with both palms open — an invitation, never a goodbye wave");
     // The same plan every time — the frame side and the video side build it alike.
     expect(motuPlan(4, "commercial", { lines })).toEqual(motuPlan(4, "commercial", { lines }));
   });
@@ -947,23 +1175,28 @@ describe("Motu and Patlu walk only where a clip's words need it", () => {
     expect(withMotionComposition("A frame.", motuPlan(4, "commercial", { plates: [true, true, true, true] })[1], { plate: true }))
       .toContain("both placed into it side by side at the same distance from the camera, standing on the real floor right beside what the line is about");
     const frame = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(pack, { ...options, motionPlan: stands });
-    expect(frame).toContain("so they perform each clip WHERE THEY STAND, side by side beside what its line is about");
+    // 2026-10-22: the same words for every pack — where they stand, facing the camera, each gesture on its words.
+    expect(frame).toContain("Motu and Patlu perform each\nclip WHERE they stand, side by side, beside what its line is about, facing the camera");
+    expect(frame).toContain("every step and every turn is one more thing the video model can get wrong");
     expect(frame).toContain("caught MID-GESTURE");
     expect(frame).toContain("standing side by side as each clip's 🎬 note says");
     expect(frame).not.toMatch(/every clip MOVES|caught mid-step side by side as each|for a walking clip only|They walk together/);
     const oneWalk = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(pack, { ...options, motionPlan: motuPlan(4, "commercial", { lines: ["a", "Let's go inside!", "c", "d"] }) });
     expect(oneWalk).toContain("They walk together, side by side, only in a clip whose 🎬 note walks.");
     expect(oneWalk).toContain("for a walking clip only, both caught mid-step with clear open floor ahead of them");
-    // Another cartoon pair keeps the dynamic pass's walking frames.
+    // 2026-10-22: another cartoon pair no longer keeps the dynamic pass's walking frames — it stands like Motu and Patlu.
     const doraemon = getCharacterPack("duo_doraemon_nobita")!;
     const other = CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(doraemon, { ...options, motionPlan: planClipMotion(4, "commercial", "cartoon", { twoHander: true, lines: still }) });
-    expect(other).toContain("every clip MOVES");
-    expect(other).toContain("caught mid-step side by side as each clip's 🎬 note says");
+    expect(other).toContain("perform each\nclip WHERE they stand, side by side, beside what its line is about, facing the camera");
+    expect(other).toContain("standing side by side as each clip's 🎬 note says");
+    expect(other).not.toMatch(/every clip MOVES|caught mid-step side by side as each/);
   });
 
-  it("names their outfits, films a standing clip with a short glide at one angle, and forbids morphing — Motu and Patlu only", () => {
+  // Was "… — Motu and Patlu only" (2026-10-10). 2026-10-22: every drawn pair's outfits are named, and "no morphing" is
+  // in every cast's negative.
+  it("names every drawn pair's outfits, films a standing clip with a short glide at one angle, and forbids morphing — every cast", () => {
     expect(subject.identityLock).toBe("both characters exactly as drawn, with the same designs, outfits, colours, builds and heights");
-    expect(packVeoSubject(getCharacterPack("duo_doraemon_nobita")!).identityLock).toBe("both characters exactly as drawn, with the same designs, colours, builds and heights");
+    expect(packVeoSubject(getCharacterPack("duo_doraemon_nobita")!).identityLock).toBe("both characters exactly as drawn, with the same designs, outfits, colours, builds and heights");
     const [first] = motuPlan(4, "commercial", { lines: still });
     const p = build(first);
     expect(p).toContain("Slow lateral dolly two-shot at eye level, the camera gliding a short way sideways at one distance, both seen from the same angle throughout, the background sliding gently with parallax: both stand side by side beside the counter, display or shelves");
@@ -971,19 +1204,21 @@ describe("Motu and Patlu walk only where a clip's words need it", () => {
     expect(p).not.toMatch(STILL_WORDS);
     expect(p.split("\n\n")).toHaveLength(5);
     expect(spokenLinesIn(p)).toEqual(["ఒకటి", "రెండు"]);
-    expect(words(p)).toBeLessThanOrEqual(360);
+    // 2026-10-22: ≤ 360 before — the life line and the four new negatives add about twenty words (387 measured).
+    expect(words(p)).toBeLessThanOrEqual(390);
     const photo = build(motuPlan(4, "commercial", { lines: still, plates: [true, true, true, true] })[0]);
     expect(photo).toContain("Steady two-shot at eye level from a still camera, their own performance carrying the shot: both stand side by side");
     expect(photo).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; they perform side by side where they stand, and nothing new is added to it.`);
     // A refine that keeps the line and the keep sentence is still accepted.
     expect(veoEditProblems(p, p.replace("Slow lateral dolly", "Gentle lateral dolly"))).toEqual([]);
-    // Another drawn pair is untouched.
+    // 2026-10-22: another drawn pair now stands too, and morphing is forbidden for every cast.
     const other = assembleVeoPrompt({
       aspectRatio: "9:16", plan: planClipMotion(4, "commercial", "cartoon", { twoHander: true })[0], identityLock: "x", language: "Telugu",
       speech: [{ speaker: "A", voice: "v", line: "one" }, { speaker: "B", voice: "v", line: "two" }], cast: "Both characters", castPlural: true, twoHander: true,
     });
-    expect(other).not.toContain("no morphing");
-    expect(other).toContain("they move within that place");
+    expect(other).toContain("no morphing");
+    expect(other).toContain("they perform side by side where they stand");
+    expect(other).not.toContain("they move within that place");
   });
 
   it("refuses a director's walk in a standing clip, keeps a performance in place, and tells the director why", () => {
@@ -995,30 +1230,42 @@ describe("Motu and Patlu walk only where a clip's words need it", () => {
     ]) expect(resolveDirection(first, { action }, "x", true, names).action, action).toBe(stagingPath(first, "x", true, names));
     const inPlace = "Motu points at the gold necklaces in the glass counter beside him with a whole open hand, eyes wide, as Patlu smiles; then Patlu answers with one calm palm toward them";
     expect(resolveDirection(first, { action: inPlace }, "x", true, names).action).toBe(inPlace);
-    // The first live run (2026-10-10) threw these two away for "rise" — a hand rising is Motu's own gesture, not him growing.
-    for (const live of [
-      "Motu's hands rise near his chest in disbelief, his wide-eyed gaze bouncing from the BIS hallmark gold items in the display to Patlu as he asks. Patlu, maintaining his small, certain smile, looks at Motu and places a hand on his chest, then nods confidently as he speaks",
-      "Motu turns front-on to the camera, his hands rising near his chest in disbelief at the low wastage. Patlu then turns front-on with a warm smile, opening both palms toward the viewer in a direct invitation to the main road showroom",
-    ]) expect(resolveDirection(first, { action: live }, "x", true, names).action, live).toBe(live);
+    // The first live run (2026-10-10) threw this away for "rise" — a hand rising is Motu's own gesture, not him growing.
+    const live = "Motu's hands rise near his chest in disbelief, his wide-eyed gaze bouncing from the BIS hallmark gold items in the display to Patlu as he asks. Patlu, maintaining his small, certain smile, looks at Motu and places a hand on his chest, then nods confidently as he speaks";
+    expect(resolveDirection(first, { action: live }, "x", true, names).action).toBe(live);
+    // 2026-10-22: the other live action of that run turns both bodies "front-on to the camera" — a body turn, refused
+    // now (motion TURNS; the owner's "turning or rotating"). It passed until then.
+    const turning = "Motu turns front-on to the camera, his hands rising near his chest in disbelief at the low wastage. Patlu then turns front-on with a warm smile, opening both palms toward the viewer in a direct invitation to the main road showroom";
+    expect(resolveDirection(first, { action: turning }, "x", true, names).action).toBe(stagingPath(first, "x", true, names));
     // The body rising still never passes.
     for (const grows of ["Motu rises onto his toes with excitement as Patlu nods", "Patlu rising slowly as he answers Motu"]) {
       expect(resolveDirection(first, { action: grows }, "x", true, names).action, grows).toBe(stagingPath(first, "x", true, names));
     }
     expect(CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(pack, 4)).toContain("THEY WALK ONLY WHERE THE PLANNED ACTION WALKS — in a clip whose words take them somewhere.");
-    expect(CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(getCharacterPack("duo_doraemon_nobita")!, 4)).not.toContain("THEY WALK ONLY WHERE");
+    // 2026-10-22: every pack's director is told the same.
+    for (const id of ["duo_doraemon_nobita", "solo_motu", "human_duo_mixed", "god_ganesha"]) {
+      expect(CHARACTER_VEO_SEGMENT_SYSTEM_PROMPT(getCharacterPack(id)!, 4), id).toContain("THEY WALK ONLY WHERE THE PLANNED ACTION WALKS");
+    }
   });
 
-  it("asks the scene plan to judge each clip's walk — for Motu and Patlu only — and reads it back", () => {
+  // Was "— for Motu and Patlu only —" (2026-10-10). 2026-10-22: the planner judges every cast's walk but a deity's,
+  // offers the stagings by their in-place names, and the old switch no longer changes the prompt.
+  it("asks the scene plan to judge each clip's walk — every cast but a deity — and reads it back", () => {
     const base = { clipCount: 4, adType: "commercial", subject: "Motu and Patlu", twoHander: true, cartoon: true };
     const p = SCENE_PLAN_SYSTEM_PROMPT({ ...base, walksWhenNeeded: true });
     expect(p).toContain("\"walk\" — true ONLY for a clip whose own words take them somewhere");
     expect(p).toContain("\"walk\": <true or false>");
     expect(p).toContain("approach_show (Show it where they stand)");
-    expect(p).toContain("Motu and Patlu is IN that background, standing beside what that clip's line is about");
-    const other = SCENE_PLAN_SYSTEM_PROMPT(base);
-    expect(other).not.toContain("\"walk\"");
-    expect(other).toContain("approach_show (Approach and show)");
-    expect(other).toContain("with open floor to walk on and space to present");
+    expect(p).toContain("Motu and Patlu is IN that background, standing beside what that clip's line is about, facing the camera");
+    expect(SCENE_PLAN_SYSTEM_PROMPT(base)).toBe(p);
+    const solo = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 4, adType: "commercial", subject: "the model" });
+    expect(solo).toContain("\"walk\": <true or false>");
+    expect(solo).toContain("walk_toward (Speak to the camera)");
+    expect(solo).toContain("approach_show (Show it where they stand)");
+    expect(solo).not.toContain("approach_show (Approach and show)");
+    const deity = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 4, adType: "commercial", subject: "Ganesha", deity: true });
+    expect(deity).not.toContain("\"walk\"");
+    expect(deity).toContain("A deity never walks");
     const raw = JSON.stringify({
       motive: "a jewellery shop promotion",
       clips: [
@@ -1059,7 +1306,11 @@ describe("kits saved before the dynamic pass", () => {
     expect(fresh).toContain(VEO_FRAME_LOCK);
     expect(fresh).not.toContain(LEGACY_VEO_FRAME_LOCK);
     expect(veoEditProblems(fresh, fresh.replace(/Keep [^\n]*\n?/, "")).join(" ")).toContain(`"${VEO_FRAME_LOCK}" went missing`);
-    expect(veoEditProblems(fresh, fresh.replace("Smooth side-tracking shot", "Slow arc shot"))).toEqual([]);
+    // A refine that only changes the camera words is accepted. (2026-10-22: clip 2 stands now, filmed with the short
+    // glide — the side-tracking words this used to replace are no longer there.)
+    const swapped = fresh.replace(/Slow lateral dolly|Smooth, steady push-in|Smooth side-tracking shot/, "Slow arc shot");
+    expect(swapped).not.toBe(fresh);
+    expect(veoEditProblems(fresh, swapped)).toEqual([]);
     const old = "Slow dolly in: she speaks.\n\nWith a voice, she says in Telugu:\n\"ఒకటి.\"\n\nPreserve her exact face, and keep the place, its objects, logo, colours and light exactly as in the attached frame for the whole clip.\n\nNegative prompt: No text.";
     expect(veoEditProblems(old, old.replace(" exactly as in the attached frame", "")).join(" ")).toContain(`"${LEGACY_VEO_FRAME_LOCK}" went missing`);
   });

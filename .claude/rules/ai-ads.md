@@ -10,7 +10,7 @@ paths:
   - "src/pages/tech-member/CreateAd.tsx"
   - "src/pages/shared/Tools.tsx"
   - "docs/video-category-*"
-  - "src/utils/{adPipeline,adRequirement,adSpec,assignmentFormSpec,businessFacts,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptContract,scriptQa,speakingPosition,spokenAddress,spokenNumbers,unspokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wordTiming}.ts"
+  - "src/utils/{adPipeline,adRequirement,adSpec,assignmentFormSpec,businessFacts,businessName,businessPlace,castSheet,castWardrobe,cinematicAds,clipPlacement,collectReadiness,customScript,dialogueFormat,englishWords,festivalDressing,festivalNames,festivals,fileHelpers,finalScript,frameBrand,generationEta,generationHistory,locationAssignment,overlayImage,posterConcepts,posterOccasions,posterSpec,promptAttachments,scenePlan,scriptContract,scriptQa,speakingPosition,spokenAddress,spokenNumbers,unspokenNumbers,veoRefine,voiceBrief,voiceOverFormat,voiceOverRefine,wishGesture,wordTiming}.ts"
 ---
 
 # AI ad generation (AI Ads Platform video + poster, Cinematic Ads, Gemini pipeline) — DTS-OS module context
@@ -30,7 +30,9 @@ paths:
 `utils/castWardrobe.ts` + `services/prompts/castWardrobe.ts` (the invented cast and its wardrobe stylist), `utils/scriptQa.ts` +
 `services/prompts/scriptQa.ts` (the voice-over quality gate), `utils/scriptContract.ts` + `services/prompts/wordContract.ts`
 (THE word contract: 17–20 spoken words a clip, the one counter, the one prompt block — 2026-10-15), `utils/finalScript.ts` (a pasted final
-script), `utils/assignmentFormSpec.ts` (what a job decides on the form).
+script), `utils/assignmentFormSpec.ts` (what a job decides on the form). 2026-10-22: `utils/englishWords.ts` (English words a
+Telugu script writes in English letters), `utils/wishGesture.ts` (the namaskaram's moment), `utils/festivalDressing.ts` (every
+festival frame dressed for its festival), `utils/businessName.ts` (the business's final name from its own material).
 Collection `ai_generations`. See §17.
 
 **9.8 Cinematic Ads pipeline** ✅ (rebuilt 2026-09-19). `pages/tech-admin/CinematicAds.tsx`,
@@ -135,6 +137,24 @@ cached; small images and anything the browser cannot redraw go as they are).
    unverified town, email or website removed. The BUSINESS CONTENT brief a job opens with now also
    carries the business name and the client's notes, and a corrected brief is merged into a box the
    member already edited (`mergeBriefIntoInstructions`).
+   **The business's FINAL name comes from its own material (2026-10-22 — the owner: "the sales person adds the
+   business name just for reference — it is not the final name … from the user's attached assets we need to take the
+   final business name").** The brief writes the sale's name as a reference (`utils/businessName.saleNameLine`:
+   "Business name from the sale (a reference only — the name printed on the logo, visiting card, flyer or shop board
+   is the real one): X"; `saleBusinessNameIn` also reads the old "Business name: X" line). The extraction is told
+   where the name comes from (`EXTRACTION_SYSTEM_PROMPT` "THE BUSINESS NAME — WHERE IT COMES FROM": the logo's
+   wordmark, the card, a flyer, the shop's name board in a store photo, letter for letter; the sale's name only when
+   no file shows one) and may now read the logo's NAME (still never its colours or graphics); it answers
+   `businessName` + `businessNameSource` first. `businessContentPart` no longer calls the sale's name authoritative,
+   and the logo / card / store-photo parts ask for the printed name. **Code decides** in `verifyExtraction`
+   (`finalBusinessName`): the extracted name when its source is a file of that kind that WAS attached (logo, card,
+   flyer, store photo, voice note), the extracted name when the reply gave no source but material was attached, else
+   the sale's reference, else whatever was found — and `withFinalBusinessName` writes that one name FIRST into the
+   profile (top-level `businessName`, every nested "Business Name" replaced, the reply's `businessNameSource` dropped;
+   `nameSource` and `saleReference` kept), so the script, the wish line, the label, the poster, the name board, the
+   cast seed and the stylist all read it. The core message gets "THE BUSINESS'S NAME (final …)", never the sale line
+   (`withoutSaleNameLine`), and its `businessName` is forced to the profile's; the poster analysis's brief drops the
+   sale line too. The member's own studio name (`logoNameText`, No logo) still wins for the name board / wordmark.
    **One contact list (2026-10-13 — the owner: "fake, missing or duplicate numbers" on posters and footers).** A
    TYPED number counts only when it is shaped like a phone number (a mobile, a landline with its STD code, toll-free,
    abroad with "+") or labelled as one ("Ph. No. 27654321", "Contact:" on the line above) — never when the words right
@@ -266,11 +286,32 @@ cached; small images and anything the browser cannot redraw go as they are).
    could score it. Row 4 shows "Quality check 10/10" / "best draft" / "not scored", the passes, the eight scores, and a
    **Words per clip** row counted live from the script as it stands (green 17–20, amber outside); when the script was
    changed after the check (a refine, a final script) it says so ("these scores are for the generated version").
+   **English words in English letters, and no formal words (2026-10-22 — the owner: "ఫ్లాట్స్ — flats, ఫ్లాట్ — flat,
+   స్లాట్స్ — slots … write this English words"; "don't add complex words like ఏర్పాట్లు — add Arrangements"; scope "your
+   words + similar ones").** `utils/englishWords.ENGLISH_WORDS`: flat(s), slot(s), plot(s), villa(s), apartment(s),
+   booking(s), arrangement(s) (+ "arrange చేశాం" for ఏర్పాటు చేశాం) and facilities (for సౌకర్యాలు / సదుపాయాలు / వసతులు — only
+   the plurals: సౌకర్యం alone means comfort). A Telugu script writes them in English letters INSIDE the Telugu line, like
+   `mariyu`, a case ending kept joined ("flatsలో", "arrangementsతో" — the word count never changes). Asked in the prompts
+   (`englishWordsRule` through `prompts/everydaySpeech`; it starts "ONLY these words are written in ENGLISH letters" and
+   names what STAYS in Telugu letters — ఓపెన్, బ్యాంక్ లోన్, పార్కింగ్, సెక్యూరిటీ, ఆఫర్, షాప్, టూ బీహెచ్‌కే (never 2BHK) —
+   because live run 1 took the list as licence for every English word: 2BHK, open, bank loan came back in Latin, the
+   validator refused each and the run stopped on the contract) and every exception to "no Latin letters"
+   (`latinLettersException`: "except mariyu and ONLY these English words … every other English word stays in Telugu
+   letters" — `prompts.ts`, `prompts/refine`, `prompts/characterAd`, `prompts/scriptQa`); corrected in code on every
+   final line (`withEnglishWords`, run by `speakableLine`), and skipped by the validator and the judge like `mariyu`
+   (`withoutFixedWords`). **The words that stay in Telugu letters are enforced in code too** (`withTeluguLetters`, one
+   list `TELUGU_LETTER_WORDS` that also writes the prompt's list): open, bank, loan(s), parking, car, security, offer(s),
+   free, service(s), shop and BHK written in Latin go back to Telugu letters, "2BHK" / "3 BHK" → "టూ / త్రీ బీహెచ్‌కే", a
+   glued "రెండుBHK" gets its space, a Telugu ending stays joined — run by `speakableLine` BEFORE numbers become words
+   (live full run 2 shipped "రెండుBHK, మూడుBHK … open plots" at 7/10 with the prompt rule alone). Telugu only. `prompts/everydaySpeech` also gained 13 formal words with what people say
+   (అత్యాధునిక → లేటెస్ట్, సరసమైన → తక్కువ, విశాలమైన → పెద్ద, సౌకర్యవంతమైన, ఆహ్లాదకరమైన, పరిష్కారం → సొల్యూషన్, సౌలభ్యం → ఈజీ,
+   సమగ్ర → పూర్తి, నైపుణ్యం → అనుభవం, కల్పిస్తున్నాం → ఇస్తున్నాం, సమీపంలో → దగ్గర్లో …).
 4. For real locations: review the client's photos and assign them to clips round-robin (a photo is
    reused, never replaced by an invented zone); each is the clip's **background plate**
    (`utils/locationAssignment.backgroundPlateRule` / `withBackgroundPlate`, `prompts/realLocation`):
    kept exactly as photographed, only enhanced to 8K, the cast placed into it, and attached to the
-   frame writer's call. Otherwise the **scene
+   frame writer's call — in a festival ad the festival's decorations are ADDED onto its real walls, counters and floor,
+   nothing removed or moved (the plate rule's festival option, 2026-10-22). Otherwise the **scene
    plan** (`prompts/scenePlan.ts`, `utils/scenePlan.ts`): the video's motive (annadanam, temple,
    birthday, invitation, promotion…), its world, and one DIFFERENT background per clip from that
    clip's line; retried once if `repeatedBackgrounds` finds a repeat.
@@ -323,11 +364,37 @@ cached; small images and anything the browser cannot redraw go as they are).
    or renumbered CONTACT line is replaced, and a saved label's old WhatsApp sentence is updated). The poster cannot fail on the model
    any more (its fallback is code); a Missing row and its Generate stay for an unexpected error. Frames the model skipped are written
    for exactly those clips (never a copy of the last frame), and the retry carries the images.
+   **The festival's theme on every frame, the label and the poster (2026-10-22 — the owner: "for the festival videos the
+   bottom label, frame background and the poster are not getting the related festival theme").** Before, the decorations
+   reached one frame variant (the single model's first frame): the scene planner had only the festival's name, a pack got
+   one line, a client photo was told to change nothing, and the label and poster read a short theme. Now ONE look per
+   festival, built from the catalogue (`prompts.festivalThemeFor` / `festivalLook` → `FestivalLook {name, known, decorations
+   (the bold items of environmentDecorations, unread before), colours, symbols, floor, light, mood}`, `festivalLookLine`;
+   new themes Janmashtami, Sri Rama Navami, Karthika Pournami, Akshaya Tritiya; Bakrid reads Eid's; an occasion with no
+   look of its own is named with its own traditions (`FestivalTheme.generic`) — never another festival's mango leaves and
+   brass lamps; the fixed Sankranthi example in the frame prompt is gone; "no decorative wall content" allows the
+   festival's). **Frames:** every finished frame is stamped in code `FESTIVAL DRESSING — <FESTIVAL>`
+   (`utils/festivalDressing.withFestivalDressing`, after the name board, before the 📎 line; idempotent): the decorations,
+   floor, light and colours, the greeting clip the most festive, the business recognisable in the others, a plate's
+   decorations added and nothing moved. The scene plan and the pack prompt get `festivalLook` too, and the attire rules
+   follow the festival only in a festival ad. **Label:** `prompts/lowerThird` leads with a FESTIVAL THEME section (its
+   accents and mood from `labelDesignInputs`) and FINAL CHECK 8 asks for it. **Poster:** a festival poster carries one
+   "Festival:" line right after the owner's three sentences (`utils/posterAdType.posterFestivalLine`: the festival's own
+   look worked into the one concept, its usual greeting allowed as the headline; `conceptPosterPrompt`, `PROMPT_SHAPE`,
+   `readConceptPosterPrompt`, `posterPromptProblems` know it; a refine keeps it; geminiService `posterFestivalFor`). The
+   three sentences never change.
 6. Direct each clip's action and camera (`prompts/motion.ts`) → **Veo 3 prompts**. **Motion policy
-   (2026-10-05, the dynamic pass — the owner's brief after the morning's prompts still gave static Flow
-   clips): every clip is a real commercial shot — a physical action that travels or turns and ONE camera
-   move that follows it, never a talking portrait — inside what its frame shows; the camera NEVER moves
-   backward** (the owner: "no walk-back, never do it" — no walk-back tracking shot, no pull-out or dolly out).
+   (2026-10-22, history 8 in `motion.ts` — the owner: "the video output is getting the characters unwanted, irrelevant
+   movements and turning or rotating"; the owner chose "move only when the words need it", for EVERY cast): every clip
+   is still a filmed shot — ONE camera move and a performance, never a frozen portrait — but nothing moves unless the
+   line calls for it. The cast faces the camera and acts the line out WHERE THEY STAND, every gesture on the words it
+   belongs to (an open palm on the name, the product on the words about it, a hand on the chest on the promise, open
+   palms on the invitation, a namaskaram exactly on the festival wish), the hands settling between; they WALK only in a
+   clip whose own words take them somewhere; nobody turns round, spins, rotates or turns away; the arc is retired; the
+   camera NEVER moves backward** (the owner, 2026-10-05: "no walk-back, never do it" — no walk-back tracking shot, no
+   pull-out or dolly out). This replaces the 2026-10-05 dynamic pass (every clip "a physical action that travels or
+   turns", most clips walking, the arc), whose walking, "turn and present", "turns to the lens on the key words",
+   gestures "toward what they pass" and "natural body movement throughout" were what asked for the unwanted movement.
    The prompt directs MOTION and never describes the frame (the attached frame is the first frame and the
    only picture of the place). History in `motion.ts`: on 2026-10-01 nobody walked (a 1,568-word prompt whose
    "No street / road / door" lines named the forbidden places 15–18 times); the morning of 2026-10-05 gave one
@@ -338,34 +405,55 @@ cached; small images and anything the browser cannot redraw go as they are).
    **The prompt is five short parts** (`assembleVeoPrompt`): `<ratio> video, one continuous 8-second shot
    that starts from the attached frame.` · `<camera + shot>: <action>.` + (a pair) "The framing drifts a little
    toward whoever is speaking, never closer." (one speaker: "The framing favours <name>") + the life line
-   (`movementNote`: "Natural body movement throughout, with eye contact on the key words — clothes and hair move
-   with every step; anyone already in the background carries on naturally"; a cartoon: its own mannerisms; a
-   deity: slow, majestic blessings) · the voice (`With a very sweet, warm, confident female voice, she says in
+   (`movementNote`, 2026-10-22: "Calm, purposeful movement: each gesture lands on the words it belongs to, then the
+   hands settle; the body stays facing the camera, with eye contact on the key words — clothes and hair move naturally
+   (with every step, on a walk); anyone already in the background stays in place with only small, natural movements"; a
+   pair "both keep facing the camera"; a cartoon: its signature gestures, each on its words; a deity: slow, majestic
+   blessings) + on a line that wishes, the namaskaram cue (`wishCue`, below) · the voice (`With a very sweet, warm, confident female voice, she says in
    Telugu:` + the line in quotes; a pair: `0–4s — <name> (on the LEFT of the frame), with <voice>, says in …:`
    per line + "Only the one speaking moves their lips…"; a one-line pair clip: "Only <name> speaks; the other
    keeps the mouth closed and reacts"; a catalogue voice loses its trailing role text, `withVoice`) · ONE keep
    sentence that lets them move (`Keep <identityLock>, and the same place, logo, colours and light as the
-   attached frame; she moves within that place, and nothing new is added to it.` — `VEO_FRAME_LOCK` "as the
+   attached frame; she moves within that place, and nothing new is added to it.` on a walking clip; in place (most
+   clips since 2026-10-22) "she performs where she stands, facing the camera" (a pair "they perform side by side where
+   they stand", a named single performer "Ganesha performs in place, facing the camera") — `VEO_FRAME_LOCK` "as the
    attached frame"; a client photo: "this real place exactly as the attached frame shows it — the same layout,
    fixtures, products, signage, logo, colours and light"; a pair adds its sides, "— Motu on the left and Patlu
    on the right —" (`packVeoSubject.sides`), and `Heights never change: <scaleAnchor>`) · `Negative prompt: No
    text or subtitles on screen, no background music or echo, no cuts, no camera shake, no frozen or static
-   pose, no change of location or background, no unnatural movement, no extra people, no goodbye wave` (+ "no
-   narrator or new voices" for drawn characters, "no two voices at once" for a pair, "no foreign accent" for
-   English; a clip performed in place says "no frozen pose"). About 170–190 words for one presenter and
-   310–370 for a pair (two voices + the height anchor; Motu & Patlu with a director action ~350–380, live 2026-10-10). It never re-describes the frame, never names a place
+   pose, no change of location or background, no unnatural movement, no turning around or rotating, no turning away
+   from the camera, no random or repeated gestures, no morphing, no extra people, no goodbye wave` (the four after
+   "unnatural movement" since 2026-10-22, "no morphing" for every cast; + "no narrator or new voices" for drawn
+   characters, "no two voices at once" for a pair, "no foreign accent" for English; a clip performed in place says "no
+   frozen pose"). About 204–252 words for one presenter in the unit pipeline and 248–261 in the live run of 2026-10-22
+   (a Telugu festival greeting clip with its namaskaram cue is the longest); ~372–387 for Motu & Patlu (unit
+   pipeline). It never re-describes the frame, never names a place
    or object it must not show, and never lists forbidden camera moves. `identityLock` is a short phrase ("her
    exact face, hair, outfit and height"; `modelVeoSubject`, `packVeoSubject`).
-   **Actions** (`STAGINGS`, each with a single, a pair and a deity template, a frame `start` / `pairStart`
-   and `walks`): `walk_toward` (Walk toward the camera — a slow walk across the open floor, talking,
-   gesturing at what they pass), `walk_across` (Walk along the display — along the counter, display or
-   shelves, body angled to the camera), `approach_show` (Approach and show — a few steps to the product,
-   then lift / present it), `walk_stop_present` (Walk, stop and explain — the promise, hand on the chest),
-   `turn_present` (Turn and present — in place, always on a moving camera), `walk_invite` (Walk in and
-   invite — the last clip; an invitation, **never a goodbye wave**). Role actions (`ROLE_ACTION`): the
-   festival wish (turn to the camera with a namaste; a pair after a few steps together) and the one-clip ad
-   (a walk that ends inviting). A deity performs each of its actions in place under a blessing name
-   (`deityName`: Bless the place / Bless what it offers / Bless and welcome), so no 🎬 note asks it to walk.
+   **Actions** (`STAGINGS`, each a BEAT with a walking form, an in-place form for one performer (`inPlace`, 2026-10-22)
+   and for a pair (`pairInPlace`), a deity template, a frame `start` / `pairStart` and `walks`): `walk_toward` (Walk toward
+   the camera — in place: Speak to the camera), `walk_across` (Walk along the display — in place: Present the display),
+   `approach_show` (Approach and show — in place: Show it where they stand), `walk_stop_present` (Walk, stop and explain —
+   the promise, hand on the chest; in place: Explain to the camera / Explain where they stand), `turn_present` (now
+   "Present where they stand", `walks: false`; the body no longer turns — a saved plan's key still reads), `walk_invite`
+   (Walk in and invite — the last clip; in place: Invite where they stand; **never a goodbye wave**). Role actions
+   (`ROLE_ACTION`): the festival greeting ("Greet the viewer": facing the camera with a festive smile, the hands relaxed
+   until the wish — never a walk) and the one-clip ad. A deity performs each of its actions in place under a blessing
+   name (`deityName`: Bless the place / Bless what it offers / Bless and welcome), so no 🎬 note asks it to walk.
+   **The namaskaram on the wish words (2026-10-22 — the owner: "when she is saying the wishes, the cast need to do the
+   namaskaram … exactly when she is saying").** It used to open the greeting clip, five seconds before a Telugu greeting
+   reaches its శుభాకాంక్షలు. Now `wishCue` (`utils/wishGesture.wishMoment`: the wish words — శుభాకాంక్షలు, "wishes", "Happy
+   Diwali", शुभकामनाएं … — and the two words before them, placed on the speaker's window by their position among the
+   spoken words, `speakingWindow`: [0, 8] or a pair speaker's half) writes "Exactly as she says the festival wish (about
+   6–8s), she joins both palms together at the chest in a namaskaram with a slight, respectful bow of the head and holds
+   it through those words, then lowers her hands with a warm smile — the hands stay relaxed until then." A pair joins
+   palms together on the line of whoever says the wish; a deity raises the blessing palm instead; the greeting clip
+   always gets it (untimed when no wish words are found), any other clip only when its line wishes. The greeting's frame
+   is facing the camera with the hands relaxed and NOT yet joined (`WISH_START`). The director may never write a
+   namaste, folded hands or a bow itself (`NAMASTE`, refused by `actionUsable`). The real-person templates carry it too:
+   "with appropriate gestures — and exactly as she says the wishes (about …), a namaskaram: both palms joined at the
+   chest with a slight bow" (`assembleRealPersonVeoPrompt`), and for two owners "Exactly as <the man on the LEFT> says
+   the wishes, both join their palms at the chest in a namaskaram with a slight bow."
    A plan saved before this pass is read with today's keys (`stagingKeyOf`: stand_present → walk_stop_present,
    show_product → approach_show, present_space → walk_across, walk_and_talk → walk_toward, welcome_invite →
    walk_invite; the retired cameras are dropped).
@@ -373,49 +461,50 @@ cached; small images and anything the browser cannot redraw go as they are).
    the camera): `push_in` (Push In — "as she comes closer, ending in a medium shot / medium close-up", or "to a
    close-up of the product, the focus settling on her face"), `side_track` (Side Tracking Shot — travels
    sideways WITH a walk, the background sliding past with parallax; only on a walk), `lateral_dolly` (Lateral
-   Dolly — glides sideways past them), `arc` (Arc Shot — curves a short way round one presenter, front to
-   three-quarter), `static_locked` (Still Camera — ONLY in a client's photo and ONLY while the cast walks).
-   Retired: the walk-back `tracking`, `rack_focus`, the `handheld` float. Never: walk-back, pull-out / dolly
+   Dolly — glides a short way sideways at one distance, the cast seen from ONE angle the whole clip), `static_locked`
+   (Still Camera — ONLY in a client's photo: while the cast walks, or a pair standing in it). Retired: the walk-back
+   `tracking`, `rack_focus`, the `handheld` float and, 2026-10-22, the `arc` (curving round the presenter reads as the
+   PERSON rotating; kept only so a saved plan reads, no table offers it). In place (`IN_PLACE_CAMERAS`): one presenter
+   or a deity a slow push-in or the short glide; a pair only the glide; in a client's photo a push-in for one performer,
+   a still camera for a pair. Never: walk-back, pull-out / dolly
    out, crane, pedestal, orbit, pan, tilt, reveal, POV, over-the-shoulder, follow-from-behind. `SHOT_ANGLES`:
    eye level, slightly low, slightly high for one presenter; a pair always eye level, two children "at the
    children's eye level" (`packVeoSubject.eyeLevel`).
    **Who may do what** (`castKindOf`; the tables `CAMERAS` / `PHOTO_CAMERAS` — an action a cast may not do has
-   no camera there): one presenter or one cartoon — every action; push-in, side track, lateral dolly, arc. A
-   human pair, Kids and every drawn pair (Motu & Patlu since this pass) — walk only TOGETHER, side by side,
-   along or across the floor, NEVER toward the camera (no `walk_toward`), filmed only sideways at one distance
-   (`PAIR_MOVES`: side track, lateral dolly) so neither one grows. A deity never walks (push-in, arc, lateral
-   dolly). A client's photo (a plate) is never shown beyond its edges: a presenter gets a push-in, or a still
+   no camera there): one presenter or one cartoon — every action; push-in, side track (on a walk), lateral dolly. A
+   human pair, Kids and every drawn pair — walk (when their words need it) only TOGETHER, side by side, along or across
+   the floor, NEVER toward the camera (no `walk_toward`), filmed only sideways at one distance (`PAIR_MOVES`: side
+   track, lateral dolly) so neither one grows. A deity never walks (push-in, lateral dolly). A client's photo (a plate) is never shown beyond its edges: a presenter gets a push-in, or a still
    camera while walking; a pair only walks across it on a still camera.
-   **Motu & Patlu walk only where a clip's words need it (2026-10-10 — the owner: "in all the clips they are walking,
-   because of it the AI sometimes changes their heights and their attire"; scope chosen by the owner: Motu & Patlu
-   only, no cap).** The entry carries `CharacterPack.walksOnlyWhenNeeded` (catalogue TS + JSON); `motionOptionsFor`
-   passes it as `planClipMotion(…, { walksWhenNeeded })` to the frame side and the video side alike. Each clip's BEAT is
-   chosen as for any pair, but it walks only when its words take them somewhere: the scene plan's per-clip `walk`
-   judgment where there is a scene plan (it read the line and planned the background — `SCENE_PLAN_SYSTEM_PROMPT`
-   `walksWhenNeeded` asks for it, offers the stagings by their in-place names and stands them "beside what that clip's
-   line is about"), else `lineNeedsWalk` (always in the client-photo path): English "let's go / walk / look around",
+   **Every cast walks only where a clip's words need it (Motu & Patlu since 2026-10-10 — the owner: "in all the clips
+   they are walking, because of it the AI sometimes changes their heights and their attire"; EVERY cast since
+   2026-10-22, history 8, no cap).** `planClipMotion` decides it for every plan; its `walksWhenNeeded` option and
+   `CharacterPack.walksOnlyWhenNeeded` (still on the Motu & Patlu entry) are kept for older callers and no longer change
+   anything (geminiService no longer passes it; `@deprecated`). Each clip's BEAT is chosen as before, but it walks only
+   when its words take them somewhere: the scene plan's per-clip `walk` judgment where there is a scene plan (it read the
+   line and planned the background — `SCENE_PLAN_SYSTEM_PROMPT` asks it for every cast (`WALK_RULE`), offers the
+   stagings by their in-place names and stands them "beside what that clip's line is about"), else `lineNeedsWalk`
+   (always in the client-photo path): English "let's go / walk / look around",
    "follow me", "come with me", "come this way"; Telugu వెళ్దాం / పోదాం / పదండి / పద (a word of its own) / చలో / నాతో రా /
    చుట్టూ చూద్దాం and "వెళ్లి … -దాం" (వెళ్లి చూద్దాం — never "వెళ్లి చూడండి", said to the viewer); Hindi चलो / चलिए; Tamil
    போலாம்; Kannada ಹೋಗೋಣ; Malayalam പോകാം. An invitation to the VIEWER (ఈరోజే రండి, "come inside our showroom") never walks,
    nor does the festival greeting; there is no "most clips walk" rule. A beat planned in place that needs a walk walks
-   along the floor (`walk_across`). Every other clip is the same beat performed where they stand
-   (`Staging.pairInPlace`: Present the display · Show it where they stand · Explain where they stand · Invite where they
-   stand; `ROLE_ACTION.pairInPlace` for the greeting and the one-clip ad), filmed with `IN_PLACE_PAIR_CAMERAS`: a short
-   lateral glide "both seen from the same angle throughout" (a glide PAST them turns a drawn body, and it is redrawn), or
-   in their photo a still camera, "their own performance carrying the shot". Their frames are composed STANDING side by
-   side, mid-gesture, beside what the line is about (`pairInPlace.pairStart`; the plate stamp "standing on the real
-   floor right beside what the line is about"); the pack frame prompt says they perform WHERE THEY STAND and walk only
-   in a clip whose 🎬 note walks; the director is told "THEY WALK ONLY WHERE THE PLANNED ACTION WALKS" and why
-   (`actionUsable` already refuses a walk in a no-steps clip). Their video prompt's keep sentence says "they perform side
-   by side where they stand" (a walking clip: "they move within that place"), the identity lock names their OUTFITS
-   ("the same designs, outfits, colours, builds and heights") and the negative adds "no morphing" — Motu & Patlu only.
-   Every other pair (the other eight cartoon duos, human duos, Kids) walks exactly as before.
-   **Choice** (`planClipMotion`, deterministic): clip 1 opens on the move (`walk_toward`; a pair `walk_across`;
-   a deity `turn_present`); the last clip `walk_invite`; a festival's clip 1 the greeting; in between the scene
-   plan's choice where this cast may take it, else the line (`stagingForLine`: product → approach & show; place
-   → walk along; trust → walk, stop, explain; a deity → turn & present), else a rotation that never repeats the
-   neighbour; then at least half the clips of a cast that may walk do walk (a clip turned in place walks
-   instead). Each clip's camera is the first of its preference list (the scene plan's first where it fits)
+   along the floor (`walk_across`). Every other clip is the same beat performed where they stand (`Staging.inPlace` for
+   one performer, `pairInPlace` for a pair; `ROLE_ACTION` in-place forms for the greeting and the one-clip ad), filmed
+   with `IN_PLACE_CAMERAS` (above; a glide PAST a pair turns a drawn body, and it is redrawn). Their frames are composed
+   STANDING facing the camera, mid-gesture, beside what the line is about (`inPlace.start` / `pairInPlace.pairStart`;
+   the plate stamp "standing on the real floor right beside what the line is about"); every pack's frame prompt says
+   each clip is performed IN PLACE (one performer: "performs each clip IN PLACE, standing beside what its line is about,
+   facing the camera"; a pair "WHERE they stand, side by side") and walks only in a clip whose 🎬 note walks; the
+   director is told "THEY WALK ONLY WHERE THE PLANNED ACTION WALKS" and why (`actionUsable` refuses a walk in a no-steps
+   clip). Motu & Patlu's identity lock still names their OUTFITS ("the same designs, outfits, colours, builds and
+   heights"); their catalogue lines now have both face the camera together and look to the camera only in the final clip
+   (TS + JSON).
+   **Choice** (`planClipMotion`, deterministic): clip 1's beat is `walk_toward` (in place: Speak to the camera; a pair
+   `walk_across`; a deity `turn_present`); the last clip `walk_invite`; a festival's clip 1 the greeting; in between the
+   scene plan's choice where this cast may take it, else the line (`stagingForLine`: product → show; place → present the
+   display; trust → explain; a deity → present), else a rotation that never repeats the neighbour; then each clip walks
+   only when its words need it (above — the old "at least half the clips walk" step is gone). Each clip's camera is the first of its preference list (the scene plan's first where it fits)
    that differs from the neighbour's — with a backward pass (`open[i]`) so a pair's one-move turn in place never
    forces a repeat. The frame side (`generateAdAssets` → `motionPlan`) and the video side (`writeVeoPrompts`)
    build the SAME plan from the same SPOKEN words — never the speakers' names (a cast-sheet name like "the woman
@@ -479,24 +568,29 @@ cached; small images and anything the browser cannot redraw go as they are).
    location; the tab chips show "👤 1·2" / "👤" (and "+👤" beside a store thumbnail); the copy toast and tooltip say
    "then attach owner photo 1, then owner photo 2". A store photo's zone stops at the "  +  " join (it used to swallow
    the owner text).
-   **Frames are composed for the move, caught mid-movement** (`withMotionComposition`, `compositionFor`): a
-   walking clip's still is caught MID-STEP (one foot forward, arms in a natural swing, clear floor in the
-   direction of the walk; a pair both mid-step side by side at one distance; a deity mid-blessing in place), and
-   every note ends "never a stiff, posed stance" — Veo continues the pose a frame starts from. The model frame
-   prompt says so ("READY FOR ITS CLIP … caught MID-MOVEMENT", "A WALK NEEDS ITS FLOOR", "THE THING TO SHOW IN
-   VIEW"), a pack's frame prompt too ("every clip MOVES"), and the clip-1 hero frame is no longer "the formal
-   front-clasp corporate pose": `prompts.HERO_FRAME_POSE` ("a natural, open welcoming pose caught as if about to
-   step forward — the weight on one foot, one hand opening in a small welcoming gesture at waist height …") is
-   every hero-pose rule (`MAIN_FRAME_SYSTEM_PROMPT`, `MULTI_FRAME_SYSTEM_PROMPT`, the attire directives in
-   `geminiService`). A client's photo keeps its own framing; the cast is placed into it mid-step.
+   **Frames are composed for the move, caught mid-movement** (`withMotionComposition`, `compositionFor`): a clip
+   performed in place (most, since 2026-10-22) is caught standing facing the camera MID-GESTURE beside what its line is
+   about; a walking clip's still is caught MID-STEP (one foot forward, arms in a natural swing, clear floor in the
+   direction of the walk; a pair both mid-step side by side at one distance); a deity mid-blessing in place; the
+   greeting facing the camera, hands relaxed and not yet joined; every note ends "never a stiff, posed stance" — Veo
+   continues the pose a frame starts from. The model frame prompt says so ("READY FOR ITS CLIP: follow each clip's 🎬
+   note exactly — caught MID-GESTURE … standing facing the camera with a hand mid-gesture toward what the line is about
+   (mid-step only where the note walks)", "THE THING TO SHOW IN VIEW"), every pack's frame prompt too (in place, above),
+   and the clip-1 hero frame is `prompts.HERO_FRAME_POSE` ("a natural, open welcoming pose facing the camera — the weight
+   relaxed, one hand opening in a small welcoming gesture at waist height and the other relaxed at the side …"; until
+   2026-10-22 "caught as if about to step forward"), every hero-pose rule (`MAIN_FRAME_SYSTEM_PROMPT`,
+   `MULTI_FRAME_SYSTEM_PROMPT`, the attire directives in `geminiService`). A client's photo keeps its own framing.
    **Director** (one `standard` Gemini call per run, `VEO_DIRECTION_SYSTEM_PROMPT`; per clip the PLANNED ACTION
    with where it walks (`walkHint`), the fixed CAMERA and the gesture intent): returns `[{ clip, action }]` —
    the walk path, what they pass and gesture at, specific to the frame (an object named only when the frame
    prompt puts it in view); a pair's two halves, led by whoever speaks (`pairNamesOf`). `resolveDirection` keeps
    it only if `actionUsable`: ≤60 words (a pair 80); no leaving, door / entrance / outside, a tour of the WHOLE
    place or seven+ steps, climbing, a frozen person, running, walking or stepping backward, a cut or slow
-   motion, a named camera move or pull-back, a wave, a light change; a walking clip must walk (a pair: "both /
-   together / side by side") and an in-place clip must not; a pair never leans in, rises (a HAND, arm, palm or brow rising is a gesture — since 2026-10-10), jumps, stretches or
+   motion, a named camera move or pull-back, a wave, a light change, and since 2026-10-22 a body turn (`TURNS`: turn
+   round / away, spin, rotate, pivot, swivel, twirl, sway — a head, face, gaze, palm or hand turning is allowed) or a
+   namaste / folded hands / bow (`NAMASTE` — code places the namaskaram); the walk hint a walking pair's last clip gives
+   ends "then both stop, facing the camera" (`walkHint`, never "turn to the camera"); a walking clip must walk (a pair:
+   "both / together / side by side") and an in-place clip must not; a pair never leans in, rises (a HAND, arm, palm or brow rising is a gesture — since 2026-10-10), jumps, stretches or
    walks toward the camera (`PAIR_TOWARD`). The word lists match a PERSON, not things in the frame (a
    mannequin, a temple statue, a saree's full length, "runs her hand along the silk" are allowed). Quoted
    words are removed, and "the model" becomes she / he. Otherwise the plan's own action (`stagingPath`). The
@@ -589,7 +683,9 @@ applied and the member is told the count),
 `refineVeoPrompts` (plan → JSON edit → check: `VEO_REFINE_PLAN_SYSTEM_PROMPT` understands the request
 and compares it with each prompt — it knows both the 2026-10-05 five-part prompt and the older headed one a
 saved kit may hold, and the dynamic-pass rules: one move, never backward, a pair only sideways, walks on the
-frame's own floor; `utils/veoRefine` refuses an edit that changes the spoken line, loses a section or drops the
+frame's own floor; since 2026-10-22 also: the cast faces the camera and never turns, spins or rotates (the arc is
+retired), every gesture belongs to its words, a walk only where the clip's words need it, the namaskaram on the wish
+words; `utils/veoRefine` refuses an edit that changes the spoken line, loses a section or drops the
 keep sentence (`VEO_FRAME_LOCK` "as the attached frame", or an earlier prompt's `LEGACY_VEO_FRAME_LOCK`
 "exactly as in the attached frame"); `spokenLinesIn` reads both the new
 `… says in Telugu:` and the old `… lip-synced:` lines; one retry; the UI alert says what was understood). Copy
@@ -774,6 +870,21 @@ attribution (`Clip.voScript` is one string).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
+- **AI ads — English words in a Telugu voice-over (owner, 2026-10-22):** flat(s), slot(s), plot(s), villa(s),
+  apartment(s), booking(s), arrangement(s) ("arrange చేశాం") and facilities are written in ENGLISH letters inside the
+  Telugu line, like `mariyu`, a Telugu ending kept joined ("flatsలో"); every other English word stays in Telugu letters
+  (ఓపెన్, బ్యాంక్ లోన్, పార్కింగ్, టూ బీహెచ్‌కే …). Both are corrected in code on every final line, a member's pasted script
+  included. Formal Telugu words nobody says to a customer (ఏర్పాట్లు, సౌకర్యాలు, అత్యాధునిక, సరసమైన, విశాలమైన …) are
+  replaced by what people say.
+- **AI ads — the festival's theme (owner, 2026-10-22):** a festival video's every frame, its bottom label and its
+  poster carry THAT festival's own decorations, colours, floor and light (the greeting frame the most festive, the
+  business still recognisable in the others); a client's own photo gets the decorations added onto its real walls and
+  floor, nothing in it removed or moved; an occasion with no look of its own is dressed in its own traditions, never
+  another festival's. A poster's three sentences never change — the festival goes in one "Festival:" line.
+- **AI ads — the business's name (owner, 2026-10-22):** the name the salesperson typed is a reference only; the final
+  name is the one printed on the attached logo, visiting card, flyer or shop board (or said in the voice note), letter
+  for letter, and the script, label, poster, name board and cast all use that one name. With no such file, the sale's
+  name is used. The member's own studio name ("No logo" name) still wins for the name board / wordmark.
 - **AI ads — 17–20 spoken words in every clip (owner, 2026-10-15):** every clip of every voice-over the platform WRITES
   holds 17–20 spoken words — 18–19 preferred, exactly 20 allowed, 21 never — for every cast (one presenter, the real
   owner or two owners, a human pair, two children, a cartoon solo or pair, a deity, a custom character), for commercial
@@ -821,12 +932,18 @@ attribution (`Clip.voScript` is one string).
   for the cast the kit was made for, whatever the form says now. A member's own script must say who speaks each
   line, and both people must speak somewhere in it.
 
-- **AI ads — Motu & Patlu walk only where it is needed (owner, 2026-10-10):** in a Motu & Patlu video the two walk
-  only in a clip whose own words take them somewhere ("let's go inside and see", "follow me"); in every other clip —
-  a question, a product, a price, a promise, the greeting, the invitation to the viewer — they act the line out
-  where they stand, side by side, beside what it is about, so the video keeps their heights and their clothes.
-  There is no limit on how many clips may walk when the words need it. Only Motu & Patlu; every other cast moves as
-  in the video-motion rule below.
+- **AI ads — move only when the words need it (owner, 2026-10-22; Motu & Patlu since 2026-10-10):** in every video,
+  for every cast, the cast faces the camera and acts each line out where they stand, beside what it is about, each
+  gesture on the words it belongs to; they walk only in a clip whose own words take them somewhere ("let's go inside
+  and see", "follow me") — never in the greeting, never a deity — with no limit on how many clips may walk when the
+  words need it. Nobody turns round, spins, rotates or turns away from the camera, and no gesture comes without its
+  words. The camera still makes one move (a push-in or a short sideways glide at one distance; a side track with a
+  walk), never backward; the arc shot is retired.
+- **AI ads — the namaskaram on the wish (owner, 2026-10-22):** when the festival wish is said, the cast joins both
+  palms in a namaskaram exactly on those words (the prompt names the moment by meaning and by time, e.g. "about
+  6–8s"), the hands relaxed before it; a pair together, on the line of whoever says the wish; a deity raises the
+  blessing palm; the Real Owner Face and Duo templates say it too. Any clip whose line wishes gets it, the greeting
+  clip always.
 - **AI ads — a real person's face (owner, 2026-10-08):** a Real Owner Face ad shows the client exactly as their
   photograph does — face, skin, hair, beard and forehead — for a man and a woman: nothing is added to the face
   (no bindi, tilak, kumkum, sindoor, nose ring or make-up the photograph does not show; a mark the photograph
@@ -851,21 +968,17 @@ attribution (`Clip.voScript` is one string).
   profession's uniform, bridal, costume or revealing clothes; children never a saree, a suit, heels or
   make-up. For the Kids, "Matches the ad" (the old Smart casual) lets the ad choose — a school's uniform, a
   sports kit, party wear — and a festival, temple, jeweller or silk house dresses them in silk.
-- **AI ads — video motion (2026-10-05, the dynamic pass; the owner's brief and approval, replacing that
-  morning's bounded-walk rule and the motion part of the 2026-10-01 rule below):** no clip is a talking
-  portrait — every clip is a physical action that travels or turns and one camera move that follows it,
-  inside what its frame shows, in a short prompt (camera + action + life, voice, keep sentence, one-line
-  negative) that never describes the frame. **The camera never moves backward** — no walk-back tracking shot,
-  no pull-out (the owner: "no walk-back, never do it") — and never cranes, orbits, pans, tilts or reveals. One
-  presenter walks in most clips (toward the camera on a push-in, along the display on a side track, to the
-  product, a few steps before the promise, the last steps in to invite) and may be filmed with a push-in, side
-  track, lateral dolly or short arc; a human pair, two children and drawn pairs walk only (Motu & Patlu
-  themselves, since 2026-10-10, only where a clip's words need it — the rule above)
-  together, side by side, along or across the floor — never toward the camera — filmed only sideways at one
-  distance, the framing following whoever speaks; deities never walk (push-in, arc, glide); in the client's own
-  photo the camera only pushes in or holds while the cast walks. Frames are composed caught mid-movement, and
-  the clip-1 hero frame is an open pose about to step forward (no more front-clasp). Members use Flow's Frames to
-  Video with the frame as the start frame, never Ingredients to Video.
+- **AI ads — video motion (2026-10-05, the dynamic pass; its walking and turning replaced on 2026-10-22 by "move only
+  when the words need it", above):** no clip is a frozen portrait — every clip is a performance and one camera move,
+  inside what its frame shows, in a short prompt (camera + action + life, voice, keep sentence, one-line negative) that
+  never describes the frame. **The camera never moves backward** — no walk-back tracking shot, no pull-out (the owner:
+  "no walk-back, never do it") — and never cranes, orbits, pans, tilts or reveals. A human pair, two children and drawn
+  pairs walk (when their words need it) only together, side by side, along or across the floor — never toward the
+  camera — filmed only sideways at one distance, the framing following whoever speaks; deities never walk; in the
+  client's own photo the camera only pushes in (one performer) or holds (a pair, or while the cast walks). Frames are
+  composed caught mid-gesture (mid-step only in a walking clip), and the clip-1 hero frame is an open welcoming pose
+  facing the camera (no front-clasp). Members use Flow's Frames to Video with the frame as the start frame, never
+  Ingredients to Video.
 - **AI ads — English (2026-09-25):** an English ad is Indian English throughout — written for Indian
   customers and voiced with an Andhra Pradesh accent in every Veo prompt; never a foreign accent.
 - **AI ads (2026-09-25, integrity):** no contact number or address reaches a deliverable unless the
@@ -943,11 +1056,23 @@ attribution (`Clip.voScript` is one string).
 - A pair in the client's own photos has no camera move at all (only a still camera while they walk across
   it): with no move toward them allowed and nothing beyond the photo shown, the walk is its only movement.
   Motu & Patlu standing in their photo (2026-10-10) are filmed the same way — their performance is the movement.
-- Motu & Patlu's walk decision (2026-10-10) in the client-photo path is a word list (`lineNeedsWalk`; no scene plan
-  runs there): a way of saying "let's go" the list does not know leaves that clip standing (the safe side), and an
-  unusual phrase on it walks one clip. With AI backgrounds the scene planner's `walk` decides (it handles any
-  language); a plan without it falls back to the list. A kit made before 2026-10-10 keeps its mid-step frames — a
-  Veo regenerate or Input Final Script on it now plans those clips standing; Generate makes matching frames.
+- The walk decision (Motu & Patlu 2026-10-10, every cast 2026-10-22) in the client-photo path is a word list
+  (`lineNeedsWalk`; no scene plan runs there): a way of saying "let's go" the list does not know leaves that clip
+  standing (the safe side), and an unusual phrase on it walks one clip. With AI backgrounds the scene planner's `walk`
+  decides (it handles any language); a plan without it falls back to the list. A kit made before 2026-10-22 keeps its
+  mid-step frames — a Veo regenerate or Input Final Script on it now plans those clips standing; Generate makes
+  matching frames.
+- The namaskaram's moment (2026-10-22) is an ESTIMATE from the wish words' position among the line's spoken words
+  (Veo is assumed to spread a line evenly over 8 s, or a pair speaker's half); a wish said in words `utils/wishGesture`
+  does not know gets the cue untimed on the greeting clip and none elsewhere.
+- English words in a Telugu script (2026-10-22): both directions are fixed lists (`ENGLISH_WORDS`, `TELUGU_LETTER_WORDS`).
+  Another English word the writer puts in Latin (not on either list) is still only caught by the validator, which caps
+  the judge's language score and asks a repair; it can ship in a script that stops "stalled". Telugu only.
+- The festival look (2026-10-22) is the catalogue's for 20 named occasions (`getFestivalTheme`); any other occasion is named with "its own
+  traditions" and left to the image model.
+- The business's final name (2026-10-22) is the extraction model's reading of the attached files plus where it says it
+  read it; code checks only that a file of that kind WAS attached. A misread wordmark becomes the name everywhere — the
+  member corrects it in BUSINESS CONTENT or with the No-logo name.
 - The script quality gate (2026-10-15): 10/10 is a genuine, rare result — in the first live runs (gemini-2.5-flash /
   3.6-flash judges) scripts shipped at 9.4–9.8 after 3–4 passes, stopped "stalled", reported as "best draft". The
   rubric's anchors, the mechanical caps (`MECHANICAL_CAPS`, matched on the validators' wording) and the rewrite
@@ -1039,15 +1164,32 @@ attribution (`Clip.voScript` is one string).
   walked out onto the road, into furniture, shops grew). What should hold it this time — walks only on the
   frame's own floor, never toward a door or away from the camera, frames composed mid-step with that floor in
   view, no move backward or beyond the frame, a client's photo never tracked — is the reason, not proof. Watch
-  in Flow: a walk-toward clip whose camera pushes in can end too close; an arc or a sideways move shows a
+  in Flow: a walk-toward clip whose camera pushes in can end too close; a sideways move shows a
   little of the room beside the frame (Veo extends it); Motu & Patlu walking in nearly every clip DID drift (the
-  owner, 2026-10-10: heights and attire) — they now walk only where a clip's words need it (§17.2 step 6); the other
-  cartoon duos still walk as in this pass and may show the same drift (give the entry `walksOnlyWhenNeeded`, plus
-  its `pairInPlace` texts already shared by every pair). The clip-1 hero pose changed from the front-clasp to `HERO_FRAME_POSE`;
-  if hands come out badly in hero frames, that one constant is the place to change it.
+  owner, 2026-10-10: heights and attire), and on 2026-10-22 the owner saw unwanted movement and turning in every cast —
+  so every cast now walks only where a clip's words need it and the arc is retired (§17.2 step 6, history 8). The
+  clip-1 hero pose is `HERO_FRAME_POSE`; if hands come out badly in hero frames, that one constant is the place to
+  change it.
+- **"Move only when the words need it" (2026-10-22) has not been seen on a real Veo video.** It is unit-tested (every
+  cast × clip counts × ad type × photo mix, the in-place forms, no turn in a walk hint, `TURNS` / `NAMASTE` refused, the
+  frame and video plans agreeing through the faked-Gemini pipeline) and ran live three times (gemini-2.5-flash /
+  3.8-flash: no clip walked, no arc, the greeting clip's cue "Exactly as she says the festival wish (about 6–8s) … namaskaram"),
+  but no clip has been made in Flow from the new prompts. Watch: whether a clip performed in place on a short glide
+  reads as too static (the 2026-10-05 problem — then a stronger gesture line, not a walk, is the lever); whether the
+  namaskaram lands on the words (the time is an estimate); the deity scene plan still offers "open floor to walk on"
+  (harmless — a deity never walks — but untidy). A live director action once said "her hands remain settled after the
+  wish" beside the code's cue — harmless, the cue wins in the prompt's order.
+- **The festival dressing and the name rule (2026-10-22) have not been seen on a generated image.** Live, every frame
+  carried `FESTIVAL DRESSING — DIWALI`, the label led with its FESTIVAL THEME, the poster had its Festival line; whether
+  ChatGPT / Gemini decorate a client's photo WITHOUT changing it is untested, and the name rule ran live only without
+  files (the sale's name, correctly). Frame prompts grew: the clip-1 hero frame is ~2,100–2,200 words live (ChatGPT
+  reads it; long frame prompts predate this change).
+- **The geminiService chunk passed Vite's 900 KB warning (2026-10-22: 913 KB, 281 KB gzip; ~890 KB on 2026-10-18).** It
+  loads only in the studio; the warning is not an error. Splitting the prompts out would be a separate task.
 - Veo's text limit: third-party summaries put Veo 3 at about 1,024 input tokens [NOT CONFIRMED — Google's
-  table did not load]. The dynamic-pass prompts are ~170–190 words for one presenter and ~310–370 for a pair (~350–380 for Motu & Patlu, 2026-10-10);
-  a Telugu line costs more tokens per word than English.
+  table did not load]. Since 2026-10-22 the prompts are ~204–252 words for one presenter (248–264 live, a Telugu festival
+  greeting with its namaskaram cue the longest) and ~372–387 for Motu & Patlu (was ~170–190 / ~350–380): the new
+  negatives, the gesture line and the wish cue added ~15–25 words; a Telugu line costs more tokens per word than English.
 - Flow's Frames to Video also takes an END frame (Google, Veo 3.1 with audio since 2025-10): a second frame
   per moving clip would pin the walk's end, the place and the heights. Not built — a suggestion to the owner.
 - Which Flow mode the team actually used before 2026-10-05 is [NOT CONFIRMED]; the checklist and AI Guide

@@ -17,6 +17,7 @@
  */
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
+import { latinLettersException } from "@/utils/englishWords";
 import { wishAudienceRule } from "./festivalWish";
 import { TELUGU_SCREEN_CTA, wordContractBlock, type WordContractRegister } from "./wordContract";
 
@@ -106,7 +107,7 @@ You receive the whole SCRIPT for context, the EDIT PLAN listing the clips to cha
 HOW TO EDIT:
 • Make the change the plan describes, fully — the member must be able to hear it.
 • Keep everything in that clip the plan does not mention: its meaning, facts, tone and flow into the clips around it.
-• The edited clip must still read as one natural spoken sentence in modern ${lang}${isLatin ? "" : `, written only in ${lang} script — English words people actually say are fine, written in ${lang} script`}.
+• The edited clip must still read as one natural spoken sentence in modern ${lang}${isLatin ? "" : `, written only in ${lang} script — English words people actually say are fine, written in ${lang} script${latinLettersException(lang)}`}.
 • Say it the way a person says it across a shop counter today: active voice, everyday words, a complete sentence with its verb.${isTelugu
   ? ` Never bookish, literary or passive Telugu — never forms like "చేయబడును", "అందించబడును" or "గలదు"; write "చేస్తాం", "ఇస్తాం", "ఉంది".`
   : isLatin ? "" : ` Never bookish, literary or passive ${lang}.`}
@@ -123,7 +124,7 @@ ${dialogue
   ? `• Each clip is ${solo ? `ONE line from ${speakers![0].name}` : `exactly ${speakers!.length} lines, ${speakers!.map((s) => s.name).join(" then ")}, in that order`}. ${solo ? "" : `Never merge them into one voice, never drop or reorder a character.`}
 • Each line belongs to the speaker named on it — never move a line, or part of one, to the other character.`
   : `• ONE short spoken sentence per clip — never two sentences, never a long run-on line.`}
-• ${isLatin ? "No digits in spoken content." : `No Latin letters and no digits in spoken content.`}
+• ${isLatin ? "No digits in spoken content." : `No Latin letters${latinLettersException(lang)} and no digits in spoken content.`}
 • Never speak a phone number, contact number, pincode or door number.
 • A call to action ("call", "visit", "contact") only in the FINAL clip (clip ${clipCount}).${isTelugu && !dialogue ? ` The final clip must still end with ${finalCta}` : ""}
 • Only facts present in the script or the business information — never invent an offer, price, year or claim.
@@ -145,12 +146,13 @@ Each prompt is one 8-second clip that starts from an attached still frame. A pro
 
 1. UNDERSTAND the request the way a person would — it may be in English, Telugu, Hindi or a mix, short or loosely worded. Say in one plain-English line what the member wants to see different in the video.
 2. COMPARE it with each prompt below: which part decides this (the camera move, the action, the voice, a negative)? What does that part say right now? Does it already do what was asked?
-3. PLAN the edit for every clip that needs it, naming the part and the concrete new content — e.g. "CAMERA: replace the arc with a side-tracking shot as she walks along the counter", "ACTION: she lifts the product toward the lens instead of pointing at the shelf", "ACTION: she walks a few steps to the counter before presenting it".
+3. PLAN the edit for every clip that needs it, naming the part and the concrete new content — e.g. "CAMERA: replace the lateral dolly with a slow push-in on her face", "ACTION: she lifts the product toward the lens instead of pointing at the shelf", "ACTION: she walks a few steps to the counter before presenting it".
 
 RULES FOR THE PLAN:
 • The quoted words in the voice part are the recorded voice-over and never change. A request to change what is SAID belongs to the Voice Over Script refine — put that in notPossible.
-• One camera move per clip: a push-in, a side-tracking shot that travels sideways with a walk, a slow lateral dolly that glides sideways past them, a short arc around one presenter, or — only in the client's own photograph — a still camera while they walk. The camera never moves backward: never a walk-back, a pull-back or a dolly out — and never a crane, orbit, pan, tilt or reveal that shows more of the room than the frame has.
+• One camera move per clip: a push-in, a side-tracking shot that travels sideways with a walk, a slow lateral dolly that glides a short way sideways keeping them at one angle, or — only in the client's own photograph — a still camera while they walk. The camera never moves backward: never a walk-back, a pull-back or a dolly out — and never a crane, orbit, pan, tilt or reveal that shows more of the room than the frame has.
 • The place stays the place in the frame. A walk goes over the open floor the frame shows — toward the camera, along a counter or display it shows, or to a product it shows — never to a door, outside, around the whole place, away from the camera or over furniture. A pair (people, children or drawn characters like Motu and Patlu) walks only together, side by side, along or across the floor — never toward the camera — and is filmed only from the side; deities do not walk. For a request that needs more ("walk to the back counter"), plan the nearest version (walk along the counter the frame shows, then turn and present it) and say so in understood.
+• The cast faces the camera and never turns round, spins or rotates (the arc shot is retired); every gesture belongs to the words it is said with, and a walk happens only where the clip's words take them somewhere (owner, 2026-10-22).
 • How a face, an outfit or the premises LOOK is decided by the frame image, not the video prompt — say so in notPossible.
 • Only the clips the request is about. When the request is for one clip, plan only that clip.
 • When every prompt already does exactly what was asked, list no clips and say where in alreadyDone.

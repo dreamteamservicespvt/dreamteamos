@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assignmentFormSpec, jobKitSpec, kitSpec, staleKitChanges } from "@/utils/assignmentFormSpec";
 import { briefEditFieldsOf, briefPatch, categoryDependentPatch, posterEditFieldsOf } from "@/utils/assignmentEdit";
 import { briefAsInstructions, mergeBriefIntoInstructions } from "@/utils/adRequirement";
+import { SALE_NAME_LABEL, saleBusinessNameIn } from "@/utils/businessName";
 import { describeSpecChanges, specOf, specSignature } from "@/utils/assignmentSpecDiff";
 import { AdType, AttireType, ModelGender } from "@/types/aiPlatform";
 import type { WorkAssignment } from "@/types";
@@ -106,10 +107,14 @@ describe("what an edit dialog writes back", () => {
 });
 
 describe("the job's brief in BUSINESS CONTENT", () => {
-  it("carries the business name and the client's notes too", () => {
-    expect(briefAsInstructions("Bike service", "Main Road", { businessName: "Sri Sai", notes: "Mention the free wash" })).toBe(
-      "Business name: Sri Sai\n\nBusiness info & what to include (from the sale):\nBike service\n\nAddress: Main Road\n\nClient's notes (from the sale):\nMention the free wash",
+  // 2026-10-22: the sale's name is written as a REFERENCE — the name printed on the logo, card, flyer or shop board is
+  // the final one (utils/businessName), and the generator can read the reference back.
+  it("carries the business name — as the sale's reference — and the client's notes too", () => {
+    const brief = briefAsInstructions("Bike service", "Main Road", { businessName: "Sri Sai", notes: "Mention the free wash" });
+    expect(brief).toBe(
+      `${SALE_NAME_LABEL}: Sri Sai\n\nBusiness info & what to include (from the sale):\nBike service\n\nAddress: Main Road\n\nClient's notes (from the sale):\nMention the free wash`,
     );
+    expect(saleBusinessNameIn(brief)).toBe("Sri Sai");
     // …and, with nothing but a name, says nothing — a name alone is not a brief.
     expect(briefAsInstructions("", "", { businessName: "Sri Sai" })).toBe("");
   });

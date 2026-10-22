@@ -11,6 +11,7 @@
  * Pure — unit-tested. Languages other than Telugu and English are left to the prompt and the
  * validator, which already refuse digits.
  */
+import { withEnglishWords, withoutEnglishWords, withTeluguLetters } from "./englishWords";
 import { withFestivalSpellings } from "./festivalNames";
 import { withoutUnspokenNumbers } from "./unspokenNumbers";
 
@@ -183,11 +184,12 @@ export const FIXED_WORDS: { word: string; say: string; variants: RegExp }[] = [
  *
  * "mariyu" is deliberately Latin inside a Telugu line, and the script validator refuses Latin
  * letters in spoken content. Without this the one spelling the team asked for would be reported as
- * a fault on every script that contains it.
+ * a fault on every script that contains it. The same for the English words a Telugu script writes in
+ * English letters (utils/englishWords, 2026-10-22: flats, slots, arrangements …).
  */
 export function withoutFixedWords(text: string): string {
   if (!text) return text;
-  return FIXED_WORDS.reduce((out, f) => out.split(f.word).join(" "), text);
+  return withoutEnglishWords(FIXED_WORDS.reduce((out, f) => out.split(f.word).join(" "), text));
 }
 
 /** A line with every variant of a fixed word written the one way the team wants. */
@@ -211,8 +213,17 @@ export function fixedWordsIn(lines: string[]): string[] {
  * or door number at all (utils/unspokenNumbers, 2026-10-22 — they are printed on screen, never spoken;
  * taken out BEFORE the rest become words, or a mobile would be read digit by digit), numbers as words,
  * the fixed words, and (Telugu) the festival's fixed spelling — దసరా, never a transliteration of
- * "Dussehra" (utils/festivalNames, 2026-10-08).
+ * "Dussehra" (utils/festivalNames, 2026-10-08) — and the English words a Telugu script writes in English
+ * letters: ఫ్లాట్స్ → flats, ఏర్పాట్లు → arrangements (utils/englishWords, 2026-10-22) — while every OTHER
+ * English word a Telugu writer put in English letters on that list goes back to Telugu letters ("2BHK" → "టూ
+ * బీహెచ్‌కే", "open" → ఓపెన్), before the numbers become words so "2BHK" is never read "రెండుBHK".
  */
 export function speakableLine(text: string, language?: string): string {
-  return withFestivalSpellings(withFixedWords(spellOutNumbers(withoutUnspokenNumbers(text), language)), language);
+  return withEnglishWords(
+    withFestivalSpellings(
+      withFixedWords(spellOutNumbers(withTeluguLetters(withoutUnspokenNumbers(text), language), language)),
+      language,
+    ),
+    language,
+  );
 }

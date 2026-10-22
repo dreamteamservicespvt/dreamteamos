@@ -224,6 +224,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-22)
 
+- 2026-10-22, **local, not pushed** — **AI ads, six fixes**: English words (flats, plots, arrangements …) in English
+  letters in a Telugu voice-over and no formal words, enforced in code both ways; **every cast moves only when the words
+  need it** (faces the camera, no turning, the arc retired); the **namaskaram on the wish words**; the **festival theme**
+  on every frame, the label and the poster; the **final business name** from the attached files, the sale's name a
+  reference (`ai-ads.md` §17.2, §24; history 2026-10-22).
 - 2026-10-22, **local, not pushed** — **no pincode, door number or phone number is ever spoken in a voice-over**: removed
   in code from every line before numbers become words (`utils/unspokenNumbers` in `speakableLine`), the spoken address
   cleaned too, the prompts aligned (`ai-ads.md`; history 2026-10-22).
@@ -352,10 +357,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 - Before it on `main` (`abeab79`, 2026-10-08 17:10, the owner's commits): everything through 2026-10-05 (§31),
   **Sales → Tech on one permanent `saleId`** (`sales.md`, `orders-work.md`), **Real Owner Face** and **దసరా**
   (`ai-ads.md`), and the **Invoice Builder** with Invoices → Settings (`invoices.md` §9.22).
-- `npm run build` ✅ (2026-10-18: main chunk ≈497 KB, vendor-firebase ≈665 KB, geminiService chunk ≈890 KB; lazy pages for
+- `npm run build` ✅ (2026-10-18: main chunk ≈497 KB, vendor-firebase ≈665 KB, geminiService chunk ≈890 KB — 913 KB on
+  2026-10-22, over Vite's 900 KB warning; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` ✅ 279 files, 4601 tests (2026-10-22, after the unspoken numbers; two load timeouts in the full run pass alone). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
+- `npx vitest run` ✅ 281 files, 4653 tests (2026-10-22, after the AI-ads six fixes; one SMM UI load timeout in the full run passes alone). Under heavy parallel load a few UI tests can time out; they pass re-run alone.
 - `npx tsc -p tsconfig.check.json --noEmit` → 0 errors (2026-10-18).
 - `npx eslint .` → 599 problems (measured 2026-09-22, pre-existing).
 - Most recent work (newest first; detail in §31): the DREAM TEAM AI Development OS (2026-10-18); dates and periods across SMM, pay, invoices and AI accounts (2026-10-15); the voice-over word contract + 10/10 loop (2026-10-15); SMM Delivery Control, all phases (2026-10-15); the Real Owner Duo (2026-10-15); bottom toasts, one-row dismiss / unread, the 90-day clean-up, the
@@ -366,7 +372,11 @@ errors:** done means every listed item is fully resolved with no build, console 
   Settings; Sales → Tech on one `saleId`, Real Owner Face and దసరా (2026-10-08); SMM On hold, renewals and renewal
   money, the Veo 3 dynamic pass, the wardrobe stylist, the SMM client calendar (2026-10-05); earlier SMM, AdGen,
   AI Accounts and Cinematic Ads work.
-- Open follow-ups the owner must act on: **SMM Delivery Control** — set `CRON_SECRET` in Vercel and redeploy, create the
+- Open follow-ups the owner must act on: **AI ads six fixes (2026-10-22)** — make one real Telugu festival ad with a
+  logo / card attached and check in ChatGPT / Gemini and Flow: is the business name the one on the files, are the frames,
+  label and poster in the festival's look (a client photo decorated but unchanged), does the presenter stay facing the
+  camera without turning, walk only where the words say so, and join palms exactly on the wish? Is a clip in place too
+  static?; **SMM Delivery Control** — set `CRON_SECRET` in Vercel and redeploy, create the
   cron-job.org job (GET `https://dreamteamos.vercel.app/api/smm-monitor`, header `x-cron-secret`, every 30 min 09–20
   Asia/Kolkata), publish the `smm_alert_state` rule, build a new APK (the `smm_urgent` channel), try it in Preview (Client plan →
   Switch on a month; Settings → rehearsal, test alert), then go Live with a pilot group (Settings); repair Dhana lakshmi (Social Media → Months to check → Open → Edit setup back to

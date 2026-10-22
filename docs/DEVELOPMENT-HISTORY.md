@@ -6,6 +6,42 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-22: AI ads, six fixes from the owner** (`ai-ads.md` §17.2 steps 1, 3, 4, 5, 6, §24, §25, §27). (1–2) A Telugu
+  voice-over writes flat(s), slot(s), plot(s), villa(s), apartment(s), booking(s), arrangement(s) and facilities in
+  ENGLISH letters ("your words + similar ones") and drops formal words (ఏర్పాట్లు, సౌకర్యాలు + 13 more with what people
+  say). Root cause: an English word in Telugu letters is read with Telugu sounds, and the prompts asked for formal
+  nouns. Fix in code on every final line (`utils/englishWords.withEnglishWords` in `speakableLine`), plus the prompt
+  rule; live runs then showed the writer putting OTHER English words in Latin (2BHK, open, bank loan — run 1 stopped on
+  the word contract, run 2 shipped "రెండుBHK … open plots" at 7/10), so the words that stay Telugu are enforced in code
+  too (`withTeluguLetters`, one list that also writes the prompt's "stays in Telugu letters" line; "2BHK" → "టూ
+  బీహెచ్‌కే", before numbers become words). (3) "Move only when the words need it", the owner's choice for EVERY cast
+  (history 8 in `prompts/motion.ts`): the cast faces the camera and performs in place, gestures on their words, walks
+  only when a line takes them somewhere (scene plan `walk` or `lineNeedsWalk`), never turns or rotates; the arc is
+  retired, `Staging.inPlace`, `IN_PLACE_CAMERAS`, new negatives, `TURNS` refused in director actions, the walk hint ends
+  "both stop, facing the camera", every pack's frame text, HERO_FRAME_POSE and READY FOR ITS CLIP, the Motu & Patlu
+  catalogue lines (TS + JSON). Root cause: the 2026-10-05 dynamic pass asked for walking in most clips, turns, the arc and
+  "natural body movement throughout". (4) The namaskaram exactly on the wish words (`utils/wishGesture` + `wishCue`,
+  named by meaning and time; real-person templates too; `NAMASTE` refused from the director). It used to open the
+  greeting clip, seconds before a Telugu greeting reaches its wish. (5) The festival's theme on every frame
+  (`utils/festivalDressing`, stamped in code), the label (FESTIVAL THEME leads) and the poster (one "Festival:" line):
+  one `festivalLook` per festival from the catalogue, 4 new festivals, client photos decorated without changes. Root
+  cause: the decorations reached one frame variant only. (6) The final business name comes from the attached logo /
+  card / flyer / board (`utils/businessName`, decided in `verifyExtraction`); the sale's name is a reference used only
+  when no file shows one. Root cause: the brief called the sale's name authoritative and the extraction could not read
+  the logo's text. Files: new `utils/englishWords.ts`, `wishGesture.ts`, `festivalDressing.ts`, `businessName.ts`;
+  `utils/spokenNumbers.ts`, `adRequirement.ts`, `locationAssignment.ts`, `posterAdType.ts`; `services/geminiService.ts`,
+  `prompts.ts`, `characterCatalogue.ts`, `characterPacks.ts`, `prompts/{characterAd,everydaySpeech,lowerThird,motion,
+  posterConcept,realLocation,refine,scenePlan,scriptQa}.ts`; `types/aiPlatform.ts`; `docs/video-category-catalogue.json`;
+  tests `adGenOct22.test.ts` (new, 27), `festivalAndNameOct22.test.ts` (new, 23, full pipeline on a fake Gemini), and
+  updated `motionAndVeo`, `characterAdPrompts`, `adPipelineEndToEnd`, `spokenNumbers`, `posterRefineOct13`,
+  `assignmentSpecPropagation`. Tested: typecheck 0 errors; full vitest 281 files / 4653 tests (one SMM UI load timeout
+  in the parallel run passes alone); build ✅. Live Gemini (Telugu Diwali, a flats builder, no files): a voice-over-only
+  run shipped in 52 s (17 / 20 words, Latin only flats / plots / arrangements / mariyu); full run 2 (139 s) found the
+  BHK / open leak; full run 3 after the fix (205 s, 2.5-flash + 3.8-flash): Latin only flats / plots / arrangements /
+  mariyu, 18 / 20 words, no clip walks, no arc, the greeting's "Exactly as she says the festival wish (about 6–8s) …
+  namaskaram", both frames `FESTIVAL DRESSING — DIWALI`, the label's FESTIVAL THEME, the poster's Festival line, the
+  sale's name used (no files). Not seen: any image or Flow video from the new prompts.
+
 - **2026-10-22: no pincode, door number or phone number in the voice-over** (`ai-ads.md` §17.2 step 3 and the
   Spoken-word rules). The owner: the voice-over scripts carried PIN codes, door numbers and phone numbers, which they
   had said are never needed. Root causes: the prompts forbade phone numbers but nothing in code held it, and

@@ -101,34 +101,42 @@ describe("the scene plan chooses how each clip is filmed", () => {
   });
 
   // The planner is offered exactly what planClipMotion lets this cast do (prompts/motion castKindOf).
-  it("offers the planner only what this cast may do — a walk wherever it may walk, never a move beyond the frame or backward", () => {
+  // 2026-10-22 (prompts/motion history 8 — "move only when the words need it"): every cast but a deity is offered its
+  // stagings by their in-place names and asked for a per-clip "walk" judgment; no cast is offered the retired arc.
+  it("offers the planner only what this cast may do — a walk only where the words take them, never a move beyond the frame, backward or round them", () => {
     const drawn = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 3, adType: "commercial", subject: "Motu and Patlu", twoHander: true, cartoon: true });
     expect(drawn).toContain("STEP 5 — HOW EACH CLIP IS FILMED");
     expect(drawn).toContain("ONE real action and ONE camera move that follows it");
     expect(drawn).toContain("never a talking portrait");
-    expect(drawn).toContain("walk_across (Walk along the display)");
+    expect(drawn).toContain("walk_across (Present the display)");
     expect(drawn).toContain("side_track (Side Tracking Shot)");
     expect(drawn).toContain("lateral_dolly (Lateral Dolly)");
-    expect(drawn).toContain("These are two DRAWN characters: they walk TOGETHER, side by side at one pace, along or across the floor — never toward the camera");
+    expect(drawn).toContain("so the staging is what they DO where they stand, facing the camera, beside what the line is about, side by side");
+    expect(drawn).toContain("In a clip whose words DO take them somewhere they walk TOGETHER, side by side, along or across the floor — never toward the camera, never one of them alone.");
+    expect(drawn).toContain("\"walk\" — true ONLY for a clip whose own words take them somewhere");
     expect(drawn).not.toMatch(/walk_toward \(|walk_invite \(|push_in \(|arc \(|static_locked|tracking \(|rack_focus|handheld|follow_tracking|over_the_shoulder|crane|orbit/);
     expect(drawn).not.toContain('"focus"');
     expect(drawn).toContain("A pair is always filmed at eye level.");
     const people = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 3, adType: "commercial", subject: "the two presenters", twoHander: true });
-    expect(people).toContain("The two walk TOGETHER, side by side at one pace");
-    expect(people).toContain("approach_show (Approach and show)");
+    expect(people).toContain("In a clip whose words DO take them somewhere they walk TOGETHER, side by side");
+    expect(people).toContain("approach_show (Show it where they stand)");
     expect(people).not.toContain("push_in (Push In)");
+    expect(people).not.toContain("arc (Arc Shot)");
     const solo = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 3, adType: "commercial", subject: "the model" });
     expect(solo).toContain("push_in (Push In)");
-    expect(solo).toContain("walk_toward (Walk toward the camera)");
-    expect(solo).toContain("arc (Arc Shot)");
-    expect(solo).toContain("Most clips WALK through the place");
-    expect(solo).toContain("side_track ONLY with walk_across");
-    expect(solo).toContain("The camera never moves backward.");
+    expect(solo).toContain("walk_toward (Speak to the camera)");
+    expect(solo).not.toContain("arc (Arc Shot)");
+    expect(solo).not.toContain("Most clips WALK through the place");
+    expect(solo).toContain("\"walk\" — true ONLY for a clip whose own words take them somewhere");
+    expect(solo).toContain("side_track ONLY with a walking clip");
+    expect(solo).toContain("The camera never moves backward and never curves around them.");
     expect(solo).not.toContain('"focus"');
     expect(solo).not.toMatch(/static_locked|walk_invite \(/);
     const deity = SCENE_PLAN_SYSTEM_PROMPT({ clipCount: 3, adType: "commercial", subject: "Ganesha", deity: true });
-    expect(deity).not.toMatch(/walk_toward \(|walk_across \(|walk_stop_present \(|side_track \(/);
-    expect(deity).toContain("turn_present (Turn and present)");
+    expect(deity).not.toMatch(/walk_toward \(|walk_across \(|walk_stop_present \(|side_track \(|arc \(/);
+    expect(deity).toContain("turn_present (Present where they stand)");
     expect(deity).toContain("A deity never walks");
+    expect(deity).toContain("The camera never curves around the deity.");
+    expect(deity).not.toContain("\"walk\"");
   });
 });

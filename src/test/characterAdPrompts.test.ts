@@ -159,10 +159,13 @@ describe("main-frame prompt", () => {
     expect(p).toContain("Clip 2: Motu asks about range");
   });
 
+  // 2026-10-22: every pair stands side by side, mid-gesture, mid-step only where a clip's 🎬 note walks (prompts/motion
+  // history 8) — the Motu and Patlu staging for every pack, not the dynamic pass's "caught mid-step".
   it("stages both characters, visible and separated, every frame", () => {
     const p = frame();
     expect(p).toContain("BOTH characters visible in every frame");
-    expect(p).toContain("caught mid-step side by side as each clip's 🎬 note says");
+    expect(p).toContain("standing side by side as each clip's 🎬 note says\n  (mid-step only where the note walks)");
+    expect(p).not.toContain("caught mid-step side by side as each clip's 🎬 note says");
   });
 
   it("emits one prompt per clip with the expected separator", () => {
@@ -502,9 +505,11 @@ describe("veo prompt", () => {
     expect(assembled).toContain("one continuous 8-second shot that starts from the attached frame");
     expect(assembled).toContain(`${cameraShot(plan[1], subject.cast, true, { a: "Motu", b: "Patlu" })}: `);
     expect(assembled).toMatch(/two-shot at eye level, the camera (?:travelling|gliding) sideways (?:with|past) them at one distance/);
-    expect(assembled).toContain("both walk a few steps side by side to the product or counter beside them; Motu points to it and talks while Patlu looks and reacts");
+    // 2026-10-22: walking, they face the camera; the life is their signature gestures, each on its words.
+    expect(assembled).toContain("both walk a few steps side by side to the product or counter beside them, facing the camera; Motu points to it and talks while Patlu reacts, then Patlu presents it with an open hand");
     expect(assembled).toContain("The framing drifts a little toward whoever is speaking, never closer.");
-    expect(assembled).toContain("Their own signature mannerisms from the show throughout");
+    expect(assembled).toContain("Their own signature expressions and hand gestures from the show, each on the words it belongs to; both keep facing the camera");
+    expect(assembled).not.toContain("throughout");
   });
 
   // The camera belongs to the motion plan now: the catalogue's held-frame camera kept the videos static.
@@ -537,8 +542,10 @@ describe("veo prompt", () => {
   });
 
   it("carries the negatives that stop the usual failures", () => {
-    // "no morphing" — Motu and Patlu's heights and clothes drifted in the videos (2026-10-10).
-    expect(assembled).toContain("Negative prompt: No text or subtitles on screen, no background music or echo, no cuts, no camera shake, no frozen or static pose, no change of location or background, no unnatural movement, no morphing, no extra people, no goodbye wave");
+    // "no morphing" — Motu and Patlu's heights and clothes drifted in the videos (2026-10-10); since 2026-10-22 for
+    // every cast, with "no turning around or rotating, no turning away from the camera, no random or repeated
+    // gestures" (the owner: "unwanted, irrelevant movements and turning or rotating").
+    expect(assembled).toContain("Negative prompt: No text or subtitles on screen, no background music or echo, no cuts, no camera shake, no frozen or static pose, no change of location or background, no unnatural movement, no turning around or rotating, no turning away from the camera, no random or repeated gestures, no morphing, no extra people, no goodbye wave");
     expect(assembled).toContain("one continuous 8-second shot");
   });
 

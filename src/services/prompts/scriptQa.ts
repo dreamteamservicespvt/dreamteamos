@@ -22,6 +22,7 @@
  */
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
+import { englishWordList } from "@/utils/englishWords";
 import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP } from "@/utils/scriptContract";
 
 export interface ScriptQaContext {
@@ -76,6 +77,7 @@ ${isTelugu
 
 ===== FIXED RULES — NEVER PENALISE THESE =====
 ${isTelugu ? `• "mariyu" written in Latin letters inside a Telugu line is REQUIRED — it is how the team spells "and". Never mark it as an error.
+• These English words written in English letters inside a Telugu line are REQUIRED too, the team's spelling: ${englishWordList()} (a Telugu ending joined to them, like flatsలో, is right). Never mark them as Latin letters or as English.
 ` : ""}${ctx.closingLine ? `• The closing sentence ${ctx.closingLine} is fixed. Judge the rest of the final clip, not that sentence.
 ` : ""}• Numbers written as words, and no phone number spoken anywhere, are required.
 • The business's own name is spelled exactly as given, even when it is an English or unusual word.
