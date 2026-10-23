@@ -38,10 +38,12 @@ export interface AccountEvent {
   /** ms since epoch. */
   at: number;
   action: "added" | "assigned" | "edited" | "disabled" | "enabled" | "password_changed"
-    | "api_key_added" | "api_key_replaced" | "api_key_removed";
+    | "api_key_added" | "api_key_replaced" | "api_key_removed"
+    /** Owner AND holder changed — the tech admin's "Move to" (2026-10-23). from = the previous owner. */
+    | "moved";
   byId: string;
   byName: string;
-  /** For "assigned": who had it, and who has it now. */
+  /** For "assigned": who had it, and who has it now. For "moved": the owner before and after. */
   fromId?: string;
   fromName?: string;
   toId?: string;

@@ -233,6 +233,58 @@ export async function assignFlowAccount(account: FlowAccount, to: Person, actor:
   }
 }
 
+/**
+ * Moves accounts to another person — whose they ARE, not only who uses them (2026-10-23, the tech admin's
+ * "Move to"): owner and holder both become `to`, so they count toward that person's target from now on.
+ *
+ * ── Why (the owner, 2026-10-23) ──
+ * A pasted account is the paster's (`importFlowAccount`). Srinu pasted 8 accounts Bhanu had opened, so they
+ * counted toward his target; Assign only changes the holder and nothing could change the owner, short of
+ * deleting and re-typing each account. One click now puts a whole selection right.
+ *
+ * Credit entries stay with whoever made the clips (they are history); an account's Gemini key record
+ * follows its owner (`gemini_api_keys.ownerId` — the API keys tab groups by it). Batched, ≤ 200 accounts
+ * (≤ 400 writes) per commit. Each person is told once, with the count. Returns how many moved.
+ */
+export async function moveFlowAccounts(accounts: FlowAccount[], to: Person, actor: Actor): Promise<number> {
+  const moving = accounts.filter((a) => a.ownerId !== to.uid || a.holderId !== to.uid);
+  for (let i = 0; i < moving.length; i += 200) {
+    const batch = writeBatch(db);
+    for (const a of moving.slice(i, i + 200)) {
+      const next = { ...a, ownerId: to.uid, ownerName: to.name, holderId: to.uid, holderName: to.name };
+      batch.update(doc(db, FLOW_ACCOUNTS, a.id), {
+        ownerId: to.uid,
+        ownerName: to.name,
+        holderId: to.uid,
+        holderName: to.name,
+        visibleTo: visibilityOf(next),
+        history: arrayUnion(event(actor, "moved", { fromId: a.ownerId, fromName: a.ownerName, toId: to.uid, toName: to.name })),
+        updatedAt: serverTimestamp(),
+      });
+      if (a.apiKey) batch.update(doc(db, GEMINI_KEYS, a.id), { ownerId: to.uid, ownerName: to.name, updatedAt: serverTimestamp() });
+    }
+    await batch.commit();
+  }
+  if (!moving.length) return 0;
+
+  const plural = (n: number) => (n === 1 ? "1 Flow account" : `${n} Flow accounts`);
+  await notify(to, `${plural(moving.length)} moved to you`,
+    `${actor.name || "Your admin"} moved ${plural(moving.length)} to you — they count toward your target now.`);
+  const fromCounts = new Map<string, { name: string; n: number }>();
+  for (const a of moving) {
+    for (const uid of new Set([a.ownerId, a.holderId])) {
+      if (!uid || uid === actor.uid || uid === to.uid) continue;
+      const row = fromCounts.get(uid) || { name: uid === a.ownerId ? a.ownerName : a.holderName, n: 0 };
+      row.n += 1;
+      fromCounts.set(uid, row);
+    }
+  }
+  for (const [uid, { name, n }] of fromCounts) {
+    await notify({ uid, name }, "Flow accounts moved", `${actor.name || "Your admin"} moved ${plural(n)} of yours to ${to.name}.`);
+  }
+  return moving.length;
+}
+
 /** Removes an account, its password and its Gemini API key. Its usage entries stay, as history. */
 export async function deleteFlowAccount(account: FlowAccount): Promise<void> {
   const batch = writeBatch(db);

@@ -6,6 +6,15 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-23: AI Accounts — "Move to", one click** (`ai-accounts.md` §9.21, `data-model.md`). The owner: Bhanu
+  Bezawada opened 8 Flow accounts, but they were pasted under Srinu (a paste makes the paster the owner) and only the
+  holder could be changed. The tech admin now ticks accounts (or Select all shown on a filter, e.g. Srinu + Opening
+  day not set) and presses Move: `moveFlowAccounts` makes the chosen person owner and holder, logs `moved`, moves the
+  Gemini key record's owner, notifies once each. Files: `services/aiAccounts.ts`, `types/aiAccounts.ts`,
+  `components/ai-accounts/FlowAccountsList.tsx`, `pages/shared/AiAccounts.tsx`, `src/test/flowMoveOct23.test.tsx`
+  (6 tests: real service on memoryFirestore + the real list's tick boxes and history line). Build ✅, typecheck 0,
+  full suite 4716 / 4717 — the one failure is `scriptContractOct15` (god_* casts), from a parallel session's uncommitted
+  script edits, not this change. Not driven in a real browser (the list was rendered in jsdom).
 - **2026-10-22: no pincode, door number or phone number in the voice-over** (`ai-ads.md` §17.2 step 3 and the
   Spoken-word rules). The owner: the voice-over scripts carried PIN codes, door numbers and phone numbers, which they
   had said are never needed. Root causes: the prompts forbade phone numbers but nothing in code held it, and

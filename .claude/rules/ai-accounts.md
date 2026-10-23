@@ -78,6 +78,15 @@ reads "Opening day not set" with a note instead of the cycle bar, the filter has
 Edit saves such an account without making a phone or day up (`validateFlowAccountInput`'s `phoneOptional` /
 `openingDayOptional`, only when the stored one is empty; typed values are still checked). Setting the day on Edit sets
 the expiry as before. The add form still requires both.
+**Move to (2026-10-23, owner).** A pasted account is the paster's, and Assign changes only the holder — Srinu pasted 8
+accounts Bhanu Bezawada had opened and nothing could make them hers. The tech admin (`keyAdmin`; the `gemini_api_keys`
+rule lets only them update a key record whose account they will not see) now gets a tick box on each Flow account card
+and **Select all N shown** (`flow-select`, `flow-select-shown` — it takes what the search / filters / member filter show;
+changing the member filter clears the selection); a sticky bar `flow-move-bar` "N selected · Move to… · **Move**" calls
+`services/aiAccounts.moveFlowAccounts(accounts, to, actor)`: owner AND holder = `to`, `visibleTo` recomputed, history
+`moved` (from = the previous owner) shown as "X moved it from A to B (owner)", the account's `gemini_api_keys` record's
+`ownerId/Name` follow; batched ≤ 200 accounts a commit; accounts already `to`'s skipped (returns the count moved); the new
+owner told once with the count, each previous owner / holder (not the mover) once. Credit entries stay as recorded.
 
 **Gemini API keys** ✅ (2026-10-10). Every Flow account is a Google account that makes one free Gemini key
 in AI Studio (project `aiads`, key name "Gemini API Key"); the team collects them for DTS AdGen's prompt
