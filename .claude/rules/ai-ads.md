@@ -121,6 +121,15 @@ re-asks for one the run could not write). The native-speaker review now runs onl
 for a polish or could not run. Every pipeline call states an effort (§17.3). Images are downscaled
 once per file before upload (`utils/fileHelpers.fileToBase64`: longest edge 2048 px, same format,
 cached; small images and anything the browser cannot redraw go as they are).
+**Speed (2026-10-23, the owner: "generation taking lot of time … find and solve it permanently"; 9 live timed runs,
+`work/2026-10-23-speed/timeline.ts` — every request's start, end, model and purpose):** three causes, fixed at the root.
+(1) **No request had a time limit** — one fallback request was held open 250.8 s; now every request has one and moves to
+the next model (§17.3). (2) **The old frame location check** rewrote every frame of a single-presenter ad (~17 s, the Veo
+director waiting) against the scene plan and failed anyway — now only when nothing planned the backgrounds (step 5).
+(3) **Clip repairs one at a time:** the editor returns 13–16-word Telugu clips when told 17–20, so a draft took 3–4
+sequential passes (~5 s each) and 3 of 6 runs still stopped on the final gate after ~2 minutes; each pass now asks
+`REPAIR_CANDIDATES` = 2 edits at once and keeps the best — or the best version of each clip across them — by the same
+`isBetterRepair` (`repairClipsByEdit` and `repairDialogueClips`; the polish and the last-resort fit use them too).
 
 **Pipeline (progress messages in order):**
 0. Voice note (if any) heard on its own first: `understandVoiceInstructions` (`prompts/voiceNote.ts`,
@@ -400,6 +409,12 @@ cached; small images and anything the browser cannot redraw go as they are).
    or renumbered CONTACT line is replaced, and a saved label's old WhatsApp sentence is updated). The poster cannot fail on the model
    any more (its fallback is code); a Missing row and its Generate stay for an unexpected error. Frames the model skipped are written
    for exactly those clips (never a copy of the last frame), and the retry carries the images.
+   **The old frame location check runs only when nothing planned the backgrounds (2026-10-23, speed):** the word-list
+   check (`getMainFramePromptValidationIssues`: "home-like" words, a repeated location, no installed-sign words) and its
+   rewrite of EVERY frame (one ~3,000-token call, 15–20 s, the Veo director waiting on it) predate the scene plan. It
+   fired on 4 of 4 single-presenter audit runs and failed again on 3 — a flats builder's planned "model flat … sofa set"
+   was "home-like". Now it runs only with no scene plan and no client photo (the fallback it was written for), and never
+   flags home-like rooms for a trade whose premises are home-like (`HOME_IS_THE_PLACE`: realestate, mattress, food).
    **The festival's theme on every frame, the label and the poster (2026-10-22 — the owner: "for the festival videos the
    bottom label, frame background and the poster are not getting the related festival theme").** Before, the decorations
    reached one frame variant (the single model's first frame): the scene planner had only the festival's name, a pack got
@@ -879,6 +894,13 @@ before shows its old concepts as it did. The mission guide opens ONE Gemini tab;
   without it; a caller's own error passes through. A call waits (≤ 75 s in all) for a soon-freed route, always asks
   Google at least once, and otherwise throws `GeminiUnavailableError` — a sentence (`geminiUnavailable`: the daily
   limit and when it resets, keys to replace, Google busy, offline), never JSON; `generateWithRetry` stops on it.
+  **Every request has a time limit (2026-10-23 — the owner: "generation taking lot of time"; live, a gemini-3.8-flash
+  request was held open 250.8 s and the run waited on it):** `utils/geminiModels.REQUEST_LIMIT_MS` by effort — fast 45 s,
+  standard 60 s, deep 75 s, no effort (Cinematic Ads, the refines) 120 s; a caller's own `requestLimitMs` wins (the frame
+  writer, `generateWithRetry`, 150 s). Normal answers took 1–19 s live. Past it the request is cancelled (`withinLimit`:
+  an `AbortSignal` in the request's config + a timer set with `REQUEST_LIMIT_TIMER`) and `GeminiRequestTimeout` is read
+  as `busy` — that model rests 30 s for every call, this call skips it, the next model answers; after
+  `MAX_REQUEST_TIMEOUTS` = 3 in one call it stops with the "overloaded" sentence instead of hanging.
 - **Thinking per call (2026-09-29; per model 2026-10-10):** `callWithFallback(apiCall, { effort })` — `fast`
   (extraction, voice note, splits, location scout, B-roll, overlays, wardrobe stylist), `standard` (core
   message, repairs, scene plan, frames, Veo director, the poster analysis and its refine — both poster systems, 2026-10-12), `deep` (script writer, review, quality
@@ -1209,6 +1231,17 @@ attribution (`Clip.voScript` is one string).
 - In-app image or video generation; publishing to social platforms.
 
 ## 27. POTENTIAL RISKS (need verification)
+
+- **A 2-clip Telugu festival ad often cannot meet both clip-1 rules (2026-10-23, live, 3 runs of one flats builder's
+  Diwali ad: 2 stopped at 130 s and 391 s, "Clip 1 is too long to say in 8 seconds: 56 / 55 syllables").** The greeting
+  the owner fixed ("{business} తరఫున మా మిత్రులు, కస్టమర్లందరికీ దీపావళి శుభాకాంక్షలు") is ~10 long words; reaching the 17-word
+  floor adds more, and the clip passes the 54-syllable ceiling. The editor swings between too few words and too many
+  syllables until the budget and the extra round are spent, then the final gate stops the run (Press Generate). Not
+  changed — two of the owner's rules clash here (17–20 words; ≤ 54 syllables); the owner decides which gives way for the
+  greeting clip (`HANDOFF.md` / §32).
+- **Request time limits (2026-10-23)** are set from the answers measured that day (1–19 s): an 8-clip frame call on a
+  slow fallback model, or a Cinematic Ads answer with unlimited thinking, could come near its limit (150 s / 120 s) — it
+  would then be asked again of the next model, costing the limit once. Watch the console for "did not answer within".
 
 - **Flow refuses an uploaded photoreal child's frame (2026-10-23, JPN account):** a Kids frame from ChatGPT failed twice
   through Upload media and once by drop ("Failed to upload kids-frame1.png"); a shop photo and adult frames upload at

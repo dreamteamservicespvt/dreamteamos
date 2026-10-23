@@ -1,6 +1,7 @@
 import { GoogleGenAI, type ThinkingConfig } from "@google/genai";
 import {
-  GEMINI_MODELS, GeminiUnavailableError, describeRest, geminiUnavailable, nextQuotaReset, readGeminiError, restAfter, thinkingFor,
+  GEMINI_MODELS, GeminiRequestTimeout, GeminiUnavailableError, MAX_REQUEST_TIMEOUTS, REQUEST_LIMIT_TIMER, describeRest, geminiUnavailable,
+  nextQuotaReset, readGeminiError, requestLimitFor, restAfter, thinkingFor,
   type Effort, type GeminiErrorInfo, type GeminiThinking,
 } from "@/utils/geminiModels";
 import { AdFormData, FileStore, GeneratedOutputs, PosterConcept, type OverlayTextItem, type SceneContext, type VoiceBrief } from "@/types/aiPlatform";
@@ -360,18 +361,46 @@ const plainThinking = new Set<string>();
  */
 export type { Effort };
 
-/** The client, with this call's thinking setting put into every request it makes (a request's own setting wins). */
-const withThinking = (ai: GoogleGenAI, thinking: GeminiThinking | undefined): GoogleGenAI => {
-  if (!thinking) return ai;
+/**
+ * The client, with this call's thinking setting put into every request it makes (a request's own setting wins),
+ * and the signal that cancels a request past its limit (2026-10-23 — the browser drops the open connection).
+ */
+const withThinking = (ai: GoogleGenAI, thinking: GeminiThinking | undefined, signal?: AbortSignal): GoogleGenAI => {
+  if (!thinking && !signal) return ai;
   const models = ai.models;
   const generateContent = models.generateContent.bind(models);
   const bounded = Object.create(models);
   bounded.generateContent = (params: Parameters<typeof models.generateContent>[0]) => generateContent({
     ...params,
-    // The SDK types the level as its own enum; the API takes these same strings.
-    config: { ...params.config, thinkingConfig: params.config?.thinkingConfig ?? (thinking as unknown as ThinkingConfig) },
+    config: {
+      ...params.config,
+      // The SDK types the level as its own enum; the API takes these same strings.
+      ...(thinking ? { thinkingConfig: params.config?.thinkingConfig ?? (thinking as unknown as ThinkingConfig) } : {}),
+      ...(signal && !params.config?.abortSignal ? { abortSignal: signal } : {}),
+    },
   });
   return new Proxy(ai, { get: (target, prop, receiver) => (prop === 'models' ? bounded : Reflect.get(target, prop, receiver)) });
+};
+
+/**
+ * One request, given at most `limitMs` to answer (utils/geminiModels REQUEST_LIMIT_MS — a live request once hung for
+ * 250 s). Past it the request is cancelled and GeminiRequestTimeout is thrown, which the call layer reads as a busy model.
+ */
+const withinLimit = async <T>(model: string, limitMs: number, request: (signal?: AbortSignal) => Promise<T>): Promise<T> => {
+  const controller = typeof AbortController === 'function' ? new AbortController() : undefined;
+  // The browser's timer (an id) and Node's (an object, under vite-node) — both are cleared the same way.
+  let timer: ReturnType<typeof globalThis.setTimeout> | number | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = globalThis.setTimeout(() => {
+      controller?.abort();
+      reject(new GeminiRequestTimeout(model, limitMs));
+    }, limitMs, REQUEST_LIMIT_TIMER);
+  });
+  try {
+    return await Promise.race([request(controller?.signal), limit]);
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 /** What one call has done so far — what it may not do again. */
@@ -532,19 +561,26 @@ const MAX_WAIT_MS = 75 * 1000;
  */
 const callWithFallback = async <T>(
   apiCall: (ai: GoogleGenAI, model: string) => Promise<T>,
-  options: number | { effort?: Effort; maxRetries?: number } = {}
+  options: number | {
+    effort?: Effort;
+    maxRetries?: number;
+    /** This call's own per-request limit — for an answer far longer than its effort's (the frame prompts). */
+    requestLimitMs?: number;
+  } = {}
 ): Promise<T> => {
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
   }
-  const { effort, maxRetries = API_KEYS.length * MODEL_LIST.length + 3 } =
+  const { effort, maxRetries = API_KEYS.length * MODEL_LIST.length + 3, requestLimitMs } =
     typeof options === 'number' ? { maxRetries: options } : options;
+  const limitMs = requestLimitFor(effort, requestLimitMs);
   const state: CallState = { skipModels: new Set(), lastResortAsked: new Map() };
   /** What Google answered, for the sentence a member sees if nothing can answer. */
   const answers: GeminiErrorInfo[] = [];
   let asked = 0;
   let waited = 0;
   let networkFailures = 0;
+  let timeouts = 0;
 
   while (asked < maxRetries) {
     const now = Date.now();
@@ -568,12 +604,22 @@ const callWithFallback = async <T>(
     if (isDayGone(model, now)) state.lastResortAsked.set(model, (state.lastResortAsked.get(model) ?? 0) + 1);
     const thinking = plainThinking.has(model) ? undefined : thinkingFor(model, effort);
     try {
-      const result = await apiCall(withThinking(new GoogleGenAI({ apiKey: API_KEYS[key] }), thinking), model);
+      const result = await withinLimit(model, limitMs, signal => apiCall(withThinking(new GoogleGenAI({ apiKey: API_KEYS[key] }), thinking, signal), model));
       rememberGoodKey(key);
       noteAnswered(model);
       return result;
     } catch (error: any) {
       const info = readGeminiError(error, model);
+      if (error instanceof GeminiRequestTimeout) {
+        console.warn(`Gemini: ${error.message} — asking the next model.`);
+        // This call does not ask that model again; three slow models in a row = Google is overloaded right now.
+        state.skipModels.add(model);
+        if (++timeouts >= MAX_REQUEST_TIMEOUTS) {
+          answers.push(info);
+          learnFrom(info, model, key);
+          break;
+        }
+      }
       if (info.kind === 'fatal' || (info.kind === 'thinking_unsupported' && !thinking)) {
         throw info.status === undefined
           ? error
@@ -1699,6 +1745,9 @@ const HOME_INTERIOR_MARKERS = [
   'generic office corner'
 ];
 
+/** Trades (detectBusinessType) whose real premises ARE home-like rooms — never "drifted" there. */
+const HOME_IS_THE_PLACE = new Set(['realestate', 'mattress', 'food']);
+
 const REALISTIC_LOGO_SURFACE_MARKERS = [
   'reception panel',
   'acrylic sign',
@@ -1905,7 +1954,8 @@ const getMainFramePromptValidationIssues = (
   }
 
   const combinedPrompts = prompts.join(' ').toLowerCase();
-  if (containsAnyMarker(combinedPrompts, HOME_INTERIOR_MARKERS)) {
+  // A builder's model flat, a furniture showroom's bedroom set or a hotel's lobby IS the business's own place.
+  if (!HOME_IS_THE_PLACE.has(businessType) && containsAnyMarker(combinedPrompts, HOME_INTERIOR_MARKERS)) {
     issues.push('Some clip prompts drift into home-like, residential, lounge, or generic interior wording.');
   }
 
@@ -2380,6 +2430,21 @@ const STRUCTURED_SEGMENT_PATTERN = /^(\d+\s*-\s*\d+)\s*:|^segment\s*\d+\s*:/i;
 const PHONE_DIGIT_WORD_PATTERN = /(?<![\p{L}\p{M}\u{200C}\u{200D}])(జీరో|వన్|టూ|త్రీ|ఫోర్|ఫైవ్|సిక్స్|సెవెన్|ఎయిట్|నైన్)(?![\p{L}\p{M}\u{200C}\u{200D}])/gu;
 const MAX_VOICEOVER_REPAIR_PASSES = 2;
 
+/**
+ * Edits asked AT ONCE in each clip-repair pass (repairClipsByEdit, repairDialogueClips) — the best is kept.
+ *
+ * ── Why (2026-10-23, the owner: "generation taking lot of time") ──────────────────────────────────
+ * Live, the editor told "17–20 spoken words" handed back 13–16-word Telugu clips pass after pass; one edit per pass
+ * meant three or four passes in a row (~5 s each) for every draft, and 3 of 6 live runs that day still ended on the
+ * final gate ("Clip 2 … has 16", "Clip 1 is too long to say in 8 seconds") after about two minutes — nothing for the
+ * member but Press Generate. Two edits at once (each on its own key) cost one pass's wait, and the pass keeps the
+ * better of them or the best version of each clip across them, judged by the same isBetterRepair as before.
+ */
+const REPAIR_CANDIDATES = 2;
+
+/** How far one clip's spoken words are from 17–20 (0 inside) — which of two edits of a clip to keep. */
+const clipBandDistance = (text: string) => bandDistance([countSpokenWords(text)]);
+
 const getStructuredSegmentLineCount = (script: string): number => {
   return cleanScriptText(script)
     .split('\n')
@@ -2584,31 +2649,39 @@ ${targets.map(i => `- Clip ${i + 1}: ${repairDirection(issuesForClip(bestIssues,
   The clip must hold ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words. Count your rewritten clip the same way before you return it.`).join('\n')}
 
 Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
-    try {
-      const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-        model,
-        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-        config: { systemInstruction: ctx.systemInstruction, responseMimeType: 'application/json' },
-      }), { effort: 'standard' });
-      const edits = new Map([...parseClipTextEdits(response.text || '', targets)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string]));
-      if (edits.size === 0) break;
-      const candidate = ctx.normalize(formatVoiceOverScript(mergeClipEdits(best.segments, edits)));
-      const candidateIssues = ctx.issuesOf(candidate);
-      const candidateDistance = distanceOf(candidate);
-      // Keep a fix that gets closer even when it does not clear the issue outright; stop only when a
-      // pass makes nothing better.
-      if (!isBetterRepair({ issues: bestIssues, distance: bestDistance }, { issues: candidateIssues, distance: candidateDistance })) {
-        barren += 1;
-        continue;
-      }
-      barren = 0;
-      best = candidate;
-      bestIssues = candidateIssues;
-      bestDistance = candidateDistance;
-    } catch (err) {
-      console.warn('Clip-level voice-over repair failed; keeping the script as it was.', err);
-      break;
+    // REPAIR_CANDIDATES edits of the same clips at once (each on its own key) — see the banner on REPAIR_CANDIDATES.
+    const answers = await Promise.all(Array.from({ length: REPAIR_CANDIDATES }, () => callWithFallback(async (ai, model) => ai.models.generateContent({
+      model,
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      config: { systemInstruction: ctx.systemInstruction, responseMimeType: 'application/json' },
+    }), { effort: 'standard' }).then(
+      response => new Map([...parseClipTextEdits(response.text || '', targets)].map(([i, t]) => [i, cleanScriptText(t)] as [number, string])),
+      err => { console.warn('Clip-level voice-over repair failed; keeping the script as it was.', err); return null; },
+    )));
+    const edited = answers.filter((edits): edits is Map<number, string> => !!edits && edits.size > 0)
+      .map(edits => ctx.normalize(formatVoiceOverScript(mergeClipEdits(best.segments, edits))));
+    if (edited.length === 0) break;
+    // …and the best version of EACH clip out of them, so one answer's good clip 2 and the other's good clip 3 both count.
+    const drafts = edited.length > 1
+      ? [...edited, ctx.normalize(formatVoiceOverScript(best.segments.map((segment, i) => targets.includes(i)
+        ? edited.map(d => d.segments[i] ?? segment).reduce((a, b) => (clipBandDistance(b) < clipBandDistance(a) ? b : a))
+        : segment)))]
+      : edited;
+    let chosen: { draft: NormalizedVoiceOver; issues: string[]; distance: number } | null = null;
+    for (const draft of drafts) {
+      const standing = { draft, issues: ctx.issuesOf(draft), distance: distanceOf(draft) };
+      if (!chosen || isBetterRepair(chosen, standing)) chosen = standing;
     }
+    // Keep a fix that gets closer even when it does not clear the issue outright; stop only when a
+    // pass makes nothing better.
+    if (!chosen || !isBetterRepair({ issues: bestIssues, distance: bestDistance }, chosen)) {
+      barren += 1;
+      continue;
+    }
+    barren = 0;
+    best = chosen.draft;
+    bestIssues = chosen.issues;
+    bestDistance = chosen.distance;
   }
   return { normalized: best, issues: bestIssues };
 };
@@ -2798,7 +2871,8 @@ export const generateAdAssets = async (
             contents: [{ role: 'user', parts }],
             config: { systemInstruction: systemPrompt, ...config }
           });
-        }, { effort: 'standard' });
+          // The frame prompts are the run's longest answer (~3,000 tokens for 4 clips, 19 s live; 8 clips about twice that).
+        }, { effort: 'standard', requestLimitMs: 150_000 });
         const text = response.text;
         if (text && text.trim().length > 50) {
           return text;
@@ -3292,40 +3366,53 @@ ${targets.map(i => {
 }).join('\n')}
 
 Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
-      try {
-        const response = await callWithFallback(async (ai, model) => ai.models.generateContent({
-          model,
-          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          config: {
-            systemInstruction: buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
-              language: formData.language || 'Telugu',
-              clipCount: segmentCount,
-              adType: formData.adType,
-              festivalName: formData.festivalName,
-              brief: coreMessage,
-              speakers: packSpeakerList,
-              register: contractRegisterFor(pack!),
-              address: sayAddress || latinAddress,
-            }) + addressRule,
-            responseMimeType: 'application/json',
-          },
-        }), { effort: 'standard' });
-        const edits = new Map([...parseClipDialogueEdits(response.text || '', targets)].map(([i, ls]) =>
-          [i, ls.map((l, p) => ({ speaker: speakerKeyOf(l.speaker, p), text: l.text }))] as [number, DialogueClip]));
-        if (edits.size === 0) break;
-        const candidate = tools.finish(mergeClipEdits(clips, edits));
-        const candidateIssues = tools.check(candidate);
-        if (!isBetterRepair({ issues, distance: dialogueDistance(clips) }, { issues: candidateIssues, distance: dialogueDistance(candidate) })) {
-          barren += 1;
-          continue;
-        }
-        barren = 0;
-        clips = candidate;
-        issues = candidateIssues;
-      } catch (err) {
-        console.warn('Clip-level dialogue repair failed; keeping the script as it was.', err);
-        break;
+      // REPAIR_CANDIDATES edits at once, the best kept — as in repairClipsByEdit (see REPAIR_CANDIDATES).
+      const answers = await Promise.all(Array.from({ length: REPAIR_CANDIDATES }, () => callWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        config: {
+          systemInstruction: buildLanguageDirective(formData) + VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
+            language: formData.language || 'Telugu',
+            clipCount: segmentCount,
+            adType: formData.adType,
+            festivalName: formData.festivalName,
+            brief: coreMessage,
+            speakers: packSpeakerList,
+            register: contractRegisterFor(pack!),
+            address: sayAddress || latinAddress,
+          }) + addressRule,
+          responseMimeType: 'application/json',
+        },
+      }), { effort: 'standard' }).then(
+        response => new Map([...parseClipDialogueEdits(response.text || '', targets)].map(([i, ls]) =>
+          [i, ls.map((l, p) => ({ speaker: speakerKeyOf(l.speaker, p), text: l.text }))] as [number, DialogueClip])),
+        err => { console.warn('Clip-level dialogue repair failed; keeping the script as it was.', err); return null; },
+      )));
+      const merged = answers.filter((edits): edits is Map<number, DialogueClip> => !!edits && edits.size > 0)
+        .map(edits => mergeClipEdits(clips, edits));
+      if (merged.length === 0) break;
+      const finished = merged.map(draft => tools.finish(draft));
+      const clipWordsOf = (clip: DialogueClip) => clip.reduce((sum, line) => sum + countSpokenWords(line.text), 0);
+      // …and the best version of EACH clip out of them (its lines together nearest 17–20), finished once more.
+      const drafts = merged.length > 1
+        ? [...finished, tools.finish(clips.map((clip, i) => {
+          if (!targets.includes(i)) return clip;
+          const k = finished.map(d => bandDistance([clipWordsOf(d[i] ?? clip)])).reduce((at, d, j, all) => (d < all[at] ? j : at), 0);
+          return merged[k][i] ?? clip;
+        }))]
+        : finished;
+      let chosen: { clips: DialogueClip[]; issues: string[]; distance: number } | null = null;
+      for (const draft of drafts) {
+        const standing = { clips: draft, issues: tools.check(draft), distance: dialogueDistance(draft) };
+        if (!chosen || isBetterRepair(chosen, standing)) chosen = standing;
       }
+      if (!chosen || !isBetterRepair({ issues, distance: dialogueDistance(clips) }, chosen)) {
+        barren += 1;
+        continue;
+      }
+      barren = 0;
+      clips = chosen.clips;
+      issues = chosen.issues;
     }
     if (issues.length > 0) console.warn('Character dialogue issues remain after repair:', issues);
     return { clips, issues };
@@ -4611,7 +4698,16 @@ ${sceneContext ? `
 
   // Skipped for character packs: this repair pass polices human-model art direction (casting,
   // attire, model beauty tier) which has no meaning when the subjects are two cartoon characters.
-  if (isCommercialMainFrame && !pack) {
+  /*
+    ── Only when nothing planned the backgrounds (2026-10-23, the owner: "generation taking lot of time") ──
+    This location check predates the scene plan: it read the trade's location ladder back out of the frames
+    with word lists. Since then every clip's background is the scene plan's (stamped in code below,
+    withSceneBackground) or the client's own photo (the background plate), so the check could only fight
+    them — a flats builder's planned "living area of the model flat, sofa set" was "home-like" — and its
+    rewrite of EVERY frame (one ~3,000-token call, 15–20 s, the video prompts waiting on it) ran on 4 of 4
+    single-presenter audit runs and still failed on 3. It now runs only in the fallback it was written for.
+  */
+  if (isCommercialMainFrame && !pack && !sceneContext && clipPhotoPlan.length === 0) {
     let mainFrameValidationIssues = getMainFramePromptValidationIssues(
       mainFramePrompts,
       detectedBusinessType,

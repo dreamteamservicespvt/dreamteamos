@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { REQUEST_LIMIT_MS, REQUEST_LIMIT_TIMER } from "@/utils/geminiModels";
 
 /**
  * The Gemini call layer (services/geminiService callWithFallback) against a fake Google that answers the way the
@@ -34,6 +35,8 @@ const world = {
   noThinking: new Set<string>(),
   /** every request fails before reaching Google. */
   offline: false,
+  /** models whose requests Google holds open and never answers (live 2026-10-23: 250 s) — until the request is cancelled. */
+  hang: new Set<string>(),
   /** a retry delay Google puts in its 429 text. */
   retryText: "Please retry in 41.252946367s.",
 };
@@ -54,6 +57,10 @@ vi.mock("@google/genai", () => ({
           await tick();
           const m = req.model as string;
           if (world.offline) throw new TypeError("Failed to fetch");
+          if (world.hang.has(m)) {
+            return new Promise((_, reject) => req.config?.abortSignal?.addEventListener("abort", () =>
+              reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }))));
+          }
           if (world.invalidKeys.has(apiKey)) {
             throw apiError(400, { error: { code: 400, message: "API key not valid. Please pass a valid API key.", status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] } });
           }
@@ -122,7 +129,7 @@ beforeEach(async () => {
   sent.length = 0;
   world.retired.clear(); world.invalidKeys.clear(); world.leakedKeys.clear(); world.exhausted.clear();
   world.busy.clear(); world.newUsers.clear(); world.quotaOnce.clear(); world.noThinking.clear();
-  world.offline = false; world.retryText = "Please retry in 41.252946367s.";
+  world.offline = false; world.retryText = "Please retry in 41.252946367s."; world.hang.clear();
   localStorage.clear();
   vi.unstubAllEnvs();
   KEYS.forEach((k, i) => vi.stubEnv(`VITE_API_KEY_${i + 1}`, k));
@@ -130,6 +137,16 @@ beforeEach(async () => {
   clock = Date.UTC(2026, 9, 10, 6, 0, 0); // 2026-10-10, 11:30 in India
   vi.spyOn(Date, "now").mockImplementation(() => clock);
   vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: any, ms?: number, ...args: any[]) => {
+    /*
+      A request's limit (2026-10-23) is not one of the call layer's waits: a fake answer comes in a few ms, so its
+      timer never fires (it is cleared) — except in a test where Google holds requests open, where it fires once a
+      normal answer has surely come, moving the clock by the whole limit.
+    */
+    if (args[0] === REQUEST_LIMIT_TIMER) {
+      return world.hang.size === 0
+        ? realSetTimeout(fn, Number(ms), ...args)
+        : realSetTimeout(() => { clock += Number(ms) || 0; fn(...args); }, 150);
+    }
     clock += Math.max(0, Number(ms) || 0);
     return realSetTimeout(fn, 0, ...args);
   }) as any);
@@ -176,6 +193,58 @@ describe("a model Google has retired", () => {
     await loadPage();
     await call("fast");
     expect(sent.map((s) => s.model)).toEqual(["gemini-3.8-flash", "gemini-3.8-flash"]);
+  });
+});
+
+describe("a request Google holds open (2026-10-23 — live, one request on gemini-3.8-flash took 250.8 s)", () => {
+  it("is given up at its limit, cancelled, and the next model answers", async () => {
+    world.hang.add("gemini-2.5-flash");
+    const started = clock;
+    expect((await call("standard")).text).toBe("answered by gemini-3.8-flash");
+    expect(clock - started).toBe(REQUEST_LIMIT_MS.standard);
+    expect(sent[0].model).toBe("gemini-2.5-flash");
+    expect(sent[0].config.abortSignal.aborted).toBe(true);
+  });
+
+  it("waits only as long as the call's effort allows — and as long as a caller's own limit says", async () => {
+    world.hang.add("gemini-2.5-flash");
+    let started = clock;
+    await call("fast");
+    expect(clock - started).toBe(REQUEST_LIMIT_MS.fast);
+    await loadPage();
+    started = clock;
+    await call();
+    expect(clock - started).toBe(REQUEST_LIMIT_MS.default);
+    await loadPage();
+    started = clock;
+    await gemini.callGeminiWithFallback((ai, model) => ai.models.generateContent({ model, contents: "x" }), { effort: "standard", requestLimitMs: 150_000 });
+    expect(clock - started).toBe(150_000);
+  });
+
+  it("rests the slow model for every call for a moment, like a 'high demand' answer — then it is asked again", async () => {
+    world.hang.add("gemini-2.5-flash");
+    await call("deep");
+    sent.length = 0;
+    await call("deep");
+    expect(sent.map((s) => s.model)).toEqual(["gemini-3.8-flash"]);
+    world.hang.clear();
+    clock += 2 * 60 * 1000;
+    sent.length = 0;
+    await call("deep");
+    expect(sent.map((s) => s.model)).toEqual(["gemini-2.5-flash"]);
+  });
+
+  it("stops after three slow models in a row with a sentence a member can act on, never hanging", async () => {
+    ["gemini-2.5-flash", "gemini-3.8-flash", "gemini-3.6-flash"].forEach((m) => world.hang.add(m));
+    const failure = await failureOf(call("standard"));
+    expect(failure?.name).toBe("GeminiUnavailableError");
+    expect(failure?.message).toMatch(/overloaded/);
+    expect(sent.map((s) => s.model)).toEqual(["gemini-2.5-flash", "gemini-3.8-flash", "gemini-3.6-flash"]);
+  });
+
+  it("leaves a normal answer alone", async () => {
+    expect((await call("standard")).text).toBe("answered by gemini-2.5-flash");
+    expect(sent[0].config.abortSignal.aborted).toBe(false);
   });
 });
 

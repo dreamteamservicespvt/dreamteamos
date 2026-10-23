@@ -6,6 +6,27 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-23 (evening): AI ads — generation speed, three root causes** (`ai-ads.md` §17.2 Speed, step 5, §17.3, §27). The
+  owner: "it was taking so much time to generate the deliverables … find and solve it permanently." Measured first: a
+  harness (`work/2026-10-23-speed/timeline.ts`, vite-node, real Gemini) logs every request's start, end, status, model and
+  purpose. Before: presenter 4 clips 82 s (and 115 s ending on the word gate), duo 100 s, festival 2 clips 128 s and two
+  runs that STOPPED at 130 s and 391 s. **(1) No request had a time limit** — a gemini-3.8-flash request was held open
+  250.8 s. `utils/geminiModels.REQUEST_LIMIT_MS` (fast 45 / standard 60 / deep 75 / none 120 s; the frame writer 150 s),
+  `geminiService.withinLimit` (an `AbortSignal` in the request + a timer), `GeminiRequestTimeout` read as `busy`, at most
+  `MAX_REQUEST_TIMEOUTS` = 3 per call. **(2) The old frame location check** (pre-scene-plan word lists) rewrote every frame
+  of a single-presenter ad (~17 s, Veo waiting) on 4 of 4 audit runs and failed again on 3 (a builder's model flat was
+  "home-like") — now only when no scene plan and no client photo; `HOME_IS_THE_PLACE` (realestate, mattress, food).
+  **(3) Clip repairs one at a time** — the editor returns 13–16-word Telugu clips for "17–20", 3–4 sequential passes per
+  draft; each pass now asks `REPAIR_CANDIDATES` = 2 edits at once and keeps the best, or the best version of each clip
+  (`repairClipsByEdit`, `repairDialogueClips`, same `isBetterRepair`). After, live: presenter **63 s** (ready 9.5),
+  festival **81 s** (8.5), duo 181 s — every run finished; the duo's time was two hung gemini-3.8-flash requests, cut at
+  exactly 45 s and 60 s by the new limit (250 s before). **Open, the owner's call (§27):** a 2-clip Telugu festival
+  greeting cannot always hold 17 words AND ≤ 54 syllables. Tests: `geminiModelFallback` +5 (a held-open request: cut at
+  its limit, aborted, the next model, the effort / caller limit, the 30 s rest, three in a row stop with a sentence, a
+  normal answer untouched), `adPipelineEndToEnd` +2 (no frame rewrite with client photos; the fallback check never calls
+  a model flat home-like); tsc 0; vitest 4733 / 4733, then 4732 / 4733 (the known flaky `smmDeliveryControlUiOct15`,
+  10 / 10 alone); build ✅.
+
 - **2026-10-23 — Vercel's `api/` type errors fixed (SMM monitor chain).** Vercel's build log printed 36 TS errors for
   `api/smm-monitor.ts`: the extensionless `import type` lines in it and in `src/utils/smmMonitor`, `smmCadence`,
   `smmDeliverySettings`, `smmDeliveryBaseline`, `smmClientApproval`, `smmServerDelivery` (TS2835 under nodenext); every

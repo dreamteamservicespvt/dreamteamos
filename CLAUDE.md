@@ -225,6 +225,12 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-23)
 
+- 2026-10-23 (evening), **local, not pushed** — **AI ads generation speed**: every Gemini request has a time limit (a
+  held-open request cost 250 s), the old frame location check runs only when nothing planned the backgrounds (~17 s on
+  presenter ads), and each clip-repair pass asks two edits at once (3 of 6 runs had stopped on the word gate). Live:
+  presenter 82 → 63 s, festival 128 s / failures → 81 s (`ai-ads.md` §17.2 Speed; history 2026-10-23 evening). **Owner to
+  decide:** the 2-clip Telugu festival greeting vs 17 words + ≤ 54 syllables (`ai-ads.md` §27).
+
 - 2026-10-23, **local, not pushed** — **the owner's three AI-ads decisions**: a deity's festival ad = the deity's own
   blessing in clip 1, the business's wish (no "మా") in the final clip; one extra script round when the best draft still
   breaks a hard rule; a pair's line ≤ 12 words in the final gate. Kids left out of testing (`ai-ads.md` §24, §27;

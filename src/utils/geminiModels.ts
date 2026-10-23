@@ -81,6 +81,38 @@ export const thinkingFor = (model: string, effort?: Effort): GeminiThinking | un
   return undefined;
 };
 
+// ── How long one request may go unanswered ───────────────────────────────────────────────────────
+
+/**
+ * The longest ONE request may go unanswered before the call layer gives up on it and asks the next model.
+ *
+ * ── Why (2026-10-23, the owner: "generation taking lot of time … time was getting waste for the tech team") ──
+ * Nothing limited a request. Timed live that day: gemini-2.5-flash answered 429 then 503 for a script edit, the
+ * call moved on to gemini-3.8-flash — and Google held that request open for 250.8 seconds before it returned 92
+ * tokens. The whole run waited on it (a 2-clip ad took 391 s and still stopped). Normal answers in the same runs
+ * took 1–19 s (the 4-clip frame prompts, ~3,000 tokens, the longest), so each limit is several times the slowest
+ * normal answer at its thinking level; the frame writer passes a longer one of its own. A request past its limit
+ * is treated like a "high demand" answer — the model rests for every call for BUSY_COOL_MS and the next one answers.
+ */
+// `default` = a call that names no effort (Cinematic Ads, the refines): the model thinks as long as it likes, so more room.
+export const REQUEST_LIMIT_MS: Readonly<Record<Effort | 'default', number>> = { fast: 45_000, standard: 60_000, deep: 75_000, default: 120_000 };
+
+export const requestLimitFor = (effort?: Effort, own?: number): number => own ?? REQUEST_LIMIT_MS[effort ?? 'default'];
+
+/** Requests one call may lose to the limit before it stops: three slow models in a row means Google is overloaded. */
+export const MAX_REQUEST_TIMEOUTS = 3;
+
+/** The extra argument the limit's timer is set with — how a test with a virtual clock tells it from the call layer's waits. */
+export const REQUEST_LIMIT_TIMER = 'gemini-request-limit';
+
+/** Thrown in place of an answer that did not come within the request's limit. Read as `busy` (readGeminiError). */
+export class GeminiRequestTimeout extends Error {
+  constructor(model: string, ms: number) {
+    super(`${model} did not answer within ${Math.round(ms / 1000)} seconds`);
+    this.name = 'GeminiRequestTimeout';
+  }
+}
+
 // ── What Google's answer means ───────────────────────────────────────────────────────────────────
 
 export type GeminiErrorKind =
@@ -148,6 +180,8 @@ export const readGeminiError = (error: unknown, model = ''): GeminiErrorInfo => 
   const message = String(body?.message ?? text).trim();
   const info = (kind: GeminiErrorKind, extra: Partial<GeminiErrorInfo> = {}): GeminiErrorInfo => ({ kind, status, message, ...extra });
 
+  // Our own limit, not Google's answer: the model is too slow right now, exactly like a "high demand" 503.
+  if (error instanceof GeminiRequestTimeout) return info('busy');
   if (/API_KEY_INVALID|API key not valid|API_KEY_EXPIRED|API key expired|reported as leaked|SERVICE_DISABLED|has not been used in project|CONSUMER_SUSPENDED|has been suspended/i.test(text)) {
     return info('dead_key');
   }

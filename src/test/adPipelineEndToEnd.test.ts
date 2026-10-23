@@ -27,8 +27,10 @@ let script: { writer?: string; edit?: (user: string) => string; dialogue?: strin
 const SHARMA = { businessName: "Sharma Electronics", businessType: "electronics store", services: ["TVs", "washing machines"] };
 let extracted: Record<string, unknown> = SHARMA;
 
+/** Words a test adds to every fake frame (2026-10-23: a model flat's "sofa set"). */
+let frameExtra = "";
 const FRAME_REPLY = (n: number) => Array.from({ length: n }, (_, i) =>
-  `A photoreal frame for clip ${i + 1}: the cast stands inside the business beside the real counter, shelves of stock behind, soft daylight.`).join("\n###CLIP###\n");
+  `A photoreal frame for clip ${i + 1}: the cast stands inside the business beside the real counter, shelves of stock behind, soft daylight.${frameExtra}`).join("\n###CLIP###\n");
 
 vi.mock("@google/genai", () => ({
   GoogleGenAI: class {
@@ -70,7 +72,7 @@ beforeAll(async () => {
   for (const level of ["log", "warn", "info", "error"] as const) vi.spyOn(console, level).mockImplementation(() => {});
   gemini = await import("@/services/geminiService");
 });
-beforeEach(() => { calls.length = 0; script = { writer: "" }; extracted = SHARMA; });
+beforeEach(() => { calls.length = 0; script = { writer: "" }; extracted = SHARMA; frameExtra = ""; });
 
 const noFiles = (): any => ({ logo: null, visitingCard: [], storeImage: [], productImages: [], flyersPosters: [], voiceRecording: [], textInstructionsFile: [] });
 const form = (over: Record<string, unknown> = {}): any => ({
@@ -384,5 +386,31 @@ describe("Motu and Patlu keep their heights (problem 3)", () => {
       expect(prompt).toContain("no morphing");
       expect(prompt).not.toMatch(/tracking|lateral dolly|arc shot|push-in/i);
     }
+  });
+});
+
+describe("the old frame location check (2026-10-23 — the owner: \"generation taking lot of time\")", () => {
+  const isFrameRewrite = (c: Call) => /---CURRENT PROMPTS---/.test(c.user);
+
+  it("never rewrites the frames when the client's photos set every background", async () => {
+    script = { writer: `clip-1[0-8sec]: ${CLIP1}\nclip-2[8-16sec]: ${CLIP2_PLAIN}` };
+    frameExtra = " A sofa set and a living room corner beside the counter.";
+    const files = noFiles();
+    files.storeImage = [new File([new Uint8Array([1, 2, 3])], "shop.jpg", { type: "image/jpeg" })];
+    const out = await run(form({ locationMode: "real_provided" }), files);
+    expect(calls.filter(isFrameRewrite)).toEqual([]);
+    expect(out.mainFramePrompts).toHaveLength(2);
+  });
+
+  it("still checks the frames when nothing planned the backgrounds — but never calls a builder's model flat \"home-like\"", async () => {
+    script = { writer: `clip-1[0-8sec]: ${CLIP1}\nclip-2[8-16sec]: ${CLIP2_PLAIN}` };
+    extracted = { businessName: "Sri Sai Constructions", businessType: "real estate builders", services: ["2BHK flats", "open plots"] };
+    frameExtra = " The living area of the model flat, its sofa set and a coffee table.";
+    await run(form({ textInstructions: "Sri Sai Constructions — real estate, 2BHK and 3BHK flats and open plots in Kakinada." }));
+    const rewrites = calls.filter(isFrameRewrite);
+    // The fake's scene plan answers "{}", so the fallback check runs; the fake frames show no installed sign.
+    expect(rewrites).toHaveLength(1);
+    expect(rewrites[0].user).toContain("Logo placement language is missing");
+    expect(rewrites[0].user).not.toContain("drift into home-like, residential");
   });
 });
