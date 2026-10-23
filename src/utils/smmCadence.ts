@@ -41,10 +41,10 @@
  * say the same, and a parity test holds them together. Every day is a `yyyy-MM-dd` string worked on in UTC
  * arithmetic, and every time of day is India time (the server runs in UTC): a deadline is an instant, ms.
  */
-import type { SmmCampaign, SmmContentItem, SmmContentKind, SmmCycle } from "../types/smm";
+import type { SmmCampaign, SmmContentItem, SmmContentKind, SmmCycle } from "../types/smm.js";
 import type {
   SmmDeliveryCheckpoints, SmmDeliveryItemFields, SmmDeliverySettings, SmmFixedReason, SmmLateStep, SmmPlanWeek,
-} from "../types/smmDelivery";
+} from "../types/smmDelivery.js";
 // `.js` on purpose (phase 6): the server checker loads this file as Node ESM, which needs the extension —
 // see the note at the top of `smmMonitor.ts`.
 import { DEFAULT_SMM_DELIVERY } from "./smmDeliverySettings.js";

@@ -13,8 +13,8 @@
  * Pure and written WITHOUT the `@/` alias (the server function runs it; Node ESM on Vercel needs `.js` on
  * runtime imports — this file has none).
  */
-import type { SmmContentItem } from "../types/smm";
-import type { SmmApprovalProof } from "../types/smmDelivery";
+import type { SmmContentItem } from "../types/smm.js";
+import type { SmmApprovalProof } from "../types/smmDelivery.js";
 
 export interface SmmClientPiece {
   itemId: string;

@@ -24,7 +24,7 @@
  *
  * Pure and alias-free (the server loads it as Node ESM — hence the `.js` on the runtime import).
  */
-import type { SmmDeliverySettings } from "../types/smmDelivery";
+import type { SmmDeliverySettings } from "../types/smmDelivery.js";
 import { toMs } from "./smmCadence.js";
 
 /**

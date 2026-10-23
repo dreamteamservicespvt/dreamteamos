@@ -58,8 +58,8 @@ import {
   chunk, cronAuthProblem, deliverableAlerts, isAlreadyExists, isDeadTokenCode, notificationDocFor, parseAlertAnswers,
   pushMessageFor, type SmmPushMessage, type SmmPushToken,
 } from "../src/utils/smmServerDelivery.js";
-import type { SmmDeliveryRunSummary } from "../src/types/smmDelivery";
-import type { SmmAlert } from "../src/utils/smmMonitor";
+import type { SmmDeliveryRunSummary } from "../src/types/smmDelivery.js";
+import type { SmmAlert } from "../src/utils/smmMonitor.js";
 
 export const config = { maxDuration: 60 };
 

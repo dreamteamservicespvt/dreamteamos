@@ -28,7 +28,7 @@
  *
  * Pure and alias-free (the server loads it as Node ESM; it imports types only).
  */
-import type { SmmAlert, SmmAlertAnswer, SmmAlertAnswerKind } from "./smmMonitor";
+import type { SmmAlert, SmmAlertAnswer, SmmAlertAnswerKind } from "./smmMonitor.js";
 
 export const SMM_URGENT_TYPE = "smm_urgent";
 export const SMM_NOTICE_TYPE = "smm_notice";

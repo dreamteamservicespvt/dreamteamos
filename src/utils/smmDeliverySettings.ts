@@ -8,7 +8,7 @@
 import type {
   SmmDeliveryCheckpoints, SmmDeliveryLadder, SmmDeliveryMode, SmmDeliveryQuietHours, SmmDeliverySettings,
   SmmDeliveryRunSummary, SmmDeliverySwitch, SmmDeliveryTunables,
-} from "../types/smmDelivery";
+} from "../types/smmDelivery.js";
 
 export const SMM_DELIVERY_MODES: { key: SmmDeliveryMode; label: string; detail: string }[] = [
   { key: "off", label: "Off", detail: "Nothing runs. The classic Social Media works exactly as before." },

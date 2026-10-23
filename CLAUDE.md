@@ -120,7 +120,8 @@
   happened in `eb2c3ff`). Parse it after touching it:
   `npx esbuild api/<file>.ts --platform=node --log-level=error > /dev/null`. Vercel runs `api/` as **Node ESM**
   (`"type": "module"`): an import from `api/` into `src/` must reach only alias-free files, and every runtime relative
-  import on that chain ends in `.js` (`../src/utils/x.js`) — extensionless fails only on Vercel (2026-10-15).
+  import on that chain ends in `.js` (`../src/utils/x.js`) — extensionless fails only on Vercel (2026-10-15). `import type` too:
+  Vercel type-checks `api/` as nodenext and prints TS2835 for an extensionless one (2026-10-23).
 - **Shell-scripted edits** (Windows + Git Bash): `node -e '…'` and heredocs mangle backslashes,
   backticks and apostrophes (a `\b` once landed in source as a backspace character). Write the script
   to a `.cjs` file with the editor tool, use `String.raw` for text with backslashes, assert every

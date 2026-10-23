@@ -31,8 +31,8 @@
  * `import type` lines are erased and need nothing. A test (`smmServerCheckerOct15`) holds every file the
  * server loads to this.
  */
-import type { SmmContentItem } from "../types/smm";
-import type { SmmBlockerKind, SmmDeliverySettings, SmmEtaKind, SmmItemEta, SmmPlanWeek } from "../types/smmDelivery";
+import type { SmmContentItem } from "../types/smm.js";
+import type { SmmBlockerKind, SmmDeliverySettings, SmmEtaKind, SmmItemEta, SmmPlanWeek } from "../types/smmDelivery.js";
 import { DEFAULT_SMM_DELIVERY } from "./smmDeliverySettings.js";
 import {
   addDaysIso, crowdedWeeks, daysFrom, goLiveAt, isIsoDay, isWorkingDay, istDay, istMinuteOfDay, istMoment, monthRunsOn,

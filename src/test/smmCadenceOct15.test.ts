@@ -26,10 +26,10 @@ describe("alias-free — the server checker (api/) reuses these rules", () => {
     const src = readFileSync(resolve(__dirname, "../utils", file), "utf8");
     expect(src).not.toMatch(/from\s+["']@\//);
     expect(src).not.toMatch(/import\(["']@\//);
-    // …and only relative imports of alias-free files. The two runtime ones carry `.js` (phase 6: the server loads
-    // them as Node ESM, which needs the extension — `smmServerCheckerOct15` checks every file the server loads).
+    // …and only relative imports of alias-free files, every one with `.js` — type imports too: Vercel type-checks
+    // api/ as nodenext (TS2835 without it; 2026-10-23), and Node ESM needs it at runtime (`smmServerCheckerOct15`).
     for (const m of src.matchAll(/from\s+["'](\.[^"']+)["']/g)) {
-      expect(["../types/smm", "../types/smmDelivery", "./smmDeliverySettings.js", "./smmCadence.js"]).toContain(m[1]);
+      expect(["../types/smm.js", "../types/smmDelivery.js", "./smmDeliverySettings.js", "./smmCadence.js"]).toContain(m[1]);
     }
   });
 });

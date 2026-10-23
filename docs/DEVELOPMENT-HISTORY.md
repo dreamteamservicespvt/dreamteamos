@@ -6,6 +6,13 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-23 — Vercel's `api/` type errors fixed (SMM monitor chain).** Vercel's build log printed 36 TS errors for
+  `api/smm-monitor.ts`: the extensionless `import type` lines in it and in `src/utils/smmMonitor`, `smmCadence`,
+  `smmDeliverySettings`, `smmDeliveryBaseline`, `smmClientApproval`, `smmServerDelivery` (TS2835 under nodenext); every
+  other error (`SmmMonitorRun` properties, `SmmDeliveryMonth`, `symbol` index) came from those unresolved types. Each
+  now ends in `.js`; the alias-free test's allow-list (`smmCadenceOct15`) updated. Tested: a nodenext `tsc` over all six
+  `api/` files → 0 errors, `tsconfig.check.json` 0, build ✅, 908/908 SMM tests.
+
 - **2026-10-23 (midday): AI ads — the live Ganesha check of the owner's decisions** (`ai-ads.md` §27). One live run
   (`work/2026-10-23-owner-decisions/live-ganesha.ts`, 4 clips, 484 s on keys at their daily limit): the deity's shape held
   (clip 1 a blessing with no business, the business first in clip 2, no festival in clips 2–3), but after two judged drafts
