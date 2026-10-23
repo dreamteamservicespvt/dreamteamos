@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ClipboardPaste, KeyRound, Loader2, Plus, Settings2 } from "lucide-react";
+import { ArrowRightLeft, ClipboardPaste, KeyRound, Loader2, Plus, Settings2, X } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useFlowAccounts, useFlowSettings, useFlowUsage, useGeminiApiKeys, usePaidAccounts, useTechTeam } from "@/hooks/useAiAccounts";
 import FlowAccountsList, { type FlowAccountAction } from "@/components/ai-accounts/FlowAccountsList";
@@ -14,7 +14,7 @@ import ApiKeyDialog from "@/components/ai-accounts/ApiKeyDialog";
 import ApiKeysPanel from "@/components/ai-accounts/ApiKeysPanel";
 import AiModal, { buttonClass, fieldClass } from "@/components/ai-accounts/AiModal";
 import {
-  assignFlowAccount, deleteFlowAccount, deleteFlowUsage, saveFlowSettings, setActiveFlowAccount, updateFlowAccount, type Person,
+  assignFlowAccount, deleteFlowAccount, deleteFlowUsage, moveFlowAccounts, saveFlowSettings, setActiveFlowAccount, updateFlowAccount, type Person,
 } from "@/services/aiAccounts";
 import { FLOW_CLIP_SECONDS, type FlowAccount, type FlowSettings, type FlowUsageEntry } from "@/types/aiAccounts";
 import { isDate, memberSummaries, teamAdminIdOf, teamTotals, todayStr } from "@/utils/flowCredits";
@@ -51,6 +51,10 @@ export default function AiAccounts() {
   const [month, setMonth] = useState(today.slice(0, 7));
   const { entries } = useFlowUsage(user, month);
   const [memberFilter, setMemberFilter] = useState("");
+  // The tech admin's "Move to" (2026-10-23): ticked accounts, the person they go to, one click.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [moveTo, setMoveTo] = useState("");
+  const [moving, setMoving] = useState(false);
   const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "paste" } |{ kind: "edit" | "assign"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "settings" } | { kind: "apiKey"; accountId: string } | null>(null);
   const keyAdmin = canSeeAllApiKeys(user);
   // The keys themselves are read only while their tab is open (one read per key).
@@ -64,6 +68,8 @@ export default function AiAccounts() {
   const shownAccounts = memberFilter ? accounts.filter((a) => a.ownerId === memberFilter || a.holderId === memberFilter) : accounts;
   const keyAccount = dialog?.kind === "apiKey" ? accounts.find((a) => a.id === dialog.accountId) || null : null;
   const keyCount = accounts.filter((a) => a.apiKey).length;
+  // Only accounts still in the list (one deleted elsewhere drops out of the selection).
+  const selectedAccounts = accounts.filter((a) => selectedIds.includes(a.id));
 
   if (!user) return null;
 
@@ -83,6 +89,22 @@ export default function AiAccounts() {
       }
     } catch (err) {
       toast({ title: "That did not work", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    }
+  };
+
+  const moveSelected = async () => {
+    const to = persons.find((p) => p.uid === moveTo);
+    if (!to || !selectedAccounts.length || moving) return;
+    setMoving(true);
+    try {
+      const n = await moveFlowAccounts(selectedAccounts, to, user);
+      toast({ title: n ? `Moved ${n} account${n === 1 ? "" : "s"} to ${to.name}` : `Already ${to.name}'s`, description: n ? "They count toward their target now." : undefined });
+      setSelectedIds([]);
+      setMoveTo("");
+    } catch (err) {
+      toast({ title: "Could not move them", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    } finally {
+      setMoving(false);
     }
   };
 
@@ -203,11 +225,27 @@ export default function AiAccounts() {
         </div>
       ) : tab === "flow" ? (
         <div className="space-y-3">
-          <select className={`${fieldClass} sm:w-64`} value={memberFilter} onChange={(e) => setMemberFilter(e.target.value)} data-test="flow-member-filter">
+          <select className={`${fieldClass} sm:w-64`} value={memberFilter} onChange={(e) => { setMemberFilter(e.target.value); setSelectedIds([]); }} data-test="flow-member-filter">
             <option value="">Everyone's accounts</option>
             {persons.map((p) => <option key={p.uid} value={p.uid}>{p.name}</option>)}
           </select>
+          {keyAdmin && selectedAccounts.length ? (
+            <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-primary/40 bg-card p-2 shadow-md" data-test="flow-move-bar">
+              <span className="text-sm font-semibold text-foreground">{selectedAccounts.length} selected</span>
+              <select className={`${fieldClass} min-w-0 flex-1 sm:flex-none sm:w-56`} value={moveTo} onChange={(e) => setMoveTo(e.target.value)}
+                aria-label="Move to" data-test="flow-move-to">
+                <option value="">Move to…</option>
+                {persons.map((p) => <option key={p.uid} value={p.uid}>{p.name}</option>)}
+              </select>
+              <button className={buttonClass.primary} onClick={moveSelected} disabled={!moveTo || moving} data-test="flow-move">
+                {moving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />} Move
+              </button>
+              <button className={buttonClass.ghost} onClick={() => setSelectedIds([])} disabled={moving} aria-label="Clear the selection"><X className="h-4 w-4" /></button>
+              <p className="basis-full text-[11px] text-muted-foreground">They become the chosen person's accounts — in their target and theirs to use. Credit entries stay as they are.</p>
+            </div>
+          ) : null}
           <FlowAccountsList accounts={shownAccounts} viewerId={user.uid} activeId={user.activeFlowAccountId} manager keyAdmin={keyAdmin} onAction={onAction}
+            selection={keyAdmin ? { ids: selectedIds, onChange: setSelectedIds } : undefined}
             emptyText="No Flow accounts yet. Members add theirs from My AI Accounts; add backups with “Add Flow account”." />
         </div>
       ) : tab === "usage" ? (

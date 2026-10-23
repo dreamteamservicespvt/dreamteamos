@@ -21,7 +21,7 @@ export function lastAssignment(account: FlowAccount) {
  * it and who uses it now, and offers what this viewer may do with it.
  */
 export default function FlowAccountsList({
-  accounts, viewerId, activeId, manager, keyAdmin = false, onAction, emptyText,
+  accounts, viewerId, activeId, manager, keyAdmin = false, onAction, emptyText, selection,
 }: {
   accounts: FlowAccount[];
   viewerId: string;
@@ -31,6 +31,8 @@ export default function FlowAccountsList({
   keyAdmin?: boolean;
   onAction: (action: FlowAccountAction, account: FlowAccount) => void;
   emptyText: string;
+  /** The tech admin's tick boxes for "Move to" (2026-10-23); absent = no tick boxes. */
+  selection?: { ids: string[]; onChange: (ids: string[]) => void };
 }) {
   const today = todayStr();
   const [search, setSearch] = useState("");
@@ -53,6 +55,16 @@ export default function FlowAccountsList({
     });
   }, [accounts, search, filter, today]);
 
+  const picked = new Set(selection?.ids || []);
+  const allShownPicked = shown.length > 0 && shown.every((a) => picked.has(a.id));
+  const toggleOne = (id: string) => selection?.onChange(picked.has(id) ? [...picked].filter((x) => x !== id) : [...picked, id]);
+  // "Select all shown" works on what the search / filters show, so a filter narrows a move to just those.
+  const toggleShown = () => {
+    const ids = new Set(picked);
+    for (const a of shown) { if (allShownPicked) ids.delete(a.id); else ids.add(a.id); }
+    selection?.onChange([...ids]);
+  };
+
   return (
     <div className="space-y-3">
       {accounts.length > 3 ? (
@@ -74,6 +86,13 @@ export default function FlowAccountsList({
         </div>
       ) : null}
 
+      {selection && shown.length > 0 ? (
+        <label className="inline-flex min-h-[24px] items-center gap-2 text-sm text-foreground cursor-pointer select-none">
+          <input type="checkbox" className="h-4 w-4" checked={allShownPicked} onChange={toggleShown} data-test="flow-select-shown" />
+          Select all {shown.length} shown
+        </label>
+      ) : null}
+
       {shown.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">{accounts.length ? "No account matches." : emptyText}</div>
       ) : (
@@ -89,9 +108,14 @@ export default function FlowAccountsList({
             const canKey = keyAdmin || (a.visibleTo || []).includes(viewerId);
             const keyStatus = a.apiKey ? API_KEY_STATUS[a.apiKey.status] || API_KEY_STATUS.unchecked : null;
             return (
-              <div key={a.id} data-test="flow-account-card" className={cn("bg-card border rounded-xl p-3 md:p-4 min-w-0", active ? "border-primary/60 ring-1 ring-primary/30" : "border-border")}>
+              <div key={a.id} data-test="flow-account-card" className={cn("bg-card border rounded-xl p-3 md:p-4 min-w-0",
+                active || picked.has(a.id) ? "border-primary/60 ring-1 ring-primary/30" : "border-border")}>
                 <div className="flex items-start justify-between gap-2 min-w-0">
-                  <div className="min-w-0">
+                  {selection ? (
+                    <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer" checked={picked.has(a.id)} onChange={() => toggleOne(a.id)}
+                      aria-label={`Select ${a.email}`} data-test="flow-select" />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
                     <p className="font-mono text-sm font-semibold text-foreground truncate" title={a.email}>{a.email}</p>
                     <p className="text-[11px] text-muted-foreground">
                       📱 {a.phone || "—"} · {s.noOpeningDay
@@ -195,7 +219,8 @@ export default function FlowAccountsList({
                         {new Date(e.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} —{" "}
                         {e.action === "assigned"
                           ? <>{e.byName} assigned it {e.fromName ? `from ${e.fromName} ` : ""}to <b className="text-foreground">{e.toName}</b></>
-                          : e.action === "added" ? <>{e.byName} added it{e.toName ? ` for ${e.toName}` : ""}</>
+                          : e.action === "moved" ? <>{e.byName} moved it {e.fromName ? `from ${e.fromName} ` : ""}to <b className="text-foreground">{e.toName}</b> (owner)</>
+                          : e.action === "added" ?<>{e.byName} added it{e.toName ? ` for ${e.toName}` : ""}</>
                             : e.action === "password_changed" ? <>{e.byName} changed the password</>
                               : e.action === "api_key_added" ? <>{e.byName} added its Gemini API key</>
                                 : e.action === "api_key_replaced" ? <>{e.byName} replaced its Gemini API key</>
