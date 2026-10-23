@@ -227,7 +227,8 @@ errors:** done means every listed item is fully resolved with no build, console 
 - 2026-10-23, **local, not pushed** — **the owner's three AI-ads decisions**: a deity's festival ad = the deity's own
   blessing in clip 1, the business's wish (no "మా") in the final clip; one extra script round when the best draft still
   breaks a hard rule; a pair's line ≤ 12 words in the final gate. Kids left out of testing (`ai-ads.md` §24, §27;
-  history 2026-10-23). Not yet seen live (keys at their daily limit) — run one Ganesha festival ad after 12:30 PM IST.
+  history 2026-10-23). Seen live once (midday): the deity's shape held; the missing wish audience and the Latin
+  "Vinayaka Chavithi" it showed are fixed (history 2026-10-23 midday) — re-run the Ganesha check once the keys reset.
 
 - 2026-10-23 (morning), **local, not pushed** — **the audit's remaining ad types tested live** (Real Owner Face from an
   invented face, a client photo, English, Kids, Ganesha, label, poster; 4 Flow clips / 48 credits): five fixes — "టూ

@@ -80,3 +80,15 @@ describe("the script prompts name it దసరా", () => {
     expect(wishOpeningLine("Dussehra", "English")).toContain("warm Dussehra wishes");
   });
 });
+
+describe("వినాయక చవితి (2026-10-23, the live Ganesha run)", () => {
+  it("is the Telugu name of Vinayaka Chavithi / Ganesh Chaturthi, and a Latin one in a Telugu line is corrected", () => {
+    for (const name of ["Vinayaka Chavithi", "Ganesh Chaturthi", "vinayaka chaturthi", "Ganesha Chaturthi"]) {
+      expect(teluguFestivalName(name), name).toBe("వినాయక చవితి");
+    }
+    expect(festivalNameIn("Vinayaka Chavithi", "English")).toBe("Vinayaka Chavithi");
+    expect(withFestivalSpellings("శ్రీ లక్ష్మి స్వీట్స్ తరఫున అందరికీ Vinayaka Chavithi శుభాకాంక్షలు", "Telugu"))
+      .toBe("శ్రీ లక్ష్మి స్వీట్స్ తరఫున అందరికీ వినాయక చవితి శుభాకాంక్షలు");
+    expect(speakableLine("Vinayaka Chavithi శుభాకాంక్షలు", "Telugu")).toContain("వినాయక చవితి");
+  });
+});

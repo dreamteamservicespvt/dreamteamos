@@ -25,9 +25,19 @@ const isTelugu = (language?: string | null) => {
 /** Every Latin spelling of the festival the lists, the team and the models use. */
 const DUSSEHRA_LATIN = /\b(?:dussehra|dusshera|dussehara|dushera|dussera|dusehra|dusera|dasara|dasera|dashara|dasarah)\b/i;
 
+/**
+ * Vinayaka Chavithi / Ganesh Chaturthi (2026-10-23): the live Ganesha ad's final clip said "Vinayaka Chavithi
+ * శుభాకాంక్షలు" in Latin letters — the deity's wish line (prompts/festivalWish deityWishLine) printed the Latin
+ * name and the writer copied it. Its Telugu name is fixed like దసరా's.
+ */
+const VINAYAKA_LATIN = /\b(?:vinayaka?|ganesh(?:a)?|ganesa)\s*(?:chavithi|chavith|chaviti|chathurthi|chaturthi|chaturthy)\b/i;
+
 /** The festival's Telugu name, when the occasion is one with a fixed Telugu spelling — else null. */
 export function teluguFestivalName(festival?: string | null): string | null {
-  return festival && DUSSEHRA_LATIN.test(festival) ? "దసరా" : null;
+  if (!festival) return null;
+  if (DUSSEHRA_LATIN.test(festival)) return "దసరా";
+  if (VINAYAKA_LATIN.test(festival)) return "వినాయక చవితి";
+  return null;
 }
 
 /** The occasion as a script in this language names it: "దసరా" in Telugu for Dussehra, else as given. */
@@ -70,9 +80,11 @@ const DUSSEHRA_TELUGU = new RegExp(
 
 /** The Latin spellings, inside a Telugu line (the validator objects to Latin letters anyway). */
 const DUSSEHRA_LATIN_ALL = new RegExp(DUSSEHRA_LATIN.source, "gi");
+const VINAYAKA_LATIN_ALL = new RegExp(VINAYAKA_LATIN.source, "gi");
 
 /** A Telugu script line with the festival spelled the one way the team wants. Other languages: unchanged. */
 export function withFestivalSpellings(text: string, language?: string | null): string {
   if (!text || !isTelugu(language)) return text;
-  return text.replace(DUSSEHRA_TELUGU, "దసరా").replace(DUSSEHRA_LATIN_ALL, "దసరా");
+  return text.replace(DUSSEHRA_TELUGU, "దసరా").replace(DUSSEHRA_LATIN_ALL, "దసరా")
+    .replace(VINAYAKA_LATIN_ALL, "వినాయక చవితి");
 }

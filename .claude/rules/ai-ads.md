@@ -1216,9 +1216,13 @@ attribution (`Clip.voScript` is one string).
   testing for now — no change made. The quota day also showed the script loop's limits: a Kids run shipped 5.8 (one empty
   round) and another stopped at 16 words with two passes left — since 2026-10-23 such a draft gets ONE extra round (§24).
   An English line (19 words) is said in ~6.9 s, leaving ~1 s of silence.
-- **The deity's blessing / business's wish (2026-10-23)** is checked by unit tests (`ownerDecisionsOct23`, every deity in
-  `scriptContractOct15`) only — a live Gemini run that morning timed out on the keys' daily limit before the script came
-  back, so no live Ganesha script, frame or Flow clip has been made from it yet. Watch: whether the final clip holds the
+- **The deity's blessing / business's wish (2026-10-23)** ran live once (Ganesha, Vinayaka Chavithi, 4 clips, 484 s on
+  near-exhausted keys): clip 1 a clean blessing, the business first in clip 2, no festival in clips 2–3 — but the 45 s
+  budget ran out after two judged drafts and clip 4 shipped without మిత్రులు, కస్టమర్లందరికీ and with "Vinayaka Chavithi"
+  in Latin letters (9/10, not passed). Fixed: a wish missing its audience now counts with the contract violations in the
+  quality loop (ranked like one and given the one extra round; the final gate still stops only on the word contract), and
+  Vinayaka Chavithi / Ganesh Chaturthi has a fixed Telugu name, వినాయక చవితి (`utils/festivalNames`, like దసరా). Not re-run
+  live after the fix (keys at their limit). No frame or Flow clip yet. Watch: whether the final clip holds the
   wish, the address and the invitation inside 17–20 words and the syllable ceiling (the judge is told the room); the
   extra round adds up to ~25 s to a run whose best draft breaks a rule.
 

@@ -6,6 +6,17 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-23 (midday): AI ads — the live Ganesha check of the owner's decisions** (`ai-ads.md` §27). One live run
+  (`work/2026-10-23-owner-decisions/live-ganesha.ts`, 4 clips, 484 s on keys at their daily limit): the deity's shape held
+  (clip 1 a blessing with no business, the business first in clip 2, no festival in clips 2–3), but after two judged drafts
+  the 45 s budget was spent and clip 4 shipped without "మిత్రులు, కస్టమర్లందరికీ" and with "Vinayaka Chavithi" in Latin
+  letters. Two root fixes: `geminiService.runQualityLoop` counts a wish that misses its audience (`WISH_HARD_RULE`: the
+  cast's "in the wish (" required phrase / `wishAudienceIssues`) with the contract violations, so it ranks drafts and gets
+  the one extra round; `utils/festivalNames` gives Vinayaka Chavithi / Ganesh Chaturthi its fixed Telugu name వినాయక చవితి
+  (prompts and every final line, like దసరా). Tests: `festivalNames.test.ts` (+1); tsc 0; build ✅; vitest 4725 / 4726
+  (the known flaky `smmDeliveryControlUiOct15`; `aiPlatformInputs` timed out once under load and passes alone). Not re-run
+  live after the fix — the keys were spent.
+
 - **2026-10-23: AI ads — the owner's three decisions after the morning audit** (`ai-ads.md` §24, §27). **(1) A deity
   blesses, the business wishes:** the live Ganesha ad spoke as the business in clip 1 (the festival contract's "ON BEHALF
   OF THE BUSINESS"); now a deity's festival ad (`characterAd.isDeityFestival`) has the deity's own blessing in clip 1 and

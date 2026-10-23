@@ -69,6 +69,8 @@ import {
   dialogueHardWordIssues, hardWordIssues, isHardWordIssue, toSpokenEndings,
 } from "./prompts/everydaySpeech";
 import { WISH_AUDIENCE_TELUGU, wishAudienceIssues } from "./prompts/festivalWish";
+/** A wish that misses its audience — the cast's required-phrase issue or festivalWish.wishAudienceIssues (2026-10-23). */
+const WISH_HARD_RULE = /in the wish \("|is the festival wish and must greet both/;
 import { clipPlacements, spokenOnly, withCues, withPlacements } from "@/utils/clipPlacement";
 import { LOWER_THIRD_SYSTEM_PROMPT, labelContactLines, NO_CONTACT_LINE, withLabelContacts } from "./prompts/lowerThird";
 
@@ -3791,7 +3793,7 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
   /** A draft as the gate holds it: its exact text, its counts, what code found, and the judge's report. */
   type Assessed<T> = DraftStanding & { draft: T; text: string; clipWords: number[]; violations: string[]; mechanical: string[]; broken: number };
   const improvementMessage = (best: Assessed<unknown>, mode: 'polish' | 'rewrite', passes: number, extra = false) => {
-    if (extra) return 'The best draft still breaks a word or cast rule — one more round to fix it...';
+    if (extra) return 'The best draft still breaks a word, cast or wish rule — one more round to fix it...';
     const n = `pass ${passes + 1} of ${SCRIPT_IMPROVEMENT_PASSES}`;
     if (best.broken > 0) return `The script lost one of the speakers — writing it again with every line in its own voice (${n})...`;
     if (!best.report) return `Fitting every clip to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words (${n})...`;
@@ -3825,8 +3827,12 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
       const text = cfg.textOf(draft);
       const clipTexts = cfg.clipTextsOf(draft);
       const clipWords = clipWordCounts(clipTexts);
-      const violations = [...contractViolations(clipTexts, segmentCount, contractCast, contractLanguage), ...(cfg.lineIssuesOf?.(draft) ?? [])];
       const mechanical = cfg.mechanicalOf(draft);
+      // A festival wish that does not greet మిత్రులు, కస్టమర్లు is a hard rule too (2026-10-23, live Ganesha run: the
+      // deity's final clip shipped without them after the 45 s budget ran out) — ranked like a contract break and
+      // given the one extra round; the final gate still stops only on the word contract.
+      const wishMissing = mechanical.filter((m) => WISH_HARD_RULE.test(m));
+      const violations = [...contractViolations(clipTexts, segmentCount, contractCast, contractLanguage), ...(cfg.lineIssuesOf?.(draft) ?? []), ...wishMissing];
       const broken = cfg.castIssuesOf?.(draft).length ?? 0;
       // A draft that is not this cast's is never judged — no score can make it usable (2026-10-08).
       const raw = broken === 0 ? await judgeScript(text, clipWords) : null;
