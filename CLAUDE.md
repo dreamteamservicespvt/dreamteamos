@@ -225,6 +225,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-23)
 
+- 2026-10-23 (night) — **AI Accounts: Pro proof** — each Flow account gets a screenshot of myaccount.google.com (Pro
+  badge + full email), the app reads it first, the tech admin / a team leader confirms it or sends it back with a reason;
+  the **Pro proof** tab counts not sent / waiting / confirmed / sent back, by member (`ai-accounts.md`; history 2026-10-23
+  night). Owner to try: send one real proof from a member login, then confirm it.
+
 - 2026-10-23 (evening), **local, not pushed** — **AI ads generation speed**: every Gemini request has a time limit (a
   held-open request cost 250 s), the old frame location check runs only when nothing planned the backgrounds (~17 s on
   presenter ads), and each clip-repair pass asks two edits at once (3 of 6 runs had stopped on the word gate). Live:
@@ -395,7 +400,8 @@ errors:** done means every listed item is fully resolved with no build, console 
   2026-10-22, over Vite's 900 KB warning; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` ✅ 283 files, 4711 of 4711 (2026-10-23 morning; the SMM test below passed this run — flaky).
+- `npx vitest run` ✅ 286 files, 4745 of 4745 (2026-10-23 night, with Pro proof; the SMM test below passed — flaky).
+  Before: 283 files, 4711 of 4711 (2026-10-23 morning).
   Before: 4706 of 4707 (2026-10-23, after the AI-ads audit). The one failure,
   `smmDeliveryControlUiOct15` "Live, the view-only Social Media Team Lead…" (cannot find "View only — only the people on
   this month"), fails alone too and ALSO on `19763d6` (before the audit) — pre-existing, not yet investigated. Under

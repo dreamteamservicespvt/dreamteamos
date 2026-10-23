@@ -15,12 +15,17 @@ import { sendNotification } from "@/services/notifications";
 import type { AppUser, UserRole, WorkAssignment } from "@/types";
 import type {
   AccountEvent, AccountSecret, ApiKeySummary, FlowAccount, FlowClipRow, FlowSettings, FlowUsageEntry, GeminiApiKey, PaidAccount, PaidProvider,
+  ProProof, ProProofReading,
 } from "@/types/aiAccounts";
 import {
   creditsFor, cycleStartOf, expiryOf, hasRecordedCredits, normaliseEmail, normalisePhone, teamAdminIdOf, todayStr, usageDateProblem,
   visibilityOf, type FlowAccountInput,
 } from "@/utils/flowCredits";
 import { apiKeyFingerprint, keyCheckFrom, normaliseApiKey, type KeyCheck } from "@/utils/geminiKeys";
+import {
+  canReviewProProof, canSendProProof, duplicateProofOf, PRO_PROOF_READER_PROMPT, proProofReadingFrom, UNCHECKED_READING,
+} from "@/utils/proProof";
+import { uploadToCloudinary } from "@/services/cloudinary";
 
 export const FLOW_ACCOUNTS = "flow_accounts";
 export const FLOW_SECRETS = "flow_account_secrets";
@@ -448,6 +453,142 @@ export async function saveApiKeyChecks(
     await notify(owners[key.ownerId] || { uid: key.ownerId, name: key.ownerName }, "Your Gemini API key stopped working",
       `The key on ${key.accountEmail}: ${check.message || "Google refused it."} Please add a new key on the account.`,
       `api_key_failed_${key.id}_${key.fingerprint}`);
+  }
+}
+
+// ── Pro proof (2026-10-23, utils/proProof) ──────────────────────────────────────────────────────────
+
+/** SHA-256 of a file, as hex — "" where the browser has no `crypto.subtle` (then no duplicate check). */
+export async function fileSha256(file: Blob): Promise<string> {
+  try {
+    // `Blob.arrayBuffer` is missing on older Safari (and jsdom); FileReader reads the same bytes everywhere.
+    const bytes = typeof file.arrayBuffer === "function" ? await file.arrayBuffer() : await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(file);
+    });
+    const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Has the screenshot read by Gemini (the app's own keys, the `fast` effort) and compares it with this
+ * account. Never throws and never waits long: when Google cannot be reached in 25 s the proof is
+ * "not read by the app" and the reviewer looks without advice. The ad pipeline's module is loaded only
+ * here, on demand, so the AI Accounts pages do not carry it.
+ */
+export async function readProProofImage(file: File, accountEmail: string): Promise<ProProofReading> {
+  try {
+    const reading = (async () => {
+      const [{ callGeminiWithFallback }, { fileToBase64 }] = await Promise.all([import("@/services/geminiService"), import("@/utils/fileHelpers")]);
+      const data = await fileToBase64(file);
+      const response = await callGeminiWithFallback(async (ai, model) => ai.models.generateContent({
+        model,
+        contents: [{ role: "user", parts: [{ inlineData: { mimeType: file.type || "image/png", data } }, { text: PRO_PROOF_READER_PROMPT }] }],
+        config: { responseMimeType: "application/json", temperature: 0 },
+      }), { effort: "fast" });
+      return proProofReadingFrom(response.text, accountEmail);
+    })();
+    const timeout = new Promise<ProProofReading>((resolve) => setTimeout(() => resolve(UNCHECKED_READING), 25_000));
+    return await Promise.race([reading, timeout]);
+  } catch (err) {
+    console.warn("The Pro proof could not be read (it can still be sent):", err);
+    return UNCHECKED_READING;
+  }
+}
+
+export interface PreparedProProof {
+  imageUrl: string;
+  imageHash: string;
+  reading: ProProofReading;
+  /** Another account the same picture was already sent for. */
+  duplicate: FlowAccount | null;
+}
+
+/**
+ * Everything a proof needs before it is sent, at once: the upload, the hash (is it a picture already
+ * sent for another account?) and the app's reading. Only the upload can fail it.
+ */
+export async function prepareProProof(file: File, account: FlowAccount, accounts: FlowAccount[]): Promise<PreparedProProof> {
+  const [imageUrl, imageHash, reading] = await Promise.all([
+    uploadToCloudinary(file), fileSha256(file), readProProofImage(file, account.email),
+  ]);
+  return { imageUrl, imageHash, reading, duplicate: duplicateProofOf(imageHash, accounts, account.id) };
+}
+
+/**
+ * Sends an account's proof for a check (a first one, or a new one after it was sent back). Read in a
+ * transaction, so a member cannot replace a proof that a reviewer confirmed a moment ago.
+ */
+export async function submitProProof(account: FlowAccount, proof: PreparedProProof, actor: Actor): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, FLOW_ACCOUNTS, account.id);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error(`${account.email} is no longer in the list.`);
+    const stored = { ...(snap.data() as FlowAccount), id: account.id };
+    if (!canSendProProof(actor, stored)) throw new Error("This account is already confirmed Pro — only the tech admin or a team leader can replace its proof.");
+    const next: ProProof = {
+      status: "submitted",
+      imageUrl: proof.imageUrl,
+      imageHash: proof.imageHash,
+      submittedAt: Date.now(),
+      submittedById: actor.uid,
+      submittedByName: actor.name || "",
+      reading: proof.reading,
+      ...(proof.duplicate ? { duplicateOf: proof.duplicate.email } : {}),
+    };
+    tx.update(ref, { proProof: next, history: arrayUnion(event(actor, "pro_proof_sent")), updatedAt: serverTimestamp() });
+  });
+}
+
+/**
+ * A reviewer's decision on the proof they are looking at. `seenAt` is that proof's `submittedAt`: if a
+ * new picture arrived since, nothing is decided — they would be confirming a picture they never saw.
+ * Sending back needs a reason, and the account's people are told what to fix (once per proof).
+ */
+export async function reviewProProof(
+  account: FlowAccount,
+  decision: "confirm" | "send_back",
+  actor: Actor,
+  opts: { seenAt: number; reason?: string },
+): Promise<void> {
+  if (!canReviewProProof(actor)) throw new Error("Only the tech admin or a team leader can check proofs.");
+  const reason = (opts.reason || "").trim();
+  if (decision === "send_back" && !reason) throw new Error("Say why it is sent back, so they know what to fix.");
+  const stored = await runTransaction(db, async (tx) => {
+    const ref = doc(db, FLOW_ACCOUNTS, account.id);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error(`${account.email} is no longer in the list.`);
+    const data = { ...(snap.data() as FlowAccount), id: account.id };
+    const proof = data.proProof;
+    if (!proof) throw new Error("This account has no proof to check.");
+    if (proof.submittedAt !== opts.seenAt) throw new Error("A new screenshot was sent for this account — look at it first.");
+    const decided: ProProof = {
+      ...proof,
+      status: decision === "confirm" ? "confirmed" : "rejected",
+      reviewedAt: Date.now(),
+      reviewedById: actor.uid,
+      reviewedByName: actor.name || "",
+    };
+    if (decision === "send_back") decided.reason = reason; else delete decided.reason;
+    tx.update(ref, {
+      proProof: decided,
+      history: arrayUnion(event(actor, decision === "confirm" ? "pro_confirmed" : "pro_sent_back")),
+      updatedAt: serverTimestamp(),
+    });
+    return data;
+  });
+  if (decision !== "send_back") return;
+  const told = new Set<string>();
+  for (const p of [{ uid: stored.ownerId, name: stored.ownerName }, { uid: stored.proProof!.submittedById, name: stored.proProof!.submittedByName }]) {
+    if (!p.uid || p.uid === actor.uid || told.has(p.uid)) continue;
+    told.add(p.uid);
+    await notify(p, "Send the Pro proof again", `${actor.name || "Your admin"} sent back the proof for ${stored.email}: ${reason}`,
+      `pro_sent_back_${stored.id}_${stored.proProof!.submittedAt}_${p.uid}`);
   }
 }
 

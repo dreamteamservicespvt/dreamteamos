@@ -12,6 +12,8 @@ import UsageList from "@/components/ai-accounts/UsageList";
 import PaidAccountsPanel from "@/components/ai-accounts/PaidAccountsPanel";
 import ApiKeyDialog from "@/components/ai-accounts/ApiKeyDialog";
 import ApiKeysPanel from "@/components/ai-accounts/ApiKeysPanel";
+import ProProofDialog from "@/components/ai-accounts/ProProofDialog";
+import ProProofPanel, { ProProofReviewDialog } from "@/components/ai-accounts/ProProofPanel";
 import AiModal, { buttonClass, fieldClass } from "@/components/ai-accounts/AiModal";
 import {
   assignFlowAccount, deleteFlowAccount, deleteFlowUsage, moveFlowAccounts, saveFlowSettings, setActiveFlowAccount, updateFlowAccount, type Person,
@@ -19,11 +21,12 @@ import {
 import { FLOW_CLIP_SECONDS, type FlowAccount, type FlowSettings, type FlowUsageEntry } from "@/types/aiAccounts";
 import { isDate, memberSummaries, teamAdminIdOf, teamTotals, todayStr } from "@/utils/flowCredits";
 import { canSeeAllApiKeys } from "@/utils/geminiKeys";
+import { memberProProofRows, proProofCounts } from "@/utils/proProof";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 import { cn } from "@/lib/utils";
 
-type Tab = "overview" | "flow" | "usage" | "paid" | "keys";
+type Tab = "overview" | "flow" | "proof" | "usage" | "paid" | "keys";
 
 const STATUS_TONE: Record<string, string> = {
   done: "bg-success/15 text-success", ahead: "bg-success/15 text-success", on_track: "bg-info/15 text-info",
@@ -55,7 +58,7 @@ export default function AiAccounts() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [moveTo, setMoveTo] = useState("");
   const [moving, setMoving] = useState(false);
-  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "paste" } |{ kind: "edit" | "assign"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "settings" } | { kind: "apiKey"; accountId: string } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "paste" } |{ kind: "edit" | "assign"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "settings" } | { kind: "apiKey"; accountId: string } | { kind: "proof"; accountId: string } | { kind: "proofReview"; accountId: string } | null>(null);
   const keyAdmin = canSeeAllApiKeys(user);
   // The keys themselves are read only while their tab is open (one read per key).
   const { keys, loading: keysLoading } = useGeminiApiKeys(teamAdminIdOf(user), keyAdmin && tab === "keys");
@@ -68,6 +71,10 @@ export default function AiAccounts() {
   const shownAccounts = memberFilter ? accounts.filter((a) => a.ownerId === memberFilter || a.holderId === memberFilter) : accounts;
   const keyAccount = dialog?.kind === "apiKey" ? accounts.find((a) => a.id === dialog.accountId) || null : null;
   const keyCount = accounts.filter((a) => a.apiKey).length;
+  // Pro proof (2026-10-23): the tab's count is what waits for a check; Overview shows each member's confirmed.
+  const proofCounts = useMemo(() => proProofCounts(accounts), [accounts]);
+  const proofByOwner = useMemo(() => new Map(memberProProofRows(accounts).map((r) => [r.uid, r])), [accounts]);
+  const proofAccount = dialog?.kind === "proof" ? accounts.find((a) => a.id === dialog.accountId) || null : null;
   // Only accounts still in the list (one deleted elsewhere drops out of the selection).
   const selectedAccounts = accounts.filter((a) => selectedIds.includes(a.id));
 
@@ -79,6 +86,8 @@ export default function AiAccounts() {
       if (action === "edit") setDialog({ kind: "edit", account });
       if (action === "assign") setDialog({ kind: "assign", account });
       if (action === "apiKey") setDialog({ kind: "apiKey", accountId: account.id });
+      if (action === "proof") setDialog({ kind: "proof", accountId: account.id });
+      if (action === "proofReview") setDialog({ kind: "proofReview", accountId: account.id });
       if (action === "toggle") {
         await updateFlowAccount(account, { status: account.status === "disabled" ? "active" : "disabled" }, user, settings);
         toast({ title: account.status === "disabled" ? "Account enabled" : "Account disabled" });
@@ -114,11 +123,12 @@ export default function AiAccounts() {
     try { await deleteFlowUsage(entry); toast({ title: "Entry deleted" }); } catch { toast({ title: "Could not delete it", variant: "destructive" }); }
   };
 
-  // Short labels and tighter padding on a phone, so all of them (five for the tech admin) fit without the row scrolling.
+  // Short labels and tighter padding on a phone, so all of them (six for the tech admin since Pro proof) fit without the row scrolling.
   const TABS: { id: Tab; label: string; short: string }[] = [
     { id: "overview", label: "Overview", short: "Overview" },
     // The tech admin's five tabs drop the counts on a phone (the team's hundreds of accounts would not fit).
     { id: "flow", label: `Flow accounts (${accounts.length})`, short: keyAdmin ? "Flow" : `Flow (${accounts.length})` },
+    { id: "proof", label: proofCounts.submitted ? `Pro proof (${proofCounts.submitted} to check)` : "Pro proof", short: proofCounts.submitted ? `Pro (${proofCounts.submitted})` : "Pro" },
     { id: "usage", label: "Credit usage", short: "Usage" },
     { id: "paid", label: `Paid accounts (${paid.length})`, short: keyAdmin ? "Paid" : `Paid (${paid.length})` },
     ...(keyAdmin ? [{ id: "keys" as Tab, label: `API keys (${keyCount})`, short: "Keys" }] : []),
@@ -141,10 +151,11 @@ export default function AiAccounts() {
         </div>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-border" role="tablist">
+      {/* overflow-y-hidden: the tabs' -mb-px made the row scroll 1 px down and show a thin scrollbar. */}
+      <div className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border" role="tablist">
         {TABS.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} data-test={`tab-${t.id}`}
-            className={cn("shrink-0 px-2 sm:px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            className={cn("shrink-0 px-1.5 sm:px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
               tab === t.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
             <span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span>
           </button>
@@ -195,6 +206,7 @@ export default function AiAccounts() {
                       <th className="text-right font-medium px-2 py-2">Holding</th>
                       <th className="text-right font-medium px-2 py-2">Used</th>
                       <th className="text-right font-medium px-2 py-2" title="Accounts they opened that carry a working Gemini API key">API keys</th>
+                      <th className="text-right font-medium px-2 py-2" title="Accounts they opened that are confirmed Google AI Pro (Pro proof tab)">Pro ✓</th>
                       <th className="text-right font-medium px-4 py-2">Left</th>
                     </tr>
                   </thead>
@@ -211,6 +223,10 @@ export default function AiAccounts() {
                         <td className="px-2 py-2 text-right tabular-nums">{s.used}</td>
                         <td className="px-2 py-2 text-right tabular-nums" data-test="member-keys">
                           <b className={s.added > 0 && s.apiKeys >= s.added ? "text-success" : "text-foreground"}>{s.apiKeys}</b><span className="text-muted-foreground">/{s.added}</span>
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums" data-test="member-pro">
+                          {(() => { const p = proofByOwner.get(s.uid); const confirmed = p?.confirmed || 0; const total = p?.total || 0;
+                            return <><b className={total > 0 && confirmed >= total ? "text-success" : "text-foreground"}>{confirmed}</b><span className="text-muted-foreground">/{total}</span></>; })()}
                         </td>
                         <td className="px-4 py-2 text-right tabular-nums font-semibold text-foreground">{s.remaining}</td>
                       </tr>
@@ -248,6 +264,8 @@ export default function AiAccounts() {
             selection={keyAdmin ? { ids: selectedIds, onChange: setSelectedIds } : undefined}
             emptyText="No Flow accounts yet. Members add theirs from My AI Accounts; add backups with “Add Flow account”." />
         </div>
+      ) : tab === "proof" ? (
+        <ProProofPanel accounts={accounts} actor={user} onSend={(a) => setDialog({ kind: "proof", accountId: a.id })} />
       ) : tab === "usage" ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -276,6 +294,10 @@ export default function AiAccounts() {
       ) : null}
       <ApiKeyDialog open={!!keyAccount} onClose={() => setDialog(null)} account={keyAccount} accounts={accounts} actor={user}
         onSaved={() => setDialog(null)} />
+      <ProProofDialog open={!!proofAccount} onClose={() => setDialog(null)} account={proofAccount} accounts={accounts} actor={user}
+        onSent={() => setDialog(null)} />
+      <ProProofReviewDialog open={dialog?.kind === "proofReview"} ids={dialog?.kind === "proofReview" ? [dialog.accountId] : []} index={0}
+        onIndex={(i) => { if (i > 0) setDialog(null); }} accounts={accounts} actor={user} onClose={() => setDialog(null)} />
       <AssignDialog
         open={dialog?.kind === "assign"}
         onClose={() => setDialog(null)}

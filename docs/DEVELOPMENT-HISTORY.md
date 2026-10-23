@@ -6,6 +6,26 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-23 (night): AI Accounts — Pro proof for every Flow account** (`ai-accounts.md` Pro proof, §24, §25, §27;
+  `data-model.md` `flow_accounts.proProof`). The owner: every account needs a proof screenshot that it is Google AI Pro,
+  checked and confirmed by the tech admin or a team leader, with how many members sent / did not send / are confirmed.
+  Proof page chosen with the owner: **myaccount.google.com** (Pro badge + FULL email + Google's address bar; the Gemini
+  menu cuts the email, Google One / Payments show none). New: `utils/proProof.ts` (states, counts by owner, queues, the
+  reader's prompt and verdict, Gmail-aware email match), `services/aiAccounts` `fileSha256` / `readProProofImage` /
+  `prepareProProof` / `submitProProof` / `reviewProProof` (transactions; a decision on a stale screenshot is refused; a
+  send-back needs a reason and tells the owner + sender once), `components/ai-accounts/ProProofDialog` (open the page in
+  that account, paste / drop / pick, the app's reading before sending, a flagged picture needs a tick),
+  `ProProofPanel` (the **Pro proof** tab: bar, four filter tiles, By member, list, **Check proofs** one at a time with
+  C / S keys) and `ProProofProgress` (member's card, **Send next proof**, "Send & next"); the card's Pro proof row, four
+  filter options, Overview's **Pro ✓** column, the credit picker's "· Pro proof sent back" flag (never a block — the owner
+  left the choice to Claude). Tests: `proProofOct23` (12: rules, the service on the in-memory Firestore, the card, the tab
+  and its review, the send dialog); full suite 286 files / 4745 tests, typecheck 0, build ✅; real pages driven in a
+  browser harness with a faked upload and reader: every flow PASS at 390 / 1440 px, light and dark, zero console errors.
+  The harness found and this fixed: the send-back reasons overflowing at 390 px; `AiModal`'s overlay pushed 16–20 px
+  down by the pages' `space-y-*` (an undimmed strip whose taps reached the page — every AI Accounts dialog, `!m-0`);
+  the tab row 4 px too wide at 390 px with the sixth tab (`px-1.5`) and its 1 px vertical scroll (`overflow-y-hidden`).
+  Not run live: Firebase, Cloudinary, Gemini.
+
 - **2026-10-23 (evening): AI ads — generation speed, three root causes** (`ai-ads.md` §17.2 Speed, step 5, §17.3, §27). The
   owner: "it was taking so much time to generate the deliverables … find and solve it permanently." Measured first: a
   harness (`work/2026-10-23-speed/timeline.ts`, vite-node, real Gemini) logs every request's start, end, status, model and

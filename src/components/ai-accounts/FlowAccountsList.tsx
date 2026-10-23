@@ -1,14 +1,16 @@
 import { useMemo, useState } from "react";
-import { History, KeyRound, Pencil, Plus, Power, RefreshCw, Search, Trash2, UserCheck, Zap } from "lucide-react";
+import { History, KeyRound, Pencil, Plus, Power, RefreshCw, Search, ShieldCheck, Trash2, Upload, UserCheck, Zap } from "lucide-react";
 import { buttonClass, fieldClass } from "./AiModal";
 import SecretField from "./SecretField";
 import { prettyDate } from "./FlowAccountDialog";
 import type { FlowAccount } from "@/types/aiAccounts";
 import { accountState, addDays, shortDay, todayStr } from "@/utils/flowCredits";
 import { API_KEY_STATUS } from "@/utils/geminiKeys";
+import { PRO_PROOF_STATE, proProofStateOf } from "@/utils/proProof";
 import { cn } from "@/lib/utils";
 
-export type FlowAccountAction = "use" | "edit" | "assign" | "toggle" | "delete" | "apiKey";
+/** "proof" sends an account's Pro proof; "proofReview" opens a reviewer's check of it (2026-10-23). */
+export type FlowAccountAction = "use" | "edit" | "assign" | "toggle" | "delete" | "apiKey" | "proof" | "proofReview";
 
 /** Who moved this account last, read from its history — "assigned to Ravi by Kiran". */
 export function lastAssignment(account: FlowAccount) {
@@ -36,7 +38,7 @@ export default function FlowAccountsList({
 }) {
   const today = todayStr();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "usable" | "empty" | "expired" | "disabled" | "nokey" | "noday">("all");
+  const [filter, setFilter] = useState<"all" | "usable" | "empty" | "expired" | "disabled" | "nokey" | "noday" | "proof_none" | "proof_submitted" | "proof_rejected" | "proof_confirmed">("all");
   const [openHistory, setOpenHistory] = useState<string | null>(null);
 
   const shown = useMemo(() => {
@@ -50,7 +52,8 @@ export default function FlowAccountsList({
         || (filter === "expired" && s.expired)
         || (filter === "disabled" && a.status === "disabled")
         || (filter === "nokey" && (!a.apiKey || a.apiKey.status === "failed"))
-        || (filter === "noday" && s.noOpeningDay);
+        || (filter === "noday" && s.noOpeningDay)
+        || (filter.startsWith("proof_") && filter === `proof_${proProofStateOf(a)}`);
       return matches && inFilter;
     });
   }, [accounts, search, filter, today]);
@@ -82,6 +85,10 @@ export default function FlowAccountsList({
             <option value="disabled">Disabled</option>
             <option value="nokey">No API key</option>
             <option value="noday">Opening day not set</option>
+            <option value="proof_none">Pro proof not sent</option>
+            <option value="proof_submitted">Pro proof waiting for check</option>
+            <option value="proof_rejected">Pro proof sent back</option>
+            <option value="proof_confirmed">Pro confirmed</option>
           </select>
         </div>
       ) : null}
@@ -107,6 +114,10 @@ export default function FlowAccountsList({
             // The key itself: the tech admin's, and the account's own people's (the Firestore rule says the same).
             const canKey = keyAdmin || (a.visibleTo || []).includes(viewerId);
             const keyStatus = a.apiKey ? API_KEY_STATUS[a.apiKey.status] || API_KEY_STATUS.unchecked : null;
+            // Pro proof (2026-10-23, utils/proProof.canSendProProof): the account's own people send it until it
+            // is confirmed; the managers (the reviewers on these pages) send or replace it at any time.
+            const proof = proProofStateOf(a);
+            const canProof = manager || ((a.visibleTo || []).includes(viewerId) && proof !== "confirmed");
             return (
               <div key={a.id} data-test="flow-account-card" className={cn("bg-card border rounded-xl p-3 md:p-4 min-w-0",
                 active || picked.has(a.id) ? "border-primary/60 ring-1 ring-primary/30" : "border-border")}>
@@ -177,6 +188,27 @@ export default function FlowAccountsList({
                       {canKey ? <button className="font-semibold underline underline-offset-2 shrink-0" onClick={() => onAction("apiKey", a)}>Replace key</button> : null}
                     </div>
                   ) : null}
+                  <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0" data-test="flow-pro-proof">
+                    <span className="text-muted-foreground shrink-0 inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Pro proof</span>
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1.5 min-w-0">
+                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap", PRO_PROOF_STATE[proof].tone)} data-test="flow-pro-proof-status">{PRO_PROOF_STATE[proof].label}</span>
+                      {manager && proof === "submitted" ? (
+                        <button className={`${buttonClass.small} border-primary/50 bg-primary/10 text-primary`} onClick={() => onAction("proofReview", a)} data-test="flow-pro-proof-check">Check</button>
+                      ) : a.proProof ? (
+                        <a className={buttonClass.small} href={a.proProof.imageUrl} target="_blank" rel="noreferrer" data-test="flow-pro-proof-view">View</a>
+                      ) : null}
+                      {canProof && (proof === "none" || proof === "rejected") ? (
+                        <button className={`${buttonClass.small} border-primary/50 bg-primary/10 text-primary`} onClick={() => onAction("proof", a)} data-test="flow-pro-proof-send">
+                          <Upload className="h-3.5 w-3.5" /> {proof === "rejected" ? "Send again" : "Send proof"}
+                        </button>
+                      ) : null}
+                    </span>
+                  </div>
+                  {proof === "rejected" && a.proProof?.reason ? (
+                    <div className="rounded-md bg-destructive/10 px-2 py-1 text-[11px] text-destructive min-w-0" data-test="flow-pro-proof-reason">
+                      Sent back{a.proProof.reviewedByName ? ` by ${a.proProof.reviewedByName}` : ""}: {a.proProof.reason}
+                    </div>
+                  ) : null}
                   <div className="text-muted-foreground min-w-0" data-test="flow-ownership">
                     Opened by <span className="text-foreground font-medium">{a.ownerId === viewerId ? "you" : a.ownerName}</span>
                     {a.addedBy !== a.ownerId ? <> · added by {a.addedBy === viewerId ? "you" : a.addedByName}</> : null}
@@ -225,6 +257,9 @@ export default function FlowAccountsList({
                               : e.action === "api_key_added" ? <>{e.byName} added its Gemini API key</>
                                 : e.action === "api_key_replaced" ? <>{e.byName} replaced its Gemini API key</>
                                   : e.action === "api_key_removed" ? <>{e.byName} removed its Gemini API key</>
+                                    : e.action === "pro_proof_sent" ? <>{e.byName} sent the Pro proof</>
+                                      : e.action === "pro_confirmed" ? <>{e.byName} <b className="text-foreground">confirmed it Pro</b></>
+                                        : e.action === "pro_sent_back" ? <>{e.byName} sent the Pro proof back</>
                                     : <>{e.byName} {e.action} it</>}
                       </li>
                     ))}

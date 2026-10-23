@@ -6,6 +6,8 @@ import FlowAccountsList, { type FlowAccountAction } from "@/components/ai-accoun
 import FlowAccountDialog from "@/components/ai-accounts/FlowAccountDialog";
 import ApiKeyDialog from "@/components/ai-accounts/ApiKeyDialog";
 import ApiKeyProgress from "@/components/ai-accounts/ApiKeyProgress";
+import ProProofDialog from "@/components/ai-accounts/ProProofDialog";
+import ProProofProgress from "@/components/ai-accounts/ProProofProgress";
 import CreditUsageDialog from "@/components/ai-accounts/CreditUsageDialog";
 import CreditCalculator from "@/components/ai-accounts/CreditCalculator";
 import TargetCard from "@/components/ai-accounts/TargetCard";
@@ -16,6 +18,7 @@ import { deleteFlowUsage, setActiveFlowAccount } from "@/services/aiAccounts";
 import type { FlowAccount, FlowUsageEntry } from "@/types/aiAccounts";
 import { accountState, targetProgress, todayStr } from "@/utils/flowCredits";
 import { apiKeyCoverage } from "@/utils/geminiKeys";
+import { proProofCounts, proProofToSend } from "@/utils/proProof";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -30,6 +33,10 @@ import { useConfirm } from "@/hooks/useConfirm";
  * Each account they opened also carries its Gemini API key (2026-10-10): the card says whether it has
  * one, the progress card walks them through the accounts still without one ("Save & next"), and the
  * "Add Flow account" form asks for the new account's key too.
+ *
+ * And its Pro proof (2026-10-23, utils/proProof): a screenshot of myaccount.google.com from each account they
+ * opened, checked by the tech admin or a team leader; the progress card walks them through the ones still to
+ * send ("Send & next"), sent-back ones first.
  */
 export default function MyAiAccounts() {
   const user = useAuthStore((s) => s.user);
@@ -41,9 +48,11 @@ export default function MyAiAccounts() {
   const today = todayStr();
   const [month, setMonth] = useState(today.slice(0, 7));
   const { entries } = useFlowUsage(user, month);
-  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "edit"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "apiKey"; accountId: string } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "edit"; account: FlowAccount } | { kind: "usage"; entry?: FlowUsageEntry } | { kind: "apiKey"; accountId: string } | { kind: "proof"; accountId: string } | null>(null);
   /** Accounts given a key in this sitting — skipped by "Save & next" even before the list catches up. */
   const keyedNow = useRef(new Set<string>());
+  /** The same for proofs sent in this sitting. */
+  const proofSentNow = useRef(new Set<string>());
 
   const uid = user?.uid || "";
   const held = useMemo(() => accounts.filter((a) => a.holderId === uid), [accounts, uid]);
@@ -57,12 +66,19 @@ export default function MyAiAccounts() {
   const coverage = useMemo(() => apiKeyCoverage(accounts, uid), [accounts, uid]);
   const keyQueue = coverage.queue.filter((a) => !keyedNow.current.has(a.id));
   const keyAccount = dialog?.kind === "apiKey" ? accounts.find((a) => a.id === dialog.accountId) || null : null;
+  const proofCountsMine = useMemo(() => proProofCounts(accounts.filter((a) => a.ownerId === uid)), [accounts, uid]);
+  const proofQueue = proProofToSend(accounts, uid).filter((a) => !proofSentNow.current.has(a.id));
+  const proofAccount = dialog?.kind === "proof" ? accounts.find((a) => a.id === dialog.accountId) || null : null;
 
   useEffect(() => {
     // Once the list shows a saved key, the list is the truth again (a key removed later must reappear).
     for (const id of [...keyedNow.current]) {
       const a = accounts.find((x) => x.id === id);
       if (!a || (a.apiKey && a.apiKey.status !== "failed")) keyedNow.current.delete(id);
+    }
+    for (const id of [...proofSentNow.current]) {
+      const a = accounts.find((x) => x.id === id);
+      if (!a || a.proProof?.status === "submitted") proofSentNow.current.delete(id);
     }
   }, [accounts]);
 
@@ -75,6 +91,7 @@ export default function MyAiAccounts() {
     }
     if (action === "edit") setDialog({ kind: "edit", account });
     if (action === "apiKey") setDialog({ kind: "apiKey", accountId: account.id });
+    if (action === "proof") setDialog({ kind: "proof", accountId: account.id });
   };
 
   const removeEntry = async (entry: FlowUsageEntry) => {
@@ -128,6 +145,9 @@ export default function MyAiAccounts() {
           <ApiKeyProgress total={coverage.total} withKey={coverage.withKey} failed={coverage.failed} next={keyQueue[0] || null}
             onNext={() => keyQueue[0] && setDialog({ kind: "apiKey", accountId: keyQueue[0].id })} />
 
+          <ProProofProgress counts={proofCountsMine} next={proofQueue[0] || null}
+            onNext={() => proofQueue[0] && setDialog({ kind: "proof", accountId: proofQueue[0].id })} />
+
           <section className="space-y-3">
             <h2 className="font-display text-base font-semibold text-foreground">My Flow accounts</h2>
             <FlowAccountsList accounts={accounts} viewerId={user.uid} activeId={user.activeFlowAccountId} manager={false} onAction={onAction}
@@ -170,6 +190,19 @@ export default function MyAiAccounts() {
           keyedNow.current.add(saved.id);
           const next = goNext ? keyQueue.find((a) => a.id !== saved.id) : null;
           setDialog(next ? { kind: "apiKey", accountId: next.id } : null);
+        }}
+      />
+      <ProProofDialog
+        open={!!proofAccount}
+        onClose={() => setDialog(null)}
+        account={proofAccount}
+        accounts={accounts}
+        actor={user}
+        remaining={proofQueue.filter((a) => a.id !== proofAccount?.id).length}
+        onSent={(sent, goNext) => {
+          proofSentNow.current.add(sent.id);
+          const next = goNext ? proofQueue.find((a) => a.id !== sent.id) : null;
+          setDialog(next ? { kind: "proof", accountId: next.id } : null);
         }}
       />
       <CreditUsageDialog

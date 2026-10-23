@@ -20,7 +20,9 @@ export default function AiModal({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4" onClick={onClose}>
+    // `!m-0`: the modal is rendered inside the pages' `space-y-*` stacks, whose sibling margin pushed this fixed
+    // overlay 16–20 px down — an undimmed strip at the top whose taps reached the page underneath (2026-10-23).
+    <div className="fixed inset-0 !m-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4" onClick={onClose}>
       <div
         data-test={testId}
         role="dialog"

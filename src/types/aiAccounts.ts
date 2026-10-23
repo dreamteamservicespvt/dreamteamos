@@ -40,7 +40,9 @@ export interface AccountEvent {
   action: "added" | "assigned" | "edited" | "disabled" | "enabled" | "password_changed"
     | "api_key_added" | "api_key_replaced" | "api_key_removed"
     /** Owner AND holder changed — the tech admin's "Move to" (2026-10-23). from = the previous owner. */
-    | "moved";
+    | "moved"
+    /** The Pro proof screenshot (2026-10-23): sent, confirmed Pro, or sent back with a reason. */
+    | "pro_proof_sent" | "pro_confirmed" | "pro_sent_back";
   byId: string;
   byName: string;
   /** For "assigned": who had it, and who has it now. For "moved": the owner before and after. */
@@ -87,9 +89,63 @@ export interface FlowAccount {
    * key itself (that is in `gemini_api_keys/{id}`, read on Show/Copy). Absent = no key yet (2026-10-10).
    */
   apiKey?: ApiKeySummary;
+  /**
+   * The screenshot that proves this Google account is on Google AI Pro, and what a reviewer decided
+   * (2026-10-23, utils/proProof). Absent = no proof sent yet.
+   */
+  proProof?: ProProof;
   history?: AccountEvent[];
   createdAt?: any;
   updatedAt?: any;
+}
+
+// ── Pro proof (2026-10-23) ────────────────────────────────────────────────────────────────────────
+// The team's Flow credits exist only on Google AI Pro accounts (the Jio offer), and nothing in the app
+// knew whether an account really is Pro. The member who opened it sends a screenshot of
+// https://myaccount.google.com in that account — the page shows the "Pro" badge under the picture, the
+// FULL email and Google's own address in the bar (the Gemini menu cuts a long email short). The tech
+// admin or a team leader looks at it next to the card's email and confirms it, or sends it back.
+
+/** Where an account's proof stands. "none" (no `proProof`) is not stored. */
+export type ProProofStatus = "submitted" | "confirmed" | "rejected";
+
+/**
+ * What the app read from the screenshot before it was sent — advice for the reviewer, never a decision.
+ * `match` = the full email is this account's and the Pro badge is there; `mismatch` = another email, or
+ * no Pro; `unclear` = it could not read one of them; `unchecked` = the reader could not be reached.
+ */
+export type ProProofVerdict = "match" | "mismatch" | "unclear" | "unchecked";
+
+export interface ProProofReading {
+  verdict: ProProofVerdict;
+  /** The email the picture shows, as read ("" = none readable). */
+  email: string;
+  /** The "Pro" badge is in the picture (null = could not tell). */
+  pro: boolean | null;
+  /** It is the Google Account page (myaccount.google.com) — not Gemini or something else. */
+  accountPage: boolean | null;
+  /** In plain words, for the card and the reviewer ("Shows another email: x@gmail.com"). */
+  note: string;
+}
+
+export interface ProProof {
+  status: ProProofStatus;
+  /** The uploaded screenshot (Cloudinary). */
+  imageUrl: string;
+  /** SHA-256 of the file sent — the same picture sent for a second account is caught. "" = not worked out. */
+  imageHash: string;
+  /** ms since epoch. */
+  submittedAt: number;
+  submittedById: string;
+  submittedByName: string;
+  reading?: ProProofReading;
+  /** The other account the same picture was already sent for, when the sender went ahead anyway. */
+  duplicateOf?: string;
+  reviewedAt?: number;
+  reviewedById?: string;
+  reviewedByName?: string;
+  /** Why it was sent back — what the sender has to fix. */
+  reason?: string;
 }
 
 // ── Gemini API keys (2026-10-10) ──────────────────────────────────────────────────────────────────

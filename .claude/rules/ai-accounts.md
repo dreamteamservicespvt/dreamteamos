@@ -9,6 +9,7 @@ paths:
   - "src/utils/geminiKeys.ts"
   - "src/hooks/useApiKeyEntry.ts"
   - "src/types/aiAccounts.ts"
+  - "src/utils/proProof.ts"
 ---
 
 # AI Accounts (Flow credits, paid logins) — DTS-OS module context
@@ -87,6 +88,37 @@ changing the member filter clears the selection); a sticky bar `flow-move-bar` "
 `moved` (from = the previous owner) shown as "X moved it from A to B (owner)", the account's `gemini_api_keys` record's
 `ownerId/Name` follow; batched ≤ 200 accounts a commit; accounts already `to`'s skipped (returns the count moved); the new
 owner told once with the count, each previous owner / holder (not the mover) once. Credit entries stay as recorded.
+**Pro proof (2026-10-23, owner).** Nothing knew whether an account really is Google AI Pro (an offer never activated
+looks the same until Flow shows no credits). Each account now carries `proProof` (`types/aiAccounts.ProProof`; pure rules
+`utils/proProof.ts`): a screenshot of **https://myaccount.google.com** in that account — the owner chose it: the "Pro"
+badge under the picture, the FULL email and Google's address bar in one picture (the Gemini menu cuts a long email; the
+Google One / Payments pages show no email). States `none` (absent) → `submitted` ("Waiting for check") → `confirmed`
+("Pro confirmed") or `rejected` ("Sent back", with `reason`). **Send** (`components/ai-accounts/ProProofDialog`): the
+card's **Send proof / Send again** (`flow-pro-proof-send`; the account's `visibleTo` people until it is confirmed, the
+managers always — `canSendProProof`) and the member's progress card **Send next proof** (`ProProofProgress`,
+`proProofToSend`: sent-back first, then never sent, oldest; "Send & next") open it; **Open myaccount.google.com** adds
+`?authuser=<email>` (`proProofPageUrl`); the picture is picked, dropped or PASTED (Win+Shift+S, Ctrl+V). At once
+`services/aiAccounts.prepareProProof` uploads it (Cloudinary), hashes it (`fileSha256`, SHA-256 — `duplicateProofOf`: the
+same picture already sent for another visible account) and has Gemini read it (`readProProofImage`: the ad pipeline's
+`callGeminiWithFallback`, lazily imported, `fast`, 25 s cap, never throws → `unchecked`; `PRO_PROOF_READER_PROMPT`,
+`proProofReadingFrom` → `match` / `mismatch` (another email — Gmail compared without dots / +tags, `sameEmail` — or no Pro
+badge) / `unclear` (email cut off, badge not seen) / `unchecked`). A mismatch or a duplicate needs the tick "send it
+anyway" (`pro-proof-anyway`); the reviewer still sees the flag. `submitProProof` is a transaction (a member cannot
+replace a proof confirmed a moment ago), history `pro_proof_sent`. **Check** (the tech admin, team leaders, main admin —
+`canReviewProProof`): the **Pro proof** tab (`ProProofPanel`, tab label "Pro proof (N to check)") — confirmed / total bar,
+four tiles that filter the list (Not sent / Waiting / Confirmed / Sent back), a **By member** table by the accounts each
+person OPENED (Accounts, Sent, Not sent, Waiting, Confirmed, Sent back; most to do first; a row filters to that person),
+the list (thumbnail, owner, what the app read, Check / View, **Send proof** for a reviewer on a not-sent account) and
+**Check proofs (N)** (`ProProofReviewDialog`: flagged first, then oldest — `proProofReviewQueue`; the screenshot beside
+the account's email and the app's reading; **Confirm Pro** (C) / **Send back** (S, a reason chip from `SEND_BACK_REASONS`
+or typed); moves to the next by itself; ← → move). A card's **Check** (`flow-pro-proof-check`) opens it for one account.
+`reviewProProof(account, decision, actor, { seenAt, reason })` is a transaction that refuses when the stored proof's
+`submittedAt` is not the one on screen ("A new screenshot was sent — look at it first"); history `pro_confirmed` /
+`pro_sent_back`; a send-back tells the owner and the sender once (`dedupeKey pro_sent_back_<id>_<submittedAt>_<uid>`), a
+confirmation tells no one (the card shows it). Overview's member table has **Pro ✓** (confirmed / accounts opened); the
+Flow accounts filter has the four Pro proof states; a sent-back account is only **flagged** in the credit picker
+("· Pro proof sent back"), never blocked (owner's go-ahead: a wrong send-back must not stop real work). Disabled accounts
+are left out of every count.
 
 **Gemini API keys** ✅ (2026-10-10). Every Flow account is a Google account that makes one free Gemini key
 in AI Studio (project `aiads`, key name "Gemini API Key"); the team collects them for DTS AdGen's prompt
@@ -129,6 +161,11 @@ keys: keys 1, 12, 18 invalid, 13, 16, 23–28 leaked (11 dead).
 - **Pasted accounts (2026-10-22):** only the tech admin pastes; a pasted new account is the paster's with no opening
   day; an account already in the list is never changed by a paste except to fill a password it lacks; no credits are
   recorded on an account until its opening day is set.
+- **Pro proof (2026-10-23):** the proof is a screenshot of myaccount.google.com in that account (Pro badge + full email);
+  the account's people send it until it is confirmed, then only the tech admin / a team leader replaces it; only they
+  confirm or send back, and a send-back needs a reason the owner is told; a decision is refused when a newer screenshot
+  arrived; the app's reading is advice, never a decision; counts are by the accounts a person opened, disabled ones left
+  out; a sent-back account is flagged in the credit picker, never blocked.
 - **Credit dates (2026-10-15):** a credit entry's day, calendar month and account cycle come from the day the clips
   were made (default today) — never a day still to come, never before the account was opened; the day can be corrected
   later and the credits move to that day's cycle.
@@ -153,6 +190,10 @@ keys: keys 1, 12, 18 invalid, 13, 16, 23–28 leaked (11 dead).
   chose to deploy them by hand) — a key is used only once it is in Vercel's `API_KEY_1…30` and the app is
   redeployed, and AdGen reads at most 30. "In use" is the admin's label, not something the app verifies.
   `?authuser=<email>` opening AI Studio in the right account is Google's behaviour, not verified live.
+- Pro proof (2026-10-23): checked by unit tests, the service on the in-memory Firestore, the real components in jsdom
+  (`proProofOct23`) and the real pages in a browser harness with faked upload and reader — NOT against live Firebase,
+  Cloudinary or Gemini. The reader runs on AdGen's Vercel keys (`API_KEY_*`); with none working every proof is "Not read
+  by the app" and is checked by eye. `myaccount.google.com/?authuser=` is Google's behaviour, not verified live.
 
 ## 27. POTENTIAL RISKS (need verification)
 
@@ -163,3 +204,6 @@ keys: keys 1, 12, 18 invalid, 13, 16, 23–28 leaked (11 dead).
   staff member can read them. A key in Vercel's `VITE_`/`API_KEY_` variables is built into the public JS
   bundle (`vite.config` `envPrefix`) — the likely reason keys get "reported as leaked" [NOT CONFIRMED] — so
   every key deployed that way can die the same way; the API keys tab's Check finds them.
+- Pro proof: "only reviewers confirm" is a UI + service rule — the `flow_accounts` rule lets anyone in `visibleTo` write
+  the whole document, so a member could write `proProof.status: "confirmed"` by hand (history would not show a
+  reviewer). The screenshots are on Cloudinary's public URLs (each shows a team Google account's email).

@@ -228,6 +228,8 @@ export default function CreditUsageDialog({
                     return (
                       <option key={a.id} value={a.id} disabled={(s.expired || s.noOpeningDay) && a.id !== entry?.accountId}>
                         {a.email} — {s.noOpeningDay ? "opening day not set" : s.expired ? "expired" : `${f.remaining} left`}{a.id === activeId ? " · using now" : ""}
+                        {/* Flagged, never blocked (2026-10-23): a wrong send-back must not stop real work. */}
+                        {a.proProof?.status === "rejected" ? " · Pro proof sent back" : ""}
                       </option>
                     );
                   })}
