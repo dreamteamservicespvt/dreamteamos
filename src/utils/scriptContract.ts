@@ -182,6 +182,36 @@ export function contractViolations(clipTexts: string[], expectedClips: number, c
   return issues;
 }
 
+/*
+  ── A pair's line over 12 words is a hard rule (2026-10-23 — the owner's decision) ───────────────────
+  The live Male & Female duo of 2026-10-23 morning: the boy's 13-word / 31-syllable second line was CUT at 8 s,
+  mid-price, though the clip (both lines) was inside 17–20 words and its syllable ceiling. The 7–12 line split was
+  only a repair aim (dialogueFormat validateDialogueClips) and never reached the final gate. Since then a line
+  over MAX_WORDS_PER_LINE in a two-person clip is a violation like a clip outside 17–20: the quality loop repairs
+  it and a script that still has one stops the run. The 7-word floor stays an aim (a short reply is not cut off).
+*/
+/** "Clip 2: Boy's line is 13 words …" for every line of a two-person clip over MAX_WORDS_PER_LINE. */
+export function pairLineIssues(clipLines: { name: string; text: string }[][]): string[] {
+  const issues: string[] = [];
+  clipLines.forEach((lines, i) => {
+    if (lines.length < 2) return;
+    for (const line of lines) {
+      const words = countSpokenWords(line.text);
+      // Never "has N" — the word-count repair reads that phrase as the CLIP's count (voiceOverRefine repairDirection).
+      if (words > MAX_WORDS_PER_LINE) {
+        issues.push(`Clip ${i + 1}: ${line.name}'s line is ${words} words — at most ${MAX_WORDS_PER_LINE} fit in one speaker's half of the 8 seconds. `
+          + `Move words to the other line or say it with fewer words, keeping the clip at ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} words.`);
+      }
+    }
+  });
+  return issues;
+}
+
+/** Recognises a pair-line failure in an issue list (see pairLineIssues). */
+export function isPairLineIssue(issue: string): boolean {
+  return /^Clip \d+: .+'s line is \d+ words — at most \d+ fit in one speaker's half\b/.test(issue);
+}
+
 // ── How long a clip takes to SAY (2026-10-22, measured in Flow) ───────────────────────────────────
 
 /*

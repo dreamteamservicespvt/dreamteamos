@@ -313,8 +313,9 @@ describe("a Male & Female Duo is a Male & Female Duo from the script to the last
     );
     expect(madeFrames()).toBe(false);
     // It tried: the first draft, then a round of two redrafts side by side — and stopped after a round that
-    // found nothing better (utils/scriptQa nextImprovement, SCRIPT_IMPROVEMENT_STALLS = 1 since 2026-10-16), never looping on.
-    expect(calls.filter((c) => /^Write the \d+-clip .* for:/m.test(c.user)).length).toBe(1 + 2);
+    // found nothing better (utils/scriptQa nextImprovement, SCRIPT_IMPROVEMENT_STALLS = 1 since 2026-10-16) — plus, since
+    // 2026-10-23, ONE extra round because the best draft still breaks the cast — never looping on.
+    expect(calls.filter((c) => /^Write the \d+-clip .* for:/m.test(c.user)).length).toBe(1 + 2 + 1);
   });
 });
 

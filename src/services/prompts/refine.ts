@@ -18,7 +18,7 @@
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { latinLettersException } from "@/utils/englishWords";
-import { wishAudienceRule } from "./festivalWish";
+import { deityWishLine, wishAudienceRule } from "./festivalWish";
 import { TELUGU_SCREEN_CTA, wordContractBlock, type WordContractRegister } from "./wordContract";
 
 export interface RefineSpeaker {
@@ -130,7 +130,10 @@ ${dialogue
 • A call to action ("call", "visit", "contact") only in the FINAL clip (clip ${clipCount}).${isTelugu && !dialogue ? ` The final clip must still end with ${finalCta}` : ""}
 • Only facts present in the script or the business information — never invent an offer, price, year or claim.
 • Clip ${messageClip} must still carry the core message: the business name, what it does and its core promise.
-${adType === "festival" ? `• Clip 1 stays the festival wish with no selling; later clips never mention the festival. ${wishAudienceRule(options.festivalName || "", lang)}\n` : ""}${brief ? `\n${coreMessageBlock(brief, messageClip, clipCount)}\n` : ""}
+${adType === "festival" && options.register === "deity"
+  // A deity blesses and the business wishes (2026-10-23, prompts/characterAd isDeityFestival).
+  ? `• Clip 1 stays the deity's own blessing — no business name, no selling. The final clip (clip ${clipCount}) keeps passing on the business's wish: ${deityWishLine(options.festivalName || "", lang)}; no clip between them names the festival. The deity never says "we", "our" or "మా" about the business.\n`
+  : adType === "festival" ? `• Clip 1 stays the festival wish with no selling; later clips never mention the festival. ${wishAudienceRule(options.festivalName || "", lang)}\n` : ""}${brief ? `\n${coreMessageBlock(brief, messageClip, clipCount)}\n` : ""}
 Return ONLY this JSON, no markdown:
 ${dialogue
   ? `{ "clips": [ { "clip": <1-based>, "lines": [ ${speakers!.map((s) => `{ "speaker": "${s.key}", "text": "<${s.name}'s line>" }`).join(", ")} ] } ] }`

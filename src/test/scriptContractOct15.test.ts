@@ -205,7 +205,9 @@ describe("one contract, stated the same way to every writer, repairer, editor an
           if (register === "deity") expect(writer).toContain("A blessing is calm and unhurried");
           if (register === "cartoon") expect(writer).toContain("keep their own rhythm and personality");
           // Festival and commercial keep their own structure.
-          if (adType === "festival") expect(writer).toContain("Clip 1 is the wish and nothing but the wish");
+          // A deity blesses and the business wishes in the final clip (2026-10-23, isDeityFestival).
+          if (adType === "festival" && register === "deity") expect(writer).toContain("THE DEITY BLESSES, THE BUSINESS WISHES");
+          else if (adType === "festival") expect(writer).toContain("Clip 1 is the wish and nothing but the wish");
           else expect(writer).not.toContain("Clip 1 is the wish and nothing but the wish");
         }
       }

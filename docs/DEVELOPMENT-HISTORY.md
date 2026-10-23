@@ -6,6 +6,20 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-23: AI ads — the owner's three decisions after the morning audit** (`ai-ads.md` §24, §27). **(1) A deity
+  blesses, the business wishes:** the live Ganesha ad spoke as the business in clip 1 (the festival contract's "ON BEHALF
+  OF THE BUSINESS"); now a deity's festival ad (`characterAd.isDeityFestival`) has the deity's own blessing in clip 1 and
+  the business's wish without "మా" in the final clip (`festivalWish.deityWishLine`) — in the writer (`deityFestivalBeats`,
+  its own worked example, checks), the repair, the refine, the judge (`deityBlessing`, the wish counted in the final
+  clip's room) and the required wish audience (final clip). **(2) One extra round** (`scriptQa.nextImprovement` `extra`,
+  `SCRIPT_EXTRA_ROUND_MS` 25 s) when the budget is spent and the best draft still breaks the cast or the contract.
+  **(3) A pair's line ≤ 12 words** is a contract violation (`scriptContract.pairLineIssues`) in the loop and the final
+  gate. Kids: no change (the owner: leave them out of testing). Files: `utils/scriptContract.ts`, `utils/scriptQa.ts`,
+  `services/geminiService.ts`, `services/prompts/{characterAd,festivalWish,scriptQa,refine}.ts`; tests
+  `ownerDecisionsOct23` (+8), `scriptContractOct15` (deity festival branch), `castConsistencyOct08` (the extra round: 4
+  writer calls). Full suite 4725 / 4725, typecheck 0, build ✅. A live Ganesha voice-over run timed out at 10 min on the
+  keys' daily limit (11:15 IST) — not yet seen live.
+
 - **2026-10-23: AI Accounts — "Move to", one click** (`ai-accounts.md` §9.21, `data-model.md`). The owner: Bhanu
   Bezawada opened 8 Flow accounts, but they were pasted under Srinu (a paste makes the paster the owner) and only the
   holder could be changed. The tech admin now ticks accounts (or Select all shown on a filter, e.g. Srinu + Opening

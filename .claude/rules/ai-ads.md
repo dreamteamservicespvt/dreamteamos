@@ -937,6 +937,25 @@ attribution (`Clip.voScript` is one string).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
 
+- **AI ads — a deity blesses, the business wishes (owner, 2026-10-23):** in a festival ad whose cast is a deity
+  (Ganesha, Lakshmi, Durga, Shiva, Krishna, the chosen deity — `characterAd.isDeityFestival`), clip 1 is the deity's own
+  short blessing for the viewer and their family — no business name, nothing sold, never "we" / "our" / "మా" — and the
+  FINAL clip passes on the business's wish, "{business} తరఫున మిత్రులు, కస్టమర్లందరికీ {festival} శుభాకాంక్షలు" (no "మా": the
+  deity is not the business; `festivalWish.deityWishLine`), beside the invitation and the address. The festival is named
+  in no clip between them; the business is first named in clip 2. A two-clip ad puts the business, the wish and the
+  invitation in clip 2. The writer, the repair, the refine and the judge all hold this shape; the wish audience
+  (మిత్రులు, కస్టమర్లు) is required in the final clip in code. Every other cast keeps the business's wish in clip 1.
+- **AI ads — a pair's line is at most 12 words (owner, 2026-10-23):** in a two-person clip each line is ≤ 12 spoken
+  words (`scriptContract.pairLineIssues`, `MAX_WORDS_PER_LINE`) — a hard rule like 17–20 a clip: the quality loop repairs
+  it and the final gate stops a run that still has one (Flow cut a 13-word second line at 8 s). The 7-word floor stays a
+  repair aim.
+- **AI ads — one extra script round (owner, 2026-10-23):** when the improvement budget is spent (passes, a stall or the
+  45 s deadline) and the best draft still breaks the cast or the contract, the loop writes ONE more draft with its own
+  25 s (`scriptQa.SCRIPT_EXTRA_ROUND_MS`, `nextImprovement` → `extra`), instead of stopping and costing a Generate. A draft
+  that only misses READY on score never gets it.
+- **AI ads — Kids (owner, 2026-10-23):** left out of live testing; no change, since Flow refuses an uploaded photoreal
+  child's frame (§27). The Kids casts stay in the pickers.
+
 - **AI ads — English words in a Telugu voice-over (owner, 2026-10-22):** flat(s), slot(s), plot(s), villa(s),
   apartment(s), booking(s), arrangement(s) ("arrange చేశాం") and facilities are written in ENGLISH letters inside the
   Telugu line, like `mariyu`, a Telugu ending kept joined ("flatsలో"); every other English word stays in Telugu letters
@@ -1193,10 +1212,15 @@ attribution (`Clip.voScript` is one string).
 
 - **Flow refuses an uploaded photoreal child's frame (2026-10-23, JPN account):** a Kids frame from ChatGPT failed twice
   through Upload media and once by drop ("Failed to upload kids-frame1.png"); a shop photo and adult frames upload at
-  once. So a Kids ad cannot use Frames to Video as the AI Guide says — the owner to decide (another tool, a text-only
-  Veo prompt, or drawn children). The quota day also showed the script loop's limits: a Kids run shipped 5.8 (one empty
-  round) and another stopped at 16 words with two passes left (the stop costs a Generate) — the owner may allow one more
-  round when the best draft breaks the contract. An English line (19 words) is said in ~6.9 s, leaving ~1 s of silence.
+  once. So a Kids ad cannot use Frames to Video as the AI Guide says. The owner (2026-10-23): leave the Kids out of
+  testing for now — no change made. The quota day also showed the script loop's limits: a Kids run shipped 5.8 (one empty
+  round) and another stopped at 16 words with two passes left — since 2026-10-23 such a draft gets ONE extra round (§24).
+  An English line (19 words) is said in ~6.9 s, leaving ~1 s of silence.
+- **The deity's blessing / business's wish (2026-10-23)** is checked by unit tests (`ownerDecisionsOct23`, every deity in
+  `scriptContractOct15`) only — a live Gemini run that morning timed out on the keys' daily limit before the script came
+  back, so no live Ganesha script, frame or Flow clip has been made from it yet. Watch: whether the final clip holds the
+  wish, the address and the invitation inside 17–20 words and the syllable ceiling (the judge is told the room); the
+  extra round adds up to ~25 s to a run whose best draft breaks a rule.
 
 - **Cast consistency (2026-10-08)** is checked by unit tests (every catalogue entry × commercial / festival through
   the full pipeline on a faked Gemini; the six shapes the duo script came back in, five runs each; the gate; the

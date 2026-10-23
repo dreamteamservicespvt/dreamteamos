@@ -16,7 +16,7 @@ import { packLocationSubject, packStagingRole, realLocationFormula } from "./rea
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
 import { latinLettersException } from "@/utils/englishWords";
-import { wishAudienceRule } from "./festivalWish";
+import { deityWishLine, wishAudienceRule } from "./festivalWish";
 import { festivalNameIn } from "@/utils/festivalNames";
 import {
   VEO_DIRECTION_SYSTEM_PROMPT, compositionFor, framingForMotion, withoutApproach,
@@ -459,7 +459,10 @@ const festivalBeats = (
   language: string,
   /** Role labels are never spoken — see promotionalBeats. */
   roleLabels = false,
+  /** A deity: it blesses in clip 1 and passes on the business's wish in the final clip (deityFestivalBeats). */
+  deity = false,
 ): string => {
+  if (deity) return deityFestivalBeats(segmentCount, first, place, festival, language);
   const solo = first === second;
   /**
    * Two forms of the occasion, because a missing festival name has to read as English either way.
@@ -535,6 +538,59 @@ const festivalBeats = (
   return beats.join(String.fromCharCode(10));
 };
 
+/**
+ * True for a festival ad whose one speaker is a deity — then the deity blesses and the business wishes.
+ *
+ * ── Why (owner, 2026-10-23) ──
+ * The festival contract above makes clip 1 the wish ON BEHALF OF THE BUSINESS. Given to Ganesha it made the god
+ * speak as the shop ("{business} తరఫున మా …" — the live Ganesha ad of 2026-10-23 morning). The owner's decision: the
+ * deity gives a short blessing in its own voice in clip 1, and the business's wish comes in the final clip, passed
+ * on by the deity beside the invitation (prompts/festivalWish deityWishLine).
+ */
+export const isDeityFestival = (pack: CharacterPack | null | undefined, adType: string): boolean =>
+  !!pack && adType === "festival" && packPerformer(pack) === "deity";
+
+/** The deity's festival ad, clip by clip — see isDeityFestival. */
+const deityFestivalBeats = (segmentCount: number, deity: string, place: string, festival: string, language: string): string => {
+  const occasion = (festival || "").trim() || "the festival";
+  const bare = (festival || "").trim() || "festival";
+  const blessing = `Clip 1 — THE BLESSING (NOT A HOOK, NOT A SELL, NOT THE BUSINESS SPEAKING): ${deity}, in ${deity}'s own `
+    + `voice, blesses the viewer and their family for ${occasion} — one short, warm blessing from ${deity}'s own domain `
+    + `(obstacles removed, a good beginning, a home that stays full). The deity speaks AS THE DEITY, never as the business: `
+    + `no business name, never "from <business>", never "on behalf of", never "we", "our shop" or "మా". This clip carries `
+    + `the one and only mention of ${deity}'s name.`;
+  const nothingElse = `Clip 1 CONTAINS NOTHING ELSE. No business name, no product, no service, no offer, no price, no reason `
+    + `to buy, no call to action${place ? `, and not the town "${place}"` : ""}. It is the deity's blessing, not an advertisement.`;
+  const wish = `the business's own ${bare} wish, passed on by ${deity} with the business named as the one sending it — `
+    + `${deityWishLine(festival, language)} — never "we" or "మా" (${deity} is not the business). `
+    + `${wishAudienceRule(festival, language).replace(/,? and the business is the one sending the [^.]*wish\./, ".")}`;
+  if (segmentCount <= 1) {
+    return `${blessing}\nThere is only this one clip, so after the blessing ${deity} gives ${wish} Then a short, warm `
+      + `invitation to visit the business${place ? ` in ${place}` : ""}. Nothing is sold beyond that.`;
+  }
+  const close = (n: number, alsoName: boolean) => `Clip ${n} — THE BUSINESS'S WISH AND THE INVITATION: ${deity} gives ${wish} `
+    + `${alsoName ? `Before it, in a few words, what the business does${place ? ` and that it is in ${place}` : ""}. ` : ""}`
+    + `Then the invitation to come. This is the ONLY clip after clip 1 that names ${occasion}.`;
+  const beats = [blessing, nothingElse];
+  if (segmentCount === 2) {
+    beats.push(close(2, true));
+    return beats.join(String.fromCharCode(10));
+  }
+  beats.push(
+    `Clip 2 — THE TURN (this is where the ad starts selling): ${occasion} is not named again until the final clip's wish. `
+    + `${deity} names the business${place ? ` and says it is in ${place}` : ""}, saying plainly what it does and the core `
+    + `promise that makes it worth choosing — the business spoken of as "this" or by its name, never "we".`,
+  );
+  for (let i = 3; i < segmentCount; i++) {
+    beats.push(
+      `Clip ${i} — PROOF: one specific, real thing this business offers, taken from the business information, blessed `
+      + `rather than sold. A different one in each clip — never repeat a benefit already used.`,
+    );
+  }
+  beats.push(close(segmentCount, false));
+  return beats.join(String.fromCharCode(10));
+};
+
 export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
   pack: CharacterPack,
   duration: number,
@@ -559,6 +615,8 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
    * ordinary promotional scripts.
    */
   const isFestival = adType === "festival";
+  /** A deity's festival ad: the deity blesses in clip 1, the business wishes in the final clip (2026-10-23, isDeityFestival). */
+  const deityFest = isDeityFestival(pack, adType);
   /** The occasion as it will be spoken. Empty festival names still have to read as a sentence. */
   const occasion = (festivalName || "").trim() || "the festival";
   /**
@@ -650,6 +708,21 @@ export const CHARACTER_VOICEOVER_SYSTEM_PROMPT = (
       proof2: "clip-3 (proof — a DIFFERENT one, never a repeat)",
       close: "clip-4 (close — it ends, and it tells you what to do)",
     };
+    if (solo && deityFest) {
+      // The deity blesses in its own voice; the business's wish is passed on in the close (isDeityFestival).
+      const blessing = `May every obstacle leave your home this ${occ}, and may your whole family begin every good thing with joy.`;
+      const turn = place
+        ? `Here in ${place} stands Sharma Electronics, where every family finds an honest machine at an honest price.`
+        : "This is Sharma Electronics, where every family in town finds an honest machine at an honest price.";
+      const proof = "Every brand and every model of washing machine is right here, and home delivery is completely free.";
+      const close = `Sharma Electronics wishes all its friends and customers a happy ${occ} — come and visit them here today.`;
+      return [
+        clip("clip-1 (the BLESSING — the deity's own words; no business, nothing sold)", [[first.name, blessing]]),
+        clip(`clip-2 (the TURN — the business${named} named; the festival waits for the close)`, [[first.name, turn]]),
+        clip(titles.proof(3), [[first.name, proof]]),
+        clip("clip-4 (the BUSINESS'S WISH, passed on by the deity, and the invitation)", [[first.name, close]]),
+      ].join("\n\n");
+    }
     if (solo) {
       const wish = roleLabels
         ? `Wishing you and your whole family a very happy ${occ} from all of us here at Sharma Electronics.`
@@ -725,7 +798,19 @@ line must actually ANSWER what ${first.name} just said.`}
 
 ${characterDirectionBlock(pack, "script")}
 
-${isFestival ? `===== THIS IS A ${occasionBare.toUpperCase()} GREETING AD FROM ONE SPECIFIC BUSINESS =====
+${deityFest ? `===== THIS IS A ${occasionBare.toUpperCase()} GREETING AD: THE DEITY BLESSES, THE BUSINESS WISHES =====
+
+${first.name} SPEAKS AS ${first.name}, NEVER AS THE BUSINESS. Clip 1 is ${first.name}'s own short ${occasionBare} blessing
+for the viewer and their family — no business name, nothing sold. ${festivalTurn
+  ? `From clip ${hookClip} the ad promotes the business, which ${first.name} speaks of by its name or as "this place" —
+never "we", "our shop" or "మా". The FINAL clip passes on the business's own ${occasionBare} wish, the business named as
+the one sending it, beside the invitation; it is the only clip after clip 1 that names ${occasion}.`
+  : `This ad is one clip long, so the blessing is followed by the business's wish and a short invitation.`}
+
+THIS OVERRIDES THE PERFORMANCE DIRECTION ABOVE where it says clip 1 names a need or the business. Everything else
+in those notes — the voice, the face, the gestures, the camera, the register — is unchanged.
+
+` : isFestival ? `===== THIS IS A ${occasionBare.toUpperCase()} GREETING AD FROM ONE SPECIFIC BUSINESS =====
 
 THE BUSINESS IS WISHING THE VIEWER. That is what a Festival Wishes ad is, and it is the reason the
 client paid for one. Clip 1 is the wish and nothing but the wish — the business sends ${occasionBare}
@@ -802,7 +887,7 @@ ${coreMessageBlock(brief, isFestival && segmentCount > 1 ? 2 : 1, segmentCount)}
 CLIP-BY-CLIP STRUCTURE:
 
 ${isFestival
-  ? festivalBeats(segmentCount, first.name, second.name, place, festivalName, lang, roleLabels)
+  ? festivalBeats(segmentCount, first.name, second.name, place, festivalName, lang, roleLabels, deityFest)
   : promotionalBeats(segmentCount, first.name, second.name, place, roleLabels)}
 
 ${place
@@ -836,7 +921,15 @@ The business information does not say which town or village this business is in,
 a place anywhere in the script. Never invent one, never guess from the business name, and never
 substitute a vague phrase like "our town" or "your area". Sell the business on what it does.`}
 
-${festivalTurn ? `===== CLIP 1 IS THE WISH. THE HOOK IS CLIP ${hookClip}'S JOB =====
+${festivalTurn && deityFest ? `===== CLIP 1 IS THE BLESSING. THE HOOK IS CLIP ${hookClip}'S JOB =====
+
+Clip 1 is ${first.name}'s ${occasionBare} blessing, spoken warmly and directly to the viewer — never a
+formal announcement, never a narrator, and never the business's greeting (that is the final clip's).
+
+The clip that has to STOP a scroller is clip ${hookClip}, because that is where this stops being a
+blessing and becomes an advertisement.
+
+` : festivalTurn ? `===== CLIP 1 IS THE WISH. THE HOOK IS CLIP ${hookClip}'S JOB =====
 
 Clip 1 opens with the ${occasionBare} greeting, and that is the ONE place in this script where a
 greeting belongs. Write it as ${solo ? `${first.name} speaking warmly to the viewer` : "one friend turning to the other about the day"}, never as a
@@ -889,7 +982,11 @@ business you were given. Word counts are marked to show how a complete thought f
 
 ${workedExample()}
 
-${isFestival
+${deityFest
+  ? `Notice: clip 1 is the deity's own blessing with no business in it, clip 2 names the business${place ? " and its town" : ""},
+the festival comes back only in the last clip as the business's wish, the deity never says "we", and the last line
+tells the viewer exactly what to do.`
+  : isFestival
   ? `Notice: clip 1 sells nothing and only wishes, ${occasion} is never spoken of again after it,
 clip 2 provokes and names the business${place ? " and its town" : ""}, every line is a whole sentence, and the last
 line tells the viewer exactly what to do.`
@@ -897,7 +994,9 @@ line tells the viewer exactly what to do.`
 whole sentence, each clip adds something new, and the last line tells the viewer exactly what to do.`}
 
 GROUND EVERY SINGLE LINE IN THE DATA YOU WERE GIVEN:
-1. Say the business's REAL NAME out loud in the ad, early — a viewer must know who this is.${isFestival ? ` In a
+1. Say the business's REAL NAME out loud in the ad, early — a viewer must know who this is.${deityFest ? ` In this
+   ${occasionBare} ad clip 1 is the deity's blessing, so the first mention is clip ${hookClip}, and the name comes back in the
+   final clip as the one sending the wish.` : isFestival ? ` In a
    ${occasionBare} ad that first mention is clip 1, as the business sending the wish.` : ""}${place
   ? `\n1b. Say "${place}" out loud in clip ${hookClip} alongside that name — a viewer must know where this is.`
   : ""}
@@ -962,13 +1061,26 @@ ${everydaySpeechRules(lang)}
 
 ===== TONE =====
 
-${isFestival
+${deityFest
+  ? `This is a FESTIVAL greeting ad for ${occasion}. Clip 1 is ${first.name}'s warm, unhurried blessing; the clips after it
+promote the business in ${first.name}'s own register; the final clip passes on the business's wish with the invitation.`
+  : isFestival
   ? `This is a FESTIVAL greeting ad for ${occasion}. Clip 1 is warm, celebratory and affectionate — a
 real wish from the business to the viewer.${festivalTurn ? ` From clip ${hookClip} the tone becomes friendly and persuasive
 like any other ad, and the celebration is not carried into it.` : ` The ad is one clip long, so that
 warmth carries the closing invitation too.`}`
   : "This is a COMMERCIAL ad — friendly, funny, and clearly persuasive. The humour must never bury the sell."}
-${isFestival ? `
+${deityFest ? `
+===== CHECK CLIP 1 AND THE LAST CLIP BEFORE YOU OUTPUT =====
+
+Read them back and answer each of these. A "no" anywhere means rewrite that clip and check again.
+
+• Is clip 1 ${first.name}'s own ${occasionBare} blessing for the viewer and their family — with NO business name, no "we", no "మా"?
+• Is clip 1 free of every product, service, offer, price and call to action?
+• Does the LAST clip pass on the business's ${occasionBare} wish (${deityWishLine(festivalName, lang)}), with the invitation?
+• Does ${first.name} ever say "we", "our" or "మా" about the business? If so, rewrite that line.${festivalTurn ? `
+• Is ${occasion} absent from every clip between clip 1 and the last clip?` : ""}
+` : isFestival ? `
 ===== CHECK CLIP 1 BEFORE YOU OUTPUT =====
 
 Read your clip 1 back and answer each of these. A "no" anywhere means rewrite clip 1 and check again.
@@ -1054,7 +1166,13 @@ NON-NEGOTIABLE CONTRACT:
 • Output format exactly: ${solo ? `\`<start>-<end>|${first.key}: <line>\`` : `\`<start>-<end>|${first.key}: <line>\` then \`<start>-<end>|${second.key}: <line>\``}
 • Keep the original meaning and the business facts — change only what is broken
 • NEVER fix a word count by cutting a sentence in half. Shorten the THOUGHT instead: every line must still be one complete sentence that makes sense on its own
-${isFestival
+${isDeityFestival(pack, adType)
+  // A deity blesses, the business wishes (2026-10-23) — the repair keeps that shape (see isDeityFestival).
+  ? `• Clip 1 must still be ${first.name}'s own ${occasionBare} BLESSING for the viewer and their family — no business name, nothing sold, no call to action
+• The final clip must still pass on the business's ${occasionBare} wish — ${deityWishLine(festivalName, language)} — beside the invitation${festivalTurn ? `
+• ${occasion} is spoken only in clip 1 and in that final wish; remove it from any clip between them` : ""}
+• ${first.name} speaks as ${first.name}, never as the business — a "we", "our" or "మా" about the business is rewritten`
+  : isFestival
   ? `• Clip 1 must still be the ${occasionBare} WISH — the business wishing the viewer and their family, naming itself as the sender. Never turn clip 1 into a hook, a question about the shop, or a welcome${festivalTurn
     ? `, and keep every product, service, offer, price, reason to buy and call to action out of it
 • Clip ${hookClip} must still be the TURN: the first line provokes — a surprise, an unanswered question, the customer's own problem, or disbelief — and the ad sells from there on

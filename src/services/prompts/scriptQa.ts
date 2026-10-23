@@ -22,6 +22,7 @@
  */
 import { coreMessageBlock, type CoreMessageBrief } from "./coreMessage";
 import { everydaySpeechRules } from "./everydaySpeech";
+import { deityWishLine } from "./festivalWish";
 import { englishWordList } from "@/utils/englishWords";
 import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, countSpokenWords } from "@/utils/scriptContract";
 
@@ -46,6 +47,11 @@ export interface ScriptQaContext {
   clipWords?: number[];
   /** The fixed closing sentence of the final clip, when the ad has one (a Telugu single voice). */
   closingLine?: string;
+  /**
+   * A deity's festival ad (2026-10-23, the owner): clip 1 is the deity's own blessing with no business in it, and the
+   * FINAL clip passes on the business's wish beside the invitation (prompts/characterAd isDeityFestival).
+   */
+  deityBlessing?: boolean;
 }
 
 /*
@@ -59,11 +65,13 @@ export interface ScriptQaContext {
 function finalClipRoomRule(ctx: ScriptQaContext): string {
   const closing = (ctx.closingLine || "").replace(/^["“]|["”]$/g, "").trim();
   const address = (ctx.address || "").trim();
-  if (!closing && !address) return "";
-  const fixed = (closing ? countSpokenWords(closing) : 0) + (address ? countSpokenWords(address) : 0);
+  // A deity's festival ad also passes on the business's wish in its final clip (2026-10-23) — that takes room too.
+  const wish = ctx.adType === "festival" && ctx.deityBlessing ? deityWishLine(ctx.festivalName || "", ctx.language) : "";
+  if (!closing && !address && !wish) return "";
+  const fixed = (closing ? countSpokenWords(closing) : 0) + (address ? countSpokenWords(address) : 0) + (wish ? countSpokenWords(wish) : 0);
   const room = Math.max(0, MAX_WORDS_PER_CLIP - fixed);
   const noOfferClip = ctx.adType === "festival" && ctx.clipCount <= 2;
-  return `• THE FINAL CLIP'S ROOM: clip ${ctx.clipCount} must say ${[closing ? "the closing call line" : "", address ? "the address" : ""].filter(Boolean).join(" and ")} (${fixed} words), which leaves at most ${room} words for anything else. Never ask that clip for an offer, a list of products or a detail that cannot fit in ${room} words, and never mark it down for leaving one out — judge whether those ${room} words are the strongest, clearest invitation they can be.${noOfferClip ? ` In this ${ctx.clipCount}-clip wishes ad clip 1 is the wish, so no clip has room for a list of offers: one specific thing the business offers, said simply, is the whole selling job — judge persuasion, clarity and relevance on that.` : ""}
+  return `• THE FINAL CLIP'S ROOM: clip ${ctx.clipCount} must say ${[closing ? "the closing call line" : "", address ? "the address" : "", wish ? "the business's festival wish" : ""].filter(Boolean).join(" and ")} (${fixed} words), which leaves at most ${room} words for anything else. Never ask that clip for an offer, a list of products or a detail that cannot fit in ${room} words, and never mark it down for leaving one out — judge whether those ${room} words are the strongest, clearest invitation they can be.${noOfferClip ? ` In this ${ctx.clipCount}-clip wishes ad clip 1 is the wish, so no clip has room for a list of offers: one specific thing the business offers, said simply, is the whole selling job — judge persuasion, clarity and relevance on that.` : ""}
 `;
 }
 
@@ -84,7 +92,8 @@ export const SCRIPT_QA_SYSTEM_PROMPT = (ctx: ScriptQaContext): string => {
   return `You are the FINAL QUALITY GATE for ${isTelugu ? "Telugu " : ""}advertising voice-overs at a top Indian ad agency — a senior copy chief and native ${lang} speaker who has approved thousands of scripts for TV, YouTube and Instagram Reels. You do NOT rewrite. You JUDGE, strictly, specifically and consistently, against the rubric below.
 
 THE SCRIPT: ${ctx.clipCount} clips of 8 seconds${ctx.adType === "festival" && ctx.festivalName ? `, a ${ctx.festivalName} wishes ad (clip 1 is the greeting)` : ", a promotional ad"}. ${cast}${ctx.castNote?.trim() ? `
-THE CAST AND HOW IT MUST SOUND: ${ctx.castNote.trim()}` : ""}${ctx.adType === "festival" && ctx.clipCount > 1 ? `
+THE CAST AND HOW IT MUST SOUND: ${ctx.castNote.trim()}` : ""}${ctx.adType === "festival" && ctx.deityBlessing ? `
+IN THIS FESTIVAL AD THE DEITY BLESSES AND THE BUSINESS WISHES: clip 1 is the deity's own short blessing for the viewer — no business name, nothing sold, no hook needed${ctx.clipCount > 1 ? `; the FINAL clip passes on the business's ${ctx.festivalName || "festival"} wish (the business named as the one sending it) beside the invitation, and the festival is named in no clip between them` : ""}. The deity speaks as the deity, NEVER as the business: a "we", "our shop" or "మా" about the business is a cast fault. That overrides any clip-1 direction in the cast's notes above — never mark clip 1 down for having no business in it${ctx.clipCount > 1 ? "; judge the hook from clip 2" : ""}.` : ctx.adType === "festival" && ctx.clipCount > 1 ? `
 IN THIS FESTIVAL AD CLIP 1 IS THE WISH AND NOTHING ELSE: the business greets the viewer, sells nothing and needs no hook. That overrides any clip-1 direction in the cast's notes above (a hook, an obstacle, a question, a product) — never mark clip 1 down for following it; judge the hook from clip 2.` : ""}
 
 ===== THE REGISTER IT MUST HAVE =====

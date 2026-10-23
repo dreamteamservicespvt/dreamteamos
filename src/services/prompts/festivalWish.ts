@@ -72,6 +72,22 @@ export function wishAudienceRule(festivalName: string, language?: string): strin
       + `named, with the business as the one sending the ${occasion} wish.`;
 }
 
+/*
+  ── A deity blesses; the business wishes (owner, 2026-10-23) ──
+  The live Ganesha festival ad (2026-10-23 morning) had Ganesha say the business's greeting in clip 1 — the god
+  speaking as the shop ("{business} తరఫున మా …"). The owner's decision: the deity gives a short blessing in its own
+  voice in clip 1 (no business, nothing sold), and the business's wish comes in the FINAL clip, passed on by the
+  deity — the business named as the one sending it, without "మా" (the deity is not the business), beside the
+  invitation and the address.
+*/
+/** The business's wish as a deity passes it on in the final clip — the greeting without "మా" (see above). */
+export function deityWishLine(festivalName: string, language?: string): string {
+  const occasion = festivalNameIn((festivalName || "").trim(), language) || "the festival";
+  return isTeluguLanguage(language)
+    ? `"{Business Name} తరఫున ${WISH_AUDIENCE_LINE} ${occasion} శుభాకాంక్షలు"`
+    : `"{Business Name} wishes all its ${WISH_AUDIENCE_ENGLISH} a happy ${occasion}"`;
+}
+
 /**
  * What the wish clip still gets wrong, for the clip-level repair: a group it does not greet, or a word the
  * greeting no longer says (WISH_DROPPED_TELUGU — it would push the wish past the clip's 8 seconds). [] when right.

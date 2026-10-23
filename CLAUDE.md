@@ -224,14 +224,18 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-23)
 
+- 2026-10-23, **local, not pushed** — **the owner's three AI-ads decisions**: a deity's festival ad = the deity's own
+  blessing in clip 1, the business's wish (no "మా") in the final clip; one extra script round when the best draft still
+  breaks a hard rule; a pair's line ≤ 12 words in the final gate. Kids left out of testing (`ai-ads.md` §24, §27;
+  history 2026-10-23). Not yet seen live (keys at their daily limit) — run one Ganesha festival ad after 12:30 PM IST.
+
 - 2026-10-23 (morning), **local, not pushed** — **the audit's remaining ad types tested live** (Real Owner Face from an
   invented face, a client photo, English, Kids, Ganesha, label, poster; 4 Flow clips / 48 credits): five fixes — "టూ
   బీహెచ్‌కే, త్రీ బీహెచ్‌కే" no longer a "spoken phone number", the single owner named by the photograph and framed
   three-quarter, a client-photo frame describes no invented place, every push-in keeps the sign in frame, the one
   presenter's ordered outfit stamped on every frame (English ads came back in a suit). **Flow refuses a photoreal child's
-  frame** — Kids ads cannot use Frames to Video (owner to decide) (`ai-ads.md`; history 2026-10-23 morning). Owner
-  decisions open: Kids in Flow; Ganesha's greeting as the business; one more script round when the best draft breaks a
-  hard rule, and a pair's per-line limit (≤ 12 words) in the final gate (a 13-word second line was cut at 8 s).
+  frame** — Kids ads cannot use Frames to Video (`ai-ads.md`; history 2026-10-23 morning). The four open decisions were
+  made and built the same day (the entry above).
   Leftover folder `Desktop\dts-wt-check`: remove its `node_modules` junction first, then `git worktree remove`.
 - 2026-10-23 (overnight), **local, not pushed** — **AI ads audit, every ad type tested** (live Gemini ×7, ChatGPT frames,
   5 Flow clips / 60 credits, Whisper + frame strips): 14 mistakes of the same kind fixed — a syllable limit so every

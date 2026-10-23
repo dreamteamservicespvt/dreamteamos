@@ -55,6 +55,7 @@ import {
   LOCATION_INDEX_SYSTEM_PROMPT,
   castNoteFor,
   contractRegisterFor,
+  isDeityFestival,
   packPerformer,
   packVeoSubject,
   wardrobeDirective,
@@ -89,11 +90,11 @@ import { finalBusinessName, needsNativeName, saleBusinessNameIn, withFinalBusine
 import { SCRIPT_QA_SYSTEM_PROMPT } from "./prompts/scriptQa";
 import {
   isBetterDraft, isPerfect, nextImprovement, parseScriptQa, qaInstructions, qaSummary, unscoredSummary, withMechanicalChecks,
-  SCRIPT_GATE_DEADLINE_MS, SCRIPT_IMPROVEMENT_PASSES, type DraftStanding, type ImprovementStop, type ScriptQaReport, type ScriptQaSummary,
+  SCRIPT_EXTRA_ROUND_MS, SCRIPT_GATE_DEADLINE_MS, SCRIPT_IMPROVEMENT_PASSES, type DraftStanding, type ImprovementStop, type ScriptQaReport, type ScriptQaSummary,
 } from "@/utils/scriptQa";
 import {
   bandDistance, clipWordCountIssue, clipWordCounts, clipsAtPace, contractViolations, countSpokenWords, spokenWordsOf,
-  clipSyllableIssue, clipSyllableIssues, measuresSyllables, repeatedPhraseIssues, spokenSyllables,
+  clipSyllableIssue, clipSyllableIssues, measuresSyllables, pairLineIssues, repeatedPhraseIssues, spokenSyllables,
 } from "@/utils/scriptContract";
 import { speaksDigitRun } from "@/utils/unspokenNumbers";
 import { TELUGU_SCREEN_CTA } from "./prompts/wordContract";
@@ -134,7 +135,7 @@ import {
 import {
   parseDialogueClips, readDialogueScript, validateDialogueClips, formatDialogueScript, applyNameSpellings,
   castIntegrityIssues, castScriptProblems, dialogueLabelsIn,
-  type DialogueClip, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, TARGET_WORDS_PER_CLIP,
+  type DialogueClip, MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, MAX_WORDS_PER_LINE, TARGET_WORDS_PER_CLIP,
 } from "@/utils/dialogueFormat";
 import { adSpecOf } from "@/utils/adSpec";
 import {
@@ -3160,11 +3161,13 @@ export const generateAdAssets = async (
      * clip, the same way the town is required in its own.
      */
     if (formData.adType === 'festival' && isTeluguScript(formData.language)) {
+      // A deity blesses in clip 1 and passes on the business's wish in the FINAL clip (2026-10-23, isDeityFestival).
+      const wishClip = isDeityFestival(pack, formData.adType) ? segmentCount : 1;
       for (const group of WISH_AUDIENCE_TELUGU) {
         requiredPhrases.push({
           label: `The ${group.english} in the wish ("${group.spoken}")`,
           tokens: [group.stem],
-          clip: 1,
+          clip: wishClip,
           hint: `The wish greets both: "${WISH_AUDIENCE_TELUGU.map((g) => g.spoken).join(", ")}".`,
         });
       }
@@ -3342,7 +3345,9 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
     const userPrompt = `Write the ${segmentCount}-clip ${packAdKind(pack).script} for:
   BUSINESS INFORMATION: ${JSON.stringify(businessInfo, null, 2)}
   AD TYPE: ${formData.adType}
-  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName} (clip 1 is the wishes on behalf of the business and sells nothing)` : ''}
+  ${formData.adType === 'festival' ? `FESTIVAL: ${formData.festivalName} (${isDeityFestival(pack, formData.adType)
+    ? `clip 1 is the deity's own blessing — no business, nothing sold; the final clip passes on the business's wish`
+    : 'clip 1 is the wishes on behalf of the business and sells nothing'})` : ''}
   ${placeName ? `TOWN / VILLAGE (must be spoken once, in clip ${townClip}): ${placeName}` : ''}
   DURATION: ${effectiveDuration} seconds (${segmentCount} clips of ${CLIP_SECONDS} seconds, ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words in each clip)`;
 
@@ -3684,8 +3689,9 @@ Review it now and return the JSON verdict.` }] }],
     contract, then the score. The loop stops at a genuine 10/10, at a READY draft (utils/scriptQa isReady —
     every hard rule met and ≥ 9/10; 2026-10-16, runs were spending the whole budget chasing a 10/10 that never
     came), after SCRIPT_IMPROVEMENT_PASSES passes,
-    after two rounds that found nothing better, or at SCRIPT_GATE_DEADLINE_MS (utils/scriptQa
-    nextImprovement), and the kit reports the real score, the passes and why it stopped. A member's own
+    after a round that found nothing better, or at SCRIPT_GATE_DEADLINE_MS (utils/scriptQa
+    nextImprovement) — plus ONE extra round when the best draft still breaks the cast or the contract
+    (2026-10-23, the owner), and the kit reports the real score, the passes and why it stopped. A member's own
     script is never judged or touched. A judge that cannot run never blocks the ad — but nothing it did not
     judge is ever called 10/10.
   */
@@ -3693,6 +3699,11 @@ Review it now and return the JSON verdict.` }] }],
   const castNote = pack ? castNoteFor(pack) : '';
   /** A two-person clip is counted across both lines together (utils/scriptContract). */
   const contractCast = packSpeakerList.length > 1;
+  /** Each clip's lines with the speaker's display name — what pairLineIssues reads (2026-10-23). */
+  const dialogueLinesNamed = (clips: DialogueClip[]) => {
+    const nameOf = new Map(packSpeakerList.map(s => [s.key, s.name]));
+    return clips.map(clip => clip.map(line => ({ name: nameOf.get(line.speaker) ?? line.speaker, text: line.text })));
+  };
   /** The script language the final gate measures syllables in (Telugu by default, like every check). */
   const contractLanguage = formData.language || "Telugu";
   /** The fixed closing sentence the judge must not penalise — a Telugu single-voice ad only. */
@@ -3717,6 +3728,7 @@ Judge it now and return the JSON.${note}` }] }],
             clipCount: segmentCount,
             speakers: packSpeakerList.map(sp => sp.name),
             castNote,
+            deityBlessing: isDeityFestival(pack, formData.adType),
             brief: coreMessage,
             messageClip,
             // The verified address the last clip must say — the judge was never told it, and marked it as invented.
@@ -3778,7 +3790,8 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
 
   /** A draft as the gate holds it: its exact text, its counts, what code found, and the judge's report. */
   type Assessed<T> = DraftStanding & { draft: T; text: string; clipWords: number[]; violations: string[]; mechanical: string[]; broken: number };
-  const improvementMessage = (best: Assessed<unknown>, mode: 'polish' | 'rewrite', passes: number) => {
+  const improvementMessage = (best: Assessed<unknown>, mode: 'polish' | 'rewrite', passes: number, extra = false) => {
+    if (extra) return 'The best draft still breaks a word or cast rule — one more round to fix it...';
     const n = `pass ${passes + 1} of ${SCRIPT_IMPROVEMENT_PASSES}`;
     if (best.broken > 0) return `The script lost one of the speakers — writing it again with every line in its own voice (${n})...`;
     if (!best.report) return `Fitting every clip to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words (${n})...`;
@@ -3797,6 +3810,8 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
     mechanicalOf: (draft: T) => string[];
     /** The problems that make it NOT this ad's cast (castIntegrityIssues) — none for a single voice. */
     castIssuesOf?: (draft: T) => string[];
+    /** A two-person clip's lines over 12 words (scriptContract pairLineIssues) — a contract violation since 2026-10-23. */
+    lineIssuesOf?: (draft: T) => string[];
     /** A better draft from the best one: a targeted polish, or a new draft told what failed. */
     improve: (from: Assessed<T>, mode: 'polish' | 'rewrite') => Promise<T>;
     /** The last resort when even the best draft breaks the word contract: a repair of just that. */
@@ -3810,7 +3825,7 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
       const text = cfg.textOf(draft);
       const clipTexts = cfg.clipTextsOf(draft);
       const clipWords = clipWordCounts(clipTexts);
-      const violations = contractViolations(clipTexts, segmentCount, contractCast, contractLanguage);
+      const violations = [...contractViolations(clipTexts, segmentCount, contractCast, contractLanguage), ...(cfg.lineIssuesOf?.(draft) ?? [])];
       const mechanical = cfg.mechanicalOf(draft);
       const broken = cfg.castIssuesOf?.(draft).length ?? 0;
       // A draft that is not this cast's is never judged — no score can make it usable (2026-10-08).
@@ -3827,20 +3842,23 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
     let drafts = 1;
     let passes = 0;
     let stalls = 0;
+    let extraRoundUsed = false;
     let stopReason: ImprovementStop = 'passes';
     for (;;) {
-      const step = nextImprovement({ best, passesUsed: passes, stalls, elapsedMs: Date.now() - started });
+      const step = nextImprovement({ best, passesUsed: passes, stalls, elapsedMs: Date.now() - started, extraRoundUsed });
       if ('stop' in step) {
         stopReason = step.stop;
         break;
       }
-      onProgress(improvementMessage(best, step.mode, passes), 32);
+      onProgress(improvementMessage(best, step.mode, passes, !!step.extra), 32);
+      if (step.extra) extraRoundUsed = true;
       /*
         A rewrite on the first round writes two drafts AT THE SAME TIME (each call on its own key), so a
         weak first draft costs the time of one more round, not two. Anything not back by the deadline is
-        left out, and the best draft so far ships.
+        left out, and the best draft so far ships. The extra round (2026-10-23) has its own budget, because
+        the main deadline may be what ended the loop.
       */
-      const remaining = Math.max(0, SCRIPT_GATE_DEADLINE_MS - (Date.now() - started));
+      const remaining = step.extra ? SCRIPT_EXTRA_ROUND_MS : Math.max(0, SCRIPT_GATE_DEADLINE_MS - (Date.now() - started));
       let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<null>(resolve => { deadlineTimer = setTimeout(() => resolve(null), remaining); });
       const from = best;
@@ -3910,6 +3928,8 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
       const tools = await dialogueTools();
       /** Who is missing from a draft — the cast is checked on every draft, not only asked for. */
       const castIssuesOf = (clips: DialogueClip[]) => castIntegrityIssues(clips, segmentCount, packSpeakerList);
+      /** A line over 12 words in a two-person clip — cut at 8 s in Flow (2026-10-23), so a hard rule like 17–20. */
+      const lineIssuesOf = (clips: DialogueClip[]) => contractCast ? pairLineIssues(dialogueLinesNamed(clips)) : [];
       const qualityFeedback = (report: ScriptQaReport | null, mode: 'polish' | 'rewrite') => !report
         ? ''
         : mode === 'rewrite'
@@ -3921,6 +3941,7 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
         clipTextsOf: clips => clips.map(clip => clip.map(line => line.text).join(' ')),
         mechanicalOf: tools.check,
         castIssuesOf,
+        lineIssuesOf,
         // A draft that lost a speaker is never shipped, so no scene plan is started for it.
         onDraft: clips => { if (castIssuesOf(clips).length === 0) planScenesEarly(dialogueSegments(clips)); },
         improve: async (from, mode) => {
@@ -4092,9 +4113,13 @@ Segment 2: <text>`;
   */
   if (!customScript?.trim()) {
     const shippedClips = pack ? dialogueClips.map(clip => clip.map(line => line.text).join(' ')) : parsedSegments;
-    const violations = contractViolations(shippedClips, segmentCount, contractCast, contractLanguage);
+    // A pair's line over 12 words is refused here too (2026-10-23): Flow cut a 13-word second line at 8 s.
+    const violations = [
+      ...contractViolations(shippedClips, segmentCount, contractCast, contractLanguage),
+      ...(pack && contractCast ? pairLineIssues(dialogueLinesNamed(dialogueClips)) : []),
+    ];
     if (violations.length > 0) {
-      throw new Error(`The voice-over could not be fitted to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words in every clip (each said in eight seconds), even after it was repaired and written again: `
+      throw new Error(`The voice-over could not be fitted to ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words in every clip${contractCast ? ` (at most ${MAX_WORDS_PER_LINE} for each speaker)` : ''}, each said in eight seconds, even after it was repaired and written again: `
         + `${violations.slice(0, 3).join(' ')} No frame or video prompt was made from it. Press Generate to write it again.`);
     }
     // Nothing may change the words after they were checked; if anything ever did, the kit must not claim the check.

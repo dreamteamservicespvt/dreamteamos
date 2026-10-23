@@ -303,10 +303,24 @@ export interface ImprovementState {
   /** Consecutive rounds that produced no better draft. */
   stalls: number;
   elapsedMs: number;
+  /** The one extra round (SCRIPT_EXTRA_ROUND) has been spent (2026-10-23). */
+  extraRoundUsed?: boolean;
   limits?: { passes?: number; stalls?: number; deadlineMs?: number };
 }
 
-export type ImprovementStep = { stop: ImprovementStop } | { mode: "polish" | "rewrite"; drafts: number };
+/** `extra`: this is the one round past the budget, for a best draft that still breaks a hard rule (2026-10-23). */
+export type ImprovementStep = { stop: ImprovementStop } | { mode: "polish" | "rewrite"; drafts: number; extra?: true };
+
+/*
+  ── One more round when the best draft still breaks a hard rule (2026-10-23 — the owner's decision) ──
+  Live on 2026-10-23 a Kids run stopped "stalled" with a 16-word clip and two passes left, and a duo shipped a
+  13-word line that Flow cut: a draft that breaks the cast or the contract can never ship, so stopping there cost
+  the member a whole Generate (the final gate refuses it). When the budget (passes, stalls or the deadline) is
+  spent and the best draft still breaks a hard rule, the loop now writes ONE more draft — never a second — with
+  its own time budget (SCRIPT_EXTRA_ROUND_MS). A draft that only misses READY on score never gets it.
+*/
+/** The extra round's own wall-clock budget — the main deadline may already be spent. */
+export const SCRIPT_EXTRA_ROUND_MS = 25_000;
 
 /**
  * The improvement loop's next step — pure, so its bounds are testable without a model.
@@ -314,7 +328,8 @@ export type ImprovementStep = { stop: ImprovementStop } | { mode: "polish" | "re
  * It stops when the best draft is 10/10 or READY (isReady — and obeys the contract and its cast), when the passes are spent
  * (SCRIPT_IMPROVEMENT_PASSES), after SCRIPT_IMPROVEMENT_STALLS rounds in a row found nothing better, when
  * the wall-clock budget is gone, or when nothing directs an improvement (the judge cannot run and code
- * finds nothing to fix). Otherwise: a broken cast or a script weak at its core is written again — two
+ * finds nothing to fix) — except that a best draft still breaking the cast or the contract when the budget is spent
+ * gets ONE extra round (`extra`, SCRIPT_EXTRA_ROUND_MS; 2026-10-23). Otherwise: a broken cast or a script weak at its core is written again — two
  * drafts side by side on the first round — and anything else is polished with targeted edits.
  */
 export function nextImprovement(state: ImprovementState): ImprovementStep {
@@ -326,9 +341,13 @@ export function nextImprovement(state: ImprovementState): ImprovementStep {
   const violations = best.contract?.violations ?? 0;
   if (broken === 0 && violations === 0 && best.report && isPerfect(best.report)) return { stop: "perfect" };
   if (broken === 0 && violations === 0 && best.report && isReady(best.report)) return { stop: "ready" };
-  if (state.passesUsed >= passes) return { stop: "passes" };
-  if (state.stalls >= stallLimit) return { stop: "stalled" };
-  if (state.elapsedMs >= deadline) return { stop: "deadline" };
+  const spent: ImprovementStop | null = state.passesUsed >= passes ? "passes"
+    : state.stalls >= stallLimit ? "stalled"
+      : state.elapsedMs >= deadline ? "deadline" : null;
+  if (spent) {
+    if ((broken > 0 || violations > 0) && !state.extraRoundUsed) return { mode: broken > 0 ? "rewrite" : "polish", drafts: 1, extra: true };
+    return { stop: spent };
+  }
   const remaining = passes - state.passesUsed;
   const firstRound = state.passesUsed === 0;
   if (broken > 0) return { mode: "rewrite", drafts: firstRound ? Math.min(2, remaining) : 1 };
