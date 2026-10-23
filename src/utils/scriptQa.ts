@@ -170,8 +170,6 @@ const MECHANICAL_CAPS: { test: RegExp; dimension: QaDimension; cap: number }[] =
   { test: /is too long to say in 8 seconds/, dimension: "speakability", cap: 6 },
   // Five words in a row said again in a later clip (utils/scriptContract repeatedPhraseIssues, 2026-10-22).
   { test: /repeats clip \d+'s words/, dimension: "originality", cap: 6 },
-  // A villa, plot or flat the business never mentioned (utils/englishWords unofferedWordIssues, 2026-10-23).
-  { test: /but the business never mentions any/, dimension: "facts", cap: 4 },
   { test: /phone\/contact number|speak a phone|spoken numbers/i, dimension: "speakability", cap: 6 },
   { test: /must end with spoken punctuation/, dimension: "speakability", cap: 9 },
   { test: /Latin letters or digits|contains digits in spoken/, dimension: "language", cap: 6 },

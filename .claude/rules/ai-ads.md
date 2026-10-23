@@ -340,7 +340,11 @@ cached; small images and anything the browser cannot redraw go as they are).
    (`utils/locationAssignment.backgroundPlateRule` / `withBackgroundPlate`, `prompts/realLocation`):
    kept exactly as photographed, only enhanced to 8K, the cast placed into it, and attached to the
    frame writer's call — in a festival ad the festival's decorations are ADDED onto its real walls, counters and floor,
-   nothing removed or moved (the plate rule's festival option, 2026-10-22). Otherwise the **scene
+   nothing removed or moved (the plate rule's festival option, 2026-10-22). **A plate clip describes no other place
+   (2026-10-23):** the writer copied its template anyway ("Generate a premium … reception environment", a "Background:"
+   list of marble counters, a "REAL ENVIRONMENT LAYER: … high-end interior") above the plate's "exactly as it is" —
+   `withBackgroundPlate` now replaces those three shapes with the photograph (`withoutInventedPlace`); the logo still
+   goes "on a surface the photograph already has". Live, ChatGPT kept the client's real room and added the logo. Otherwise the **scene
    plan** (`prompts/scenePlan.ts`, `utils/scenePlan.ts`): the video's motive (annadanam, temple,
    birthday, invitation, promotion…), its world, and one DIFFERENT background per clip from that
    clip's line; retried once if `repeatedBackgrounds` finds a repeat.
@@ -354,7 +358,10 @@ cached; small images and anything the browser cannot redraw go as they are).
    forehead stays bare, a mark the photograph shows stays; nothing added — no bindi, tilak, kumkum, sindoor,
    vibhuti, nose ring, face jewellery, make-up or new beard; only the clothes follow the outfit), because the
    📎 attach line is stripped by Copy and the system prompt's rules never reach the image tool; a main-frame
-   refine re-stamps it. The writer's identity block says the same (`characterCastBlock`), the male entry's
+   refine re-stamps it. Every prompt names the single owner ONLY "the man / woman in the attached owner image"
+   (`characterAd.singleOwnerName`, the shot plan's cast too) — never the label "Business Owner" and never the face,
+   hair or beard in words; clip 1's shot is three-quarter (head to knees), not "the cast full-figure" (2026-10-23 — the
+   live frame said both and came out head-to-feet; the duo gets "both owners three-quarter"). The writer's identity block says the same (`characterCastBlock`), the male entry's
    negatives now name the forehead mark (catalogue TS + JSON), and the owner's WARDROBE line is
    `ownerWardrobeDirective` — the ordered outfit without "tasteful traditional jewellery", "the clothes only: her
    face, forehead, hair and any jewellery stay exactly as in the owner's photograph". The attire is read as the
@@ -491,7 +498,8 @@ cached; small images and anything the browser cannot redraw go as they are).
    show_product → approach_show, present_space → walk_across, walk_and_talk → walk_toward, welcome_invite →
    walk_invite; the retired cameras are dropped).
    **Camera** (`CAMERA_MOVES`; the sentence is written in code by `cameraShot` — the director never writes
-   the camera): `push_in` (Push In — "as she comes closer, ending in a medium shot / medium close-up", or "to a
+   the camera): `push_in` (Push In — since 2026-10-23 every push-in ends in "a medium shot, the sign fully in frame"
+   (a medium close-up cut the wall logo of a live client-photo clip in 9:16); "as she comes closer, ending in …", or "to a
    close-up of the product, the focus settling on her face"), `side_track` (Side Tracking Shot — travels
    sideways WITH a walk, the background sliding past with parallax; only on a walk), `lateral_dolly` (Lateral
    Dolly — glides a short way sideways at one distance, the cast seen from ONE angle the whole clip), `static_locked`
@@ -612,7 +620,10 @@ cached; small images and anything the browser cannot redraw go as they are).
    the 📎 line, re-stamped on a frame refine): the logo (or the name board) is the only new readable writing — charts,
    layout plans, brochures, screens, boards and banners show pictures only, never words, prices or claims; a client
    photo keeps its own writing. A Motu & Patlu frame from ChatGPT had invented "DTCP Approved", "Clear Title", "LUXURY
-   VILLAS" — the rule was only in the writer's system prompt, which never reaches the image tool.
+   VILLAS" — the rule was only in the writer's system prompt, which never reaches the image tool. **The one presenter's
+   ordered outfit (2026-10-23):** a frame without a special category is stamped `OUTFIT (AS ORDERED): <wardrobeDirective>
+   — this overrides any other outfit named in this prompt` (`frameBrand.withOrderedOutfit`) — both live English runs
+   ordered Traditional and the writer asked for "a tailored professional power suit"; a cast or owner has its WARDROBE.
    **Frames are composed for the move, caught mid-movement** (`withMotionComposition`, `compositionFor`): a clip
    performed in place (most, since 2026-10-22) is caught standing facing the camera MID-GESTURE beside what its line is
    about; a walking clip's still is caught MID-STEP (one foot forward, arms in a natural swing, clear floor in the
@@ -650,7 +661,9 @@ cached; small images and anything the browser cannot redraw go as they are).
 
 **Spoken-word rules, in code (`utils/spokenNumbers.ts`):** every final script line — generated,
 repaired, refined or pasted — goes through `speakableLine`. **First, no phone number, pincode or door number
-is ever spoken (2026-10-22 — the owner: "PIN code, door numbers and phone numbers were coming in the voice-over
+is ever spoken (the validator's "appears to speak a phone/contact number" is three or more digit words IN A ROW since
+2026-10-23 — `unspokenNumbers.speaksDigitRun`; it counted them anywhere in a clip, so "టూ బీహెచ్‌కే, త్రీ బీహెచ్‌కే" was a
+phone number and capped speakability at 6) (2026-10-22 — the owner: "PIN code, door numbers and phone numbers were coming in the voice-over
 … no need of any of these numbers"):** `utils/unspokenNumbers.withoutUnspokenNumbers` removes them BEFORE the
 rest become words — a mobile / landline with STD code / toll-free / 10–12 digits, a "Ph: 2345678" landline, a
 pincode (6 digits or 3 + 3, labelled or bare — never after ₹ / Rs or before rupees / lakh / %), a door number
@@ -1177,6 +1190,13 @@ attribution (`Clip.voScript` is one string).
 - In-app image or video generation; publishing to social platforms.
 
 ## 27. POTENTIAL RISKS (need verification)
+
+- **Flow refuses an uploaded photoreal child's frame (2026-10-23, JPN account):** a Kids frame from ChatGPT failed twice
+  through Upload media and once by drop ("Failed to upload kids-frame1.png"); a shop photo and adult frames upload at
+  once. So a Kids ad cannot use Frames to Video as the AI Guide says — the owner to decide (another tool, a text-only
+  Veo prompt, or drawn children). The quota day also showed the script loop's limits: a Kids run shipped 5.8 (one empty
+  round) and another stopped at 16 words with two passes left (the stop costs a Generate) — the owner may allow one more
+  round when the best draft breaks the contract. An English line (19 words) is said in ~6.9 s, leaving ~1 s of silence.
 
 - **Cast consistency (2026-10-08)** is checked by unit tests (every catalogue entry × commercial / festival through
   the full pipeline on a faked Gemini; the six shapes the duo script came back in, five runs each; the gate; the

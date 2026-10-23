@@ -177,9 +177,9 @@ export function withoutUnspokenNumbers(text: string): string {
  * The check counted digit words anywhere in a clip (two English-in-Telugu or three Telugu), so "ఇరవై నాలుగు గంటల
  * సెక్యూరిటీ … టూ బీహెచ్‌కే, త్రీ బీహెచ్‌కే" — the spelling code itself writes for "2BHK, 3BHK" (utils/englishWords) — was
  * "a phone/contact number" (geminiService validateVoiceOverSegments): live, a client-photo ad's clip 2 was capped at speakability 6 and the loop spent its
- * budget on it. A number read out digit by digit says four or more digit words in a row (commas and spaces between).
+ * budget on it. A number read out digit by digit says three or more digit words in a row (commas and spaces between).
  */
-const PHONE_RUN_WORDS = 4;
+const PHONE_RUN_WORDS = 3;
 const DIGIT_RUN_WORD = /^(?:జీరో|వన్|టూ|త్రీ|ఫోర్|ఫైవ్|సిక్స్|సెవెన్|ఎయిట్|నైన్|సున్నా|ఒకటి|రెండు|మూడు|నాలుగు|ఐదు|ఆరు|ఏడు|ఎనిమిది|తొమ్మిది)$/u;
 export const speaksDigitRun = (text: string): boolean => {
   let run = 0;

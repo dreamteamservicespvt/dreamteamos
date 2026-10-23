@@ -224,6 +224,15 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-10-23)
 
+- 2026-10-23 (morning), **local, not pushed** — **the audit's remaining ad types tested live** (Real Owner Face from an
+  invented face, a client photo, English, Kids, Ganesha, label, poster; 4 Flow clips / 48 credits): five fixes — "టూ
+  బీహెచ్‌కే, త్రీ బీహెచ్‌కే" no longer a "spoken phone number", the single owner named by the photograph and framed
+  three-quarter, a client-photo frame describes no invented place, every push-in keeps the sign in frame, the one
+  presenter's ordered outfit stamped on every frame (English ads came back in a suit). **Flow refuses a photoreal child's
+  frame** — Kids ads cannot use Frames to Video (owner to decide) (`ai-ads.md`; history 2026-10-23 morning). Owner
+  decisions open: Kids in Flow; Ganesha's greeting as the business; one more script round when the best draft breaks a
+  hard rule, and a pair's per-line limit (≤ 12 words) in the final gate (a 13-word second line was cut at 8 s).
+  Leftover folder `Desktop\dts-wt-check`: remove its `node_modules` junction first, then `git worktree remove`.
 - 2026-10-23 (overnight), **local, not pushed** — **AI ads audit, every ad type tested** (live Gemini ×7, ChatGPT frames,
   5 Flow clips / 60 credits, Whisper + frame strips): 14 mistakes of the same kind fixed — a syllable limit so every
   Telugu clip is SAID in 8 s, lakh / crore prices, no broken sentence after a number is removed, her / his, a quoted
@@ -374,7 +383,8 @@ errors:** done means every listed item is fully resolved with no build, console 
   2026-10-22, over Vite's 900 KB warning; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` 🟡 283 files, 4706 of 4707 tests pass (2026-10-23, after the AI-ads audit). The one failure,
+- `npx vitest run` ✅ 283 files, 4711 of 4711 (2026-10-23 morning; the SMM test below passed this run — flaky).
+  Before: 4706 of 4707 (2026-10-23, after the AI-ads audit). The one failure,
   `smmDeliveryControlUiOct15` "Live, the view-only Social Media Team Lead…" (cannot find "View only — only the people on
   this month"), fails alone too and ALSO on `19763d6` (before the audit) — pre-existing, not yet investigated. Under
   heavy parallel load a few UI tests can time out; they pass re-run alone.

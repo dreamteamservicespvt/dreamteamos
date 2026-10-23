@@ -217,40 +217,5 @@ export function englishWordsRule(language?: string | null): string {
     + `${englishWordList()}${never ? `; ${never}` : ""}; "arrange చేశాం" for ఏర్పాటు చేశాం. A Telugu case ending stays `
     + `joined to the word: flatsలో, plotsకి, arrangementsతో. They are not "Latin letters in spoken content" — like mariyu, `
     + `they are the required spelling. EVERY OTHER English word stays in Telugu letters, exactly as before — ${STAYS_TELUGU}; `
-    + `never a business name, a number, an abbreviation or any other word in English letters. This list is a SPELLING `
-    + `rule only, never something to say: a flat, plot, villa, apartment or slot is mentioned only when the business `
-    + `offers it.`;
-}
-
-/**
- * ── What the business offers, never what the spelling list names (2026-10-23) ──
- * The list above reached the writer as a menu: live, a real-estate brief of "2BHK and 3BHK flats and open
- * plots" came back with "plots mariyu villas" (a Ganesha festival ad, and a Male & Female duo that put the
- * villas at eight lakhs), and the judge still gave facts 10/10. So a property word in the script that the
- * business's own material never mentions — in English, in Telugu letters, or by a word that means the same
- * (2BHK is a flat, an open site is a plot) — is a clip issue: repaired like any other, and it caps facts.
- */
-const OFFER_WORDS: { word: string; script: RegExp; source: RegExp }[] = [
-  { word: "villas", script: /(?<![A-Za-z])villas?(?![A-Za-z])|విల్లా/i, source: /villa|విల్లా/i },
-  { word: "plots", script: /(?<![A-Za-z])plots?(?![A-Za-z])|ప్లాట్/i, source: /plot|ప్లాట్|site|సైట్|venture|వెంచర్|layout|లేఅవుట్|land|స్థలం|స్థలాలు/i },
-  { word: "slots", script: /(?<![A-Za-z])slots?(?![A-Za-z])|స్లాట్/i, source: /slot|స్లాట్/i },
-  {
-    word: "flats / apartments",
-    script: /(?<![A-Za-z])(?:flats?|apartments?)(?![A-Za-z])|ఫ్లాట్|అపార్ట్/i,
-    source: /flat|apartment|bhk|బీహెచ్|ఫ్లాట్|అపార్ట్|గృహ|ఇళ్ల|ఇల్లు|homes?|houses?/i,
-  },
-];
-
-/** "Clip N says villas, but the business never mentions any …" for each property word the material lacks. */
-export function unofferedWordIssues(segments: string[], source: string): string[] {
-  if (!source.trim()) return [];
-  const issues: string[] = [];
-  segments.forEach((segment, i) => {
-    for (const offer of OFFER_WORDS) {
-      if (offer.script.test(segment) && !offer.source.test(source)) {
-        issues.push(`Clip ${i + 1} says ${offer.word}, but the business never mentions any — remove it; say only what the business offers.`);
-      }
-    }
-  });
-  return issues;
+    + `never a business name, a number, an abbreviation or any other word in English letters.`;
 }

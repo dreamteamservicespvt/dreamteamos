@@ -255,33 +255,6 @@ describe("a Telugu case ending written apart is joined to its word", () => {
   });
 });
 
-describe("a villa or plot the business never mentioned is an issue (2026-10-23)", () => {
-  /** The live brief: flats and open plots in Kakinada, nothing else. */
-  const brief = "Promotional ad for our real estate business. 2BHK and 3BHK flats from ₹25 lakhs and open plots from ₹8 lakhs in Kakinada.";
-  it("names the invented villas in the clip that says them, as live (deity and duo runs)", async () => {
-    const { unofferedWordIssues } = await import("@/utils/englishWords");
-    const issues = unofferedWordIssues([
-      "శ్రీ సాయి కృష్ణ ఇన్ఫ్రా దగ్గర flats, plots mariyu villas.",
-      "ఎనిమిది లక్షలకే ఓపెన్ plots mariyu విల్లాలు ఉన్నాయి.",
-    ], brief);
-    expect(issues).toHaveLength(2);
-    expect(issues[0]).toMatch(/^Clip 1 says villas, but the business never mentions any/);
-    expect(issues[1]).toMatch(/^Clip 2 says villas/);
-    expect(mechanicalCaps(issues)).toEqual({ facts: 4 });
-  });
-  it("accepts what the business said, in any words that mean it", async () => {
-    const { unofferedWordIssues } = await import("@/utils/englishWords");
-    expect(unofferedWordIssues(["Our flats and plots, and apartments near the bus stand."], brief)).toEqual([]);
-    expect(unofferedWordIssues(["Open plots in Kakinada."], "Open sites in a new venture.")).toEqual([]);
-    expect(unofferedWordIssues(["Book your plot today."], "")).toEqual([]);
-    expect(unofferedWordIssues(["Book your flat today."], "Open plots only.")[0]).toMatch(/says flats \/ apartments/);
-  });
-  it("tells every Telugu writer the list is spelling, never something to offer", async () => {
-    const { englishWordsRule } = await import("@/utils/englishWords");
-    expect(englishWordsRule("Telugu")).toContain("SPELLING rule only, never something to say");
-  });
-});
-
 describe("a phone number is a run of digit words, never 'టూ బీహెచ్‌కే, త్రీ బీహెచ్‌కే' (2026-10-23)", () => {
   it("passes the live client-photo clip 2 and still catches a number read digit by digit", async () => {
     const { speaksDigitRun } = await import("@/utils/unspokenNumbers");
@@ -289,6 +262,7 @@ describe("a phone number is a run of digit words, never 'టూ బీహెచ�
     expect(speaksDigitRun("రెండు mariyu మూడు బెడ్‌రూమ్‌ల flats.")).toBe(false);
     expect(speaksDigitRun("నైన్ ఎయిట్ ఫోర్ ఎయిట్ జీరో కి కాల్ చేయండి.")).toBe(true);
     expect(speaksDigitRun("తొమ్మిది, ఎనిమిది, నాలుగు, ఎనిమిది.")).toBe(true);
+    expect(speaksDigitRun("మా నంబర్ తొమ్మిది ఎనిమిది నాలుగు.")).toBe(true);
   });
 });
 

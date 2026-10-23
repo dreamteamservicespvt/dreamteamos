@@ -95,7 +95,6 @@ import {
   bandDistance, clipWordCountIssue, clipWordCounts, clipsAtPace, contractViolations, countSpokenWords, spokenWordsOf,
   clipSyllableIssue, clipSyllableIssues, measuresSyllables, repeatedPhraseIssues, spokenSyllables,
 } from "@/utils/scriptContract";
-import { unofferedWordIssues } from "@/utils/englishWords";
 import { speaksDigitRun } from "@/utils/unspokenNumbers";
 import { TELUGU_SCREEN_CTA } from "./prompts/wordContract";
 import {
@@ -2428,8 +2427,7 @@ const validateVoiceOverSegments = (
   segments: string[],
   segmentCount: number,
   language?: string,
-  /** `offers`: the business's own material — a villa, plot or flat it never mentions is an issue (utils/englishWords). */
-  everyday?: { names: string[]; offers?: string },
+  everyday?: { names: string[] },
   /** 1-based clip carrying the festival wish, when this ad has one — see prompts/festivalWish. */
   wishClip?: number,
 ): string[] => {
@@ -2504,8 +2502,6 @@ const validateVoiceOverSegments = (
   if (everyday) issues.push(...hardWordIssues(segments, language, everyday.names));
   // Five words in a row said again in a later clip — the name, town and closing line may come back (2026-10-22).
   if (everyday) issues.push(...repeatedPhraseIssues(segments, [...everyday.names, FINAL_SCREEN_CTA]));
-  // A villa or plot the business never mentioned — the spelling list read as a menu (2026-10-23).
-  if (everyday?.offers) issues.push(...unofferedWordIssues(segments, everyday.offers));
   if (wishClip) issues.push(...wishAudienceIssues(segments[wishClip - 1] || '', wishClip, language));
 
   // Every ad must close with the on-screen call CTA (no spoken phone number). The exact wording
@@ -3054,11 +3050,7 @@ export const generateAdAssets = async (
    */
   const everyday = customScript?.trim()
     ? undefined
-    : {
-      names: [coreMessage?.businessName, sayName, coreMessage?.place].filter(Boolean) as string[],
-      // What the business itself said it offers: the brief, the frame box and the profile (voice note included).
-      offers: [formData.textInstructions, formData.frameInstructions, JSON.stringify(businessInfo ?? {})].filter(Boolean).join('\n'),
-    };
+    : { names: [coreMessage?.businessName, sayName, coreMessage?.place].filter(Boolean) as string[] };
   const spoken = (script: string) => (everyday ? toSpokenEndings(withSaidName(script), formData.language) : script);
   let voiceOverScript: string;
   let parsedSegments: string[];
@@ -3199,10 +3191,7 @@ export const generateAdAssets = async (
         // Every clip said in eight seconds, both lines together (Telugu; utils/scriptContract, 2026-10-22).
         .concat(clipSyllableIssues(clips.map(clip => clip.map(line => line.text).join(' ')), formData.language, packSpeakerList.length > 1))
         // …and never the same five words in two clips (the cast's names and the place may come back).
-        .concat(repeatedPhraseIssues(clips.map(clip => clip.map(line => line.text).join(' ')), [...ownNames, sayName]))
-        // …and never a villa or plot the business did not mention (utils/englishWords, 2026-10-23).
-        .concat(unofferedWordIssues(clips.map(clip => clip.map(line => line.text).join(' ')), everyday?.offers ?? ''))
-        // The characters are standing inside the business in every frame — see utils/speakingPosition.
+        .concat(repeatedPhraseIssues(clips.map(clip => clip.map(line => line.text).join(' ')), [...ownNames, sayName]))        // The characters are standing inside the business in every frame — see utils/speakingPosition.
         .concat(clips.flatMap((clip, i) => clip
           .map(line => elsewhereIssue(i + 1, line.text, speakerName(line.speaker)))
           .filter((issue): issue is string => !!issue)))

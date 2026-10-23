@@ -6,6 +6,37 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-23 (morning): the audit's remaining ad types tested live — Real Owner Face, a client photo, English, Kids,
+  Ganesha, label and poster** (`ai-ads.md` §17.2 steps 3, 4, 5, 6, §24, §25, §27). HANDOFF next steps 1–2; the owner:
+  "for real face take any random face and do test". Live Gemini (vite-node, 8 runs; many keys were at their daily
+  limit until 12:30 PM IST, so runs took 2–11 min), ChatGPT (pvt) for 6 frames + the label + the poster and two input
+  photos it made (an invented man's face for the owner, an ordinary sales office for the client photo), Flow (JPN, 3
+  clips, 48 credits) checked with Whisper word timings, a digit-free Whisper pass (Whisper writes "ఎనిమిది" as "80")
+  and 4-fps frame strips. Results: **Real Owner Face** script 10/10, frame kept the face (nothing added), Flow clip
+  passed (line in 7.9 s, in place, gestures, no cut); **client photo** script 9.2, frame kept the real room and added
+  the logo, clip passed except the logo cropped by the push-in; **English** 9.0, name in title case, clip passed (an
+  Indian accent; the line ends at 6.9 s — trim the tail); **Kids** 5.8 then a stop at 16 words (quota), then 10/10;
+  **Ganesha** 8.7 (still speaks as the business — the owner's open question); **label** passed (one number once, the
+  address); **poster** facts right, the concept generic; **Male & Female duo** (fresh, 9.4, the new pair lines): frame close side by
+  side, clip with NO cut, nobody walked, heights held — but the boy's 13-word / 31-syllable second line was cut at 8 s
+  mid-price (a 25-syllable second line passed on 2026-10-22): the per-line 7–12 band is a repair aim, not in the final
+  gate, and the loop stopped "stalled" — the owner's decision, with the extra-round question. **Flow refuses an uploaded photoreal child's frame** ("Failed
+  to upload") — a shop photo uploads at once — so a Kids ad cannot use Frames to Video (the owner to decide).
+  Fixed: **(1)** "టూ బీహెచ్‌కే, త్రీ బీహెచ్‌కే" (the spelling code itself writes) was "a phone/contact number" — the check
+  counted digit words anywhere; now three or more in a row (`unspokenNumbers.speaksDigitRun`); **(2)** the single owner was
+  named "Business Owner" (a label the image tool cannot see) and described in words, and clip 1 asked "the cast
+  full-figure" beside the stamp's three-quarter — now "the man / woman in the attached owner image", never described,
+  three-quarter (`characterAd.singleOwnerName`, `ShotDesign`); **(3)** a client-photo frame also said "Generate a premium
+  … reception environment", a "Background:" list of marble counters and a "REAL ENVIRONMENT LAYER: … high-end interior"
+  above the plate — replaced by the photograph in code (`locationAssignment.withoutInventedPlace`, inside
+  `withBackgroundPlate`); **(4)** every push-in ended in a medium close-up, which cut the wall logo in 9:16 — now a medium
+  shot, "the sign fully in frame" (`motion.cameraShot`); **(5)** the one presenter's ordered outfit never reached the
+  copied prompt — both English runs ordered Traditional and got "a tailored professional power suit" — now stamped
+  `OUTFIT (AS ORDERED)` on every frame (`frameBrand.withOrderedOutfit`, `wardrobeDirective`). A check for "invented
+  villas" was written and REVERTED the same morning: the test logo itself reads "FLATS · PLOTS · VILLAS", the profile
+  carried it, so the villas were the client's. Tests: `src/test/auditOct22.test.ts` (+7), `motionAndVeo` /
+  `adPipelineEndToEnd` updated to the push-in.
+
 - **2026-10-23 (overnight, the owner asleep, full rights): the audit — every mistake of the same kind, every ad type
   tested** (`ai-ads.md` §17.2 steps 3, 5, 6, spoken-word rules, §24). The owner: "find all the mistakes like them and
   solve all them and test all", "correct promotional voice over script words per the clip … check the duo characters",
