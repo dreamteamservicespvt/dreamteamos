@@ -951,11 +951,15 @@ export function cameraShot(plan: ClipMotionPlan, cast = "The cast", plural = fal
         return fillCast(`Smooth, steady push-in from a three-quarter shot to a close-up of the product${angle}, the focus `
           + `settling on ${face} as {they} look{s} back to the lens`, cast, plural);
       }
+      /*
+       * A medium shot, never a medium close-up (2026-10-23): in 9:16 a head-and-shoulders crop takes the sign on the wall
+       * above her out of the frame — live, a client-photo clip ended on "SRI SAI KRISHN" (the duo's slide of 2026-10-22, the
+       * same fault). The sign is named so the push-in stops while it is still whole.
+       */
       if (approaching) {
-        return fillCast(`Smooth, steady push-in${angle} as {they} come{s} closer, ending in a `
-          + `${plan.staging.key === "walk_invite" ? "medium close-up" : "medium shot"}`, cast, plural);
+        return fillCast(`Smooth, steady push-in${angle} as {they} come{s} closer, ending in a medium shot, the sign fully in frame`, cast, plural);
       }
-      return `Smooth, steady push-in from a three-quarter shot to a medium close-up${angle}`;
+      return `Smooth, steady push-in from a three-quarter shot to a medium shot${angle}, the sign fully in frame`;
     case "side_track":
       return fillCast("Smooth side-tracking shot from a three-quarter front angle, the camera travelling sideways "
         + "alongside {them}, the background sliding past with parallax", cast, plural);
@@ -1215,7 +1219,7 @@ const unterminated = (value: string) => value.replace(/[\s.;,]+$/, "");
 
 const capitalised = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-/** An action that follows the camera sentence's colon: "…medium close-up: she turns…", not "…: She turns". */
+/** An action that follows the camera sentence's colon: "…medium shot: she turns…", not "…: She turns". */
 const afterColon = (s: string) => (/^(?:She|He|They|Both|The|Each|It|Its|Their|His|Her)\b/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
 
 /**

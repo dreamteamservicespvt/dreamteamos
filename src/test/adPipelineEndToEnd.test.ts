@@ -150,8 +150,8 @@ describe("a client's store photo is the background plate (problem 6)", () => {
     // every clip is a push-in where she stands, from a frame composed with her standing facing the camera.
     expect(out.mainFramePrompts[1]).toContain("COMPOSITION FOR MOTION: Present the display (");
     expect(out.mainFramePrompts[1]).toContain("the subject placed into it on the real floor, facing the camera beside what they present");
-    expect(out.veoPrompts[0]).toContain("Smooth, steady push-in from a three-quarter shot to a medium close-up: she stands facing the camera and speaks straight to the viewer");
-    expect(out.veoPrompts[1]).toContain("Smooth, steady push-in from a three-quarter shot to a medium close-up: she stands beside the counter, display or shelves, facing the camera, and presents it");
+    expect(out.veoPrompts[0]).toContain("Smooth, steady push-in from a three-quarter shot to a medium shot, the sign fully in frame: she stands facing the camera and speaks straight to the viewer");
+    expect(out.veoPrompts[1]).toContain("Smooth, steady push-in from a three-quarter shot to a medium shot, the sign fully in frame: she stands beside the counter, display or shelves, facing the camera, and presents it");
     for (const prompt of out.veoPrompts) {
       expect(prompt).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; she performs where she stands, facing the camera`);
       expect(prompt).not.toMatch(/tracking|lateral dolly|arc shot/i);

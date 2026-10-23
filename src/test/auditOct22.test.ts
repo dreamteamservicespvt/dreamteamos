@@ -254,3 +254,94 @@ describe("a Telugu case ending written apart is joined to its word", () => {
     expect(speakableLine("కాకినాడ లో మా ఆఫీస్.", "Telugu")).toBe("కాకినాడలో మా ఆఫీస్.");
   });
 });
+
+describe("a villa or plot the business never mentioned is an issue (2026-10-23)", () => {
+  /** The live brief: flats and open plots in Kakinada, nothing else. */
+  const brief = "Promotional ad for our real estate business. 2BHK and 3BHK flats from ₹25 lakhs and open plots from ₹8 lakhs in Kakinada.";
+  it("names the invented villas in the clip that says them, as live (deity and duo runs)", async () => {
+    const { unofferedWordIssues } = await import("@/utils/englishWords");
+    const issues = unofferedWordIssues([
+      "శ్రీ సాయి కృష్ణ ఇన్ఫ్రా దగ్గర flats, plots mariyu villas.",
+      "ఎనిమిది లక్షలకే ఓపెన్ plots mariyu విల్లాలు ఉన్నాయి.",
+    ], brief);
+    expect(issues).toHaveLength(2);
+    expect(issues[0]).toMatch(/^Clip 1 says villas, but the business never mentions any/);
+    expect(issues[1]).toMatch(/^Clip 2 says villas/);
+    expect(mechanicalCaps(issues)).toEqual({ facts: 4 });
+  });
+  it("accepts what the business said, in any words that mean it", async () => {
+    const { unofferedWordIssues } = await import("@/utils/englishWords");
+    expect(unofferedWordIssues(["Our flats and plots, and apartments near the bus stand."], brief)).toEqual([]);
+    expect(unofferedWordIssues(["Open plots in Kakinada."], "Open sites in a new venture.")).toEqual([]);
+    expect(unofferedWordIssues(["Book your plot today."], "")).toEqual([]);
+    expect(unofferedWordIssues(["Book your flat today."], "Open plots only.")[0]).toMatch(/says flats \/ apartments/);
+  });
+  it("tells every Telugu writer the list is spelling, never something to offer", async () => {
+    const { englishWordsRule } = await import("@/utils/englishWords");
+    expect(englishWordsRule("Telugu")).toContain("SPELLING rule only, never something to say");
+  });
+});
+
+describe("a phone number is a run of digit words, never 'టూ బీహెచ్‌కే, త్రీ బీహెచ్‌కే' (2026-10-23)", () => {
+  it("passes the live client-photo clip 2 and still catches a number read digit by digit", async () => {
+    const { speaksDigitRun } = await import("@/utils/unspokenNumbers");
+    expect(speaksDigitRun("ఇరవై నాలుగు గంటల సెక్యూరిటీ, కార్ పార్కింగ్ facilitiesతో టూ బీహెచ్‌కే, త్రీ బీహెచ్‌కే flats ఉన్నాయి.")).toBe(false);
+    expect(speaksDigitRun("రెండు mariyu మూడు బెడ్‌రూమ్‌ల flats.")).toBe(false);
+    expect(speaksDigitRun("నైన్ ఎయిట్ ఫోర్ ఎయిట్ జీరో కి కాల్ చేయండి.")).toBe(true);
+    expect(speaksDigitRun("తొమ్మిది, ఎనిమిది, నాలుగు, ఎనిమిది.")).toBe(true);
+  });
+});
+
+describe("the single real owner is named by the photograph and framed three-quarter (2026-10-23)", () => {
+  it("never names the label, never asks a full figure", async () => {
+    const { getCharacterPack } = await import("@/services/characterPacks");
+    const { singleOwnerName } = await import("@/services/prompts/characterAd");
+    const pack = getCharacterPack("owner_face_male")!;
+    expect(singleOwnerName(pack)).toBe("the man in the attached owner image");
+    expect(singleOwnerName(getCharacterPack("owner_face_female")!)).toBe("the woman in the attached owner image");
+  });
+});
+
+describe("a clip in the client's photograph describes no other place (2026-10-23)", () => {
+  it("replaces the template's invented reception, Background list and environment layer with the photograph", async () => {
+    const { withBackgroundPlate } = await import("@/utils/locationAssignment");
+    const frame = [
+      "Create an ultra-realistic commercial promotional portrait for \"X\" using the attached official logo as branding reference.",
+      "",
+      "Generate a premium real-estate office reception environment and place a confident young Indian girl standing in front of the front desk.",
+      "",
+      "Pose:",
+      "- Standing centered, facing the camera",
+      "",
+      "Background:",
+      "- A polished marble and wood reception counter and upscale corporate seating",
+      "- Attached official logo mounted behind the counter",
+      "",
+      "Visual Style:",
+      "- Ultra-realistic DSLR photography",
+      "REAL ENVIRONMENT LAYER: high-end interior finishes and warm wood accents.",
+    ].join("\n");
+    const out = withBackgroundPlate(frame, { clip: 0, photoIndex: 0 } as any);
+    expect(out).not.toMatch(/Generate a premium|marble|corporate seating|high-end interior/);
+    expect(out).toContain("In the attached Store/Office Image #1, exactly as it is (see BACKGROUND PLATE below), place a confident young Indian girl");
+    expect(out).toContain("Background: the attached Store/Office Image #1, exactly as it is");
+    expect(out).toContain("Pose:\n- Standing centered, facing the camera");
+    expect(out).toContain("Visual Style:\n- Ultra-realistic DSLR photography");
+    expect(out).toMatch(/BACKGROUND PLATE \(STRICT\): .*the logo or name board, on a surface the photograph already has/);
+    expect(withBackgroundPlate(out, { clip: 0, photoIndex: 0 } as any)).toBe(out);
+  });
+});
+
+describe("the one presenter wears what the job ordered, in the copied prompt (2026-10-23)", () => {
+  it("stamps the ordered outfit once, before the attach line, overriding the writer's suit", async () => {
+    const { withOrderedOutfit } = await import("@/utils/frameBrand");
+    const { wardrobeDirective } = await import("@/services/prompts/characterAd");
+    const saree = wardrobeDirective("traditional", "", "female");
+    const frame = "Main Character:\n- Wearing a tailored professional power suit in deep navy blue\n📎 ATTACH the logo";
+    const out = withOrderedOutfit(frame, saree);
+    expect(out).toContain(`OUTFIT (AS ORDERED): ${saree} — this overrides any other outfit named in this prompt`);
+    expect(out.indexOf("OUTFIT (AS ORDERED)")).toBeLessThan(out.indexOf("📎"));
+    expect(withOrderedOutfit(out, saree)).toBe(out);
+    expect(withOrderedOutfit("x", "")).toBe("x");
+  });
+});

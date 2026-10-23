@@ -117,7 +117,25 @@ export function backgroundPlateRule(photo = "the attached store/office photograp
  */
 export function withBackgroundPlate(prompt: string, location: ClipLocation | undefined, options: { festival?: string | null } = {}): string {
   if (!prompt.trim() || !location || location.photoIndex === null || prompt.includes(BACKGROUND_PLATE_HEADING)) return prompt;
-  return `${prompt.trimEnd()}\n\n${BACKGROUND_PLATE_HEADING} (STRICT): ${backgroundPlateRule(`the attached Store/Office Image #${location.photoIndex + 1}`, options.festival)}.`;
+  const photo = `the attached Store/Office Image #${location.photoIndex + 1}`;
+  return `${withoutInventedPlace(prompt, photo).trimEnd()}\n\n${BACKGROUND_PLATE_HEADING} (STRICT): ${backgroundPlateRule(photo, options.festival)}.`;
+}
+
+/**
+ * ── A clip in the client's photograph describes no other place (2026-10-23) ──
+ * The frame writer copies its template even when told the photograph overrides it: live, a client-photo ad's
+ * clip 1 said "Generate a premium real-estate office reception environment" and a "Background:" list of marble
+ * counters and corporate seating, and clips 2–4 a "REAL ENVIRONMENT LAYER: … high-end interior finishes" — for
+ * a modest office photo, right above the plate's "exactly as it is". The image tool got two places to choose
+ * from. Those three shapes are replaced by the photograph; everything else (the cast, pose, logo) stays.
+ */
+export function withoutInventedPlace(prompt: string, photo: string): string {
+  const place = `${photo}, exactly as it is (see BACKGROUND PLATE below)`;
+  return prompt
+    .replace(/Generate (?:a|an) [^.\n]*?\b(?:environment|interior|setting|space|showroom)\b[^.\n]*? and place /i, `In ${place}, place `)
+    // "Background:" and its lines, up to the next "Heading:" line or a blank line.
+    .replace(/^([ \t]*-?[ \t]*Background:)[^\n]*(?:\n(?![ \t]*\n)(?![ \t]*[A-Z][A-Za-z /&]{2,40}:)[^\n]*)*/m, `$1 ${place}.`)
+    .replace(/^([ \t]*REAL ENVIRONMENT LAYER:)[^\n]*/m, `$1 ${place}.`);
 }
 
 /**

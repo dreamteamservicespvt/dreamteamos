@@ -173,3 +173,22 @@ export function withOnlyLogoText(prompt: string, options: { nameBoard?: string; 
   const attach = prompt.search(/\n[^\n]*📎/u);
   return attach >= 0 ? `${prompt.slice(0, attach)}\n\n${line}${prompt.slice(attach)}` : `${prompt.trimEnd()}\n\n${line}`;
 }
+
+/*
+  ── The outfit the job ordered, in the copied prompt (2026-10-23) ──
+  A single presenter (no special category) had no wardrobe line of her own: the frame writer chose the clothes from
+  the system prompt's ATTIRE line, which never reaches the image tool. Live, both English promotional runs ordered
+  Traditional and came back in "a tailored professional power suit" (with a bindi beside it), while the Telugu runs
+  got their saree only because the writer happened to keep it. The cast and the owners already carry a WARDROBE line
+  (prompts/characterAd); this is the same for the one presenter, stamped in code on every frame.
+*/
+export const ORDERED_OUTFIT_HEADING = "OUTFIT (AS ORDERED)";
+
+/** Every frame says what the presenter wears, as ordered — overriding any other outfit in it. Idempotent; before the 📎 line. */
+export function withOrderedOutfit(prompt: string, outfit: string): string {
+  if (!prompt.trim() || !outfit.trim() || prompt.includes(`${ORDERED_OUTFIT_HEADING}:`)) return prompt;
+  const line = `${ORDERED_OUTFIT_HEADING}: ${outfit.trim()} — this overrides any other outfit named in this prompt; `
+    + "the exact same outfit in every clip.";
+  const attach = prompt.search(/\n[^\n]*📎/u);
+  return attach >= 0 ? `${prompt.slice(0, attach)}\n\n${line}${prompt.slice(attach)}` : `${prompt.trimEnd()}\n\n${line}`;
+}

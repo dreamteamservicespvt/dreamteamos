@@ -579,12 +579,12 @@ describe("the Veo prompt", () => {
   // 2026-10-22: these walk because their words take her somewhere (WALK_LINES); the same beats without such words are
   // performed where she stands.
   it("walks only where the words take her: toward the camera on a push-in, along the display on a side track, the last steps in to invite", () => {
-    expect(build(null, 0, line, walking[0])).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot: she walks slowly toward the camera across the open floor");
+    expect(build(null, 0, line, walking[0])).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot, the sign fully in frame: she walks slowly toward the camera across the open floor");
     expect(build(null, 1, line, walking[1])).toContain("Smooth side-tracking shot from a three-quarter front angle, the camera travelling sideways alongside her, the background sliding past with parallax: she walks slowly along the counter, display or shelves beside her");
-    expect(build(null, 3, line, walking[3])).toContain("Smooth, steady push-in as she comes closer, ending in a medium close-up: she walks the last few steps toward the camera and invites the viewer in");
+    expect(build(null, 3, line, walking[3])).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot, the sign fully in frame: she walks the last few steps toward the camera and invites the viewer in");
     expect(walking.map((c) => c.walks)).toEqual([true, true, false, true]);
     // Without such words: the same beats where she stands — a push-in or a short glide, no steps.
-    expect(build(null, 0)).toContain("Smooth, steady push-in from a three-quarter shot to a medium close-up: she stands facing the camera and speaks straight to the viewer — an open palm on the business name");
+    expect(build(null, 0)).toContain("Smooth, steady push-in from a three-quarter shot to a medium shot, the sign fully in frame: she stands facing the camera and speaks straight to the viewer — an open palm on the business name");
     expect(build(null, 1)).toContain("Slow lateral dolly, the camera gliding a short way sideways at one distance, her seen from the same angle throughout, foreground and background sliding gently with parallax: she stands beside the counter, display or shelves, facing the camera, and presents it with one open hand on the words about it");
     for (const clip of plan) expect(build(null, clip.clip).split("\n\n")[1], `clip ${clip.clip + 1}`).not.toMatch(WALK_WORDS);
   });
@@ -596,11 +596,11 @@ describe("the Veo prompt", () => {
       expect(c.camera.key, `clip ${c.clip + 1}`).toBe("push_in");
       expect(build(null, c.clip, line, c)).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; she performs where she stands, facing the camera, and nothing new is added to it`);
     }
-    expect(build(null, 0, line, photo[0])).toContain("Smooth, steady push-in from a three-quarter shot to a medium close-up: she stands facing the camera and speaks straight to the viewer");
+    expect(build(null, 0, line, photo[0])).toContain("Smooth, steady push-in from a three-quarter shot to a medium shot, the sign fully in frame: she stands facing the camera and speaks straight to the viewer");
     // Words that walk her: a push-in as she comes closer, or a still camera while she walks.
     const walkingPhoto = planClipMotion(4, "commercial", "person", { lines: WALK_LINES, plates: [true, true, true, true] });
     const first = build(null, 0, line, walkingPhoto[0]);
-    expect(first).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot: she walks slowly toward the camera");
+    expect(first).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot, the sign fully in frame: she walks slowly toward the camera");
     expect(first).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; she moves within it, and nothing new is added to it`);
     const stills = walkingPhoto.filter((c) => c.camera.key === "static_locked");
     expect(stills.length).toBeGreaterThan(0);

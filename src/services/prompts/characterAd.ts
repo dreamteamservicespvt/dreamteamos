@@ -1,4 +1,12 @@
-import { CHARACTER_FAMILY_LABELS, ownerPhotoSlots, packAdKind, packNameSpellings, type CharacterPack, type OwnerPhotoSlot } from "@/services/characterPacks";
+import { CHARACTER_FAMILY_LABELS, ownerPhotoSlots, packAdKind, packModelGender, packNameSpellings, type CharacterPack, type OwnerPhotoSlot } from "@/services/characterPacks";
+
+/** The single Real Owner Face's person, by kind (2026-10-23). */
+const ownerKind = (pack: CharacterPack): "man" | "woman" => (packModelGender(pack) === "female" ? "woman" : "man");
+/**
+ * How every frame prompt names the single real owner: by the photograph, like the duo ("the man from owner photo 1").
+ * "Business Owner" is a label the image tool cannot see — live, the frame writer put it in the picture's first line.
+ */
+export const singleOwnerName = (pack: CharacterPack): string => `the ${ownerKind(pack)} in the attached owner image`;
 import {
   countSpokenWords,
 } from "@/utils/dialogueFormat";
@@ -117,7 +125,9 @@ resembles them. If the owner’s own family would not say “that is them”, th
 Add NOTHING to the face or forehead that the photograph does not show: no bindi, tilak, kumkum, sindoor or
 vibhuti mark, no nose ring or new face jewellery, no added make-up, no new beard or moustache. A bare forehead
 in the photograph stays bare; a mark the photograph shows stays exactly as it is. The outfit below changes the
-CLOTHES only — a traditional outfit is never a reason to add a bindi, a tilak or jewellery to the face.`
+CLOTHES only — a traditional outfit is never a reason to add a bindi, a tilak or jewellery to the face.
+In every prompt name ${ownerKind(pack) === "woman" ? "her" : "him"} ONLY as "${singleOwnerName(pack)}" — never "${cast}" (a label the image tool
+cannot see), and never describe the face, hair or beard in words: the photograph shows them.`
     : pack.family === "god"
       ? `${cast} — ${pack.franchise}.
 Depict the deity with full devotional accuracy and respect: the established iconography, attributes, vahana,
@@ -1171,6 +1181,9 @@ const SHOT_DESIGNS = [
   },
 ] as const;
 
+/** One shot of the plan, its text widened so a cast can restage one (the real owner's clip 1). */
+type ShotDesign = { readonly [K in keyof typeof SHOT_DESIGNS[number]]: string };
+
 /**
  * Picks the shots for this ad's length. Every ad opens on the arrival and ends on the invitation;
  * the middle is filled with the proof/trust/detail beats, so a 2-clip ad is arrival + close and a
@@ -1198,7 +1211,7 @@ function shotsForClipCount(segmentCount: number): typeof SHOT_DESIGNS[number][] 
 function clipShotPlan(
   segmentCount: number,
   clipSummaries: string[],
-  shots: typeof SHOT_DESIGNS[number][],
+  shots: ShotDesign[],
   hasLogo: boolean,
   aspectRatio: string,
   orientation: string,
@@ -1303,10 +1316,17 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   const ownerRef = (i: number) => `the ${ownerSlots[i].kind} from ${ownerSlots[i].photo}`;
   const ownerDuo = ownerSlots.length > 1;
   /** Who the shot plan names: the two owners by their photographs, never by labels the image tool cannot see. */
-  const shotCast = ownerDuo ? ownerSlots.map((_, i) => ownerRef(i)).join(" and ") : cast;
+  const shotCast = ownerDuo ? ownerSlots.map((_, i) => ownerRef(i)).join(" and ") : pack.usesClientFace ? singleOwnerName(pack) : cast;
   /** "characters" everywhere else; two real owners are people (2026-10-14). */
   const pairNoun = ownerDuo ? "owners" : "characters";
-  const shots = shotsForClipCount(segmentCount);
+  /**
+   * A real owner is framed three-quarter (head to knees) in every clip — the COMPOSITION FOR THE VIDEO stamp
+   * (geminiService withRealPersonComposition) says so, and clip 1's "the cast full-figure" (written for drawn pairs, whose
+   * height anchor needs their feet) made the live owner frame say both (2026-10-23).
+   */
+  const shots: ShotDesign[] = shotsForClipCount(segmentCount).map((shot) => (pack.usesClientFace && shot === SHOT_DESIGNS[0]
+    ? { ...shot, camera: `wide enough to establish the place, ${solo ? "the owner three-quarter (head to knees) with the face" : "both owners three-quarter (head to knees) with their faces"} large and clear, the business clearly readable behind them` }
+    : shot));
   /**
    * Every cast walks only where a clip's words take them somewhere (Motu and Patlu from 2026-10-10, every cast since
    * 2026-10-22 — prompts/motion history 8): every frame catches them STANDING, facing the camera, mid-gesture, beside

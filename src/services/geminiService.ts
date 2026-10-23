@@ -41,7 +41,7 @@ import { VOICE_NOTE_SYSTEM_PROMPT, voiceNoteUserPrompt } from "./prompts/voiceNo
 import { parseVoiceBrief, voiceBriefAsText, voiceBriefForProfile } from "@/utils/voiceBrief";
 import { audioMimeTypeOf } from "@/utils/fileHelpers";
 import { sameWords, splitScriptVerbatim, verbatimScriptText } from "@/utils/customScript";
-import { nameBoardInPlaceOfLogo, withOnlyLogoText, withOwnerDuoFaceLock, withOwnerFaceLock, withOwnerImageDirective } from "@/utils/frameBrand";
+import { nameBoardInPlaceOfLogo, withOnlyLogoText, withOrderedOutfit, withOwnerDuoFaceLock, withOwnerFaceLock, withOwnerImageDirective } from "@/utils/frameBrand";
 import { resolveModelSpec } from "@/utils/adRequirement";
 import type { AttireType, ModelGender } from "@/types/aiPlatform";
 import { parseClipPromptEdits, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
@@ -95,6 +95,8 @@ import {
   bandDistance, clipWordCountIssue, clipWordCounts, clipsAtPace, contractViolations, countSpokenWords, spokenWordsOf,
   clipSyllableIssue, clipSyllableIssues, measuresSyllables, repeatedPhraseIssues, spokenSyllables,
 } from "@/utils/scriptContract";
+import { unofferedWordIssues } from "@/utils/englishWords";
+import { speaksDigitRun } from "@/utils/unspokenNumbers";
 import { TELUGU_SCREEN_CTA } from "./prompts/wordContract";
 import {
   assembleVeoPrompt, assembleRealPersonDuoVeoPrompt, assembleRealPersonVeoPrompt, cameraShot, pairNamesOf, parseVeoDirections,
@@ -2374,7 +2376,6 @@ const STRUCTURED_SEGMENT_PATTERN = /^(\d+\s*-\s*\d+)\s*:|^segment\s*\d+\s*:/i;
   passed unseen (found 2026-10-15). A word edge is now "not a letter, a vowel sign or a joiner".
 */
 const PHONE_DIGIT_WORD_PATTERN = /(?<![\p{L}\p{M}\u{200C}\u{200D}])(జీరో|వన్|టూ|త్రీ|ఫోర్|ఫైవ్|సిక్స్|సెవెన్|ఎయిట్|నైన్)(?![\p{L}\p{M}\u{200C}\u{200D}])/gu;
-const NATIVE_DIGIT_WORD_PATTERN = /(?<![\p{L}\p{M}\u{200C}\u{200D}])(సున్నా|ఒకటి|రెండు|మూడు|నాలుగు|ఐదు|ఆరు|ఏడు|ఎనిమిది|తొమ్మిది)(?![\p{L}\p{M}\u{200C}\u{200D}])/gu;
 const MAX_VOICEOVER_REPAIR_PASSES = 2;
 
 const getStructuredSegmentLineCount = (script: string): number => {
@@ -2389,6 +2390,7 @@ const countPatternMatches = (text: string, pattern: RegExp): number => {
   const matches = text.match(pattern);
   return matches ? matches.length : 0;
 };
+
 
 const hasOverSeparatedDigitSpeech = (text: string): boolean => {
   const groups = text
@@ -2426,7 +2428,8 @@ const validateVoiceOverSegments = (
   segments: string[],
   segmentCount: number,
   language?: string,
-  everyday?: { names: string[] },
+  /** `offers`: the business's own material — a villa, plot or flat it never mentions is an issue (utils/englishWords). */
+  everyday?: { names: string[]; offers?: string },
   /** 1-based clip carrying the festival wish, when this ad has one — see prompts/festivalWish. */
   wishClip?: number,
 ): string[] => {
@@ -2481,7 +2484,7 @@ const validateVoiceOverSegments = (
     }
 
     // No spoken phone/contact numbers anywhere — the on-screen call CTA is used instead
-    if (countPatternMatches(segment, PHONE_DIGIT_WORD_PATTERN) >= 2 || countPatternMatches(segment, NATIVE_DIGIT_WORD_PATTERN) >= 3) {
+    if (speaksDigitRun(segment)) {
       issues.push(`Clip ${clipNumber} appears to speak a phone/contact number — remove all spoken numbers and use the on-screen call CTA instead.`);
     }
 
@@ -2501,6 +2504,8 @@ const validateVoiceOverSegments = (
   if (everyday) issues.push(...hardWordIssues(segments, language, everyday.names));
   // Five words in a row said again in a later clip — the name, town and closing line may come back (2026-10-22).
   if (everyday) issues.push(...repeatedPhraseIssues(segments, [...everyday.names, FINAL_SCREEN_CTA]));
+  // A villa or plot the business never mentioned — the spelling list read as a menu (2026-10-23).
+  if (everyday?.offers) issues.push(...unofferedWordIssues(segments, everyday.offers));
   if (wishClip) issues.push(...wishAudienceIssues(segments[wishClip - 1] || '', wishClip, language));
 
   // Every ad must close with the on-screen call CTA (no spoken phone number). The exact wording
@@ -3049,7 +3054,11 @@ export const generateAdAssets = async (
    */
   const everyday = customScript?.trim()
     ? undefined
-    : { names: [coreMessage?.businessName, sayName, coreMessage?.place].filter(Boolean) as string[] };
+    : {
+      names: [coreMessage?.businessName, sayName, coreMessage?.place].filter(Boolean) as string[],
+      // What the business itself said it offers: the brief, the frame box and the profile (voice note included).
+      offers: [formData.textInstructions, formData.frameInstructions, JSON.stringify(businessInfo ?? {})].filter(Boolean).join('\n'),
+    };
   const spoken = (script: string) => (everyday ? toSpokenEndings(withSaidName(script), formData.language) : script);
   let voiceOverScript: string;
   let parsedSegments: string[];
@@ -3191,6 +3200,8 @@ export const generateAdAssets = async (
         .concat(clipSyllableIssues(clips.map(clip => clip.map(line => line.text).join(' ')), formData.language, packSpeakerList.length > 1))
         // …and never the same five words in two clips (the cast's names and the place may come back).
         .concat(repeatedPhraseIssues(clips.map(clip => clip.map(line => line.text).join(' ')), [...ownNames, sayName]))
+        // …and never a villa or plot the business did not mention (utils/englishWords, 2026-10-23).
+        .concat(unofferedWordIssues(clips.map(clip => clip.map(line => line.text).join(' ')), everyday?.offers ?? ''))
         // The characters are standing inside the business in every frame — see utils/speakingPosition.
         .concat(clips.flatMap((clip, i) => clip
           .map(line => elsewhereIssue(i + 1, line.text, speakerName(line.speaker)))
@@ -4688,6 +4699,11 @@ ${sceneContext ? `
       nameBoard: frameNoLogo ? frameNameBoard : undefined,
       plate: clipPhotoPlan[i] !== undefined && clipPhotoPlan[i]?.photoIndex !== null,
     }));
+    // The one presenter wears what the job ordered, said in the copied prompt (utils/frameBrand withOrderedOutfit,
+    // 2026-10-23: two English runs ordered Traditional and the frame asked for "a tailored professional power suit").
+    // A cast or an owner has its own WARDROBE line (prompts/characterAd).
+    const orderedOutfit = pack ? "" : wardrobeDirective(formData.attireType, formData.customAttire, formData.gender);
+    if (orderedOutfit) mainFramePrompts = mainFramePrompts.map(prompt => withOrderedOutfit(prompt, orderedOutfit));
 
     if (clipPhotoPlan.length > 0) {
       mainFramePrompts = mainFramePrompts.map((prompt, i) => {
