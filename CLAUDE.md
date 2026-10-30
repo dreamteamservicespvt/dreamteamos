@@ -223,7 +223,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-23)
+## 32. CURRENT PROJECT STATE (as of 2026-10-30)
+
+- 2026-10-30, **committed locally, not pushed** — **AdGen failures**: Google's "project has been denied access" key is dropped for
+  every model (no raw JSON on screen), and voice-over repairs are ranked by words AND syllables with one "more, shorter
+  words" direction (`ai-ads.md`; history 2026-10-30). Owner to try: generate the 6-clip and duo Telugu ads again.
 
 - 2026-10-23 (night) — **AI Accounts: Pro proof** — each Flow account gets a screenshot of myaccount.google.com (Pro
   badge + full email), the app reads it first, the tech admin / a team leader confirms it or sends it back with a reason;

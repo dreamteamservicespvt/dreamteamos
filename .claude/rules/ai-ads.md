@@ -305,6 +305,11 @@ sequential passes (~5 s each) and 3 of 6 runs still stopped on the final gate af
    clip issue, caps the judge's speakability at 6 (`MECHANICAL_CAPS`), and counts against a refine's edited clips
    (`editProblems`). `SYLLABLE_CEILING_PER_CLIP` 54 / `_PAIR_CLIP` 51 is in the FINAL GATE: `contractViolations(…,
    language)` (the run passes `contractLanguage`) — a Telugu clip over it stops the run like a word-count violation.
+   **Ranked by words AND syllables (2026-10-30):** every repair, draft choice and the quality loop's contract ranking use
+   `scriptContract.contractDistance` (words outside 17–20 + syllables over the ceiling, ~3 a word) — a word-only distance
+   kept edits that broke the ceiling and the loop swung until the gate stopped the run; a clip short on words and long on
+   syllables gets ONE direction (`repairDirection`: more, shorter words), an ADD is told its syllable room, and the editor
+   sees each Telugu word's syllables (`numberedWords(…, { syllables })`, long words marked).
    `wordContractBlock({ language })` tells every Telugu writer, repair, review, refine and character prompt the aim
    ("a long compound … costs as much as three short words"). **The judge knows the final clip's room** (`prompts/scriptQa`
    `finalClipRoomRule`: the closing line + address words, the rest ≤ 20 − them; in a ≤ 2-clip wishes ad no clip has room
@@ -901,6 +906,9 @@ before shows its old concepts as it did. The mission guide opens ONE Gemini tab;
   an `AbortSignal` in the request's config + a timer set with `REQUEST_LIMIT_TIMER`) and `GeminiRequestTimeout` is read
   as `busy` — that model rests 30 s for every call, this call skips it, the next model answers; after
   `MAX_REQUEST_TIMEOUTS` = 3 in one call it stops with the "overloaded" sentence instead of hanging.
+  **A blocked project (2026-10-30):** Google's 403 "Your project has been denied access" is a dead key (every model), not a
+  refusal for one model; and the failed-run popup shows `memberErrorText(error)` — Google's JSON is turned into its
+  sentence plus what to do, whatever path it came by.
 - **Thinking per call (2026-09-29; per model 2026-10-10):** `callWithFallback(apiCall, { effort })` — `fast`
   (extraction, voice note, splits, location scout, B-roll, overlays, wardrobe stylist), `standard` (core
   message, repairs, scene plan, frames, Veo director, the poster analysis and its refine — both poster systems, 2026-10-12), `deep` (script writer, review, quality

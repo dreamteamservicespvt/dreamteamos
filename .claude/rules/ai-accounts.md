@@ -147,7 +147,7 @@ those keys in use. Code: `utils/geminiKeys.ts` (pure), `services/aiAccounts` (`c
 the key too), `useGeminiApiKeys` (only while the tab is open), `lib/clipboard.ts` (`copyText`,
 `downloadText`; `copyText` moved there from DriveUploadSheet). The check is Google's **models.list**
 (free, no generation quota; key in the `x-goog-api-key` header): 200 / 429 = working, 400 invalid / 403
-leaked or API off = failed, unreachable = unchecked — measured live on 2026-10-10 against AdGen's 30
+leaked, API off or the project "denied access" (2026-10-30) = failed, unreachable = unchecked — measured live on 2026-10-10 against AdGen's 30
 keys: keys 1, 12, 18 invalid, 13, 16, 23–28 leaked (11 dead).
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)

@@ -6,6 +6,27 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-30: AdGen — a blocked key's project, and voice-overs stopping on 17–20 words + syllables** (`ai-ads.md`
+  §17.2 step 3, §17.3; `ai-accounts.md` key check). The owner's screenshots: (1) 6-clip runs failing at "Extracting
+  business intelligence" with Google's raw `{"error":{"code":403,"message":"Your project has been denied access…"}}`;
+  (2) three Telugu runs stopping on the final gate ("Clip 1 … has 16 … 52 syllables …, at most 51 fit", "Clip 3 … has
+  22 … 56 syllables"). **Causes:** (1) `readGeminiError` read "has been denied access" (Google blocking the key's whole
+  PROJECT) as a 403 for one model (`refused`), so each blocked key was asked again on all eight models by every call and
+  every page load. (2) Every repair, draft and polish was ranked by the distance from 17–20 WORDS only (`bandDistance`):
+  an edit that reached 17 words by adding a detail — and broke the syllable ceiling — was kept, the next swung back, until
+  the budget ran out; and a clip short on words AND long on syllables got two opposite directions ("add a detail" / "use
+  shorter words"). **Fixes:** (1) "has been denied access" = `dead_key` (asked once, remembered 24 h, also in the Dev OS
+  server's port, which shares the reader); the no-keys sentence names it; the AI Accounts key check says "Google blocked
+  this key's project"; the failed-run popup runs every error through `memberErrorText`, so Google's JSON can never be
+  shown. (2) `scriptContract.clipFitDistance` / `contractDistance` = words outside 17–20 + syllables over the gate's
+  ceiling (~3 a word, Telugu), used by `repairClipsByEdit` (ad + Script Duration Checker), `repairDialogueClips`, the
+  whole-script repairs and the quality loop's contract ranking; `repairDirection` folds "too few words" + "too many
+  syllables" into ONE direction (MORE, SHORTER words, both numbers) and tells an ADD how many syllables the new words may
+  carry; the editor sees each Telugu clip's syllables with long words marked (`numberedWords(…, { syllables })`); a
+  new draft's contract feedback is grouped per clip. Not changed: the owner's rules (17–20 words, ≤ 12 a pair line, the
+  51 / 54 syllable ceilings). **Tests:** `geminiDeniedProjectOct30` (6), `voiceOverFitOct30` (7); full suite 288 files,
+  4758 / 4758; build ✅; typecheck 0. No live Gemini run (not driven: the real keys' state today).
+
 - **2026-10-23 (night): AI Accounts — Pro proof for every Flow account** (`ai-accounts.md` Pro proof, §24, §25, §27;
   `data-model.md` `flow_accounts.proProof`). The owner: every account needs a proof screenshot that it is Google AI Pro,
   checked and confirmed by the tech admin or a team leader, with how many members sent / did not send / are confirmed.
