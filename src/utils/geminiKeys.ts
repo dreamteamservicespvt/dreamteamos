@@ -118,6 +118,8 @@ export function keyCheckFrom(httpStatus: number, body: string): KeyCheck {
   const text = `${google} ${body}`;
   if (httpStatus === 400 || httpStatus === 401 || httpStatus === 403) {
     if (/reported as leaked/i.test(text)) return { status: "failed", message: "Google blocked this key — it was reported as leaked. Make a new one." };
+    // 2026-10-30: Google blocked the key's whole project — no key made in that project works again.
+    if (/has been denied access/i.test(text)) return { status: "failed", message: "Google blocked this key's project (\"denied access\"). Make a new key in another Google account." };
     if (/expired/i.test(text)) return { status: "failed", message: "This key has expired. Make a new one." };
     if (/API_KEY_INVALID|not valid/i.test(text)) return { status: "failed", message: "Google says this key is not valid. Copy it again from AI Studio." };
     if (/SERVICE_DISABLED|has not been used|is disabled/i.test(text)) return { status: "failed", message: "The Gemini API is turned off in this key's project. Make the key in the “aiads” project from AI Studio." };

@@ -182,7 +182,13 @@ export const readGeminiError = (error: unknown, model = ''): GeminiErrorInfo => 
 
   // Our own limit, not Google's answer: the model is too slow right now, exactly like a "high demand" 503.
   if (error instanceof GeminiRequestTimeout) return info('busy');
-  if (/API_KEY_INVALID|API key not valid|API_KEY_EXPIRED|API key expired|reported as leaked|SERVICE_DISABLED|has not been used in project|CONSUMER_SUSPENDED|has been suspended/i.test(text)) {
+  /*
+    "Your project has been denied access. Please contact support." (403, 2026-10-30 — the owner's 6-clip runs failed on
+    it at "Extracting business intelligence") is Google blocking the key's whole PROJECT, for every model, exactly like
+    "reported as leaked". Read as a 403 for one model it was asked again on each of the eight models, by every call and
+    on every page load, and the member saw Google's JSON.
+  */
+  if (/API_KEY_INVALID|API key not valid|API_KEY_EXPIRED|API key expired|reported as leaked|SERVICE_DISABLED|has not been used in project|CONSUMER_SUSPENDED|has been suspended|has been denied access/i.test(text)) {
     return info('dead_key');
   }
   if (status === 400 && /thinking/i.test(message)) return info('thinking_unsupported');
@@ -272,14 +278,35 @@ export interface GeminiFailure {
   now: number;
 }
 
+/**
+ * What a member reads for a failed run: the error's own sentence — or, when it is still Google's raw JSON body
+ * (`{"error":{"code":403,…}}`, the owner's screenshot of 2026-10-30), Google's sentence out of it with what to do.
+ * The call layer already speaks in sentences; this is the last guard before the screen, for any path that did not.
+ */
+export const memberErrorText = (error: unknown): string => {
+  const text = String((error as { message?: unknown } | null)?.message ?? error ?? '').trim();
+  if (!/^\{\s*"error"/.test(text)) return text;
+  const info = readGeminiError(error);
+  const google = `Google said: "${info.message}"${info.status ? ` (${info.status})` : ''}.`;
+  if (info.kind === 'dead_key') {
+    return `${google} That Gemini API key no longer works — the app skips it from now on. Press Generate again; if it keeps `
+      + `failing, every key may be blocked: put new keys in Vercel (AI Accounts → API keys → Download .env) and redeploy.`;
+  }
+  if (info.kind === 'rate_limited' || info.kind === 'busy' || info.kind === 'refused') {
+    return `${google} Wait a minute and press Generate again.`;
+  }
+  return `${google} Press Generate again; if it keeps failing, tell your admin.`;
+};
+
 /** The error a call ends with when nothing could answer. */
 export const geminiUnavailable = (f: GeminiFailure, formatTime: (ms: number) => string = clockTime): GeminiUnavailableError => {
   const saw = (kind: GeminiErrorKind) => f.errors.some(e => e.kind === kind);
   const keys = `${f.workingKeys} working API key${f.workingKeys === 1 ? '' : 's'}`;
   if (f.workingKeys === 0) {
     return new GeminiUnavailableError(
-      `None of the ${f.totalKeys} Gemini API keys work any more — Google says they are invalid or were reported as leaked. `
-      + `Put new keys in Vercel → Settings → Environment Variables (API_KEY_1, API_KEY_2, …) and redeploy.`, 'no_keys');
+      `None of the ${f.totalKeys} Gemini API keys work any more — Google says they are invalid, were reported as leaked, `
+      + `or their project was blocked ("denied access"). Put new keys in Vercel → Settings → Environment Variables `
+      + `(API_KEY_1, API_KEY_2, …) and redeploy — AI Accounts → API keys → Download .env has the working ones.`, 'no_keys');
   }
   if (f.liveModels === 0) {
     return new GeminiUnavailableError(

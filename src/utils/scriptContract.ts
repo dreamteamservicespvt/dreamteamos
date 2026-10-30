@@ -289,6 +289,33 @@ export function isSyllableIssue(issue: string): boolean {
   return /^Clip \d+ is too long to say in 8 seconds\b/.test(issue);
 }
 
+/** How many syllables a word carries in everyday Telugu — how syllables over the ceiling are weighed against words. */
+const SYLLABLES_PER_WORD = 3;
+
+/*
+  ── Words AND syllables decide which repair is better (2026-10-30) ───────────────────────────────────
+  The owner's screenshots, three runs in a row on Telugu duos: "Clip 1 … has 16. Clip 1 is too long to say in 8
+  seconds: 52 syllables …, at most 51 fit", "Clip 3 … has 22 … 56 syllables". Every repair, draft and polish was
+  ranked by the distance from 17–20 WORDS only (bandDistance): an edit that took a clip from 16 words to 17 by
+  adding a detail — and from 50 syllables to 55 — counted as progress and was kept; the next edit shortened it back
+  to 16. The loop swung between the two halves of the contract until its budget ran out, and the final gate, which
+  checks both, stopped the run. Syllables over the gate's ceiling now count too, about three to a word, so a
+  candidate that breaks the syllable ceiling is never "nearer" than one that does not.
+*/
+/** How far one clip is from what the final gate accepts: words outside 17–20, plus syllables over the ceiling (Telugu). */
+export function clipFitDistance(text: string, cast = false, language?: string | null): number {
+  const words = countSpokenWords(text);
+  const wordGap = words < MIN_WORDS_PER_CLIP ? MIN_WORDS_PER_CLIP - words : words > MAX_WORDS_PER_CLIP ? words - MAX_WORDS_PER_CLIP : 0;
+  if (!measuresSyllables(language)) return wordGap;
+  const over = spokenSyllables(text) - syllableLimitsFor(cast).ceiling;
+  return wordGap + (over > 0 ? Math.ceil(over / SYLLABLES_PER_WORD) : 0);
+}
+
+/** clipFitDistance summed over a script's clips — 0 when every clip passes the gate's word and syllable checks. */
+export function contractDistance(clipTexts: string[], cast = false, language?: string | null): number {
+  return clipTexts.reduce((sum, text) => sum + clipFitDistance(text, cast, language), 0);
+}
+
 /** Every clip of a script over its syllable aim (Telugu only; [] for other languages). */
 export function clipSyllableIssues(clipTexts: string[], language?: string | null, cast = false): string[] {
   if (!measuresSyllables(language)) return [];

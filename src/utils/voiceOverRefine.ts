@@ -3,7 +3,7 @@
  * back into the untouched script, and telling a real regression from a problem that was already
  * there. Pure, so every guarantee the refine flow relies on is testable without a model.
  */
-import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, PREFERRED_WORDS_PER_CLIP, isSyllableIssue, isWordCountIssue } from "./scriptContract";
+import { MAX_WORDS_PER_CLIP, MIN_WORDS_PER_CLIP, PREFERRED_WORDS_PER_CLIP, isSyllableIssue, isWordCountIssue, spokenSyllables } from "./scriptContract";
 
 export interface RefinePlan {
   understood: string;
@@ -161,11 +161,29 @@ export function issuesForClip(issues: string[], index: number, clipCount: number
  * times. Saying which direction and by EXACTLY how much — and with what, so it is not padding — is what
  * gets the count fixed without losing the line. Non-count problems pass through as they are.
  */
-export function repairDirection(issues: string[], min: number = MIN_WORDS_PER_CLIP, max: number = MAX_WORDS_PER_CLIP): string {
-  return issues.map((issue) => {
+export function repairDirection(
+  issues: string[],
+  min: number = MIN_WORDS_PER_CLIP,
+  max: number = MAX_WORDS_PER_CLIP,
+  /** The clip's syllables now and the most it should carry (a Telugu clip) — how much room words added may take. */
+  room?: { syllables: number; max: number },
+): string {
+  /*
+    ── Too few words AND too many syllables (2026-10-30, the owner's screenshots) ─────────────────────
+    "Clip 1 … has 16" and "Clip 1 is too long to say in 8 seconds: 52 syllables" were sent as two directions: ADD a
+    word "by carrying one more real, specific detail", and "say it with shorter words". The editor did the first —
+    more syllables — or the second — fewer words — and never both, pass after pass, until the run stopped. Both at
+    once has one answer: MORE, SHORTER words. The two findings become one direction with both numbers.
+  */
+  const syllableFinding = issues.map((i) => (isSyllableIssue(i) ? i.match(/: (\d+) syllables\b.*?at most (\d+) fit/) : null)).find(Boolean);
+  const tooLong = syllableFinding ? { syllables: Number(syllableFinding[1]), max: Number(syllableFinding[2]) } : null;
+  const shortClip = issues.some((i) => isWordCountIssue(i) && Number(i.match(/but (?:it )?has (\d+)/)?.[1] ?? min) < min);
+  const both = !!tooLong && shortClip;
+  return issues.flatMap((issue) => {
+    if (both && isSyllableIssue(issue)) return [];
     // Both validators' wording: "…, but it has 16." (the clip) and "… but has 6." (a speaker's line).
     const count = issue.match(/but (?:it )?has (\d+)/);
-    if (!count) return issue;
+    if (!count) return [issue];
     const has = Number(count[1]);
     // A dialogue LINE carries its own band ("Motu's line must be 7-12 words"); use it, not the clip's.
     const stated = issue.match(/(\d+)\s*[–-]\s*(\d+)/);
@@ -178,10 +196,25 @@ export function repairDirection(issues: string[], min: number = MIN_WORDS_PER_CL
     const subject = who ? `${who}'s line has` : together ? "Its two lines together have" : "It has";
     const plural = (n: number) => `${n} word${n === 1 ? "" : "s"}`;
     if (has < lo) {
+      const syllables = tooLong ?? room;
+      const free = syllables ? syllables.max - syllables.syllables : Infinity;
+      // No syllables to spare for the words it lacks (under about two a word): the words it has must get shorter.
+      if (clipTotal && syllables && (both || free < 2 * (lo - has))) {
+        return [`${subject} only ${has} spoken words but ${syllables.syllables} syllables${together ? " across both lines together" : ""} — `
+          + `it needs at least ${lo} words (${lo - has} more) and at most ${syllables.max} syllables `
+          + `(${syllables.syllables > syllables.max ? `${syllables.syllables - syllables.max} fewer` : `${free} to spare`}) at once. `
+          + `Do both by saying it with MORE, SHORTER everyday words: replace each long word (marked with its syllables below) `
+          + `with a short word or two that mean the same — a long verb form with a short one, a long compound with two plain words — `
+          + `until it has ${lo}–${hi} words${together ? ", adding to whichever line is shorter" : ""}. Never add a new detail; `
+          + `never cut the business name, the wish or the closing call line.`];
+      }
       const aim = clipTotal ? ` (adding ${PREFERRED_WORDS_PER_CLIP.min - has} to ${PREFERRED_WORDS_PER_CLIP.max - has} lands it at the preferred ${PREFERRED_WORDS_PER_CLIP.min}–${PREFERRED_WORDS_PER_CLIP.max})` : "";
-      return `${subject} only ${has} spoken words — ${plural(lo - has)} under the ${lo}-word floor. ADD at least ${plural(lo - has)}${aim}, `
+      const budget = clipTotal && syllables && Number.isFinite(free)
+        ? ` The clip is at ${syllables.syllables} of at most ${syllables.max} syllables, so the words you add may carry ${free} syllables together — short words only.`
+        : "";
+      return [`${subject} only ${has} spoken words — ${plural(lo - has)} under the ${lo}-word floor. ADD at least ${plural(lo - has)}${aim}, `
         + `never more than ${plural(hi - has)}, by carrying one more real, specific detail from the business information inside the same sentence`
-        + `${together ? ", in whichever line is shorter" : ""} — never filler, a repeated adjective, empty praise or a greeting.`;
+        + `${together ? ", in whichever line is shorter" : ""} — never filler, a repeated adjective, empty praise or a greeting.${budget}`];
     }
     const aim = clipTotal ? ` (removing ${has - PREFERRED_WORDS_PER_CLIP.max} to ${has - PREFERRED_WORDS_PER_CLIP.min} lands it at the preferred ${PREFERRED_WORDS_PER_CLIP.min}–${PREFERRED_WORDS_PER_CLIP.max})` : "";
     /*
@@ -192,10 +225,11 @@ export function repairDirection(issues: string[], min: number = MIN_WORDS_PER_CL
       22 words and the run stopped. The 20-word ceiling wins over a SECONDARY detail: the words the clip must
       say stay, and an extra offer or detail that does not fit is left out (another clip carries the selling).
     */
-    return `${subject} ${has} spoken words — ${plural(has - hi)} over the ${hi}-word ceiling. REMOVE at least ${plural(has - hi)}${aim} `
+    if (has <= hi) return [issue];
+    return [`${subject} ${has} spoken words — ${plural(has - hi)} over the ${hi}-word ceiling. REMOVE at least ${plural(has - hi)}${aim} `
       + `by tightening the sentence${together ? ", mostly from the longer line, keeping both lines whole and in their own speakers' mouths" : ""} — `
       + `keep what this clip must say (its hook or core message, the business name, and the address and closing call line where they belong); `
-      + `drop the words that carry nothing first, and if it still does not fit, leave out a secondary offer or detail — never squeeze it in.`;
+      + `drop the words that carry nothing first, and if it still does not fit, leave out a secondary offer or detail — never squeeze it in.`];
   }).join(" ");
 }
 
@@ -230,9 +264,16 @@ export function isBetterRepair(
  * A clip's words, numbered — handed to the model so it can see the count instead of estimating it.
  * Counting words in Telugu script is exactly where the models kept getting it wrong.
  */
-export function numberedWords(words: string[]): string {
-  return `${words.length} words: ${words.map((w, i) => `${i + 1}·${w}`).join(" ")}`;
+export function numberedWords(words: string[], opts: { syllables?: boolean } = {}): string {
+  if (!opts.syllables) return `${words.length} words: ${words.map((w, i) => `${i + 1}·${w}`).join(" ")}`;
+  // A Telugu clip (2026-10-30): its syllables too, and each LONG word marked, so the editor sees which to shorten.
+  const counts = words.map((w) => spokenSyllables(w));
+  const total = counts.reduce((a, b) => a + b, 0);
+  return `${words.length} words, ${total} syllables: ${words.map((w, i) => `${i + 1}·${w}${counts[i] >= LONG_WORD_SYLLABLES ? `(${counts[i]})` : ""}`).join(" ")}`;
 }
+
+/** A word of this many syllables or more is marked as long in a Telugu clip's numbered words (about 3 is usual). */
+export const LONG_WORD_SYLLABLES = 4;
 
 /**
  * Problems the edit CREATED.

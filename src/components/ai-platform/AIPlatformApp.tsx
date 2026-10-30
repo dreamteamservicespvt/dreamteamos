@@ -9,6 +9,7 @@ import {
 import { cueRange, cueWords } from '@/utils/wordTiming';
 import { cn } from '@/lib/utils';
 import { getRoleLabel } from '@/utils/roleHelpers';
+import { memberErrorText } from '@/utils/geminiModels';
 import { FileUpload } from './FileUpload';
 import { GeneratedCard, parseVoiceOverClips, stripAttachmentDirective } from './GeneratedCard';
 import { buildPromptAttachments, ownerPhotosInWords, type PromptAttachment } from '@/utils/promptAttachments';
@@ -1117,7 +1118,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       const isStopped = error.message?.includes('stopped by user') || stopped();
       // A run the member stopped and then replaced must not write its error over the new one.
       if (abortControllerRef.current === controller || !isStopped) {
-        setStatus(prev => ({ ...prev, isProcessing: false, error: isStopped ? 'Generation stopped.' : (error.message || "An unexpected error occurred.") }));
+        setStatus(prev => ({ ...prev, isProcessing: false, error: isStopped ? 'Generation stopped.' : (memberErrorText(error) || "An unexpected error occurred.") }));
       }
     } finally {
       // Only this run's own controller — clearing a newer run's would disable its Stop button.

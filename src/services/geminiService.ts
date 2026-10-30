@@ -96,8 +96,9 @@ import {
   SCRIPT_EXTRA_ROUND_MS, SCRIPT_GATE_DEADLINE_MS, SCRIPT_IMPROVEMENT_PASSES, type DraftStanding, type ImprovementStop, type ScriptQaReport, type ScriptQaSummary,
 } from "@/utils/scriptQa";
 import {
-  bandDistance, clipWordCountIssue, clipWordCounts, clipsAtPace, contractViolations, countSpokenWords, spokenWordsOf,
+  clipWordCountIssue, clipWordCounts, clipsAtPace, contractViolations, countSpokenWords, spokenWordsOf,
   clipSyllableIssue, clipSyllableIssues, measuresSyllables, pairLineIssues, repeatedPhraseIssues, spokenSyllables,
+  clipFitDistance, contractDistance, syllableLimitsFor,
 } from "@/utils/scriptContract";
 import { speaksDigitRun } from "@/utils/unspokenNumbers";
 import { TELUGU_SCREEN_CTA } from "./prompts/wordContract";
@@ -2442,8 +2443,6 @@ const MAX_VOICEOVER_REPAIR_PASSES = 2;
  */
 const REPAIR_CANDIDATES = 2;
 
-/** How far one clip's spoken words are from 17–20 (0 inside) — which of two edits of a clip to keep. */
-const clipBandDistance = (text: string) => bandDistance([countSpokenWords(text)]);
 
 const getStructuredSegmentLineCount = (script: string): number => {
   return cleanScriptText(script)
@@ -2627,10 +2626,17 @@ const repairClipsByEdit = async (
     issuesOf: (draft: NormalizedVoiceOver) => string[];
     /** Extra direction for one clip (0-based) — shown in the edit plan, never counted as a problem. */
     hint?: (clipIndex: number) => string;
+    /** The script's language — a Telugu clip is held to its syllables too (scriptContract clipFitDistance). */
+    language?: string;
   },
 ): Promise<{ normalized: NormalizedVoiceOver; issues: string[] }> => {
   const { segmentCount } = ctx;
-  const distanceOf = (draft: NormalizedVoiceOver) => bandDistance(clipWordCounts(draft.segments));
+  const language = ctx.language || 'Telugu';
+  const syllablesCount = measuresSyllables(language);
+  // Words outside 17–20 AND syllables over the ceiling (2026-10-30) — a word-only distance kept edits that broke the ceiling.
+  const distanceOf = (draft: NormalizedVoiceOver) => contractDistance(draft.segments, false, language);
+  const clipDistance = (text: string) => clipFitDistance(text, false, language);
+  const roomOf = (text: string) => (syllablesCount ? { syllables: spokenSyllables(text), max: syllableLimitsFor(false).aim } : undefined);
   let best = current;
   let bestIssues = issues;
   let bestDistance = distanceOf(best);
@@ -2644,9 +2650,9 @@ ${best.segments.map((s, i) => `Clip ${i + 1}: ${s}`).join('\n')}
 ${ctx.facts}
 
 EDIT PLAN — fix these clips only, keeping their meaning:
-${targets.map(i => `- Clip ${i + 1}: ${repairDirection(issuesForClip(bestIssues, i, segmentCount))}${ctx.hint?.(i) ? ` ${ctx.hint(i)}` : ''}
-  Its words as they stand — ${numberedWords(spokenWordsOf(best.segments[i]))}
-  The clip must hold ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words. Count your rewritten clip the same way before you return it.`).join('\n')}
+${targets.map(i => `- Clip ${i + 1}: ${repairDirection(issuesForClip(bestIssues, i, segmentCount), MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, roomOf(best.segments[i]))}${ctx.hint?.(i) ? ` ${ctx.hint(i)}` : ''}
+  Its words as they stand — ${numberedWords(spokenWordsOf(best.segments[i]), { syllables: syllablesCount })}
+  The clip must hold ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words${syllablesCount ? ` and at most ${syllableLimitsFor(false).aim} syllables` : ''}. Count your rewritten clip the same way before you return it.`).join('\n')}
 
 Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
     // REPAIR_CANDIDATES edits of the same clips at once (each on its own key) — see the banner on REPAIR_CANDIDATES.
@@ -2664,7 +2670,7 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
     // …and the best version of EACH clip out of them, so one answer's good clip 2 and the other's good clip 3 both count.
     const drafts = edited.length > 1
       ? [...edited, ctx.normalize(formatVoiceOverScript(best.segments.map((segment, i) => targets.includes(i)
-        ? edited.map(d => d.segments[i] ?? segment).reduce((a, b) => (clipBandDistance(b) < clipBandDistance(a) ? b : a))
+        ? edited.map(d => d.segments[i] ?? segment).reduce((a, b) => (clipDistance(b) < clipDistance(a) ? b : a))
         : segment)))]
       : edited;
     let chosen: { draft: NormalizedVoiceOver; issues: string[]; distance: number } | null = null;
@@ -3283,9 +3289,16 @@ export const generateAdAssets = async (
     return { check, finish, promptPlace: spokenPlace || placeName };
   };
 
-  /** How far a cast script's clips sit outside 17–20 words, summed (the clip total — both lines). */
+  /** A cast clip's lines as one spoken text — what the clip's words and syllables are counted on. */
+  const dialogueClipText = (clip: DialogueClip) => clip.map(line => line.text).join(' ');
+  /** Whether a cast clip is a two-person clip — its syllable limits are the pair's (scriptContract syllableLimitsFor). */
+  const castClip = packSpeakerList.length > 1;
+  /**
+   * How far a cast script's clips are from what the final gate accepts, summed: words outside 17–20 (both lines
+   * together) and, in Telugu, syllables over the pair's ceiling (2026-10-30 — words alone kept edits that broke it).
+   */
   const dialogueDistance = (clips: DialogueClip[]) =>
-    bandDistance(clips.map(clip => clip.reduce((sum, line) => sum + countSpokenWords(line.text), 0)));
+    contractDistance(clips.map(dialogueClipText), castClip, formData.language || 'Telugu');
   /** Only a problem that names no clip needs the whole script rewritten. */
   const scriptLevelIssue = (issues: string[]) => issues.some(i => !/^(Clip \d+|Final clip)\b/.test(i));
   /*
@@ -3347,6 +3360,7 @@ export const generateAdAssets = async (
       const t = raw.trim().toLowerCase();
       return packSpeakerList.find(s => s.key === t || s.name.toLowerCase() === t)?.key ?? packSpeakerList[position]?.key ?? t;
     };
+    const syllablesCount = measuresSyllables(formData.language || 'Telugu');
     let barren = 0;
     for (let pass = 0; pass < MAX_VOICEOVER_REPAIR_PASSES + 2 && issues.length > 0 && barren < 2; pass++) {
       const targets = clipIndexesFromIssues(issues, segmentCount);
@@ -3360,9 +3374,11 @@ ${JSON.stringify(businessInfo, null, 2)}
 EDIT PLAN — fix these clips only, keeping their meaning and every speaker:
 ${targets.map(i => {
   const total = clips[i].reduce((sum, l) => sum + countSpokenWords(l.text), 0);
-  return `- Clip ${i + 1}: ${repairDirection(issuesForClip(issues, i, segmentCount))}${finalClipHint(i) ? ` ${finalClipHint(i)}` : ''}
-  Its lines as they stand (${total} words in all) — ${clips[i].map(l => `${nameOfKey.get(l.speaker) ?? l.speaker}: ${numberedWords(spokenWordsOf(l.text))}`).join('  |  ')}
-  The clip must total ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words${packSpeakerList.length > 1 ? ' across its lines together' : ''}. Count your rewritten lines the same way before you return them.`;
+  const syllables = spokenSyllables(dialogueClipText(clips[i]));
+  const room = syllablesCount ? { syllables, max: syllableLimitsFor(castClip).aim } : undefined;
+  return `- Clip ${i + 1}: ${repairDirection(issuesForClip(issues, i, segmentCount), MIN_WORDS_PER_CLIP, MAX_WORDS_PER_CLIP, room)}${finalClipHint(i) ? ` ${finalClipHint(i)}` : ''}
+  Its lines as they stand (${total} words${syllablesCount ? `, ${syllables} syllables` : ''} in all) — ${clips[i].map(l => `${nameOfKey.get(l.speaker) ?? l.speaker}: ${numberedWords(spokenWordsOf(l.text), { syllables: syllablesCount })}`).join('  |  ')}
+  The clip must total ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words${castClip ? ' across its lines together' : ''}${room ? ` and at most ${room.max} syllables` : ''}. Count your rewritten lines the same way before you return them.`;
 }).join('\n')}
 
 Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i => i + 1).join(', ')}.`;
@@ -3392,12 +3408,13 @@ Return ONLY the JSON for clip${targets.length === 1 ? '' : 's'} ${targets.map(i 
         .map(edits => mergeClipEdits(clips, edits));
       if (merged.length === 0) break;
       const finished = merged.map(draft => tools.finish(draft));
-      const clipWordsOf = (clip: DialogueClip) => clip.reduce((sum, line) => sum + countSpokenWords(line.text), 0);
-      // …and the best version of EACH clip out of them (its lines together nearest 17–20), finished once more.
+      // …and the best version of EACH clip out of them (its lines together nearest 17–20 words and under the syllable
+      // ceiling), finished once more.
+      const clipDistance = (clip: DialogueClip) => clipFitDistance(dialogueClipText(clip), castClip, formData.language || 'Telugu');
       const drafts = merged.length > 1
         ? [...finished, tools.finish(clips.map((clip, i) => {
           if (!targets.includes(i)) return clip;
-          const k = finished.map(d => bandDistance([clipWordsOf(d[i] ?? clip)])).reduce((at, d, j, all) => (d < all[at] ? j : at), 0);
+          const k = finished.map(d => clipDistance(d[i] ?? clip)).reduce((at, d, j, all) => (d < all[at] ? j : at), 0);
           return merged[k][i] ?? clip;
         }))]
         : finished;
@@ -3497,8 +3514,8 @@ Return only the repaired ${segmentCount} clips.`;
   const voiceIssuesOf = (draft: VoiceDraft): string[] =>
     validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, formData.language, everyday, formData.adType === 'festival' ? 1 : undefined)
       .concat(addressIssues(draft.segments, everyday?.names));
-  /** How far a draft's clips sit outside 17–20 spoken words, summed. */
-  const voiceDistance = (draft: VoiceDraft) => bandDistance(clipWordCounts(draft.segments));
+  /** How far a draft's clips are from what the final gate accepts — words outside 17–20, syllables over the ceiling. */
+  const voiceDistance = (draft: VoiceDraft) => contractDistance(draft.segments, false, formData.language || 'Telugu');
 
   /**
    * Fixes ONLY the clips a problem names — this run's facts and rules around the shared clip repair
@@ -3519,6 +3536,7 @@ Return only the repaired ${segmentCount} clips.`;
     normalize: normalizeDraft,
     issuesOf: voiceIssuesOf,
     hint: finalClipHint,
+    language: formData.language || 'Telugu',
   });
 
 
@@ -3858,8 +3876,24 @@ Every clip has exactly one line for EACH character, in the fixed order, each on 
   /** What a new draft is told about one that broke the word budget — clip by clip, with the exact fix. */
   const contractFeedback = (violations: string[]): string => violations.length === 0 ? '' : `
 
-THE PREVIOUS DRAFT BROKE THE WORD BUDGET — every clip must hold ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words${contractCast ? ' across both lines together' : ''}:
-${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : repairDirection([v])}`.trim()).join('\n')}`;
+THE PREVIOUS DRAFT BROKE THE WORD BUDGET — every clip must hold ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} spoken words${contractCast ? ' across both lines together' : ''}${measuresSyllables(contractLanguage) ? `, and be short enough to say in 8 seconds (at most ${syllableLimitsFor(contractCast).aim} syllables)` : ''}:
+${contractFeedbackLines(violations).map(line => `- ${line}`).join('\n')}`;
+  /**
+   * Each clip's violations as ONE direction (2026-10-30): a clip short on words and long on syllables is told to use
+   * more, shorter words — the two findings sent apart pulled the new draft in opposite directions.
+   */
+  const contractFeedbackLines = (violations: string[]): string[] => {
+    const clips = clipIndexesFromIssues(violations, segmentCount);
+    const ofNoClip = violations.filter(v => !/^(Clip \d+|Final clip)\b/.test(v));
+    return [
+      ...clips.slice(0, 8).map(i => {
+        const own = issuesForClip(violations, i, segmentCount);
+        const direction = repairDirection(own);
+        return direction === own.join(' ') ? direction : `${own.join(' ')} ${direction}`;
+      }),
+      ...ofNoClip,
+    ];
+  };
   /** The judge's problems that belong to one clip, worded so the clip-level repair routes them ("Clip 2: …"). */
   const judgeClipIssues = (report: ScriptQaReport | null): string[] => !report ? [] : [
     ...report.unsupportedClaims.flatMap(claim => {
@@ -3927,7 +3961,8 @@ ${violations.slice(0, 8).map(v => `- ${v} ${repairDirection([v]) === v ? '' : re
         draft, text, clipWords, violations, mechanical, broken,
         report: raw ? withMechanicalChecks(raw, mechanical) : null,
         mechanicalIssues: mechanical.length,
-        contract: { violations: violations.length, distance: bandDistance(clipWords) },
+        // Words AND syllables (2026-10-30): a draft over the syllable ceiling is never "nearer" than one under it.
+        contract: { violations: violations.length, distance: contractDistance(clipTexts, contractCast, contractLanguage) },
       };
     };
     cfg.onDraft?.(cfg.first);
@@ -5699,7 +5734,7 @@ Output exactly ${segmentCount} clip lines, ${MIN_WORDS_PER_CLIP}–${MAX_WORDS_P
   const issuesOf = (draft: NormalizedVoiceOver) => validateVoiceOverSegments(draft.rawScript, draft.segments, segmentCount, language);
   let normalized = normalize(response.text || '');
   let issues = issuesOf(normalized);
-  const distanceOf = (draft: NormalizedVoiceOver) => bandDistance(clipWordCounts(draft.segments));
+  const distanceOf = (draft: NormalizedVoiceOver) => contractDistance(draft.segments, false, language);
 
   // Same mechanical repair loop the platform runs — the pasted text stands in for the extracted
   // business info, so the repair pass can only re-word using facts the business actually gave us.
@@ -5743,6 +5778,7 @@ Return only the repaired ${segmentCount} clip lines.` }] }],
       facts: `SOURCE TEXT (the only allowed source of facts):\n${cleanScriptText(source)}`,
       normalize,
       issuesOf,
+      language,
     });
     normalized = fixed.normalized;
     issues = fixed.issues;
