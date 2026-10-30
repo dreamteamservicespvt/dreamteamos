@@ -310,6 +310,15 @@ sequential passes (~5 s each) and 3 of 6 runs still stopped on the final gate af
    kept edits that broke the ceiling and the loop swung until the gate stopped the run; a clip short on words and long on
    syllables gets ONE direction (`repairDirection`: more, shorter words), an ADD is told its syllable room, and the editor
    sees each Telugu word's syllables (`numberedWords(…, { syllables })`, long words marked).
+   **The editor answers in WORD LISTS (2026-10-30, afternoon, live):** with the syllables fixed, both live runs (a 6-clip
+   ad, a duo) still stopped on the gate at 16 words — told to ADD, gemini-2.5-flash wrote a free sentence of 14–16 words
+   pass after pass (16 edits, none reached 17). Live A/B on that script: as a sentence 4 of 16 clips landed in 17–20, as
+   a list 14 of 16, every list's length equal to the counter's. `VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT` (the clip repair,
+   the dialogue repair, the member's refine, the Script Duration Checker) asks for `"words": [...]` per clip / per line,
+   18 or 19 items (a pair's lines together; each ≤ 12), reached with words that say something — a real detail or a long
+   word said as two short ones, never a word the clip already says or filler for the count (the first list version
+   padded: 7.9 with "సులభంగా … సులభంగా"); `voiceOverRefine` `parseClipTextEdits` / `parseClipDialogueEdits` join the list
+   and still read the old `"text"`. Live after: 6-clip 142 s at 9.4 READY, duo 113 s at 10/10, every clip 17–18 words.
    `wordContractBlock({ language })` tells every Telugu writer, repair, review, refine and character prompt the aim
    ("a long compound … costs as much as three short words"). **The judge knows the final clip's room** (`prompts/scriptQa`
    `finalClipRoomRule`: the closing line + address words, the rest ≤ 20 − them; in a ≤ 2-clip wishes ad no clip has room

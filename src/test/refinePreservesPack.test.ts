@@ -40,7 +40,8 @@ describe("the prompt a refine is given", () => {
       expect(refine).toContain("Motu");
       expect(refine).toContain("Patlu");
       expect(refine).toContain("exactly 2 lines, Motu then Patlu, in that order");
-      expect(refine).toContain(`{ "speaker": "motu", "text": "<Motu's line>" }, { "speaker": "patlu", "text": "<Patlu's line>" }`);
+      // Each line as its list of words (2026-10-30: a model keeps count of a list, not of a sentence it writes).
+      expect(refine).toContain(`{ "speaker": "motu", "words": ["<Motu's word 1>", "<word 2>", "…"] }, { "speaker": "patlu", "words": ["<Patlu's word 1>", "<word 2>", "…"] }`);
     });
 
     it("forbids the flattening that caused the bug", () => {

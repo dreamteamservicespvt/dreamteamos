@@ -227,7 +227,10 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 - 2026-10-30, **committed locally, not pushed** — **AdGen failures**: Google's "project has been denied access" key is dropped for
   every model (no raw JSON on screen), and voice-over repairs are ranked by words AND syllables with one "more, shorter
-  words" direction (`ai-ads.md`; history 2026-10-30). Owner to try: generate the 6-clip and duo Telugu ads again.
+  words" direction (`ai-ads.md`; history 2026-10-30). Afternoon, from the live check: the clip editor answers in **word
+  lists** (it wrote 14–16-word sentences when told 17–20; both live runs had stopped at 16) — live after: a 6-clip Telugu
+  ad 9.4 in 142 s, a duo 10/10 in 113 s, every clip 17–18 words (history 2026-10-30 afternoon). Owner to try: one ad of
+  each in the studio; push when happy.
 
 - 2026-10-23 (night) — **AI Accounts: Pro proof** — each Flow account gets a screenshot of myaccount.google.com (Pro
   badge + full email), the app reads it first, the tech admin / a team leader confirms it or sends it back with a reason;

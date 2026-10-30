@@ -21,6 +21,25 @@ const stripFences = (raw: string) => raw.replace(/^```(?:json)?\s*/i, "").replac
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
+/*
+  ── The editor answers in WORD LISTS (2026-10-30, measured live) ─────────────────────────────────────
+  Told "ADD at least 5 words (aim 18–19)" with the clip's words numbered, gemini-2.5-flash wrote a free sentence of
+  14–16 Telugu words pass after pass: 16 edits in one 6-clip run never reached 17, and both live runs of the day (a
+  6-clip ad, a duo) stopped on the final gate at 16 words. A model cannot count the words of a sentence it is writing;
+  it can keep track of a list. Live A/B on the failing script: as a sentence 4 of 16 clips landed in 17–20, as a list
+  of words 14 of 16 — and every list's length equalled the app's counter. So the edit prompt
+  (prompts/refine VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT) asks for `"words": [...]`; a reply written the old way
+  (`"text"`) is still read.
+*/
+/** One reply row's spoken text: its `words` list joined with spaces, else its `text`. */
+const spokenTextOfReply = (row: any): string => {
+  if (Array.isArray(row?.words)) {
+    const joined = row.words.map(str).filter(Boolean).join(" ");
+    if (joined) return joined;
+  }
+  return str(row?.text);
+};
+
 /**
  * Reads the plan call's reply.
  *
@@ -73,7 +92,7 @@ export function parseClipTextEdits(raw: string, allowed: number[]): Map<number, 
     const rows = Array.isArray(data?.clips) ? data.clips : Array.isArray(data) ? data : [];
     for (const row of rows) {
       const index = Number(row?.clip) - 1;
-      const text = str(row?.text);
+      const text = spokenTextOfReply(row);
       if (allowed.includes(index) && text) out.set(index, text);
     }
   } catch {
@@ -94,7 +113,7 @@ export function parseClipDialogueEdits(
     for (const row of rows) {
       const index = Number(row?.clip) - 1;
       const lines = Array.isArray(row?.lines)
-        ? row.lines.map((l: any) => ({ speaker: str(l?.speaker), text: str(l?.text) })).filter((l: any) => l.speaker && l.text)
+        ? row.lines.map((l: any) => ({ speaker: str(l?.speaker), text: spokenTextOfReply(l) })).filter((l: any) => l.speaker && l.text)
         : [];
       if (allowed.includes(index) && lines.length) out.set(index, lines);
     }

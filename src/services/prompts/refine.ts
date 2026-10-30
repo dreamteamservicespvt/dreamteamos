@@ -20,6 +20,7 @@ import { everydaySpeechRules } from "./everydaySpeech";
 import { latinLettersException } from "@/utils/englishWords";
 import { deityWishLine, wishAudienceRule } from "./festivalWish";
 import { TELUGU_SCREEN_CTA, wordContractBlock, type WordContractRegister } from "./wordContract";
+import { MAX_WORDS_PER_CLIP, MAX_WORDS_PER_LINE, MIN_WORDS_PER_CLIP, PREFERRED_WORDS_PER_CLIP } from "@/utils/scriptContract";
 
 export interface RefineSpeaker {
   key: string;
@@ -136,8 +137,13 @@ ${adType === "festival" && options.register === "deity"
   : adType === "festival" ? `• Clip 1 stays the festival wish with no selling; later clips never mention the festival. ${wishAudienceRule(options.festivalName || "", lang)}\n` : ""}${brief ? `\n${coreMessageBlock(brief, messageClip, clipCount)}\n` : ""}
 Return ONLY this JSON, no markdown:
 ${dialogue
-  ? `{ "clips": [ { "clip": <1-based>, "lines": [ ${speakers!.map((s) => `{ "speaker": "${s.key}", "text": "<${s.name}'s line>" }`).join(", ")} ] } ] }`
-  : `{ "clips": [ { "clip": <1-based>, "text": "<the edited spoken line>" } ] }`}`;
+  ? `{ "clips": [ { "clip": <1-based>, "lines": [ ${speakers!.map((s) => `{ "speaker": "${s.key}", "words": ["<${s.name}'s word 1>", "<word 2>", "…"] }`).join(", ")} ] } ] }`
+  : `{ "clips": [ { "clip": <1-based>, "words": ["<word 1>", "<word 2>", "…"] } ] }`}
+
+Write every edited ${dialogue ? "line" : "clip"} as its LIST OF SPOKEN WORDS, in order — one word per item, its punctuation attached to it, a case ending kept joined to its word ("flatsలో"), never two words in one item. The list's length IS the word count code checks, so build it to the count: ${dialogue && !solo
+  ? `the lines of one clip together ${PREFERRED_WORDS_PER_CLIP.min} or ${PREFERRED_WORDS_PER_CLIP.max} items (${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} allowed), each line at most ${MAX_WORDS_PER_LINE}`
+  : `${PREFERRED_WORDS_PER_CLIP.min} or ${PREFERRED_WORDS_PER_CLIP.max} items (${MIN_WORDS_PER_CLIP}–${MAX_WORDS_PER_CLIP} allowed)`}.
+Reach the count with words that say something: a real detail from the business information this clip does not say yet, or a long word said as two short everyday ones. Never a word the clip already says (the business name aside), and never filler or praise added only for the count ("చాలా మంచి సరైన సమయం", "సులభంగా … సులభంగా") — the quality judge marks it down and the clip is edited again.`;
 };
 
 /**

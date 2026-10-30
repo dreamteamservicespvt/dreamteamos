@@ -6,6 +6,23 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-10-30 (afternoon): AdGen — the clip editor answers in word lists** (`ai-ads.md` §17.2 step 3). The live check
+  of the morning's fixes (real `generateAdAssets` + real keys via vite-node; the studio needs a login): a 6-clip Telugu ad
+  (313 s) and a Male & Female duo (754 s, near the daily limit — 1,594 × 429) both STOPPED on the final gate at 16 words
+  (6-clip: clips 4–5; duo: clips 1–3). No syllable stop, no Google JSON (the 403s that day were "leaked" keys; no
+  "denied access" key appeared, so that path is covered by its unit tests only). **Cause:** told "ADD at least 5 words
+  (aim 18–19)" with the words numbered and syllables to spare, gemini-2.5-flash wrote free sentences of 14–16 words —
+  16 edits in one run, none reached 17; `speakableLine` changed a count on only 3 of 80 edited lines. **Measured:** live
+  A/B on the failing script, 4 runs × 4 clips: as a sentence 4 / 16 clips in 17–20, as a list of words 14 / 16, each
+  list's length equal to the counter. **Fix:** `prompts/refine.VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT` asks for `"words"`
+  lists (per clip, or per line for a cast: together 18–19, each ≤ 12) with words that say something — the first version
+  padded (7.9: "సులభంగా … సులభంగా", "చాలా మంచి సరైన సమయం"), so it now forbids a word the clip already says and filler;
+  `utils/voiceOverRefine` `parseClipTextEdits` / `parseClipDialogueEdits` join the list and still read `"text"`.
+  **Live after:** 6-clip 157 s (7.9, padded) → with the no-padding rule 142 s, 9.4 READY; duo 113 s, 10/10 (its first
+  draft fitted, so the editor was not exercised there); every clip 17–18 words, 38–49 syllables. **Tests:**
+  `voiceOverFitOct30` (+3), `refinePreservesPack` (the pair's reply shape); full suite 287 of 288 files (the one failure
+  is the known `smmDeliveryControlUiOct15` flake, §32), typecheck 0, build ✅.
+
 - **2026-10-30: AdGen — a blocked key's project, and voice-overs stopping on 17–20 words + syllables** (`ai-ads.md`
   §17.2 step 3, §17.3; `ai-accounts.md` key check). The owner's screenshots: (1) 6-clip runs failing at "Extracting
   business intelligence" with Google's raw `{"error":{"code":403,"message":"Your project has been denied access…"}}`;

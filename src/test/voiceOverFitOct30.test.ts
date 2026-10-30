@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { clipFitDistance, contractDistance, clipWordCountIssue, clipSyllableIssue, spokenSyllables } from "@/utils/scriptContract";
-import { isBetterRepair, numberedWords, repairDirection } from "@/utils/voiceOverRefine";
+import { isBetterRepair, numberedWords, parseClipDialogueEdits, parseClipTextEdits, repairDirection } from "@/utils/voiceOverRefine";
+import { VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT } from "@/services/prompts/refine";
 
 /**
  * The owner's screenshots of 2026-10-30, three Telugu runs that stopped on the final gate:
@@ -66,5 +67,53 @@ describe("the direction for a clip short on words AND long on syllables", () => 
   it("the numbered words show the syllables and mark the long ones", () => {
     expect(numberedWords(["మా", "దొరుకుతాయి"], { syllables: true })).toBe("2 words, 6 syllables: 1·మా 2·దొరుకుతాయి(5)");
     expect(numberedWords(["మా", "దొరుకుతాయి"])).toBe("2 words: 1·మా 2·దొరుకుతాయి");
+  });
+});
+
+/**
+ * The second live finding of 2026-10-30: with the syllables fixed, both live runs (a 6-clip ad, a duo) still stopped
+ * on the gate at 16 words. Told to ADD words, the editor wrote a free sentence of 14–16 Telugu words pass after pass.
+ * Live A/B on that script: as a sentence 4 of 16 clips landed in 17–20, as a list of words 14 of 16. The editor now
+ * answers in word lists; an answer written the old way is still read.
+ */
+describe("the editor answers in word lists", () => {
+  it("asks for a list of words, one voice and a pair", () => {
+    const one = VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({ language: "Telugu", clipCount: 6, adType: "commercial" });
+    expect(one).toContain(`"words": ["<word 1>"`);
+    expect(one).toContain("18 or 19 items (17–20 allowed)");
+    // …reached with words that say something, never padding (live 2026-10-30: the list format first padded).
+    expect(one).toContain("Never a word the clip already says");
+    expect(one).not.toContain(`"text": "<the edited spoken line>"`);
+    const pair = VOICEOVER_REFINE_EDIT_SYSTEM_PROMPT({
+      language: "Telugu", clipCount: 4, adType: "commercial",
+      speakers: [{ key: "girl", name: "Girl" }, { key: "boy", name: "Boy" }],
+    });
+    expect(pair).toContain(`{ "speaker": "girl", "words": ["<Girl's word 1>"`);
+    expect(pair).toContain("the lines of one clip together 18 or 19 items (17–20 allowed), each line at most 12");
+  });
+
+  it("joins a clip's words in order, and still reads the old text answer", () => {
+    const reply = JSON.stringify({ clips: [
+      { clip: 2, words: ["మీకు", " కావాల్సిన ", "flatsలో", "", "ఉన్నాయి."] },
+      { clip: 3, text: "పాత జవాబు ఇది." },
+      { clip: 9, words: ["ఇది", "వద్దు"] },
+    ] });
+    const edits = parseClipTextEdits("```json\n" + reply + "\n```", [1, 2]);
+    expect(edits.get(1)).toBe("మీకు కావాల్సిన flatsలో ఉన్నాయి.");
+    expect(edits.get(2)).toBe("పాత జవాబు ఇది.");
+    expect(edits.has(8)).toBe(false);
+    // An empty list falls back to text, and to nothing when there is none.
+    expect(parseClipTextEdits(JSON.stringify({ clips: [{ clip: 1, words: [] }] }), [0]).size).toBe(0);
+  });
+
+  it("joins each speaker's words in a pair's clip", () => {
+    const reply = JSON.stringify({ clips: [{ clip: 1, lines: [
+      { speaker: "girl", words: ["మా", "షాప్‌కి", "రండి,"] },
+      { speaker: "boy", text: "ధరలు తక్కువ." },
+    ] }] });
+    expect(parseClipDialogueEdits(reply, [0]).get(0)).toEqual([
+      { speaker: "girl", text: "మా షాప్‌కి రండి," },
+      { speaker: "boy", text: "ధరలు తక్కువ." },
+    ]);
   });
 });
