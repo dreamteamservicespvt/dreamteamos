@@ -140,4 +140,18 @@ describe("Pause month on the month page", () => {
     expect((await screen.findByTestId("smm-pause-history")).textContent).toMatch(/Earlier pauses \(1\) · 2 days in all/);
     expect(await screen.findByTestId("smm-page-pause")).toBeTruthy();
   });
+
+  it("never makes a stored javascript: address into the banner's link", async () => {
+    const month = seedRunning();
+    mem.__seed("smm_campaigns/m_run", {
+      ...(read("m_run") as unknown as Record<string, unknown>),
+      pause: { from: day(-1), until: day(3), reasonKind: "client_asked", note: null, proofUrl: "javascript:alert(document.cookie)",
+        endBefore: month.cycle.endDate, at: 1, byUid: SELLER.uid, byName: SELLER.name },
+    });
+    signIn(SELLER);
+    openPage();
+    const banner = await screen.findByTestId("smm-pause-banner");
+    expect(banner.querySelector("a")).toBeNull();
+    expect(banner.textContent).not.toMatch(/client's message/);
+  });
 });

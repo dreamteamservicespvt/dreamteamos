@@ -216,6 +216,22 @@ export function pauseSentence(c: PauseHolder & Pick<SmmCampaign, "cycle">, today
   return `${verb} ${range(p.from, addDays(p.until, -1))} · back on ${fmt(p.until)}${renewal}`;
 }
 
+/**
+ * The client's-message screenshot link, only when it is a plain https address (else null).
+ *
+ * ── Why ── it is rendered as a link on the month page, and the month document can be written by any
+ * staff browser (the catch-all rule): a stored `javascript:` address would run when somebody taps it.
+ * Checked when saving AND when showing, so an old or hand-written value never becomes a live link.
+ */
+export function safeProofUrl(u: unknown): string | null {
+  if (typeof u !== "string" || !/^https:\/\//i.test(u.trim())) return null;
+  try {
+    return new URL(u.trim()).protocol === "https:" ? u.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** One short reason line: "Client asked — shop painting". */
 export function pauseReasonLine(p: Pick<SmmPause, "reasonKind" | "note">): string {
   const note = String(p.note || "").trim();
@@ -281,7 +297,7 @@ export function pausePatch(
   const days = pauseDays(input.from, input.until);
   const pause: SmmPause = {
     from: input.from, until: input.until, reasonKind: input.reasonKind as SmmPauseReason,
-    note: String(input.note || "").trim() || null, proofUrl: input.proofUrl || null,
+    note: String(input.note || "").trim() || null, proofUrl: safeProofUrl(input.proofUrl),
     endBefore: c.cycle.endDate, at, byUid: actor.uid, byName: actor.name,
   };
   return {

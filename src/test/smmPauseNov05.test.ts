@@ -2,6 +2,7 @@
  * Pausing a running SMM month (owner, 2026-11-05) — the pure rules in `utils/smmPause`.
  */
 import { describe, expect, it } from "vitest";
+import { safeProofUrl } from "@/utils/smmPause";
 import {
   SMM_PAUSE_MAX_DAYS, activePause, cancelPauseProblem, closedPauses, endAfterPause, monthPauseBlock, pauseDays,
   pauseIsOver, pauseProblem, pauseReasonLine, pauseSentence, pausedDaysOf, pausedTotal, restartProblem, upcomingPause,
@@ -142,5 +143,14 @@ describe("sentences", () => {
     const across = month({ pause: pause("2026-11-28", "2026-12-03") });
     expect(pauseSentence(across, "2026-11-28")).toMatch(/^Paused 28 Nov–2 Dec · back on 3 Dec/);
     expect(pauseReasonLine({ reasonKind: "shop_closed", note: "painting" })).toBe("Shop closed / renovation — painting");
+  });
+});
+
+describe("the client's-message screenshot link (security review, 2026-11-05)", () => {
+  it("keeps only a plain https address — never javascript:, data: or http:", () => {
+    expect(safeProofUrl("https://res.cloudinary.com/x/image/upload/a.png")).toBe("https://res.cloudinary.com/x/image/upload/a.png");
+    for (const bad of ["javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,<b>x</b>", "http://x.com/a.png", "https//x", "", null, 42]) {
+      expect(safeProofUrl(bad), String(bad)).toBeNull();
+    }
   });
 });

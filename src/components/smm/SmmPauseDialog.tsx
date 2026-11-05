@@ -24,7 +24,7 @@ import { addDays } from "@/utils/smmPlan";
 import {
   SMM_PAUSE_MAX_DAYS, SMM_PAUSE_REASONS, activePause, cancelPauseProblem, canExceedPauseCap, canPauseMonth,
   endAfterPause, pauseDayLabel, pauseDays, pauseProblem, pauseReasonLine, pauseSentence, pausedTotal,
-  restartProblem, upcomingPause,
+  restartProblem, safeProofUrl, upcomingPause,
 } from "@/utils/smmPause";
 import type { SmmCampaign, SmmPauseReason } from "@/types/smm";
 
@@ -287,8 +287,8 @@ export function SmmPauseBanner({ campaign, user, today }: { campaign: SmmCampaig
             <p data-test="smm-pause-sentence" className="font-semibold text-foreground">{pauseSentence(campaign, today)}</p>
             <p className="mt-0.5 text-muted-foreground">
               Why: {pauseReasonLine(p)} · by {p.byName}
-              {p.proofUrl && (
-                <> · <a href={p.proofUrl} target="_blank" rel="noreferrer" className="font-medium text-primary underline-offset-2 hover:underline">client's message</a></>
+              {safeProofUrl(p.proofUrl) && (
+                <> · <a href={safeProofUrl(p.proofUrl)!} target="_blank" rel="noreferrer" className="font-medium text-primary underline-offset-2 hover:underline">client's message</a></>
               )}
             </p>
             <p className="mt-0.5 text-muted-foreground">
