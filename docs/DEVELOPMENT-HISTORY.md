@@ -6,6 +6,14 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-11-05 (night): AdGen — the footer (Video Bottom Label) refine reverted to its own code** (`ai-ads.md`). The owner:
+  "don't touch the footer code, revert back". `f11c8fa` had routed the label's Refine through the new frame planner
+  (`refineImagePrompts`); `refineSection('header')` is back to the pre-`f11c8fa` code (`LOWER_THIRD_SYSTEM_PROMPT`,
+  "apply ONLY the requested changes", `stripUnverifiedNumbers` + `withLabelContacts`) and `AIPlatformApp` sends the label
+  through the generic refine path again. Frame refine, the label's generation (`buildVideoBottomLabel`, unchanged today)
+  and every other 2026-11-05 change stay. Files: `services/geminiService.ts`, `components/ai-platform/AIPlatformApp.tsx`,
+  `test/contactNumbersOct13.test.ts` (label refine fake back to its old reply). Tested: typecheck 0, full vitest, build.
+
 - **2026-11-05 (evening): AdGen — overlay TEXTS take no ratio; a transparent PNG cropped to the words** (`ai-ads.md`).
   The owner (with a ChatGPT image: "SRI BALAJI BANGLES" small on a white 9:16 frame): "overlay images ratio based on the
   ad configuration, but not the overlay texts; we need the overlay texts with the transparent background, where we can

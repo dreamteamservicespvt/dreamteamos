@@ -797,9 +797,13 @@ Script (its speakers, language and the Veo rewrite), the missing Veo clips, B-ro
 the row title's language; the form stays for the NEXT run (the Configuration custom-script format reads the form).
 A job changed after its kit still shows the "made for … / the job now says …" banner; Generate makes the new kit.
 
-**Editing / refine:** per-section refine (`refineSection`, "change only what was asked"). **Frames and the label
-(rebuilt 2026-11-05 — the owner: "refine was not working"; live, a frame refine recoloured the whole scene and the
-OUTFIT stamp overrode the asked change, a label refine changed one word):** `refineSection('mainFrame' | 'header')` →
+**Editing / refine:** per-section refine (`refineSection`, "change only what was asked"). **The label (footer) keeps its
+OWN refine** — reverted the same evening (owner, 2026-11-05: "don't touch the footer code, revert back"):
+`refineSection('header')` is again `REFINE_EDIT_DIRECTIVE` + the name-board directive + `LOWER_THIRD_SYSTEM_PROMPT`,
+"apply ONLY the requested changes", then `stripUnverifiedNumbers` + `withLabelContacts`; the studio's generic refine path
+handles it. Never route the label through the frame planner. **Frames (rebuilt 2026-11-05 — the owner: "refine was not
+working"; live, a frame refine recoloured the whole scene and the OUTFIT stamp overrode the asked change):**
+`refineSection('mainFrame')` →
 `geminiService.refineImagePrompts` — the model answers a JSON plan (`prompts/imageRefine`: which clips, exact
 find → replace edits, and a short change line), applied in code (`utils/promptChanges` `parsePromptChangePlan`,
 `applyPromptChangePlan`): protected lines (locks, 📎, ratio, subject size, the verified numbers) are never edited, the
@@ -1092,7 +1096,9 @@ attribution (`Clip.voScript` is one string).
   ratio first; people fill the frame (close medium shot, head to mid-thigh, ~85–90%; full figure only for a cartoon, a
   deity or a walking clip); colours stay true to life and overlays stay readable on any footage; a B-roll image never
   repeats the overlay text and never shows while a text is on screen.
-- **AI ads — frame / label refine (owner, 2026-11-05):** a refine changes exactly what the member asked and nothing
+- **AI ads — the footer (Video Bottom Label) code is not changed without the owner's ask (owner, 2026-11-05):** its
+  refine stays the label's own (`LOWER_THIRD_SYSTEM_PROMPT`); the frame refine below does not apply to it.
+- **AI ads — frame refine (owner, 2026-11-05):** a refine changes exactly what the member asked and nothing
   else; the asked change wins over every stamped rule (outfit, theme) and stays through later refines; locks, ratio and
   verified numbers are never lost; what could not be applied is said.
 - **AI ads — poster refine (owner, 2026-10-13):** a refine applies what the member asks. Design requests (colours,
