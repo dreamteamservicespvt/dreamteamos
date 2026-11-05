@@ -48,6 +48,8 @@ import type {
 // `.js` on purpose (phase 6): the server checker loads this file as Node ESM, which needs the extension —
 // see the note at the top of `smmMonitor.ts`.
 import { DEFAULT_SMM_DELIVERY } from "./smmDeliverySettings.js";
+// A paused month (2026-11-05): quiet while paused, its paused days are days off. Alias-free, `.js` too.
+import { activePause, pausedDaysOf } from "./smmPause.js";
 
 /** A piece as Delivery Control reads it: the classic piece plus the optional plan / answers (phase 3 writes them). */
 export type SmmDeliveryItem = SmmContentItem & SmmDeliveryItemFields;
@@ -218,18 +220,24 @@ export function monthRunsOn(c: Pick<SmmCampaign, "cycle">, today: string): boole
 const renewalDecided = (r: SmmCampaign["renewal"] | null | undefined): boolean =>
   !!r?.nextCampaignId || r?.state === "won" || r?.state === "lost";
 
-export type SmmMonthExclusion = "deleted" | "removed" | "history" | "finished" | "on_hold" | "ended";
+export type SmmMonthExclusion = "deleted" | "removed" | "history" | "finished" | "on_hold" | "ended" | "paused";
 
 /**
  * Why a month is never planned or alerted, or null when it may be — the same rule as
  * `smmDeliveryHealth.excludedReason` (which says it in a sentence). On hold = the month reached its end
  * date (the renewal day) with no renewal decision: no production alerts, only the salesperson's renewal.
  */
-export function monthExclusion(c: Pick<SmmCampaign, "status" | "history" | "cycle" | "renewal">, today: string): SmmMonthExclusion | null {
+export function monthExclusion(
+  c: Pick<SmmCampaign, "status" | "history" | "cycle" | "renewal"> & Partial<Pick<SmmCampaign, "pause" | "pauses">>,
+  today: string,
+): SmmMonthExclusion | null {
   if (c.status === "deleted") return "deleted";
   if (c.status === "removed") return "removed";
   if (c.history) return "history";
   if (c.status === "completed" || c.status === "renewed" || c.status === "lapsed") return "finished";
+  // Paused (2026-11-05): the client asked to hold the work — nobody is chased until the restart day. The
+  // renewal day already moved by the paused days, so the end-date check below still reads the true end.
+  if (activePause(c, today)) return "paused";
   if (isIsoDay(c.cycle?.endDate) && today >= c.cycle.endDate) {
     return isIsoDay(c.cycle?.startDate) && c.status === "active" && !renewalDecided(c.renewal) ? "on_hold" : "ended";
   }
@@ -261,13 +269,22 @@ export const weekKey = (campaignId: string, week: SmmPlanWeek | number) => `${ca
 /** The client's four weeks, or null when the dates are broken or the month is shorter than 22 days. */
 export function monthWeeks(
   cycle: Pick<SmmCycle, "startDate" | "endDate"> | null | undefined,
-  opts: { holidays: SmmHolidays; deadlineHour: number },
+  opts: { holidays: SmmHolidays; deadlineHour: number; paused?: ReadonlySet<string> | null },
 ): SmmWeek[] | null {
   const own = ownDaysOf(cycle);
-  if (!own || own.days < SMM_CADENCE_MIN_MONTH_DAYS) return null;
+  if (!own) return null;
+  // ── Paused days (2026-11-05) ── The renewal day moved forward by the paused days, so the month has
+  // more calendar days but the same paid days. The weeks are counted in UNPAUSED days (W2 starts on the
+  // 8th day the month runs), so week 4 does not swallow the extra days; paused days inside a week are
+  // days off (the caller passes them in `holidays` too). Without a pause these are exactly 7-day weeks.
+  const paused = opts.paused && opts.paused.size ? opts.paused : null;
+  const running: string[] = [];
+  for (let d = own.start, g = 0; d <= own.lastDay && g < WALK_LIMIT; d = addDaysIso(d, 1), g++) if (!paused?.has(d)) running.push(d);
+  if (running.length < SMM_CADENCE_MIN_MONTH_DAYS) return null;
+  const weekStart = (week: number) => (week === 1 ? own.start : running[(week - 1) * 7]);
   return SMM_WEEKS.map((week) => {
-    const start = addDaysIso(own.start, (week - 1) * 7);
-    const end = week === 4 ? own.lastDay : addDaysIso(start, 6);
+    const start = weekStart(week);
+    const end = week === 4 ? own.lastDay : addDaysIso(weekStart(week + 1), -1);
     const workingDays: string[] = [];
     for (let d = start; d <= end; d = addDaysIso(d, 1)) if (isWorkingDay(d, opts.holidays)) workingDays.push(d);
     const deadlineDay = workingDays.length ? workingDays[workingDays.length - 1] : end;
@@ -486,7 +503,11 @@ export function planMonth(c: SmmDeliveryMonth, ctx: SmmPlanContext): SmmMonthPla
     firstPostDay: null, weeks: [], targets, tasks: [], missing: [], uncounted: [], movedOut: [], bunched: [],
   };
   const own = ownDaysOf(c.cycle);
-  const weeks = monthWeeks(c.cycle, { holidays: ctx.holidays, deadlineHour: settings.deadlineHour });
+  // Paused days are days off for every count below (weeks, checkpoints) — 2026-11-05.
+  const pausedList = pausedDaysOf(c);
+  const paused = pausedList.length ? new Set(pausedList) : null;
+  const holidays: SmmHolidays = paused ? new Set([...(ctx.holidays || []), ...pausedList]) : ctx.holidays;
+  const weeks = monthWeeks(c.cycle, { holidays, deadlineHour: settings.deadlineHour, paused });
   if (!own || !weeks) {
     plan.problem = own ? "too_short" : "bad_dates";
     return plan;
@@ -527,7 +548,7 @@ export function planMonth(c: SmmDeliveryMonth, ctx: SmmPlanContext): SmmMonthPla
       floorDay = w.workingDays[0] || w.start;
     }
     const cps = deadlineDay && deadlineAt != null
-      ? taskCheckpoints({ item: i, deadlineDay, deadlineAt, floorDay, monthClips, holidays: ctx.holidays, settings })
+      ? taskCheckpoints({ item: i, deadlineDay, deadlineAt, floorDay, monthClips, holidays, settings })
       : { checkpoints: [], compressed: false };
     const ownDay = inMonth(i.uploadDate) ? i.uploadDate : null;
     return {

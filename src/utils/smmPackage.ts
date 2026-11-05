@@ -21,6 +21,7 @@ import {
 */
 export { isOwnDay, itemDatedOutside, lastOwnDay, ownDayCount } from "@/utils/smmPlan";
 import { SMM_RENEWAL_NOTICE_DAYS } from "@/utils/smmReminders";
+import { activePause } from "@/utils/smmPause";
 import {
   SMM_ITEM_STATUSES, SMM_PLATFORMS,
   type SmmAssignee, type SmmCampaign, type SmmContentItem, type SmmContentKind, type SmmCycle, type SmmItemStatus,
@@ -494,6 +495,15 @@ const renewalDecided = (r: SmmCampaign["renewal"] | null | undefined): boolean =
  * was filed under Finished the moment it was added — so the board had no month for the client at all
  * (the owner's AIRAVATH: "already has a month on these dates", but no month on the board).
  */
+/**
+ * Paused today (2026-11-05, `utils/smmPause`): a running month the client asked to hold — its renewal day
+ * already moved by the paused days. The same answer as `smmCadence.monthExclusion`'s "paused" (parity test).
+ * A paused month is never On hold: it has not ended.
+ */
+export function isPaused(c: Pick<SmmCampaign, "status" | "history" | "pause" | "pauses">, today: string): boolean {
+  return c.status === "active" && !c.history && !!activePause(c, today);
+}
+
 export function isOnHold(c: Pick<SmmCampaign, "status" | "cycle" | "renewal">, today: string): boolean {
   if (c.status !== "active" || !c.cycle) return false;
   if (cyclePhase(c.cycle, today) !== "ended") return false;

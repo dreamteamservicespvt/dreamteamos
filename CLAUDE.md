@@ -223,7 +223,14 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-10-30)
+## 32. CURRENT PROJECT STATE (as of 2026-11-05)
+
+- 2026-11-05, **committed locally, not pushed** — **SMM: pause a running month** (the owner: "make yourself the best
+  decision"; reverses 2026-10-15's "no mid-month pause"): Pause month on the month page (salesperson + SMM admins), a
+  required restart day and reason, paused days move the renewal day, ≤ 15 days a month (main / tech admin past it), quiet
+  everywhere while paused, a Paused banner (restart today / change / cancel) and board filter (`smm.md`; history
+  2026-11-05). Owner to try: pause one real month for 3 days, check its renewal day and that nobody is chased, then
+  Restart today.
 
 - 2026-10-30, **committed locally, not pushed** — **AdGen failures**: Google's "project has been denied access" key is dropped for
   every model (no raw JSON on screen), and voice-over repairs are ranked by words AND syllables with one "more, shorter

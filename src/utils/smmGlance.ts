@@ -17,15 +17,16 @@
  * Pure, and built on the rules every other screen uses (smmPlan, smmPackage), so a card can never
  * disagree with the month's page about whether a post is late.
  */
-import { clientWaitSummary, daysBetween, fulfilment, isOverdue, isPosted, postedDayOf } from "@/utils/smmPlan";
+import { addDays, clientWaitSummary, daysBetween, fulfilment, isOverdue, isPosted, postedDayOf } from "@/utils/smmPlan";
 import {
-  DATED_OUTSIDE_HINT, cycleElapsed, cyclePhase, cycleTimeLabel, datedOutsideLine, daysToRenewal, isOnHold, needsSetup,
+  DATED_OUTSIDE_HINT, cycleElapsed, cyclePhase, cycleTimeLabel, datedOutsideLine, daysToRenewal, isOnHold, isPaused, needsSetup,
   ownDaysLabel, paceOf, renewalDue, renewalWhenLabel, shortDayLabel, splitByMonthDates, toneCounts,
 } from "@/utils/smmPackage";
 import type { SmmCampaign, SmmContentItem, SmmContentKind } from "@/types/smm";
+import { activePause, pauseDayLabel, pauseReasonLine } from "@/utils/smmPause";
 
 export type SmmGlanceStatus =
-  | "setup" | "history" | "nothing" | "done" | "not_started" | "off_track" | "at_risk" | "on_track" | "on_hold";
+  | "setup" | "history" | "nothing" | "done" | "not_started" | "off_track" | "at_risk" | "on_track" | "on_hold" | "paused";
 
 /** The colour family of a status: green fine, amber watch it, red act now, grey nothing yet. */
 export type SmmGlanceTone = "good" | "warn" | "bad" | "idle";
@@ -62,6 +63,7 @@ export const SMM_STATUS_LABEL: Record<SmmGlanceStatus, string> = {
   at_risk: "At risk",
   on_track: "On track",
   on_hold: "On hold",
+  paused: "Paused",
 };
 
 /** On hold is grey — paused, nothing for the team to make — not a warning colour (2026-10-05). */
@@ -75,6 +77,8 @@ const STATUS_TONE: Record<SmmGlanceStatus, SmmGlanceTone> = {
   at_risk: "warn",
   on_track: "good",
   on_hold: "idle",
+  // Paused (2026-11-05): the client asked to hold the work — grey like On hold, nothing to chase.
+  paused: "idle",
 };
 
 /**
@@ -82,7 +86,7 @@ const STATUS_TONE: Record<SmmGlanceStatus, SmmGlanceTone> = {
  * hold sits after on track: the team has nothing left to make on it — the next move is the salesperson's.
  */
 const STATUS_RANK: Record<SmmGlanceStatus, number> = {
-  off_track: 0, setup: 1, at_risk: 2, not_started: 3, on_track: 4, on_hold: 5, done: 6, nothing: 7, history: 8,
+  off_track: 0, setup: 1, at_risk: 2, not_started: 3, on_track: 4, paused: 5, on_hold: 5, done: 6, nothing: 7, history: 8,
 };
 
 export interface SmmGlanceNext {
@@ -226,7 +230,14 @@ export function monthGlance(c: SmmCampaign, today: string): SmmGlance {
 
   let status: SmmGlanceStatus;
   let reason: string;
-  if (isOnHold(c, today)) {
+  const pausedNow = isPaused(c, today) ? activePause(c, today) : null;
+  if (pausedNow) {
+    // Paused (2026-11-05) before everything else: a paused month is never late, behind or "needs
+    // setup" — nobody may work on it until the restart day.
+    status = "paused";
+    reason = `Paused till ${pauseDayLabel(addDays(pausedNow.until, -1))} — ${pauseReasonLine(pausedNow)} · back on `
+      + `${pauseDayLabel(pausedNow.until)}, renewal ${shortDayLabel(c.cycle.endDate)}`;
+  } else if (isOnHold(c, today)) {
     // Ended with no renewal decision (owner, 2026-10-05) — before history: an old client's last month is
     // on hold too. A history month's blank rows are a record left blank, not posts that failed to go up.
     status = "on_hold";

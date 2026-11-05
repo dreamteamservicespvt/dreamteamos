@@ -14,6 +14,7 @@ import { cyclePhase } from "@/utils/smmPackage";
 import { isOverdue, isPosted } from "@/utils/smmPlan";
 import { monthGlance } from "@/utils/smmGlance";
 import type { SmmCampaign, SmmContentItem } from "@/types/smm";
+import { activePause } from "@/utils/smmPause";
 
 export interface StatusCheckSlot {
   key: "am" | "pm";
@@ -108,6 +109,8 @@ export function statusCheckMonths(campaigns: SmmCampaign[], uid: string, today: 
   const out: StatusCheckMonth[] = [];
   for (const c of campaigns) {
     if (c.status !== "active" || c.history || !c.cycle || cyclePhase(c.cycle, today) !== "running" || !holdsSeat(c, uid)) continue;
+    // Paused (2026-11-05): nothing to update while the client asked to hold the work.
+    if (activePause(c, today)) continue;
     const pieces = (c.items || []);
     const open = pieces.filter((i) => !isPosted(i)).sort((a, b) => {
       const mine = Number(isMine(b, uid)) - Number(isMine(a, uid));

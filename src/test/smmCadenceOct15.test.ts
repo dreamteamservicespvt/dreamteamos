@@ -29,7 +29,7 @@ describe("alias-free — the server checker (api/) reuses these rules", () => {
     // …and only relative imports of alias-free files, every one with `.js` — type imports too: Vercel type-checks
     // api/ as nodenext (TS2835 without it; 2026-10-23), and Node ESM needs it at runtime (`smmServerCheckerOct15`).
     for (const m of src.matchAll(/from\s+["'](\.[^"']+)["']/g)) {
-      expect(["../types/smm.js", "../types/smmDelivery.js", "./smmDeliverySettings.js", "./smmCadence.js"]).toContain(m[1]);
+      expect(["../types/smm.js", "../types/smmDelivery.js", "./smmDeliverySettings.js", "./smmCadence.js", "./smmPause.js"]).toContain(m[1]);
     }
   });
 });

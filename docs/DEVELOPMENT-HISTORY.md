@@ -6,6 +6,28 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-11-05: SMM — pause a running month** (`smm.md` §9.9 "Pause a running month", §24, §25; `data-model.md`
+  `smm_campaigns.pause` / `pauses`). The owner: a client sometimes says mid-month "hold the work for some days" — the
+  clock kept running (the client lost paid days), Delivery Control and the 11 AM / 5 PM check chased work nobody could do,
+  the renewal rang on the old date, and nothing recorded who stopped it or why; "make yourself the best decision and solve
+  it". **This reverses the 2026-10-15 decision "no mid-month pause".** Decisions (Claude's, on the owner's instruction):
+  paused days move the renewal day (`cycle.endDate`) forward, the amount stays; a required restart day (so "paused now"
+  is derived and needs no scheduler) and reason (+ optional screenshot); ≤ 15 paused days a month, past it only the main /
+  tech admin; the salesperson and the SMM admins may pause, not members or the view-only lead; refused on a month not
+  running or whose next month exists. The word on screen is **Paused** ("On hold" already means ended, undecided).
+  **Files:** new `utils/smmPause.ts` (pure, alias-free — the server checker reaches it through `smmCadence`),
+  `services/smmPause.ts`, `components/smm/SmmPauseDialog.tsx` (dialog + banner); changed `types/smm.ts`,
+  `utils/smmCadence.ts`, `smmPackage.ts`, `smmDeliveryHealth.ts`, `smmDeliveryView.ts`, `smmDeliveryActions.ts`,
+  `smmGlance.ts`, `smmStatusCheck.ts`, `smmReminders.ts`, `services/smmSetup.ts` (`applyMonthPromise` exported),
+  `components/smm/SmmGlance.tsx`, `smm/dashboard/Headline.tsx`, `pages/shared/SmmCampaignPage.tsx`, `SocialMedia.tsx`.
+  **Tests:** `smmPauseNov05` (14), `smmPauseConsumersNov05` (10), `smmPauseServiceNov05` (4, memory Firestore),
+  `smmPauseUiNov05` (4, the real month page in jsdom); `smmCadenceOct15`'s parity / alias-free list extended;
+  `smmLockedRenewalOct12` pinned its clock (it expected 1 Nov 2026 to be in the future — date rot, not this change).
+  A real-Chrome harness (390 / 1440 px, light + dark; 12 screenshots, no sideways scroll, no console errors; pause then
+  cancel saved and undone) — deleted afterwards. Server checker bundles (`smmServerCheckerOct15` 45/45). Build ✅;
+  typecheck: 4 errors, all in `AIPlatformApp.tsx` (the parallel AI-ads session's uncommitted work), none here.
+  Full suite: 290 of 293 files, 4808 of 4813 — the 5 failures are the known `smmDeliveryControlUiOct15` lead test (§32) and 4 Gemini fallback tests that timed out under load and pass alone (32/32). Not checked against live Firebase.
+
 - **2026-10-30 (afternoon): AdGen — the clip editor answers in word lists** (`ai-ads.md` §17.2 step 3). The live check
   of the morning's fixes (real `generateAdAssets` + real keys via vite-node; the studio needs a login): a 6-clip Telugu ad
   (313 s) and a Male & Female duo (754 s, near the daily limit — 1,594 × 429) both STOPPED on the final gate at 16 words

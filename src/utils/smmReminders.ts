@@ -17,6 +17,13 @@ import {
   itemOwners, approvalWaitDays,
 } from "@/utils/smmPlan";
 import type { SmmCampaign, SmmContentItem } from "@/types/smm";
+import { activePause } from "@/utils/smmPause";
+
+/** The device's own calendar day of an instant (yyyy-MM-dd) — never the UTC day (CLAUDE.md §28). */
+const localDayOf = (ms: number): string => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 /** Three days' notice: long enough to make something, short enough to still be this week's problem. */
 export const SMM_REMINDER_DAYS = 3;
@@ -54,6 +61,8 @@ export function dueItemsFor(
   const out: SmmDueItem[] = [];
   for (const campaign of campaigns) {
     if (campaign.status !== "active") continue;
+    // Paused (2026-11-05): the client asked to hold the work — no due card, no due bell until it restarts.
+    if (activePause(campaign, today)) continue;
     for (const item of campaign.items) {
       if (isPosted(item)) continue;
       if (!itemOwners(item).includes(uid)) continue;
@@ -107,6 +116,8 @@ export function approvalChasesFor(
   for (const campaign of campaigns) {
     if (campaign.status !== "active") continue;
     if (campaign.soldBy !== uid) continue;
+    // Paused (2026-11-05): nobody chases the client for approvals while they asked us to hold.
+    if (activePause(campaign, localDayOf(now))) continue;
     for (const item of campaign.items) {
       if (!isWaitingOnClient(item)) continue;
       const waitingDays = approvalWaitDays(item.approval, now);

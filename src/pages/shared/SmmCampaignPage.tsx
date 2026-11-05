@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft, ArrowRight, BellRing, CalendarRange, Check, Eye, IndianRupee, Loader2, Megaphone,
-  MessageSquare, MoveRight, Pencil, Phone, RefreshCcw, Settings2, Trash2, Users, X, XCircle,
+  MessageSquare, MoveRight, Pause, Pencil, Phone, RefreshCcw, Settings2, Trash2, Users, X, XCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSmmCampaign } from "@/hooks/useSmmCampaigns";
@@ -52,6 +52,8 @@ import SmmMessageComposer from "@/components/smm/SmmMessageComposer";
 import { PlatformChips } from "@/components/smm/SmmChips";
 import { MonthGlance, StatusPill } from "@/components/smm/SmmGlance";
 import { SmmSetupDialog } from "@/components/smm/SmmSetupForm";
+import { SmmPauseBanner, SmmPauseDialog } from "@/components/smm/SmmPauseDialog";
+import { activePause, canPauseMonth, monthPauseBlock, upcomingPause } from "@/utils/smmPause";
 import { useSmmRenewal } from "@/components/smm/useSmmRenewal";
 import { SMM_PLATFORMS, type SmmCampaign, type SmmContentItem, type SmmTemplateKind } from "@/types/smm";
 
@@ -145,6 +147,7 @@ export default function SmmCampaignPage() {
   const [message, setMessage] = useState<{ text: string; kind: SmmTemplateKind } | null>(null);
   const [members, setMembers] = useState<{ uid: string; name: string }[]>([]);
   const [settingUp, setSettingUp] = useState(false);
+  const [pausing, setPausing] = useState(false);
   const [previous, setPrevious] = useState<SmmCampaign | null>(null);
   const [busy, setBusy] = useState<"" | "delete" | "move" | "remind" | "lost" | "rename" | "adminRenew">("");
   /** The name being typed while the month is renamed in place; null when not renaming. */
@@ -160,6 +163,10 @@ export default function SmmCampaignPage() {
   const canAdminRenew = !!campaign && !!user && canAdminRenewSmm(user);
   const locked = campaign ? isMonthLocked(campaign, today) : false;
   const lockedBadge = campaign ? lockedMonthLabel(campaign, today) : null;
+  // Pause month (2026-11-05): the salesperson and the SMM admins, on a running month with no pause in
+  // force or coming (that one is changed from the banner) and nothing that blocks it (no next month yet).
+  const canPause = !!campaign && !!user && canPauseMonth(user, campaign) && !monthPauseBlock(campaign, today)
+    && !activePause(campaign, today) && !upcomingPause(campaign, today);
   const { renew, renewingId } = useSmmRenewal(user);
   const navigate = useNavigate();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -438,6 +445,12 @@ export default function SmmCampaignPage() {
                 <Settings2 size={13} /> {locked ? "Manage historical record" : campaign.history || campaign.setupAt || !setupDue ? "Edit setup" : "Set up & assign"}
               </button>
             )}
+            {canPause && (
+              <button data-test="smm-page-pause" onClick={() => setPausing(true)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent">
+                <Pause size={13} /> Pause month
+              </button>
+            )}
             {canDelete && (
               <button data-test="smm-delete-month" onClick={removeMonth} disabled={busy === "delete"}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-destructive/40 px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50">
@@ -530,6 +543,9 @@ export default function SmmCampaignPage() {
           </p>
         </div>
       )}
+
+      {/* ── Paused (2026-11-05): the pause in force or coming, and the month's earlier pauses ── */}
+      <SmmPauseBanner campaign={campaign} user={user} today={today} />
 
       {/* ── A tech member's own job on this month — opened from here, not from My Work ───────── */}
       <SmmMyJobPanel campaign={campaign} user={user} />
@@ -651,6 +667,10 @@ export default function SmmCampaignPage() {
 
       {settingUp && (
         <SmmSetupDialog campaign={campaign} user={user} onClose={() => setSettingUp(false)} />
+      )}
+
+      {pausing && user && (
+        <SmmPauseDialog campaign={campaign} user={user} today={today} mode="new" onClose={() => setPausing(false)} />
       )}
     </div>
   );

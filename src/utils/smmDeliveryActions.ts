@@ -100,6 +100,7 @@ export const EXCLUSION_WORDS: Record<NonNullable<SmmMonthPlan["exclusion"]>, str
   finished: "This month is finished.",
   on_hold: "This month ended without a renewal decision (On hold) — only the salesperson's renewal runs.",
   ended: "This month has ended.",
+  paused: "This month is paused — the client asked to hold the work; nobody is chased until it restarts.",
 };
 
 /* ── The stamps the classic writes leave (phase 3) ───────────────────────────────────────────── */

@@ -23,6 +23,7 @@ import {
   type SmmTaskProgress, type SmmTaskType, type SmmWeek,
 } from "./smmCadence";
 import { liveSinceAt } from "./smmDeliveryBaseline";
+import { activePause, pauseReasonLine, pauseSentence } from "./smmPause";
 import {
   monitorSmm, SMM_ALERT_TYPES, type SmmAlert, type SmmMonitorPerson, type SmmMonitorResult, type SmmStartingLineEntry,
 } from "./smmMonitor";
@@ -731,6 +732,10 @@ export function delaySummary(board: SmmControlBoard): string {
 export function monthSentence(mv: SmmMonthView, today: string): string {
   const p = mv.plan;
   if (p.exclusion === "on_hold") return "On hold — the month ended without a renewal decision. No production alerts; the salesperson renews.";
+  if (p.exclusion === "paused") {
+    const pz = activePause(mv.month, today);
+    return `${pauseSentence(mv.month, today) || "Paused"} (${pz ? pauseReasonLine(pz) : "client asked"}). Nobody is chased until work restarts.`;
+  }
   if (p.exclusion) return "This month is not chased.";
   if (p.problem === "bad_dates") return "Its dates are missing or wrong — fix them in the classic Edit setup.";
   if (p.problem === "too_short") return "It is shorter than 22 days, so it has no weeks.";

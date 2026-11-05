@@ -310,7 +310,7 @@ export interface MonthSetupResult {
  * became possible (`canExtendPromise` reads `extension`). `keepUsedExtension` carries it, with the later
  * of the two due dates.
  */
-async function applyMonthPromise(campaign: Pick<SmmCampaign, "id" | "orderId" | "cycle">): Promise<void> {
+export async function applyMonthPromise(campaign: Pick<SmmCampaign, "id" | "orderId" | "cycle">): Promise<void> {
   const promise = monthPromise(campaign.cycle);
   if (campaign.orderId) {
     const order = await fetchOrder(campaign.orderId).catch(() => null);

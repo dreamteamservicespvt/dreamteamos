@@ -201,15 +201,23 @@ describe("SMM Monthly Locking Architecture & Renewal", () => {
         items: [],
       };
 
-      await expect(
-        saveMonthSetup(cId, {
-          cycle: { month: "2026-10", startDate: "2026-10-01", endDate: "2026-11-01" },
-          clipsPerVideo: 4,
-          pageLinks: {},
-          setupByName: "Admin",
-          setupByUid: "admin_1",
-        }),
-      ).rejects.toThrow(/locked to preserve its history and cannot be edited/);
+      // Pinned to the day this was written (2026-10-12): the new end, 1 Nov, must be in the FUTURE for the
+      // lock to bite — on a real clock the test went stale on 1 Nov 2026 (date rot, found 2026-11-05).
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-12T06:00:00Z"));
+      try {
+        await expect(
+          saveMonthSetup(cId, {
+            cycle: { month: "2026-10", startDate: "2026-10-01", endDate: "2026-11-01" },
+            clipsPerVideo: 4,
+            pageLinks: {},
+            setupByName: "Admin",
+            setupByUid: "admin_1",
+          }),
+        ).rejects.toThrow(/locked to preserve its history and cannot be edited/);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

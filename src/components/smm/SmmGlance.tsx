@@ -15,7 +15,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle, Archive, CalendarClock, CalendarDays, CheckCircle2, CircleCheckBig, Hourglass, MinusCircle,
-  PauseCircle, TrendingDown, UserPlus,
+  Pause, PauseCircle, TrendingDown, UserPlus,
 } from "lucide-react";
 import { shortDayLabel } from "@/utils/smmPackage";
 import {
@@ -53,6 +53,8 @@ const STATUS_ICON: Record<SmmGlanceStatus, LucideIcon> = {
   history: Archive,
   nothing: MinusCircle,
   on_hold: PauseCircle,
+  // Paused (2026-11-05): the client asked to hold the work — a plain pause sign, On hold keeps the circled one.
+  paused: Pause,
 };
 
 export function StatusPill({ glance, size = "md" }: { glance: SmmGlance; size?: "md" | "lg" }) {

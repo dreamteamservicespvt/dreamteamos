@@ -354,6 +354,49 @@ export interface SmmCycle {
 }
 
 /**
+ * Why a running month was paused (2026-11-05) — the reason chips of the Pause month dialog.
+ * `utils/smmPause.SMM_PAUSE_REASONS` holds the words; `other` needs a note.
+ */
+export type SmmPauseReason = "client_asked" | "festival" | "payment_pending" | "shop_closed" | "other";
+
+/**
+ * A pause of a running month (2026-11-05): the client said "hold the work for some days".
+ *
+ * ── Why the renewal day moves and nothing else is stored ────────────────────────────────────────
+ * Paused days are not the client's paid days, so `cycle.endDate` (the renewal day) moves forward by
+ * exactly the paused days and the amount stays. "Paused now" is DERIVED (`from` ≤ today < `until`),
+ * so the restart needs no write and no scheduler — which is why `until` (the "back on" day) is
+ * required: an open-ended pause would need somebody to remember to end it. `endBefore` is the
+ * renewal day before this pause, so resume early / change the restart day recompute from it.
+ * Rules: `utils/smmPause`; writes: `services/smmPause.pauseMonth` / `changePauseRestart` / `cancelUpcomingPause`.
+ */
+export interface SmmPause {
+  /** yyyy-MM-dd, the first paused day. */
+  from: string;
+  /** yyyy-MM-dd, the restart ("back on") day — NOT paused. Paused days = from … until − 1. */
+  until: string;
+  reasonKind: SmmPauseReason;
+  note?: string | null;
+  /** The client's message screenshot (Cloudinary), optional. */
+  proofUrl?: string | null;
+  /** `cycle.endDate` before this pause was applied. */
+  endBefore: string;
+  /** When it was set (ms). */
+  at: number;
+  byUid: string;
+  byName: string;
+}
+
+/** A pause that is over or was ended early — kept on the month for the record (at most 10). */
+export interface SmmPauseRecord extends SmmPause {
+  /** Paused days it really took (from … until − 1 after any resume early / extension). */
+  days: number;
+  /** The day work restarted. */
+  endedOn: string;
+  endedByName?: string | null;
+}
+
+/**
  * Who is on the month.
  *
  * The three named seats mirror the order's own tracks (`OrderTrack`), so assignment stays a single
@@ -424,6 +467,10 @@ export interface SmmCampaign {
    */
   amount: number;
   cycle: SmmCycle;
+  /** The current or upcoming pause (2026-11-05, `SmmPause`). Absent / null = not paused. */
+  pause?: SmmPause | null;
+  /** Earlier pauses of this month, oldest first. Absent = never paused. */
+  pauses?: SmmPauseRecord[] | null;
   /** The accounts committed on the call. */
   platforms: SmmPlatform[];
   /** What was promised, per kind. The denominator of every "x of y" on every screen. */

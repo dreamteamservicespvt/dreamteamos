@@ -21,7 +21,8 @@
  * and, when it has them, the people on the months (to spot a seat held by somebody deactivated).
  */
 import { addDays, daysBetween, isPosted, lastOwnDay, postLinks } from "@/utils/smmPlan";
-import { addMonthsIso, cyclePhase, dayLabel, hasTeam, isOnHold, shortDayLabel, SMM_SEATS, type SmmSeat } from "@/utils/smmPackage";
+import { addMonthsIso, cyclePhase, dayLabel, hasTeam, isOnHold, isPaused, shortDayLabel, SMM_SEATS, type SmmSeat } from "@/utils/smmPackage";
+import { activePause, pauseReasonLine, pauseSentence } from "@/utils/smmPause";
 // Every year the app has dates for (2026, and 2027 since 2026-10-15 — FESTIVALS itself stays 2026-only for the sales dropdowns).
 import { FESTIVAL_CALENDAR } from "@/utils/festivals";
 import { SMM_CONTENT_KINDS, type SmmCampaign, type SmmContentItem, type SmmContentKind } from "@/types/smm";
@@ -107,6 +108,10 @@ export function excludedReason(c: SmmCampaign, today: string): string | null {
     return `On hold — it ended on ${dayLabel(c.cycle.endDate)} and the renewal is not done. No production alerts, only the salesperson's renewal.`;
   }
   if (c.cycle && isIso(c.cycle.endDate) && cyclePhase(c.cycle, today) === "ended") return "Ended — not planned or alerted.";
+  if (isPaused(c, today)) {
+    const p = activePause(c, today);
+    return `${pauseSentence(c, today) || "Paused"} (${p ? pauseReasonLine(p) : "client asked"}) — nobody is chased until work restarts.`;
+  }
   return null;
 }
 

@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertTriangle, Archive, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, IndianRupee, LayoutGrid, Loader2, Megaphone, PauseCircle, Plus, RefreshCcw,
+  AlertTriangle, Archive, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, IndianRupee, LayoutGrid, Loader2, Megaphone, Pause, PauseCircle, Plus, RefreshCcw,
   Search, TrendingDown, UserPlus, Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -62,6 +62,8 @@ const FILTERS: { key: SmmBoardFilter; label: string; Icon: LucideIcon; icon: str
   { key: "ok", label: "On track", Icon: CheckCircle2, icon: "text-viz-done" },
   // Ended without a renewal (owner, 2026-10-05) — kept on the board until the salesperson decides.
   { key: "hold", label: "On hold", Icon: PauseCircle, icon: "text-muted-foreground" },
+  // Paused mid-month on the client's word (2026-11-05) — shown only while some month is paused.
+  { key: "paused", label: "Paused", Icon: Pause, icon: "text-info" },
   { key: "setup", label: "Needs setup", Icon: UserPlus, icon: "text-viz-wait" },
   { key: "renewals", label: "Renewals due", Icon: RefreshCcw, icon: "text-viz-ready" },
   { key: "done", label: "Finished", Icon: Archive, icon: "text-muted-foreground" },
@@ -244,6 +246,7 @@ export default function SocialMedia() {
       case "risk": return x.glance.status === "at_risk";
       case "ok": return x.glance.status === "on_track" || x.glance.status === "done";
       case "hold": return x.glance.status === "on_hold";
+      case "paused": return x.glance.status === "paused";
       case "setup": return needsSetup(x.c, today);
       case "renewals": return renewalDue(x.c, today);
       default: return true;
@@ -295,6 +298,7 @@ export default function SocialMedia() {
     risk: "No client is behind schedule.",
     ok: "No client is on track right now — see Off track and At risk.",
     hold: "No month is on hold — every month that ended was renewed or closed.",
+    paused: "No month is paused right now.",
     setup: "Every month has a team on it.",
     renewals: "No renewals due in the next five days.",
     done: "No finished months yet.",
@@ -347,7 +351,7 @@ export default function SocialMedia() {
            never run out of it beside the sidebar. */
         <div data-test="smm-status-filters" role="tablist" aria-label="Show clients"
           className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:[grid-template-columns:repeat(auto-fit,minmax(7.5rem,1fr))]">
-          {FILTERS.filter((f) => f.key !== "setup" || (counts.setup ?? 0) > 0 || filter === "setup").map(({ key, label, Icon, icon }) => {
+          {FILTERS.filter((f) => (f.key !== "setup" && f.key !== "paused") || (counts[f.key] ?? 0) > 0 || filter === f.key).map(({ key, label, Icon, icon }) => {
             const on = filter === key;
             const n = counts[key];
             return (

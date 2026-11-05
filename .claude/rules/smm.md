@@ -533,7 +533,7 @@ target (3), `overTarget`, by type / reason. The item fields it reads (`plan`, `m
 (`SmmDeliveryItemFields`, `SmmMonthDelivery`) — all optional; written since phase 3 (below). The owner's decisions behind phases
 0–7 (2026-10-15, final): split ÷ 4 with leftovers to W1, W4, W2 per kind; a first month keeps W1 but posts from day 4; post Mon–Sat
 skipping holidays, a festival post on the festival day; footage the client never sends stays that month's pending work, never the
-team's; no mid-month pause (On hold = ended, undecided); the 11 AM / 5 PM check retires for covered people; check-out asks "why not
+team's; no mid-month pause (On hold = ended, undecided) — **reversed 2026-11-05: a running month can be Paused, see below**; the 11 AM / 5 PM check retires for covered people; check-out asks "why not
 done"; Posted needs a link per account or a reason; the server checker runs from cron-job.org (free) every 30 min 09–20 IST with the
 Vercel daily cron as backup; the posting seat always posts; the approval rule stays; on-time % only for the tech / main admin; only
 they turn it off (with a reason, the owner told); the button shows in Preview to the admins, team leaders and the Social Media Team
@@ -637,8 +637,49 @@ accounts the maker holds — ok / tight / short / no accounts — on a member's 
 waiting for your approval" (`components/order-chat/ClientSmmApprovals`) with ✔ Approve / ✎ Changes (what to change); `api/order-chat`
 `smm-approvals` / `smm-answer` (guest token only, `isGuestOf`) record it in a transaction exactly like `recordApproval` + `approvalProof`
 via the client chat (`utils/smmClientApproval`, alias-free) and tell the publisher (approved) / maker (changes) and the salesperson.
+**Pause a running month (owner, 2026-11-05 — "make yourself the best decision and solve it"; REVERSES the 2026-10-15
+decision "no mid-month pause").** A client sometimes says mid-month "hold the work for some days": the clock kept running
+(the client lost paid days), Delivery Control and the 11 AM / 5 PM check chased work nobody could do, the renewal rang on
+the old date and nothing recorded who stopped it or why. Word on screen: **Paused** (never "On hold", which means ended and
+undecided). **Rules** (`utils/smmPause`, pure and ALIAS-FREE — `smmCadence` and so the server checker import it; type
+imports only, `.js`): a pause has a first day (today or later, inside the month's own days) and a REQUIRED restart day
+("back on", not paused — paused days = from … until − 1; no open-ended pause, so no scheduler: "paused now" is derived,
+`from ≤ today < until`); **paused days are not the client's paid days — `cycle.endDate` (the renewal day) moves forward
+by them**, the amount stays; a reason is required (`SMM_PAUSE_REASONS`: Client asked · Festival / function · Payment
+pending · Shop closed / renovation · Other + a note), the client's message screenshot optional; at most
+`SMM_PAUSE_MAX_DAYS` = 15 paused days per month in all, past it only the main / tech admin (`canExceedPauseCap`); who:
+the month's salesperson and the SMM admins by role (`canPauseMonth` — not members, not the view-only Team Lead); refused
+(`monthPauseBlock` / `pauseProblem`): a month not running (history, locked, ended), a start on/after the renewal day or
+before the month, a month whose next month already exists ("move that month's dates first"), a second pause while one is in
+force or coming. Restart early / later (`restartProblem`) and cancel a pause not yet started or starting today
+(`cancelPauseProblem`) recompute from `pause.endBefore`. **Writes** (`services/smmPause`: `pauseMonth`,
+`changePauseRestart` — today = restart now —, `cancelUpcomingPause`): ONE `mutateCampaign` transaction each (the
+pure `pausePatch` / `restartPatch` / `cancelPausePatch`: `pause`, `pauses[]` (finished pauses, ≤ 10), the new
+`cycle.endDate`, and every NOT-posted piece dated on/after the first paused day shifted by the same days —
+`shiftItemsForPause`), then the month's deadline on its order and open jobs (`smmSetup.applyMonthPromise`, now exported;
+a used extension kept) and `smm_paused` / `smm_resumed` notices to the people on the month and its salesperson (not the
+person who did it). **While paused** the month is quiet everywhere: `smmCadence.monthExclusion` → "paused" (Delivery
+Control, its alerts, the server checker), `smmDeliveryHealth.excludedReason` + `smmPackage.isPaused` (parity-tested),
+the 11 AM / 5 PM check, the due card and the approval chases (`smmStatusCheck`, `smmReminders`); paused days are days off
+in `monthWeeks` / `planMonth` so the weeks re-spread over the days left. **Screens:** the card and the month header say
+**Paused** (`smmGlance` status `paused`, grey-blue ⏸, never Off track: "Paused till 9 Nov — Festival / function — … · back on
+10 Nov, renewal 5 Dec"); the board has a **Paused** count / filter, shown only while a month is paused (`SocialMedia`
+FILTERS `paused`); the month page has **Pause month** (`smm-page-pause`) → `components/smm/SmmPauseDialog` (first
+paused day, restart day with 3 / 7 / 15 days chips, reason chips, note, screenshot, and the line read back to the client:
+"Renewal moves 30 Nov → 7 Dec · 7 paused days (8 of 15 left)"; the save is off with the rule's own sentence while refused),
+and the **Paused banner** (`SmmPauseBanner`: "Paused 3–9 Nov · back on 10 Nov · renewal moved to 5 Dec", why, by whom, the
+client's message; **Restart today**, **Change restart day**, **Cancel pause** for those who may pause; "Earlier pauses (n) ·
+d days in all").
 
 ## 24. BUSINESS RULES (IMPLEMENTED; verified in code)
+
+- **SMM pause (owner, 2026-11-05):** the month's salesperson or an SMM admin (main, tech, sales admin, tech team leader)
+  may pause a RUNNING month from today or a later day, with a restart day and a reason. Paused days are not the client's
+  paid days: the renewal day moves forward by them, the price stays, unposted pieces' dates move with it. At most 15
+  paused days a month in all — only the main admin or the tech admin may go past it. Not on a month whose next month
+  already exists. While paused nobody is chased: no alerts, no due card, no 11 AM / 5 PM check, never "Off track". It
+  restarts by itself on the restart day; it can restart early, later, or be cancelled before it starts. Enforced in the
+  screens and in the service's transaction.
 
 - **SMM Delivery Control's switch (owner, 2026-10-15, decision 14):** only the tech admin and the main admin may turn it
   Off, Preview or Live or change its numbers; turning it off needs a reason, and the owner (every other main admin) is told
@@ -768,6 +809,13 @@ via the client chat (`utils/smmClientApproval`, alias-free) and tell the publish
 ## 25. CURRENT IMPLEMENTATION STATUS
 
 **PARTIALLY IMPLEMENTED 🟡:**
+- SMM pause (2026-11-05): checked by unit, service (in-memory Firestore) and jsdom tests (`smmPauseNov05`,
+  `smmPauseConsumersNov05`, `smmPauseServiceNov05`, `smmPauseUiNov05`) and a real-Chrome harness (390 / 1440 px,
+  light + dark) — not against live Firebase. Limits: a finished pause stays in `pause` until the next pause write moves it
+  into `pauses[]` (it reads as over; nothing needs it moved). No client WhatsApp text for a pause yet. The board card does
+  not mention a pause that has not started (the month page's banner does: "Pauses …"). A month already Live in Delivery
+  Control keeps its saved weekly plan; the re-spread over the days left applies where the weeks are computed. The
+  Firestore rule does not limit who writes `pause` (the screens and service do — the catch-all, as for every SMM field).
 - SMM Delivery Control (2026-10-15): **all phases built; it starts in Preview** (no settings document = Preview: nothing saved,
   nobody alerted — an admin goes Live in Settings). Not done / limits: **nothing was checked against live Firebase, real FCM, a
   Vercel deploy, cron-job.org or an Android phone** — the owner must set `CRON_SECRET` in Vercel and the cron-job.org job (until
