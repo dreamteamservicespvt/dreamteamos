@@ -5,34 +5,29 @@
  * The editor drops these PNGs straight over the video, so three things are not negotiable and are
  * exactly what an image model drops when it writes the whole prompt: the text spelled EXACTLY as
  * given, a REAL transparent background (not a white box, not a checkerboard drawn into the pixels),
- * and the canvas. The model's only job is the LOOK — material, colours, finish,
+ * and a tight crop around the lettering. The model's only job is the LOOK — material, colours, finish,
  * one accent — themed to the business or to the festival. Everything else is fixed text here, so every
  * prompt is short, clean and has the same guarantees. Pure, so it is unit-tested.
  *
- * ── The ad's ratio (owner, 2026-11-05: "in every frames, posters and the overlays images prompts must and should
- * mention the ratio of the image based on the ad configuration") ──
- * The prompt starts with the same `ASPECT RATIO:` line as the frames and the B-roll (utils/frameFormat), and the
- * image is a transparent canvas of the VIDEO's own shape — 9:16 or 16:9 — with the lettering centred on it. Until then
- * the PNG was "tightly cropped to the lettering", so its shape was whatever the words made and the prompt named no
- * ratio; a full-frame canvas also drops onto the timeline at the video's size, with no scaling.
+ * ── No ratio on the overlay TEXT (owner, 2026-11-05, later: "overlay images ratio based on the ad configuration, but
+ * not the overlay texts; we need the overlay texts with the transparent background, where we can download and directly
+ * add the overlay") ──
+ * Earlier that day every overlay prompt started with the ad's ASPECT RATIO line and asked for a canvas of the video's
+ * shape. ChatGPT then drew a full 9:16 picture — the lettering small in the middle of a WHITE frame — which cannot be
+ * dropped over a clip. The ratio belongs to the pictures (frames, B-roll, posters: utils/frameFormat); an overlay text
+ * is a transparent PNG the shape of its words. The prompt now says TRANSPARENT first, on its own line, and never names
+ * a ratio; a kit saved with the ratio canvas is rebuilt without it (currentOverlayPrompt).
  */
 
-import { adRatioOf, withAspectRatio, type AdRatio } from "@/utils/frameFormat";
+/** The first line of every overlay prompt: the one thing an image tool must not miss. */
+export const OVERLAY_TRANSPARENT_LINE =
+  "TRANSPARENT PNG: only the lettering, on a fully transparent background (a real alpha channel) — no white, no colour, no canvas or frame around it.";
 
-/** The fixed tail every overlay image prompt carries (the canvas sentence, `overlayCanvasRule`, goes before it). */
+/** The fixed tail every overlay image prompt carries. */
 export const OVERLAY_IMAGE_RULES =
-  "Transparent background — a real alpha-channel PNG with no background, no scene, no backdrop panel, no checkerboard pattern and no drop-shadow box. "
+  "Transparent background — a real alpha-channel PNG with no background, no scene, no backdrop panel, no white or coloured canvas, no checkerboard pattern and no drop-shadow box. "
+  + "Tightly cropped to the lettering with only a small even margin — the image is the shape of the words, never a full video frame. "
   + "Spell the text exactly as written, letter for letter, and add no other text, logo or watermark.";
-
-/**
- * The canvas: the video's own frame, transparent around the lettering. A 16:9 frame is wide, so its lettering takes a
- * smaller share of the width than in a 9:16 one (the same text reads at about the same size on screen).
- */
-export function overlayCanvasRule(ratio: AdRatio): string {
-  const shape = ratio === "16:9" ? "16:9 horizontal (landscape)" : "9:16 vertical (portrait)";
-  const width = ratio === "16:9" ? "about 60%" : "about 80%";
-  return `The canvas is the whole ${shape} video frame, transparent everywhere except the lettering, which sits centred on it at ${width} of the canvas width — never cropped to the text and never another shape.`;
-}
 
 /**
  * Reads over ANY picture (2026-11-05 — the owner: the text images "are coming in the same colour" as the B-roll and
@@ -64,13 +59,13 @@ export function cleanOverlayDesign(design: string): string {
     .trim();
 }
 
-/** The complete image prompt for one overlay, for an ad of `ratio` (absent or unreadable = the 9:16 default). */
-export function overlayImagePrompt(text: string, design: string, fallbackDesign = DEFAULT_OVERLAY_DESIGN, ratio?: string | null): string {
+/** The complete image prompt for one overlay — never a ratio: the PNG is the shape of its words. */
+export function overlayImagePrompt(text: string, design: string, fallbackDesign = DEFAULT_OVERLAY_DESIGN): string {
   const words = (text || "").replace(/\s+/g, " ").trim();
   const look = cleanOverlayDesign(design) || fallbackDesign;
-  const canvas = adRatioOf(ratio);
-  const body = `Premium 3D text "${words}" — ${look}. Bold embossed 3D typography with real depth, a crisp bevel and soft studio lighting, sharp clean edges, readable at a glance on a phone. ${OVERLAY_LEGIBILITY} ${overlayCanvasRule(canvas)} ${OVERLAY_IMAGE_RULES}`;
-  return withAspectRatio(body, canvas, "overlay image");
+  return `${OVERLAY_TRANSPARENT_LINE}
+
+Premium 3D text "${words}" — ${look}. Bold embossed 3D typography with real depth, a crisp bevel and soft studio lighting, sharp clean edges, readable at a glance on a phone. ${OVERLAY_LEGIBILITY} ${OVERLAY_IMAGE_RULES}`;
 }
 
 /** The design half of a prompt this module built — for refining the look without touching the rules. */
@@ -82,16 +77,19 @@ export function overlayDesignOf(prompt: string): string {
 /** The text a prompt this module built prints ("" when the prompt is not one of them). */
 const overlayTextOf = (prompt: string): string => (prompt || "").match(/(?:^|\n)Premium 3D text "(.*?)" — /)?.[1] ?? "";
 
+/** A leading "ASPECT RATIO: …" line (an overlay saved on 2026-11-05 carried one) and the blank lines after it. */
+const RATIO_LINE = /^\s*ASPECT RATIO:[^\n]*\n+/;
+
 /**
- * A saved overlay's prompt for an ad of `ratio`: one this module built (any date) is assembled again with its own text
- * and design — an older one loses "tightly cropped" and gains the canvas — and anything else gets the ratio line.
- * Idempotent.
+ * A saved overlay's prompt as today's rules write it: one this module built (any date) is assembled again with its own
+ * text and design — the 2026-11-05 ratio line and video-frame canvas go, the transparent line and the tight crop come
+ * back — and anything else only loses a leading ratio line. Idempotent.
  */
-export function overlayPromptForRatio(item: { text?: string; imagePrompt?: string; imageDesign?: string }, ratio?: string | null): string {
+export function currentOverlayPrompt(item: { text?: string; imagePrompt?: string; imageDesign?: string }): string {
   const prompt = item.imagePrompt || "";
   if (!prompt.trim()) return prompt;
   const design = item.imageDesign || overlayDesignOf(prompt);
   const text = overlayTextOf(prompt) || item.text || "";
-  if (design && text) return overlayImagePrompt(text, design, DEFAULT_OVERLAY_DESIGN, ratio);
-  return withAspectRatio(prompt, ratio, "overlay image");
+  if (design && text) return overlayImagePrompt(text, design, DEFAULT_OVERLAY_DESIGN);
+  return prompt.replace(RATIO_LINE, "");
 }

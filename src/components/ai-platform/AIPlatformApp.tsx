@@ -658,7 +658,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     // A different kit: nothing on it was updated from a final script, and no section is being rewritten.
     setFinalScriptProgress(null);
     setSectionRegen({});
-    // A kit saved before 2026-11-05 gets the ratio line on its frames, B-roll and overlays — the kit's own ratio.
+    // A kit saved before 2026-11-05 gets the ratio line on its frames and B-roll — the kit's own ratio; its overlay
+    // texts are rebuilt as transparent PNGs cropped to the words, with no ratio (utils/kitImageRatio).
     const savedKitSpec = item.creationMode === 'poster' ? null : adSpecFromSaved(item);
     const ratioStamped = item.creationMode === 'poster'
       ? { mainFramePrompts: item.mainFramePrompts || [], stockImagePrompts: item.stockImagePrompts || null, overlayTexts: item.overlayTexts || null }
@@ -1397,7 +1398,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     festivalName: kitForm(source).festivalName,
     sceneContext: (source ?? outputs)?.sceneContext,
     coreMessage: (source ?? outputs)?.coreMessage,
-    aspectRatio: kitForm(source).aspectRatio,
   });
 
   /** Refine Prompt — changes only the look of one overlay's image; its text and transparency are fixed. */

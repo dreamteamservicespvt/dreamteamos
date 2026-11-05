@@ -8,7 +8,7 @@ import { parseVoiceBrief, voiceBriefAsText, voiceBriefForProfile } from "@/utils
 import { elsewhereIssue, elsewherePhrase } from "@/utils/speakingPosition";
 import { nameBoardInPlaceOfLogo, withOwnerImageDirective, OWNER_IMAGE_ATTACHMENT } from "@/utils/frameBrand";
 import { splitAttachmentDirective } from "@/utils/locationAssignment";
-import { cleanOverlayDesign, overlayCanvasRule, overlayDesignOf, overlayImagePrompt, OVERLAY_IMAGE_RULES, OVERLAY_LEGIBILITY } from "@/utils/overlayImage";
+import { cleanOverlayDesign, overlayDesignOf, overlayImagePrompt, OVERLAY_IMAGE_RULES, OVERLAY_LEGIBILITY, OVERLAY_TRANSPARENT_LINE } from "@/utils/overlayImage";
 import { parseClipPromptEdits, promptHeadings, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
 import { VEO_REFINE_PLAN_SYSTEM_PROMPT, VEO_REFINE_SYSTEM_PROMPT } from "@/services/prompts/refine";
 import { assembleVeoPrompt, planClipMotion } from "@/services/prompts/motion";
@@ -144,12 +144,13 @@ describe("the owner's photo on a Real Owner Face frame", () => {
 });
 
 describe("the Overlay Text Image Generator", () => {
-  // 2026-11-05: the tight crop became a canvas in the ad's ratio, named on the first line (overlayImageRatioNov05).
-  it("assembles a short prompt with the ratio, the exact text, a real transparent background and the video's canvas", () => {
+  // 2026-11-05: no ratio — the transparent line first, cropped to the words (overlayImageRatioNov05).
+  it("assembles a short prompt with the transparent line, the exact text, a real transparent background and a tight crop", () => {
     const p = overlayImagePrompt("FREE DELIVERY", "polished gold letters with a fine sparkle");
-    expect(p).toBe(`ASPECT RATIO: 9:16 vertical (portrait) — compose the whole overlay image for this canvas.\n\nPremium 3D text "FREE DELIVERY" — polished gold letters with a fine sparkle. Bold embossed 3D typography with real depth, a crisp bevel and soft studio lighting, sharp clean edges, readable at a glance on a phone. ${OVERLAY_LEGIBILITY} ${overlayCanvasRule("9:16")} ${OVERLAY_IMAGE_RULES}`);
+    expect(p).toBe(`${OVERLAY_TRANSPARENT_LINE}\n\nPremium 3D text "FREE DELIVERY" — polished gold letters with a fine sparkle. Bold embossed 3D typography with real depth, a crisp bevel and soft studio lighting, sharp clean edges, readable at a glance on a phone. ${OVERLAY_LEGIBILITY} ${OVERLAY_IMAGE_RULES}`);
     expect(OVERLAY_IMAGE_RULES).toContain("real alpha-channel PNG");
-    expect(p).not.toContain("Tightly cropped");
+    expect(OVERLAY_IMAGE_RULES).toContain("Tightly cropped");
+    expect(p).not.toMatch(/ASPECT RATIO|9\s*:\s*16|16\s*:\s*9/);
     expect(overlayDesignOf(p)).toBe("polished gold letters with a fine sparkle");
   });
 

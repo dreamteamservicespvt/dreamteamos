@@ -6,6 +6,17 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-11-05 (evening): AdGen — overlay TEXTS take no ratio; a transparent PNG cropped to the words** (`ai-ads.md`).
+  The owner (with a ChatGPT image: "SRI BALAJI BANGLES" small on a white 9:16 frame): "overlay images ratio based on the
+  ad configuration, but not the overlay texts; we need the overlay texts with the transparent background, where we can
+  download and directly add the overlay". The afternoon's ratio canvas (below) is removed from the overlay text prompt:
+  it starts `OVERLAY_TRANSPARENT_LINE` ("TRANSPARENT PNG: only the lettering … no white, no colour, no canvas or frame"),
+  `OVERLAY_IMAGE_RULES` asks the tight crop again ("never a full video frame", "no white or coloured canvas"), and no
+  ratio is passed (`OverlayDesignContext.aspectRatio` removed). A reopened kit's overlays are rebuilt without the ratio
+  (`currentOverlayPrompt`, replaces `overlayPromptForRatio`); frames and B-roll keep theirs. Files: `utils/overlayImage.ts`,
+  `utils/kitImageRatio.ts`, `services/geminiService.ts`, `components/ai-platform/AIPlatformApp.tsx`, tests
+  `overlayImageRatioNov05`, `adGenSept22`. Tested: vitest 294 files / 4819 tests, tsc 0, build ✅. Not seen on a ChatGPT image yet.
+
 - **2026-11-05 (later): AdGen — the ratio on every image prompt, overlays included** (`ai-ads.md` §17.2 "Ratio …").
   The owner: "in every frames, posters and the overlays images prompts must and should mention the ratio of the image
   based on the ad configuration". Frames and B-roll already did (morning); posters name it in their Format line. Gap:

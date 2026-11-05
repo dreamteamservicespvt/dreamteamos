@@ -7,10 +7,13 @@
  * reopened from Saved or from its job with prompts that name no ratio — or the 9:16 their old templates said in a 16:9
  * ad. Reopening stamps them with the KIT's ratio (its `spec`, never the live form). Every stamp is idempotent, so a kit
  * that already carries them comes back unchanged. The poster's ratio is its Format line (utils/posterAdType).
+ *
+ * The overlay TEXTS take no ratio (owner, later that day): they are transparent PNGs cropped to the words, so an
+ * overlay saved with the ratio canvas is rebuilt without it (utils/overlayImage.currentOverlayPrompt).
  */
 
 import { withAspectRatio } from "@/utils/frameFormat";
-import { overlayPromptForRatio } from "@/utils/overlayImage";
+import { currentOverlayPrompt } from "@/utils/overlayImage";
 
 export interface KitImagePrompts {
   mainFramePrompts?: string[] | null;
@@ -27,7 +30,7 @@ export function withKitImageRatio<T extends KitImagePrompts>(kit: T, ratio?: str
       : kit.stockImagePrompts,
     overlayTexts: Array.isArray(kit.overlayTexts)
       ? kit.overlayTexts.map((item) => (typeof item?.imagePrompt === "string" && item.imagePrompt.trim()
-        ? { ...item, imagePrompt: overlayPromptForRatio(item, ratio) }
+        ? { ...item, imagePrompt: currentOverlayPrompt(item) }
         : item))
       : kit.overlayTexts,
   };

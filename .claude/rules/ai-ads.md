@@ -740,7 +740,7 @@ run** (`handleGenerate` → `handleGenerateStockImages`/`handleGenerateOverlayTe
 result; their buttons remain for a regenerate, 2026-09-25). The two extras: the **Overlay Text Image Generator**
 (`generateOverlayTexts` + `utils/overlayImage.ts`: each overlay gets a model-written `design` and a
 code-assembled `imagePrompt` for a premium 3D transparent PNG — exact text, real alpha channel,
-since 2026-11-05 (later) a canvas of the ad's ratio with the lettering centred (`overlayCanvasRule`, was tightly cropped); festival palette for festival ads; `refineOverlayImagePrompt` changes only the
+tightly cropped to the words and NEVER a ratio (2026-11-05, evening — first line `OVERLAY_TRANSPARENT_LINE`, "TRANSPARENT PNG: only the lettering …"); festival palette for festival ads; `refineOverlayImagePrompt` changes only the
 look; since 2026-11-05 every overlay carries `OVERLAY_LEGIBILITY` (a bright face with a contrasting outline, readable
 on any footage) and a festival's colours are accents only; UI shows text, CapCut SFX and From → To words, no timecodes), B-roll stock prompts
 (`generateStockImagePrompts`: the subject of each line, never a presenter or text; festival
@@ -753,9 +753,12 @@ B-roll prompt (and its refine) starts `ASPECT RATIO: 16:9 horizontal (landscape)
 `withAspectRatio`), and a wrong ratio mentioned inside is corrected (`withRatioMentionsFixed`); the video kit's poster
 follows the ad's ratio (its Format line names it; Poster Creation's names the chosen size). **Later that day (owner:
 "in every frames, posters and the overlays images prompts must and should mention the ratio"):** every overlay image
-prompt starts with the same line and is a transparent canvas of the ad's ratio (`overlayImagePrompt(…, ratio)`,
-`OverlayDesignContext.aspectRatio`; the refine too), and a kit saved before reopens with the ratio stamped on its frames,
-B-roll and overlays from the KIT's spec (`utils/kitImageRatio.withKitImageRatio`, `overlayPromptForRatio`; idempotent).
+prompt started with the same line and asked a canvas of the ad's ratio — **reversed that evening** (owner: "overlay images
+ratio based on the ad configuration, but not the overlay texts … transparent background, where we can download and
+directly add"; ChatGPT had drawn the text small on a WHITE 9:16 frame): an overlay TEXT prompt names no ratio, starts
+`OVERLAY_TRANSPARENT_LINE` and is cropped to the words. A kit saved before reopens with the ratio stamped on its frames
+and B-roll from the KIT's spec, and its overlays rebuilt without one (`utils/kitImageRatio.withKitImageRatio`,
+`overlayImage.currentOverlayPrompt`; idempotent).
 The VIDEO BOTTOM LABEL keeps its own fixed strip canvas. (2) **Subject size:** frames ask a close medium shot (head to mid-thigh, ~85–90% of the frame
 height) in `prompts.ts`, `geminiService`, `prompts/motion` (`CLOSE_MEDIUM_START` / `FULL_FIGURE_START`;
 `compositionFor` keeps "feet visible" only for a cartoon, a deity or a clip that walks; the push-in ends "a closer medium
@@ -1083,6 +1086,8 @@ attribution (`Clip.voScript` is one string).
   language); its business information keeps the business's real facts and only its verified contact numbers and
   address. A poster run writes one prompt. Posters are 9:16 unless a size is chosen; the video kit's poster has the ad's
   own ratio (owner, 2026-11-05 — it was always 9:16).
+- **AI ads — overlay texts (owner, 2026-11-05, evening):** an overlay text image is a transparent PNG cropped to its words,
+  ready to download and drop on the video — never a frame of the ad's ratio, never a white or coloured background.
 - **AI ads — ratio, size, colour, text vs B-roll (owner, 2026-11-05):** every frame and B-roll prompt says the ad's
   ratio first; people fill the frame (close medium shot, head to mid-thigh, ~85–90%; full figure only for a cartoon, a
   deity or a walking clip); colours stay true to life and overlays stay readable on any footage; a B-roll image never

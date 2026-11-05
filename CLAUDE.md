@@ -228,9 +228,9 @@ errors:** done means every listed item is fully resolved with no build, console 
 - 2026-11-05, **committed locally, not pushed** — **AdGen**: the ad's ratio on every frame, B-roll and the kit's poster
   (no longer always 9:16), people close (head to mid-thigh), readable overlays and true colours, B-roll never on or
   repeating the text, and the **frame / label refine rebuilt** (a JSON plan applied in code, the member's change wins)
-  (`ai-ads.md`; history 2026-11-05). Later: the **overlay images too** — every overlay prompt names the ad's ratio and is
-  a canvas of that shape, and an older kit reopens with the ratio on its frames / B-roll / overlays. Owner to try: one
-  16:9 ad (check the overlay prompts' first line), then refine a frame ("make her saree red").
+  (`ai-ads.md`; history 2026-11-05). An older kit reopens with the ratio on its frames / B-roll. Evening: **overlay
+  texts take no ratio** — a transparent PNG cropped to the words (the ratio canvas gave a white 9:16 frame). Owner to
+  try: one 16:9 ad, make one overlay image in ChatGPT (transparent, cropped?), then refine a frame ("make her saree red").
 
 - 2026-11-05, **committed locally, not pushed** — **SMM: pause a running month** (the owner: "make yourself the best
   decision"; reverses 2026-10-15's "no mid-month pause"): Pause month on the month page (salesperson + SMM admins), a
