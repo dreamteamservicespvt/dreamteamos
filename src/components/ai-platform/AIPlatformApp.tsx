@@ -741,18 +741,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     if (!outputs) return;
     setRefiningSection(section);
     /*
-      The frames and the label (2026-11-05): a plan applied by code, so the member is told what was understood, which
-      clips changed and what could not be done — the same way the video-prompt refine reports (refineImagePrompts).
+      The frames (2026-11-05): a plan applied by code, so the member is told what was understood, which clips changed
+      and what could not be done — the same way the video-prompt refine reports (refineImagePrompts). The label (footer)
+      keeps its own refine below (owner, 2026-11-05: "don't touch the footer code").
     */
-    if (section === 'mainFrame' || section === 'header') {
+    if (section === 'mainFrame') {
       try {
-        const prompts = section === 'mainFrame' ? outputs.mainFramePrompts : [outputs.headerPrompt];
+        const prompts = outputs.mainFramePrompts;
         const result = await refineImagePrompts({ section, prompts, instruction: additionalInstructions, formData: kitForm(), businessInfo: outputs.businessInfo });
         setRefiningSection(null);
         if (result.changed.length > 0) {
-          setOutputs(prev => prev ? (section === 'mainFrame'
-            ? { ...prev, mainFramePrompts: result.prompts }
-            : { ...prev, headerPrompt: result.prompts[0] }) : prev);
+          setOutputs(prev => prev ? { ...prev, mainFramePrompts: result.prompts } : prev);
         }
         const understood = result.understood ? `Understood: ${result.understood}` : '';
         if (result.changed.length === 0 || result.notApplied) {
@@ -760,14 +759,14 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
             title: result.changed.length === 0 ? "Nothing changed" : "Refined — one part was not applied",
             description: [
               understood,
-              result.changed.length > 0 && section === 'mainFrame' ? `Updated: ${result.changed.map(i => `Clip ${i + 1}`).join(', ')}.` : '',
+              result.changed.length > 0 ? `Updated:${result.changed.map(i => `Clip ${i + 1}`).join(', ')}.` : '',
               result.notApplied || "Try describing the change more specifically.",
             ].filter(Boolean).join('\n\n'),
             confirmText: "OK",
           });
         } else {
           toast({
-            title: section === 'mainFrame' ? `Frame prompt${result.changed.length === 1 ? '' : 's'} updated — ${result.changed.map(i => `Clip ${i + 1}`).join(', ')}` : 'Label prompt updated',
+            title: `Frame prompt${result.changed.length === 1 ? '' : 's'} updated — ${result.changed.map(i => `Clip ${i + 1}`).join(', ')}`,
             description: understood,
           });
         }
@@ -786,6 +785,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     try {
       let currentContent = '';
       switch (section) {
+        case 'header': currentContent = outputs.headerPrompt; break;
         case 'poster': currentContent = outputs.posterPrompt; break;
         case 'voiceOver': currentContent = outputs.voiceOverScript; break;
         case 'veo': currentContent = outputs.veoPrompts.join('\n###SEGMENT###\n'); break;
@@ -819,6 +819,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       setOutputs(prev => {
         if (!prev) return prev;
         switch (section) {
+          case 'header': return { ...prev, headerPrompt: refinedContent };
           case 'poster': return { ...prev, posterPrompt: refinedContent };
           case 'voiceOver': return { ...prev, voiceOverScript: refinedContent };
           case 'veo': {

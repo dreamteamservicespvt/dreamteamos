@@ -1267,13 +1267,61 @@ export const refineSection = async (
     return (await refineVeoPrompts({ prompts, instruction: additionalInstructions })).prompts.join('\n###SEGMENT###\n');
   }
 
-  // The frames and the label: a plan the model answers, applied by code (refineImagePrompts, 2026-11-05).
-  if (sectionType === 'mainFrame' || sectionType === 'header') {
-    const prompts = sectionType === 'mainFrame'
-      ? currentContent.split(/\s*###\s*CLIP\s*###\s*/i).map(p => p.trim()).filter(Boolean)
-      : [currentContent];
+  // The frames: a plan the model answers, applied by code (refineImagePrompts, 2026-11-05).
+  if (sectionType === 'mainFrame') {
+    const prompts = currentContent.split(/\s*###\s*CLIP\s*###\s*/i).map(p => p.trim()).filter(Boolean);
     const result = await refineImagePrompts({ section: sectionType, prompts, instruction: additionalInstructions, formData, businessInfo });
-    return sectionType === 'mainFrame' ? result.prompts.join('\n###CLIP###\n') : result.prompts[0];
+    return result.prompts.join('\n###CLIP###\n');
+  }
+
+  /*
+    ── The label (footer) keeps its own refine (owner, 2026-11-05: "don't touch the footer code, revert back") ──
+    Restored exactly as it was before f11c8fa: the label's own system prompt, "apply only the requested changes",
+    then the verified-number scrub and the contact lines put back from THE list.
+  */
+  if (sectionType === 'header') {
+    const systemPrompt = REFINE_EDIT_DIRECTIVE
+      + buildNameBoardDirective(formData, businessInfo, 'header')
+      + LOWER_THIRD_SYSTEM_PROMPT({
+        businessType: detectBusinessType(JSON.stringify(businessInfo ?? {})),
+        adType: formData.adType,
+        festivalName: formData.festivalName,
+        noLogo: formData.noLogo || false,
+        contactCount: contactNumbersOf(businessInfo).length,
+        hasAddress: !!factsFromProfile(businessInfo).address,
+        hasWhatsApp: hasWhatsAppNumber(businessInfo),
+        ...labelDesignInputs(formData, null, null),
+      });
+    const userPrompt = `You previously generated this brand label prompt:
+
+---CURRENT PROMPT---
+${currentContent}
+---END CURRENT PROMPT---
+
+The user wants the following changes/additions:
+"${additionalInstructions}"
+
+IMPORTANT:
+- Apply ONLY the requested changes to the existing prompt
+- Keep all other aspects exactly the same
+- Output ONLY the refined prompt, no explanations
+- Do NOT wrap in markdown code blocks
+- Make sure the output is a clean, copy-paste ready prompt`;
+    const response = await callWithFallback(async (ai, model) => {
+      return await ai.models.generateContent({
+        model,
+        contents: [
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        config: {
+          systemInstruction: systemPrompt,
+        }
+      });
+    });
+    const refined = response.text || currentContent;
+    // A refine is a model rewrite like any other: a number it adds that the business never gave goes, and
+    // its contact lines are put back from THE list — it could repeat one, drop one or renumber them (2026-10-13).
+    return withLabelContacts(stripUnverifiedNumbers(refined, contactKeysOf(businessInfo)), contactNumbersOf(businessInfo));
   }
   throw new Error(`Unknown section type: ${sectionType}`);
 };

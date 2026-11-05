@@ -340,12 +340,10 @@ describe("every deliverable prints exactly the list", () => {
       expect(contactNumbersOf(created.businessInfo).map(shown)).toEqual(s.expected);
 
       // A refine of the label that repeats the first number, invents a fourth and drops one.
-      // (2026-11-05: a refine is a plan applied by code — this one tries to add contact lines and a number of its own.)
-      const contact1 = (label.match(/^CONTACT 1 = .*$/m) || [""])[0];
-      editorReply = JSON.stringify({
-        understood: "larger pills", clips: [1], changes: "Make the contact pills larger. Add a pill reading Call 90000 11111.",
-        edits: contact1 ? [{ clip: 1, find: contact1, replace: `${contact1}\nCONTACT 2 = ${list[0]?.display ?? "98480 12345"}\nCONTACT 4 = 90000 11111` }] : [],
-      });
+      // (The label keeps its own refine — the owner, 2026-11-05: "don't touch the footer code".)
+      editorReply = label
+        .replace(/^CONTACT 1 = .*$/m, (line) => `${line}\nCONTACT 2 = ${list[0]?.display ?? "98480 12345"}\nCONTACT 4 = 90000 11111`)
+        .replace(/^CONTACT 3 = .*\n?/m, "");
       const refinedLabel = await gemini.refineSection("header", label, "make the pills larger", form(s.typed), profile);
       expect(contactNumberProblems(refinedLabel, list)).toEqual([]);
       expect(refinedLabel.match(/^CONTACT \d = /gm) ?? []).toHaveLength(n);
