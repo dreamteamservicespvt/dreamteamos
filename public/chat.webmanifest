@@ -9,7 +9,7 @@
   "orientation": "portrait",
   "background_color": "#f0f2f5",
   "theme_color": "#008069",
-  "icons": [ 
+  "icons": [  
     {
       "src": "/pwa-icon-192.png",
       "sizes": "192x192",
