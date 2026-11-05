@@ -4321,7 +4321,7 @@ Segment 2: <text>`;
   const extrasPromise: Promise<[any[] | null, any[] | null]> = extras && voiceOverScript
     ? (async (): Promise<[any[] | null, any[] | null]> => {
         const overlays = await generateOverlayTexts(voiceOverScript, businessInfo, formData.language || 'Telugu',
-          { adType: formData.adType, festivalName: formData.festivalName, sceneContext, coreMessage })
+          { adType: formData.adType, festivalName: formData.festivalName, sceneContext, coreMessage, aspectRatio: formData.aspectRatio })
           .then(items => { emitPartial({ overlayTexts: items }); return items; })
           .catch(err => { console.warn('Overlay prompts failed inside the run; the row offers Generate.', err); return null; });
         const stock = await generateStockImagePrompts(voiceOverScript, businessInfo, formData.adType, formData.festivalName,
@@ -5399,6 +5399,8 @@ export interface OverlayDesignContext {
   festivalName?: string;
   sceneContext?: SceneContext | null;
   coreMessage?: CoreMessageBrief | null;
+  /** The ad's ratio — every overlay image prompt names it and is a canvas of that shape (utils/overlayImage, 2026-11-05). */
+  aspectRatio?: string;
 }
 
 /**
@@ -5504,7 +5506,7 @@ Generate the on-screen overlay texts now.` }] }],
       const { design: _design, ...rest } = item || {};
       // An overlay is printed on the ad: a number on it that the business never gave does not survive.
       const overlayText = stripUnverifiedNumbers(String(item?.text || ''), allowedNumbers);
-      return { ...rest, text: overlayText, clip, imageDesign, imagePrompt: overlayImagePrompt(overlayText, imageDesign, theme.fallback) };
+      return { ...rest, text: overlayText, clip, imageDesign, imagePrompt: overlayImagePrompt(overlayText, imageDesign, theme.fallback, context.aspectRatio) };
     })
     // An overlay that was nothing but an unverified number has nothing left to show.
     .filter((item) => String(item.text || '').trim())
@@ -5556,7 +5558,7 @@ Return ONLY this JSON: { "design": "<the new look, one short phrase>" }`,
     design = '';
   }
   const imageDesign = design || current;
-  return { imageDesign, imagePrompt: overlayImagePrompt(params.text, imageDesign, theme.fallback) };
+  return { imageDesign, imagePrompt: overlayImagePrompt(params.text, imageDesign, theme.fallback, params.context?.aspectRatio) };
 };
 
 // Transliterate Telugu voice-over script to English using Gemini AI

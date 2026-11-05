@@ -740,7 +740,7 @@ run** (`handleGenerate` → `handleGenerateStockImages`/`handleGenerateOverlayTe
 result; their buttons remain for a regenerate, 2026-09-25). The two extras: the **Overlay Text Image Generator**
 (`generateOverlayTexts` + `utils/overlayImage.ts`: each overlay gets a model-written `design` and a
 code-assembled `imagePrompt` for a premium 3D transparent PNG — exact text, real alpha channel,
-tightly cropped; festival palette for festival ads; `refineOverlayImagePrompt` changes only the
+since 2026-11-05 (later) a canvas of the ad's ratio with the lettering centred (`overlayCanvasRule`, was tightly cropped); festival palette for festival ads; `refineOverlayImagePrompt` changes only the
 look; since 2026-11-05 every overlay carries `OVERLAY_LEGIBILITY` (a bright face with a contrasting outline, readable
 on any footage) and a festival's colours are accents only; UI shows text, CapCut SFX and From → To words, no timecodes), B-roll stock prompts
 (`generateStockImagePrompts`: the subject of each line, never a presenter or text; festival
@@ -751,7 +751,12 @@ regenerate Veo for chosen clips.
 repeating the text on screen).** (1) **Ratio:** every main frame (after all stamps, also after a frame refine) and every
 B-roll prompt (and its refine) starts `ASPECT RATIO: 16:9 horizontal (landscape) …` / 9:16 (`utils/frameFormat`
 `withAspectRatio`), and a wrong ratio mentioned inside is corrected (`withRatioMentionsFixed`); the video kit's poster
-follows the ad's ratio. (2) **Subject size:** frames ask a close medium shot (head to mid-thigh, ~85–90% of the frame
+follows the ad's ratio (its Format line names it; Poster Creation's names the chosen size). **Later that day (owner:
+"in every frames, posters and the overlays images prompts must and should mention the ratio"):** every overlay image
+prompt starts with the same line and is a transparent canvas of the ad's ratio (`overlayImagePrompt(…, ratio)`,
+`OverlayDesignContext.aspectRatio`; the refine too), and a kit saved before reopens with the ratio stamped on its frames,
+B-roll and overlays from the KIT's spec (`utils/kitImageRatio.withKitImageRatio`, `overlayPromptForRatio`; idempotent).
+The VIDEO BOTTOM LABEL keeps its own fixed strip canvas. (2) **Subject size:** frames ask a close medium shot (head to mid-thigh, ~85–90% of the frame
 height) in `prompts.ts`, `geminiService`, `prompts/motion` (`CLOSE_MEDIUM_START` / `FULL_FIGURE_START`;
 `compositionFor` keeps "feet visible" only for a cartoon, a deity or a clip that walks; the push-in ends "a closer medium
 shot") and `prompts/characterAd` (shot designs no longer "wide enough"); every frame is stamped `SUBJECT SIZE (CLOSE TO

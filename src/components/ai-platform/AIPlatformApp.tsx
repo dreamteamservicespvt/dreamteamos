@@ -34,6 +34,7 @@ import { brollAwayFromText } from '@/utils/brollTextPlan';
 import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
 import { finalScriptTemplate } from '@/utils/finalScript';
 import { adSpecFromSaved, formForKit, savedSettingsOf } from '@/utils/adSpec';
+import { withKitImageRatio } from '@/utils/kitImageRatio';
 import { collection, addDoc, getDocs, getDoc, query, where, serverTimestamp, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/services/firebase';
 import { useAuthStore } from '@/store/authStore';
@@ -657,24 +658,30 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     // A different kit: nothing on it was updated from a final script, and no section is being rewritten.
     setFinalScriptProgress(null);
     setSectionRegen({});
+    // A kit saved before 2026-11-05 gets the ratio line on its frames, B-roll and overlays — the kit's own ratio.
+    const savedKitSpec = item.creationMode === 'poster' ? null : adSpecFromSaved(item);
+    const ratioStamped = item.creationMode === 'poster'
+      ? { mainFramePrompts: item.mainFramePrompts || [], stockImagePrompts: item.stockImagePrompts || null, overlayTexts: item.overlayTexts || null }
+      : withKitImageRatio({ mainFramePrompts: item.mainFramePrompts || [], stockImagePrompts: item.stockImagePrompts || null, overlayTexts: item.overlayTexts || null },
+        savedKitSpec?.aspectRatio || item.aspectRatio);
     setOutputs({
       businessInfo: item.businessInfo,
-      mainFramePrompts: item.mainFramePrompts || [],
+      mainFramePrompts: ratioStamped.mainFramePrompts || [],
       headerPrompt: item.headerPrompt,
       posterPrompt: item.posterPrompt || '',
       voiceOverScript: item.voiceOverScript,
       veoPrompts: item.veoPrompts,
       hasProductImages: false,
       productImageCount: 0,
-      stockImagePrompts: item.stockImagePrompts || null,
-      overlayTexts: item.overlayTexts || null,
+      stockImagePrompts: ratioStamped.stockImagePrompts || null,
+      overlayTexts: ratioStamped.overlayTexts || null,
       posterConcepts: item.posterConcepts || null,
       coreMessage: item.coreMessage || null,
       sceneContext: item.sceneContext || null,
       voiceBrief: item.voiceBrief || null,
       scriptQa: item.scriptQa || null,
       // What the kit was made for — its own record, or (saved before 2026-10-08) its stored settings.
-      spec: item.creationMode === 'poster' ? null : adSpecFromSaved(item),
+      spec: savedKitSpec,
     });
     setFormData(prev => ({
       ...prev,
@@ -1390,6 +1397,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     festivalName: kitForm(source).festivalName,
     sceneContext: (source ?? outputs)?.sceneContext,
     coreMessage: (source ?? outputs)?.coreMessage,
+    aspectRatio: kitForm(source).aspectRatio,
   });
 
   /** Refine Prompt — changes only the look of one overlay's image; its text and transparency are fixed. */

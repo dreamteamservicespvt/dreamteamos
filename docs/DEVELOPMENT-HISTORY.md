@@ -6,6 +6,17 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-11-05 (later): AdGen — the ratio on every image prompt, overlays included** (`ai-ads.md` §17.2 "Ratio …").
+  The owner: "in every frames, posters and the overlays images prompts must and should mention the ratio of the image
+  based on the ad configuration". Frames and B-roll already did (morning); posters name it in their Format line. Gap:
+  the overlay image prompt named no ratio (a PNG tightly cropped to the text). Now `utils/overlayImage.overlayImagePrompt`
+  takes the ratio, starts with `ASPECT RATIO: …` and asks a transparent canvas of the video's shape (lettering centred,
+  ~80% of the width at 9:16, ~60% at 16:9); `OverlayDesignContext.aspectRatio` carries it from the run, the studio's
+  Generate and the refine. A kit saved before reopens with the ratio stamped on frames, B-roll and overlays from its own
+  spec (`utils/kitImageRatio`). Files: `utils/overlayImage.ts`, `utils/kitImageRatio.ts` (new), `services/geminiService.ts`,
+  `components/ai-platform/AIPlatformApp.tsx`, tests `overlayImageRatioNov05` (new), `adGenSept22`. Tested: vitest 294
+  files / 4820 tests, tsc 0, build ✅. No browser check (no screen changed; the reopen stamp is unit-tested as a helper).
+
 - **2026-11-05: AdGen — ratio, subject size, colours, text vs B-roll, and a working frame / label refine**
   (`ai-ads.md` §17.2 "Ratio, subject size, text vs B-roll" and "Editing / refine", §24). The owner's four problems plus
   "refine was not working". (1) **Ratio:** `utils/frameFormat` `withAspectRatio` / `withRatioMentionsFixed` start every
