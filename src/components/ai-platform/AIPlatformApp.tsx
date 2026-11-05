@@ -29,7 +29,8 @@ import {
 } from '@/services/characterPacks';
 import { attireLabel, attireOptionLabel, attireOptionsFor, castLabelFor, resolveModelSpec } from '@/utils/adRequirement';
 import { DOCUMENT_ROUTE_HINT } from './FileUpload';
-import { generateAdAssets, generatePosterConcepts, refinePosterConcept, refineVideoPoster, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
+import { generateAdAssets, generatePosterConcepts, refinePosterConcept, refineVideoPoster, generateStockImagePrompts, refineStockImagePrompt, generateOverlayTexts, refineOverlayImagePrompt, refineSection, refineVoiceOver, refineVeoPrompts, regenerateVeoForClips, refineImagePrompts, SectionType, extractBusinessNameFromInfo, buildVideoBottomLabel, writeVideoPosterPrompt } from '@/services/geminiService';
+import { brollAwayFromText } from '@/utils/brollTextPlan';
 import FinalScriptInput, { type FinalScriptProgress, type FinalScriptSection } from './FinalScriptPanel';
 import { finalScriptTemplate } from '@/utils/finalScript';
 import { adSpecFromSaved, formForKit, savedSettingsOf } from '@/utils/adSpec';
@@ -731,11 +732,52 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   const handleRefineSection = async (section: SectionType, additionalInstructions: string) => {
     if (!outputs) return;
     setRefiningSection(section);
+    /*
+      The frames and the label (2026-11-05): a plan applied by code, so the member is told what was understood, which
+      clips changed and what could not be done — the same way the video-prompt refine reports (refineImagePrompts).
+    */
+    if (section === 'mainFrame' || section === 'header') {
+      try {
+        const prompts = section === 'mainFrame' ? outputs.mainFramePrompts : [outputs.headerPrompt];
+        const result = await refineImagePrompts({ section, prompts, instruction: additionalInstructions, formData: kitForm(), businessInfo: outputs.businessInfo });
+        setRefiningSection(null);
+        if (result.changed.length > 0) {
+          setOutputs(prev => prev ? (section === 'mainFrame'
+            ? { ...prev, mainFramePrompts: result.prompts }
+            : { ...prev, headerPrompt: result.prompts[0] }) : prev);
+        }
+        const understood = result.understood ? `Understood: ${result.understood}` : '';
+        if (result.changed.length === 0 || result.notApplied) {
+          await showAlert({
+            title: result.changed.length === 0 ? "Nothing changed" : "Refined — one part was not applied",
+            description: [
+              understood,
+              result.changed.length > 0 && section === 'mainFrame' ? `Updated: ${result.changed.map(i => `Clip ${i + 1}`).join(', ')}.` : '',
+              result.notApplied || "Try describing the change more specifically.",
+            ].filter(Boolean).join('\n\n'),
+            confirmText: "OK",
+          });
+        } else {
+          toast({
+            title: section === 'mainFrame' ? `Frame prompt${result.changed.length === 1 ? '' : 's'} updated — ${result.changed.map(i => `Clip ${i + 1}`).join(', ')}` : 'Label prompt updated',
+            description: understood,
+          });
+        }
+      } catch (error: any) {
+        console.error('Refinement error:', error);
+        await showAlert({
+          title: "Refinement failed",
+          description: error?.message || "The refinement could not be completed. Your existing content is unchanged — please try again.",
+          confirmText: "OK",
+        });
+      } finally {
+        setRefiningSection(null);
+      }
+      return;
+    }
     try {
       let currentContent = '';
       switch (section) {
-        case 'mainFrame': currentContent = outputs.mainFramePrompts.join('\n###CLIP###\n'); break;
-        case 'header': currentContent = outputs.headerPrompt; break;
         case 'poster': currentContent = outputs.posterPrompt; break;
         case 'voiceOver': currentContent = outputs.voiceOverScript; break;
         case 'veo': currentContent = outputs.veoPrompts.join('\n###SEGMENT###\n'); break;
@@ -769,11 +811,6 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       setOutputs(prev => {
         if (!prev) return prev;
         switch (section) {
-          case 'mainFrame': {
-            const clips = refinedContent.split('###CLIP###').map(p => p.trim()).filter(p => p.length > 0);
-            return { ...prev, mainFramePrompts: clips.length > 0 ? clips : [refinedContent] };
-          }
-          case 'header': return { ...prev, headerPrompt: refinedContent };
           case 'poster': return { ...prev, posterPrompt: refinedContent };
           case 'voiceOver': return { ...prev, voiceOverScript: refinedContent };
           case 'veo': {
@@ -1093,10 +1130,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       // Part of the kit, not an afterthought. They are written inside the run now; only one the run
       // could not write is asked for again here — from this run's result, not state.
       if (creationMode === 'video' && generatedResult.voiceOverScript) {
-        void Promise.all([
-          !generatedResult.stockImagePrompts?.length ? handleGenerateStockImages(generatedResult) : null,
-          !generatedResult.overlayTexts ? handleGenerateOverlayTexts(generatedResult) : null,
-        ]).catch(() => { /* each one already surfaces its own error in its section */ });
+        // The text first, then the pictures that keep clear of it (utils/brollTextPlan, 2026-11-05).
+        void (async () => {
+          const overlays = generatedResult.overlayTexts ?? await handleGenerateOverlayTexts(generatedResult);
+          if (!generatedResult.stockImagePrompts?.length) await handleGenerateStockImages(generatedResult, overlays);
+        })().catch(() => { /* each one already surfaces its own error in its section */ });
       }
       // Teach the countdown how long this browser's runs really take. See utils/generationEta.
       const timing = measureRun(runProfile, checkpoints, Date.now());
@@ -1170,7 +1208,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   /** Writes the B-roll prompts from a kit (this run's, before state has it, or the one on screen). True when they arrived. */
-  const handleGenerateStockImages = async (source?: GeneratedOutputs): Promise<boolean> => {
+  const handleGenerateStockImages = async (source?: GeneratedOutputs, overlaysIn?: any[] | null): Promise<boolean> => {
     const from = source ?? outputs;
     if (!from || !from.voiceOverScript) return false;
     setIsGeneratingStock(true);
@@ -1179,7 +1217,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       const kit = kitForm(from);
       const clipCount = from.veoPrompts?.length || from.mainFramePrompts?.length || Math.round(kit.duration / 8);
       const stockPrompts = await generateStockImagePrompts(from.voiceOverScript, from.businessInfo, kit.adType, kit.festivalName, stockImageTheme, kit.aspectRatio, clipCount,
-        { sceneContext: from.sceneContext, coreMessage: from.coreMessage });
+        // The text overlays already planned: another idea, on other words (utils/brollTextPlan, 2026-11-05).
+        { sceneContext: from.sceneContext, coreMessage: from.coreMessage, overlays: overlaysIn ?? from.overlayTexts ?? null });
       // Only onto the script they were written for — a newer final script may have replaced it meanwhile.
       setOutputs(prev => prev && prev.voiceOverScript === from.voiceOverScript ? { ...prev, stockImagePrompts: stockPrompts } : prev);
       return true;
@@ -1214,18 +1253,22 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   };
 
   // #14 — generate per-clip on-screen overlay texts + CapCut SFX suggestions
-  const handleGenerateOverlayTexts = async (source?: GeneratedOutputs): Promise<boolean> => {
+  /** Writes the text overlays; returns them (null when they failed). The B-roll on screen is moved off their seconds. */
+  const handleGenerateOverlayTexts = async (source?: GeneratedOutputs): Promise<any[] | null> => {
     const from = source ?? outputs;
-    if (!from || !from.voiceOverScript) return false;
+    if (!from || !from.voiceOverScript) return null;
     setIsGeneratingOverlay(true);
     setOverlayError(null);
     try {
       const items = await generateOverlayTexts(from.voiceOverScript, from.businessInfo, kitForm(from).language, overlayDesignContext(from));
-      setOutputs(prev => prev && prev.voiceOverScript === from.voiceOverScript ? { ...prev, overlayTexts: items } : prev);
-      return true;
+      // A B-roll already on screen keeps clear of the new text's seconds (a regenerate of the text alone, 2026-11-05).
+      setOutputs(prev => prev && prev.voiceOverScript === from.voiceOverScript
+        ? { ...prev, overlayTexts: items, stockImagePrompts: prev.stockImagePrompts ? brollAwayFromText(prev.stockImagePrompts, items) : prev.stockImagePrompts }
+        : prev);
+      return items;
     } catch (error: any) {
       setOverlayError(error.message || 'Failed to generate overlay texts.');
-      return false;
+      return null;
     } finally {
       setIsGeneratingOverlay(false);
     }
@@ -1239,6 +1282,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
    * One section rewritten from a final script — the video prompts, the B-roll or the overlays — with
    * its progress recorded against this apply only, so a later apply is never marked by an earlier one.
    */
+  /** The overlay rewrite of each final-script apply, so its B-roll can be written after it. */
+  const overlayRewrites = useRef(new Map<number, Promise<any[] | null>>());
   const runFinalScriptSection = async (section: FinalScriptSection, kit: GeneratedOutputs, appliedAt: number) => {
     const mark = (state: 'run' | 'done' | 'error') => setFinalScriptProgress(prev => (
       prev && prev.appliedAt === appliedAt ? { ...prev, sections: { ...prev.sections, [section]: state } } : prev
@@ -1257,9 +1302,13 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         });
         ok = fresh.length > 0;
       } else if (section === 'stock') {
-        ok = await handleGenerateStockImages(kit);
+        // After the new text (utils/brollTextPlan): the overlay rewrite of this same apply is awaited first.
+        const overlays = await (overlayRewrites.current.get(appliedAt) ?? Promise.resolve(null));
+        ok = await handleGenerateStockImages({ ...kit, overlayTexts: overlays ?? null }, overlays);
       } else {
-        ok = await handleGenerateOverlayTexts(kit);
+        const run = handleGenerateOverlayTexts(kit);
+        overlayRewrites.current.set(appliedAt, run.catch(() => null));
+        ok = !!(await run);
       }
     } catch (e) {
       console.error(`Rewriting ${section} from the final script failed:`, e);
@@ -1276,7 +1325,8 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
     setOutputs(prev => (prev ? { ...prev, voiceOverScript: script } : prev));
     setVoiceOverRevision(null);
     setFinalScriptProgress({ appliedAt, sections: { veo: 'run', stock: 'run', overlay: 'run' } });
-    (['veo', 'stock', 'overlay'] as FinalScriptSection[]).forEach(section => { void runFinalScriptSection(section, kit, appliedAt); });
+    // The overlays start first so the B-roll can wait for them (it reads overlayRewrites).
+    (['overlay', 'veo', 'stock'] as FinalScriptSection[]).forEach(section => { void runFinalScriptSection(section, kit, appliedAt); });
   };
 
   const handleRetryFinalScriptSection = (section: FinalScriptSection) => {

@@ -1439,9 +1439,9 @@ Visual Style:
 
 Composition:
 - Aspect ratio: 9:16 vertical
-- Three-quarter shot: frame the ${p.personYoung} from the top of ${p.possessive} head down to roughly ${p.possessive} thighs / knees — do NOT show ${p.object} full head-to-feet (that makes ${p.object} look small and distant)
-- The ${p.personYoung} must clearly fill about 70% of the frame height, centred and dominant, with only a little headroom above ${p.possessive} head, and the reception and ${brand.isNameBoard ? 'name board' : 'logo'} clearly visible behind ${p.object}
-- PRIORITY (IMPORTANT): the ${p.personYoung}'s ~70% size always comes first; size the ${brand.isNameBoard ? 'name board' : 'logo'} and background to fit around ${p.object}. NEVER enlarge the ${brand.isNameBoard ? 'name board' : 'logo'} at the cost of the ${p.personYoung} — if wall space is tight, make the ${brand.isNameBoard ? 'name board' : 'logo'} smaller, not the ${p.personYoung}
+- Close medium shot: frame the ${p.personYoung} from the top of ${p.possessive} head down to mid-thigh, close to the camera — never full head-to-feet and never a wide shot (that makes ${p.object} look small and distant)
+- The ${p.personYoung} must clearly fill about 85–90% of the frame height, centred and dominant, with only a little headroom above ${p.possessive} head, and the reception and ${brand.isNameBoard ? 'name board' : 'logo'} clearly visible behind ${p.object}
+- PRIORITY (IMPORTANT): the ${p.personYoung}'s ~85–90% size always comes first; size the ${brand.isNameBoard ? 'name board' : 'logo'} and background to fit around ${p.object}. NEVER enlarge the ${brand.isNameBoard ? 'name board' : 'logo'} at the cost of the ${p.personYoung} — if wall space is tight, make the ${brand.isNameBoard ? 'name board' : 'logo'} smaller, not the ${p.personYoung}
 - Leave natural headroom for future talking-video animation
 
 Important:
@@ -1619,22 +1619,22 @@ EXPRESSION — STAR QUALITY (MANDATORY):
   "I trust her" — she is selling a dream
 
 ${isProfessional ? `POSE & FRAMING (HERO FIRST FRAME — MANDATORY):
-- The girl stands in the EXACT CENTER of the 9:16 frame with balanced left-right spacing, occupying roughly 70% of the frame height — a medium full / three-quarter standing shot, never a tight head-and-shoulders crop.
+- The girl stands in the EXACT CENTER of the 9:16 frame with balanced left-right spacing, occupying about 85–90% of the frame height — a close medium shot (head to mid-thigh), never a tight head-and-shoulders crop.
 - HANDS AND STANCE (STRICT RULE): ${HERO_FRAME_POSE}.
 - Standing tall and professional, shoulders square to camera, chin level, calm confident welcoming posture, looking directly into the lens.
 - Camera at chest / eye level with the business reception clearly visible behind her.` : `POSE ANCHOR FOR THE HERO MAIN FRAME (MANDATORY):
 - The hero or anchor image must be EXACTLY centered with
   balanced left-right spacing
 - ${HERO_FRAME_POSE_LINE}
-- Camera at chest level, a three-quarter shot (head to knees), with a calm,
+- Camera at chest level, a close medium shot (head to mid-thigh), with a calm,
   premium, welcoming posture`}` : `POSE & FRAMING (PREMIUM COMMERCIAL PHOTOGRAPHY — NATURAL VARIATION ALLOWED):
-• A three-quarter shot (head to knees) — the model fills about 70% of the frame height; never a small head-to-feet shot that weakens her presence, never a tight crop that hides the business (one framing for every attire and for the video's push-in — 2026-10-22: this line said "close mid-shot, head to upper waist" while the attire rule and the video asked for three-quarter, and the frame came out full-length)
+• A close medium shot (head to mid-thigh) — the model fills about 85–90% of the frame height, close to the camera; never a small head-to-feet or wide shot that weakens her presence, never a tight head-and-shoulders crop that hides the business (one framing for every attire and for the video's push-in — 2026-11-05, the owner: "the characters are far away"; head to knees at ~70% came out as small full-length figures)
 • Clip 1 uses the hero pose, the same in every attire: EXACTLY centered with balanced left-right spacing, in ${HERO_FRAME_POSE}
 • From Clip 2 onward, hand position, body angle, and pose energy must change according to that clip's exact voice-over script, business proof point, and location instead of repeating the hero pose
 • Camera should remain premium and intentional — mostly chest-level or eye-level, with modest angle changes only when they improve realism and storytelling
 • Hands and posture must feel graceful and believable — allow variation based on the location and shot purpose instead of forcing the same pose every time
 • Body language must feel poised, elegant, and premium — never stiff, never mannequin-like, never awkward
-• The model must occupy roughly 70% of the total frame height in EVERY clip while still leaving enough space to clearly show the business environment
+• The model must occupy about 85–90% of the total frame height, close to the camera, in EVERY clip while still leaving enough space to clearly show the business environment
 • The framing must feel dominant in EVERY clip — the model is the hero and must visually command the frame
 • Direct eye contact with the camera is MANDATORY in EVERY clip — she must look straight into the lens, never away from camera, never toward products, never into the distance
 
@@ -1903,7 +1903,7 @@ ${isFestival ? `3. For ATTIRE section: The saree must BLEND the ${festivalName} 
 
 5. For LOGO and PRODUCT sections: Keep both concise. Use the exact logo unchanged and place exact uploaded products naturally on real background fixtures behind the model when product images exist.`}
 
-${isFestival ? `6. The celebrity beauty, natural warm complexion (NOT pink), mandatory jewellery, 70% screen presence, and natural logo placement are ALL NON-NEGOTIABLE` : `6. The exact commercial realism formula, Indian-only casting, truthful Indian complexion, mandatory jewellery, premium attire realism, voice-over-matched locations, and concise natural logo placement are ALL NON-NEGOTIABLE`}
+${isFestival ? `6. The celebrity beauty, natural warm complexion (NOT pink), mandatory jewellery, 85–90% frame-height presence, and natural logo placement are ALL NON-NEGOTIABLE` : `6. The exact commercial realism formula, Indian-only casting, truthful Indian complexion, mandatory jewellery, premium attire realism, voice-over-matched locations, and concise natural logo placement are ALL NON-NEGOTIABLE`}
 
 OUTPUT: Generate ONLY the final prompt following the exact format above. Fill in all bracketed placeholders with extracted business information. No explanations, no labels.`;
 };
@@ -1979,8 +1979,8 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
       name: 'HERO ESTABLISHING SHOT',
       location: 'Main reception area / front counter / primary welcome zone of the business',
       camera: adType !== AdType.FESTIVAL
-        ? 'Medium full / three-quarter standing shot, straight-on at eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence, with the business reception clearly visible behind her — classic brand ambassador establishing shot'
-        : 'Close mid-shot, straight-on at chest or eye level, subject perfectly centered in frame with balanced left-right spacing and roughly 70% frame presence — classic brand ambassador establishing shot',
+        ? 'Close medium standing shot (head to mid-thigh), straight-on at eye level, subject perfectly centered in frame with balanced left-right spacing and about 85–90% frame-height presence, with the business reception clearly visible behind her — classic brand ambassador establishing shot'
+        : 'Close mid-shot, straight-on at chest or eye level, subject perfectly centered in frame with balanced left-right spacing and about 85–90% frame-height presence — classic brand ambassador establishing shot',
       pose: adType !== AdType.FESTIVAL
         ? `${HERO_FRAME_POSE_LINE}; the girl standing tall and centered`
         : `${HERO_FRAME_POSE_LINE} — brand ambassador stance`,
@@ -1991,7 +1991,7 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
       key: 'showcase' as const,
       name: 'SHOWCASE / PRODUCT SHOT',
       location: 'The core working area of the business — its real, in-use space (e.g. the shop floor with real stock, the workshop / lab with real equipment, the service counter, or the main work zone). If the business has no physical products, use its real work area and real objects — NEVER an invented display wall, achievement wall, or frames',
-      camera: 'Close mid-shot with slight low-angle polish (camera slightly below chest), subject still occupying roughly 70% of frame while the real work area remains visible on the other side',
+      camera: 'Close mid-shot with slight low-angle polish (camera slightly below chest), subject still occupying about 85–90% of the frame height while the real work area remains visible on the other side',
       pose: 'One hand gesturing gently toward the real equipment / stock / work area behind her, or resting on a real counter — naturally interacting with the business environment',
       purpose: 'Show what the business DOES using its REAL work area, equipment, or stock around her — never through invented display walls, posters, or frames.',
       logoPlacement: getShotLogoPlacementForBusiness('showcase', detectedBusinessType, businessContext),
@@ -2009,7 +2009,7 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
       key: 'detail' as const,
       name: 'DETAIL / IMMERSION SHOT',
       location: 'A different section of the business — specialized area, secondary display zone, workstation area, or another distinct part of the premises that hasn\'t been shown yet',
-      camera: 'Close mid-shot (head to upper waist) with environment-rich composition, keeping the model dominant at roughly 70% of frame while revealing this new area',
+      camera: 'Close mid-shot (head to upper waist) with environment-rich composition, keeping the model dominant at about 85–90% of the frame height while revealing this new area',
       pose: 'Natural relaxed pose — perhaps lightly touching a surface, standing near equipment relevant to the business, or a natural mid-conversation gesture',
       purpose: 'Reveal more depth of the business — show the viewer that this is a REAL, multi-area establishment. Add visual variety.',
       logoPlacement: getShotLogoPlacementForBusiness('detail', detectedBusinessType, businessContext),
@@ -2018,7 +2018,7 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
       key: 'closing' as const,
       name: 'WARM CLOSING SHOT',
       location: 'Back near the main area, the main counter or the most inviting spot INSIDE the premises — full circle back to a welcoming position, still indoors',
-      camera: 'Close mid-shot, standard to very slight high-angle polish, soft and warm composition with roughly 70% model presence — the "come visit us" feel',
+      camera: 'Close mid-shot, standard to very slight high-angle polish, soft and warm composition with about 85–90% frame-height model presence — the "come visit us" feel',
       pose: 'Open welcoming gesture — warm smile, slightly open hands or namaste gesture, inviting the viewer — the final impression',
       purpose: 'End on a warm, inviting note. The viewer should feel: "I want to visit this place." This is the closing brand impression.',
       logoPlacement: getShotLogoPlacementForBusiness('closing', detectedBusinessType, businessContext),
@@ -2027,7 +2027,7 @@ export const MULTI_FRAME_SYSTEM_PROMPT = (
       key: 'alternative' as const,
       name: 'ALTERNATIVE ANGLE SHOT',
       location: 'The most visually interesting or unique section of the business — a spot that best represents the brand\'s personality and uniqueness',
-      camera: 'Creative but controlled close mid-shot using environment elements as natural frames, while keeping the model dominant at roughly 70% of frame',
+      camera: 'Creative but controlled close mid-shot using environment elements as natural frames, while keeping the model dominant at about 85–90% of the frame height',
       pose: 'Dynamic pose that matches the script energy — could be mid-stride, turning to face camera, or engaged with something in the environment',
       purpose: 'Show the business from a fresh, unexpected angle that adds cinematic variety.',
       logoPlacement: getShotLogoPlacementForBusiness('alternative', detectedBusinessType, businessContext),
@@ -2115,7 +2115,7 @@ Each frame below becomes an 8-second video that starts from THAT frame and shows
 ${motionPlan.some((m) => m.walks) ? `• A WALK NEEDS ITS FLOOR: a walking clip shows the clear, open floor she walks on — in front of her toward the camera, or along the counter or display beside her — fully in view, with nothing in the way.
 ` : ''}• THE THING TO SHOW IN VIEW: the product, counter or equipment the clip talks about sits a few steps away or within reach and fully in view, so she can point to it or lift it where she stands.
 • EVERYTHING WHOLE AND IN VIEW: tables, counters, shelves and products are fully inside the frame and clear of her body — nothing cut off at her elbow, nothing she is leaning into.
-• THREE-QUARTER BODY (head to knees) — with the face large, clear and evenly lit${motionPlan.some((m) => m.walks) ? ' (a walking clip: as its 🎬 note says)' : ''}.
+• CLOSE MEDIUM SHOT (head to mid-thigh) — with the face large, clear and evenly lit${motionPlan.some((m) => m.walks) ? ' (a walking clip: as its 🎬 note says)' : ''}.
 • A HEIGHT REFERENCE: a fixed real thing behind her — the counter edge, a door frame, a shelf line — that her height can be read against in every clip. Keep her feet and the floor visible wherever the framing allows.
 • DEPTH: real objects at two or three distances — something near the camera, the subject in the middle ground, the premises behind — so a push-in or a sideways glide has depth and parallax to work with.
 • SHARP, EVEN LIGHT on the subject and the logo, so motion never drops them into shadow.
@@ -2156,7 +2156,7 @@ ${Array.from({ length: segmentCount }, (_, i) => {
     : '';
   const animated = !!plan && clipNum > 1;
   const clipCamera = animated
-    ? `Three-quarter shot (head to knees) at eye level, the ${p.personYoung} dominant at roughly 60–70% of the frame height — ${plan!.camera.framing}`
+    ? `Close medium shot (head to mid-thigh) at eye level, the ${p.personYoung} dominant at about 85–90% of the frame height — ${plan!.camera.framing}`
     : camera;
   const clipPose = animated ? `${plan!.staging.start} — ${shot.pose}` : shot.pose;
 
@@ -2174,14 +2174,14 @@ ${Array.from({ length: segmentCount }, (_, i) => {
    Describe the ${p.personYoung} (with ${p.isMale ? 'minimal masculine accessories only — ' + p.jewellery : 'elegant jewellery — ' + (attireType === 'traditional' ? 'necklace/chain, earrings, bangles, finger ring, and a small bindi on the forehead' : 'finger ring, necklace/chain, earrings, watch, and NO bindi on the forehead')}), the open hero pose (${HERO_FRAME_POSE}), ${heroBackdrop}, and ${brand.ref} fully visible on ${realLocation ? 'a real surface in that photograph' : 'the reception wall'}.
    ${realLocation ? `The pose and mood must directly match Clip ${clipNum}'s voice-over line — the place is the photograph, reproduced exactly as it is` : `The reception, visible business cues, pose, and mood must directly match Clip ${clipNum}'s voice-over line`}, and ${brand.ref} must feel physically installed on ${logoSurface} — pixel-perfect and unchanged, mounted in the upper background, fully readable and fully visible in one piece, with nothing blocking, cropping, or altering it.
    ${brand.isNameBoard ? brand.ref.charAt(0).toUpperCase() + brand.ref.slice(1) : 'The attached logo'} must be the ONLY text in the image — do NOT invent any other logo, signage, banners, taglines, mission lines, service lists, dates, or academic years, and do NOT add empty/blank boards, frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard) — keep walls and surfaces clean. Keep it perfectly sharp and in focus (not blurred by depth of field) so all its text is clearly readable.
-   Frame the ${p.personYoung} as a three-quarter shot (head to thighs/knees), centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot), looking directly at the camera. Keep the ${p.personYoung}'s ~70% size the priority and ${brand.ref} small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the ${p.personYoung}'s size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
+   Frame the ${p.personYoung} as a close medium shot (head to mid-thigh), centered and clearly filling about 85–90% of the frame height (never a small full head-to-feet or wide shot), looking directly at the camera. Keep the ${p.personYoung}'s ~85–90% size the priority and ${brand.ref} small-to-medium and secondary — dynamically sized to the free wall space and never enlarged at the cost of the ${p.personYoung}'s size.` : `Generate a COMPLETE, detailed image generation prompt following ALL the rules/sections from the base prompt above.
    This frame sets the visual foundation — character face, hair, skin, beauty, attire, jewellery, AND ${realLocation ? `the client's photographed space assigned to this clip (${photoFor(0)})` : 'this specific location within the business'}.
    This is the ONLY clip where you fully describe the model's physical appearance.
   ${realLocation ? `The pose energy and emotional tone must directly match Clip ${clipNum}'s voice-over line; the location is the photograph, reproduced as it is, with any festival cues layered onto it rather than replacing it.` : `The chosen location, visible business cues, pose energy, and emotional tone must directly match Clip ${clipNum}'s voice-over line.`}
     The logo must feel physically installed on ${logoSurface}, with believable depth, reflections, and material behavior.
   Include ALL sections: SUBJECT, FACE, MAKEUP, EXPRESSION, HAIR, ATTIRE, JEWELLERY, ENVIRONMENT, LOGO PLACEMENT, CAMERA, OVERALL RESULT.${plan ? `
   In CAMERA, write in plain words how the frame is composed for its slow camera move: ${plan.camera.framing}.` : ''}
-   The subject must occupy roughly 70% of the frame, maintain direct eye contact with the camera, and ${brand.ref} must appear fully visible in the upper background without any alteration.
+   The subject must occupy about 85–90% of the frame height, maintain direct eye contact with the camera, and ${brand.ref} must appear fully visible in the upper background without any alteration.
    Target length: 500-800 words.`}`;
   }
   
@@ -2261,7 +2261,7 @@ ${segmentCount === 2 ? `===== TWO-CLIP CONTINUATION FRAME (CLIP 2) — EXTRA CAR
 In a 2-clip ad, Clip 2 is the ONLY continuation frame, so it must be flawless. While the model identity and attire stay LOCKED to the attached Frame-1 image, Clip 2 must NOT feel like a lazy copy of Clip 1:
 • BODY LANGUAGE: give the ${p.person} a clearly NEW, natural, confident pose and hand position that visibly matches Clip 2's exact voice-over line and the new location — e.g. presenting a real product/counter, gesturing toward equipment, or an open welcoming stance. Never repeat Clip 1's hero pose, never a stiff, awkward, floating, or mannequin posture, and keep both hands and arms anatomically natural.
 • BACKGROUND: move the ${p.person} to a genuinely DIFFERENT, real, in-use zone of the SAME business that proves Clip 2's message (not the same reception wall as Clip 1). Fill it with that zone's real, specific equipment/products/fixtures so it instantly reads as this exact business, with believable depth, correct scale, and lighting consistent with Clip 1's grade.
-• The ${p.person} must stay the hero at ~70% frame height with direct eye contact, and ${brand.isNameBoard ? 'the name board' : 'the attached logo'} must remain correctly installed, sharp, and unmodified in this new zone.
+• The ${p.person} must stay the hero at ~85–90% frame height with direct eye contact, and ${brand.isNameBoard ? 'the name board' : 'the attached logo'} must remain correctly installed, sharp, and unmodified in this new zone.
 
 ` : ''}===== REALISM REQUIREMENT (ABSOLUTE — NON-NEGOTIABLE) =====
 
@@ -2335,7 +2335,7 @@ Main Character: Indian ${p.personYoung}, age ${p.ageYears}, a new different natu
 Pose: standing centered in ${HERO_FRAME_POSE}, looking at the camera.
 Background: the real [BUSINESS TYPE] reception built from the business details, with ${brand.ref} as a small-to-medium wall sign behind ${p.object} — fully visible, sharp and clearly readable (in focus, not blurred), but secondary, never large enough to shrink the ${p.personYoung}. ${brand.isNameBoard ? 'The name board' : 'The attached logo'} is the ONLY text anywhere — no other signage, banners, taglines, mission lines, service lists, dates, academic years, or any invented text. No empty/blank boards, picture frames, certificates, brochures, posters, or blank screens — keep walls and surfaces clean.
 Visual Style: ultra realistic, cinematic indoor lighting, natural skin texture, premium colour grading.
-Composition: 9:16 vertical, three-quarter shot from head to thighs/knees, girl centered and clearly filling about 70% of the frame height (not a small full head-to-feet shot).` : `**CLIP 1 FORMAT (FULL — 500-800 words):**
+Composition: 9:16 vertical, close medium shot from head to mid-thigh, girl centered and clearly filling about 85–90% of the frame height (never a small full head-to-feet or wide shot).` : `**CLIP 1 FORMAT (FULL — 500-800 words):**
 
 Clip 1 – Main Frame Prompt (${shotDesigns[0].name})
 Create a Ultra-realistic DSLR photograph, single image, 9:16 vertical…
@@ -2354,7 +2354,7 @@ Here is an EXAMPLE of what a correct Clip 2 prompt looks like:
 Clip 2 – Main Frame Prompt (${shotDesigns[1 % shotDesigns.length].name})
 Use the attached image (the Frame-1 reference) EXACTLY as the identity and styling anchor for this clip — the SAME ${p.person}, same face, same hair, and the EXACT SAME attire in the EXACT SAME colour, shade, and design as the attached image. Do NOT change or re-tint the outfit or its colour between clips; keep it perfectly identical to the attached image. Only the pose, action, and background location may change to match this clip's script.
 
-POSE: Subject positioned on the right side using rule-of-thirds, one hand gesturing gently toward the product display behind ${p.object}. Close mid-shot, camera slightly below chest level, subject still occupying roughly 70% of the frame and maintaining direct eye contact with the camera.
+POSE: Subject positioned on the right side using rule-of-thirds, one hand gesturing gently toward the product display behind ${p.object}. Close mid-shot, camera slightly below chest level, subject still occupying about 85–90% of the frame height and maintaining direct eye contact with the camera.
 
 NEW LOCATION: ${p.Pronoun} has moved to a different real area of the premises that matches this clip's script line — for example a service / work zone with the business's real equipment, counters, and fixtures around ${p.object}. Behind ${p.object} are ONLY real physical objects (no text, no signage, no posters, no boards). ${brand.isNameBoard ? 'The business name board' : 'The attached logo'} is mounted small-to-medium on the far wall, fully visible, sharp, readable, and unmodified.
 
@@ -2928,12 +2928,14 @@ WHAT EACH IMAGE SHOWS:
    • An event, temple, food-donation or invitation video: that event's own world (the motive is given to you).
 4. DIFFERENT EVERY TIME: no two images show the same thing, the same set-up or the same angle.
 5. NO TEXT ANYWHERE IN THE IMAGE — no captions, signs, labels, price tags, numbers, logos or watermarks. The editor adds text separately; generated text is always misspelt.
-6. PHOTOGRAPHIC AND PREMIUM: a real photograph by a top commercial photographer — real textures and materials, natural or cinematic light that suits the mood, sharp focus on the subject with a soft background, rich professional colour grading, composed for the ordered frame so the subject reads clearly on a phone.
+6. PHOTOGRAPHIC AND PREMIUM: a real photograph by a top commercial photographer — real textures and materials, natural or cinematic light that suits the mood, sharp focus on the subject with a soft background, composed for the ordered frame so the subject reads clearly on a phone.
+7. TRUE-TO-LIFE COLOUR, NEVER THE TEXT'S COLOURS: natural, clean, true-to-life colour. The festival's or the brand's colours appear only in the real objects that carry them (the lamps, the flowers, the product, the sign colours of the place) — never as a colour wash, a tint, a monochrome grade or a gold / saffron / brand-coloured glow over the whole picture. The editor's on-screen 3D text is made in those colours, and it must stand out against your image, not melt into it.
+8. A DIFFERENT IDEA FROM THE ON-SCREEN TEXT: when the request lists the ON-SCREEN TEXT already planned, never show what a clip's text already says. If the text says "FREE DELIVERY", the image is not a delivery: it is another part of the line — the fresh stock, the work being done, the customer's moment of benefit, the place. The text and the picture together tell two things, never one thing twice.
 
 PROMPT SHAPE (follow it):
 "Create a hyper-realistic <ratio> <orientation> image of <the subject of the line, specifically>. <Where it is, in the ad's world>. <Composition and lens, e.g. close-up at 50mm, shallow depth of field>. <Light and colour mood>. No people posing, no faces in focus, no text, no logos, no watermark."
 
-WHERE IT GOES — ANCHOR IT TO THE WORDS: the app adds the clip number and second range, so you do not calculate them. "fromWord" is the exact word in that clip's line where the image should COME UP, and "toWord" the exact word where it should come OFF. Copy both character for character out of the line as written — the same script, the same spelling, no translation, no transliteration, no punctuation added. A word that is not in the line loses the cue.
+WHERE IT GOES — ANCHOR IT TO THE WORDS: the app adds the clip number and second range, so you do not calculate them. "fromWord" is the exact word in that clip's line where the image should COME UP, and "toWord" the exact word where it should come OFF. Choose words that are NOT covered by that clip's on-screen text (listed in the request): the picture comes up before or after the text, never at the same time — the viewer reads one thing at a time. Copy both character for character out of the line as written — the same script, the same spelling, no translation, no transliteration, no punctuation added. A word that is not in the line loses the cue.
 
 CULTURAL THEME: the request names one. Every setting and object — and any incidental hands or background figures — must authentically match it.
 
@@ -2951,7 +2953,7 @@ Return ONLY a JSON array, no markdown:
   }
 ]
 
-Before you answer, check each image: it shows its own clip's subject (and "whyItFits" says which words); nobody poses or presents; there is no text; it belongs to this ad's world; and no two images repeat.`;
+Before you answer, check each image: it shows its own clip's subject (and "whyItFits" says which words); nobody poses or presents; there is no text; it belongs to this ad's world; no two images repeat; it does not show what its clip's on-screen text says, and its words are not the text's words; its colour is true to life, not a wash of the festival's or brand's colours.`;
 
 
 export const OVERLAY_TEXT_SYSTEM_PROMPT = (language: string = 'Telugu') => `You are a senior short-form video editor who edits in CapCut. You design ON-SCREEN TEXT OVERLAYS for a voice-over driven ad.
@@ -2983,8 +2985,9 @@ WHEN IT APPEARS (THE PART AN EDITOR CANNOT GUESS):
 
 HOW EACH OVERLAY LOOKS (it becomes a premium 3D transparent PNG that the editor lays over the video):
 - For every overlay write "design": ONE short phrase for the look of the lettering itself as a 3D object — its material, its colours, its finish and at most one small accent. Examples: "polished 24-karat gold letters with a fine diamond sparkle on the edges" (a jewellery shop), "glossy deep-green and fresh-lime letters with a subtle leaf accent" (organic groceries), "brushed steel letters with an electric-blue edge glow" (electronics), "warm saffron-and-marigold letters with a tiny glowing diya" (Diwali).
-- A FESTIVAL ad: the design follows THAT festival's own colours and symbols exactly (they are given to you) — never a generic celebration look.
-- Any other ad: the design follows the business — its trade, its brand colours and its premium feel — and the mood of what is being said. An offer can be bolder; a trust line calmer.
+- IT MUST STAND OUT FROM THE PICTURE BEHIND IT: the text is laid over the video and over B-roll photographs that are full of the same festival or brand colours. So the letter FACE is bright and high-contrast (white, ivory, bright gold or a light tint), and the festival's or brand's colours go on its edge, bevel, outline or glow — never letters in the same deep colours as the scene behind them. Name the outline in the design (e.g. "ivory letters with a deep maroon outline and a thin gold bevel").
+- A FESTIVAL ad: the accents follow THAT festival's own colours and symbols (they are given to you) — never a generic celebration look.
+- Any other ad: the accents follow the business — its trade, its brand colours and its premium feel — and the mood of what is being said. An offer can be bolder; a trust line calmer.
 - Never describe a background, a scene, a board or a panel behind the text — the text is cut out on its own. Never add words to the design that are not the overlay text.
 
 OUTPUT FORMAT (STRICT):

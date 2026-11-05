@@ -151,8 +151,8 @@ describe("the judge is told what the final clip has room for", () => {
 });
 
 describe("the frame prompt asks for one framing and one jewellery rule", () => {
-  it("a three-quarter shot everywhere — the frame and the video's push-in agree", () => {
-    expect(CAMERA_MOVES.push_in.framing).toMatch(/^a three-quarter shot \(head to knees\)/);
+  it("one close medium shot everywhere — the frame and the video's push-in agree (2026-11-05: three-quarter came out far away)", () => {
+    expect(CAMERA_MOVES.push_in.framing).toMatch(/^a close medium shot \(head to mid-thigh\)/);
     for (const attire of ["traditional", "professional"]) {
       for (const adType of ["festival", "commercial"]) {
         const prompt = MAIN_FRAME_SYSTEM_PROMPT(attire, adType, adType === "festival" ? "Diwali" : "", "9:16", "real estate flats");

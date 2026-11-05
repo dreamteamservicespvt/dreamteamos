@@ -411,7 +411,7 @@ sequential passes (~5 s each) and 3 of 6 runs still stopped on the final gate af
    **scale anchor** (`withScaleAnchor`: e.g. Motu and Patlu's height against a real counter). VIDEO
    BOTTOM LABEL (`buildVideoBottomLabel`, code-assembled from `prompts/lowerThird.ts`, fed the festival
    theme and the video's motive / core message) and the poster prompt (`writeVideoPosterPrompt` — since 2026-10-12 the
-   same ONE-ad-type system as Poster Creation, below: the festival's name as the campaign purpose, always 9:16 vertical,
+   same ONE-ad-type system as Poster Creation, below: the festival's name as the campaign purpose, in the AD'S OWN ratio (`videoPosterSizeOf`; was always 9:16 until 2026-11-05),
    English, the logo or the name as the wordmark) — both from the VERIFIED facts: exactly as many contact pills / numbers
    as the business has (1–3), no address strip or line when there is none, and `stripUnverifiedNumbers` on every
    model-written overlay, frame (2026-10-13: signage) and refine (the poster's numbers are put in by code). **The label's
@@ -639,7 +639,8 @@ sequential passes (~5 s each) and 3 of 6 runs still stopped on the final gate af
    "then attach owner photo 1, then owner photo 2". A store photo's zone stops at the "  +  " join (it used to swallow
    the owner text).
    **One framing, one jewellery rule (2026-10-22, night — frame 1 of the real ad said both):** the model frame prompt's
-   POSE & FRAMING says a three-quarter shot (head to knees, ~70% of the frame height — never a small head-to-feet shot,
+   POSE & FRAMING said a three-quarter shot (head to knees, ~70% — since 2026-11-05 a CLOSE MEDIUM shot, head to
+   mid-thigh, ~85–90% of the frame height, see "Ratio and subject size" below; never a small head-to-feet shot,
    never a tight crop), the same as the attire rules and the push-in's framing (`CAMERA_MOVES.push_in.framing`, was "a
    full or three-quarter shot"; the frame line was "close mid-shot only, head to upper waist", and the Flow clip started
    full-length); the hero-pose line no longer says "For professional suit outputs" in a saree ad. A festival saree frame
@@ -740,9 +741,25 @@ result; their buttons remain for a regenerate, 2026-09-25). The two extras: the 
 (`generateOverlayTexts` + `utils/overlayImage.ts`: each overlay gets a model-written `design` and a
 code-assembled `imagePrompt` for a premium 3D transparent PNG — exact text, real alpha channel,
 tightly cropped; festival palette for festival ads; `refineOverlayImagePrompt` changes only the
-look; UI shows text, CapCut SFX and From → To words, no timecodes), B-roll stock prompts
+look; since 2026-11-05 every overlay carries `OVERLAY_LEGIBILITY` (a bright face with a contrasting outline, readable
+on any footage) and a festival's colours are accents only; UI shows text, CapCut SFX and From → To words, no timecodes), B-roll stock prompts
 (`generateStockImagePrompts`: the subject of each line, never a presenter or text; festival
-imagery for festival ads; reads the scene plan and core message), regenerate Veo for chosen clips.
+imagery for festival ads; reads the scene plan and core message; rules 7–8: true-to-life colour, no wash or tint),
+regenerate Veo for chosen clips.
+
+**Ratio, subject size, text vs B-roll (2026-11-05, owner: wrong ratio, people too small, washed colours, B-roll
+repeating the text on screen).** (1) **Ratio:** every main frame (after all stamps, also after a frame refine) and every
+B-roll prompt (and its refine) starts `ASPECT RATIO: 16:9 horizontal (landscape) …` / 9:16 (`utils/frameFormat`
+`withAspectRatio`), and a wrong ratio mentioned inside is corrected (`withRatioMentionsFixed`); the video kit's poster
+follows the ad's ratio. (2) **Subject size:** frames ask a close medium shot (head to mid-thigh, ~85–90% of the frame
+height) in `prompts.ts`, `geminiService`, `prompts/motion` (`CLOSE_MEDIUM_START` / `FULL_FIGURE_START`;
+`compositionFor` keeps "feet visible" only for a cartoon, a deity or a clip that walks; the push-in ends "a closer medium
+shot") and `prompts/characterAd` (shot designs no longer "wide enough"); every frame is stamped `SUBJECT SIZE (CLOSE TO
+THE CAMERA)` (`withSubjectSize`, by `frameCastOf`). (3) **Text first, then B-roll** (`utils/brollTextPlan`): the
+overlays are written FIRST and the B-roll writer is told them (`onScreenTextBlock`); a concept that repeats an
+overlay's text gets one retry (`brollRepeatingText`), and a B-roll cue that falls on a text's seconds is moved off it in
+code (`brollAwayFromText`, `freeImageCue`). The same order runs in the run's extras, the studio's post-run step,
+Regenerate and Input Final Script (`AIPlatformApp`, the `overlayRewrites` ref).
 
 **Outputs** (`GeneratedOutputs`): 1. Main Frame Prompts (per clip), 2. **VIDEO BOTTOM LABEL**,
 3. Poster Design (plain text since 2026-10-12; Tools history says "Poster Design"), 4. Voice Over Script, 5. Veo 3 Video Prompts, plus B-roll, overlay
@@ -772,7 +789,16 @@ Script (its speakers, language and the Veo rewrite), the missing Veo clips, B-ro
 the row title's language; the form stays for the NEXT run (the Configuration custom-script format reads the form).
 A job changed after its kit still shows the "made for … / the job now says …" banner; Generate makes the new kit.
 
-**Editing / refine:** per-section refine (`refineSection`, "change only what was asked"),
+**Editing / refine:** per-section refine (`refineSection`, "change only what was asked"). **Frames and the label
+(rebuilt 2026-11-05 — the owner: "refine was not working"; live, a frame refine recoloured the whole scene and the
+OUTFIT stamp overrode the asked change, a label refine changed one word):** `refineSection('mainFrame' | 'header')` →
+`geminiService.refineImagePrompts` — the model answers a JSON plan (`prompts/imageRefine`: which clips, exact
+find → replace edits, and a short change line), applied in code (`utils/promptChanges` `parsePromptChangePlan`,
+`applyPromptChangePlan`): protected lines (locks, 📎, ratio, subject size, the verified numbers) are never edited, the
+change line is stamped `MEMBER'S CHANGES (FINAL — THESE WIN OVER EVERY OTHER LINE IN THIS PROMPT)`
+(`withMemberChanges`, kept and merged by later refines), then the locks, ratio and numbers are re-stamped. The studio
+shows what was understood, the clips updated and what was not applied. Live after: 4 of 4 requests applied, 4–9 s.
+Then
 `refineVoiceOver` (plan → clip edits → validation; `RefineRevisionBanner` offers undo; since 2026-10-15 a clip the editor
 rewrote must land in 17–20 spoken words even when it was outside before — `voiceOverRefine.editProblems` — or nothing is
 applied and the member is told the count),
@@ -1050,7 +1076,15 @@ attribution (`Clip.voScript` is one string).
   Metaphor Ads), chosen by analysing the business — never at random, never two — unless the job or the member fixed a
   style, which is kept. The prompt is the owner's three sentences word for word plus one Format line (size, logo, text
   language); its business information keeps the business's real facts and only its verified contact numbers and
-  address. A poster run writes one prompt. Posters are 9:16 unless a size is chosen; the video kit's poster is always 9:16.
+  address. A poster run writes one prompt. Posters are 9:16 unless a size is chosen; the video kit's poster has the ad's
+  own ratio (owner, 2026-11-05 — it was always 9:16).
+- **AI ads — ratio, size, colour, text vs B-roll (owner, 2026-11-05):** every frame and B-roll prompt says the ad's
+  ratio first; people fill the frame (close medium shot, head to mid-thigh, ~85–90%; full figure only for a cartoon, a
+  deity or a walking clip); colours stay true to life and overlays stay readable on any footage; a B-roll image never
+  repeats the overlay text and never shows while a text is on screen.
+- **AI ads — frame / label refine (owner, 2026-11-05):** a refine changes exactly what the member asked and nothing
+  else; the asked change wins over every stamped rule (outfit, theme) and stays through later refines; locks, ratio and
+  verified numbers are never lost; what could not be applied is said.
 - **AI ads — poster refine (owner, 2026-10-13):** a refine applies what the member asks. Design requests (colours,
   background, what to show, a headline, the logo's size or place) go in one short "Changes:" line after the owner's three
   sentences, which never change, and stay there through later refines until undone. A refine may leave out — or bring
@@ -1351,7 +1385,7 @@ attribution (`Clip.voScript` is one string).
   ChatGPT / Gemini decorate a client's photo WITHOUT changing it is untested, and the name rule ran live only without
   files (the sale's name, correctly). Frame prompts grew: the clip-1 hero frame is ~2,100–2,200 words live (ChatGPT
   reads it; long frame prompts predate this change).
-- **The geminiService chunk passed Vite's 900 KB warning (2026-10-22: 913 KB, 281 KB gzip; ~890 KB on 2026-10-18).** It
+- **The geminiService chunk passed Vite's 900 KB warning (2026-11-05: 953 KB, 295 KB gzip; 913 KB on 2026-10-22).** It
   loads only in the studio; the warning is not an error. Splitting the prompts out would be a separate task.
 - Veo's text limit: third-party summaries put Veo 3 at about 1,024 input tokens [NOT CONFIRMED — Google's
   table did not load]. Since 2026-10-22 the prompts are ~204–252 words for one presenter (248–264 live, a Telugu festival

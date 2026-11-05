@@ -136,7 +136,7 @@ export const CAMERA_MOVES: Record<CameraMoveKey, CameraMove> = {
   push_in: {
     key: "push_in", name: "Push In", effect: "builds focus and emotion, closer on the face or the product", lens: "50mm", speed: "smooth, steady",
     action: "a smooth, steady push-in that tightens on what the frame already shows — the face, or the product being shown",
-    framing: "a three-quarter shot (head to knees) with clear room in front of the subject and the face evenly lit, so the camera can move in",
+    framing: "a close medium shot (head to mid-thigh) close to the camera, the face large and evenly lit, with a little room in front so the camera can move in",
   },
   side_track: {
     key: "side_track", name: "Side Tracking Shot", effect: "travels with the walk, the background sliding past with parallax", lens: "35mm", speed: "smooth, steady",
@@ -231,7 +231,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       name: "Speak to the camera",
       path: "{Cast} stand{s} facing the camera and speak{s} straight to the viewer — an open palm on the business name, "
         + "then the hand settles, with a warm smile and eye contact",
-      start: "three-quarter body (head to knees) standing facing the camera on the real floor inside the business, weight "
+      start: "close to the camera in a medium shot (head to mid-thigh), standing facing the camera on the real floor inside the business, weight "
         + "relaxed, one hand caught mid-gesture at waist height, the place visible behind them",
     },
     start: "the full figure from head to feet, caught mid-step a few steps back from the camera on open, clear floor inside "
@@ -252,7 +252,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       name: "Present the display",
       path: "{Cast} stand{s} beside the counter, display or shelves, facing the camera, and present{s} it with one open "
         + "hand on the words about it, then the hand settles as {they} keep{s} talking to the viewer",
-      start: "three-quarter body (head to knees) standing facing the camera right beside the real counter, display or "
+      start: "close to the camera in a medium shot (head to mid-thigh), standing facing the camera right beside the real counter, display or "
         + "shelves the clip talks about, which run beside them fully in view, one hand caught mid-gesture toward it",
     },
     start: "the full figure caught mid-step from a three-quarter front angle, walking along the real counter, display or "
@@ -281,7 +281,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       name: "Show it where they stand",
       path: "{Cast} stand{s} right beside the product or display, facing the camera, and show{s} it with an open hand — or "
         + "lift{s} it a little toward the camera — on the words about it, keeping {their} face to the viewer",
-      start: "three-quarter body (head to knees) standing facing the camera right beside the real product, counter or "
+      start: "close to the camera in a medium shot (head to mid-thigh), standing facing the camera right beside the real product, counter or "
         + "display the clip talks about — within arm's reach and fully in view — one hand caught mid-gesture toward it",
     },
     deityName: "Bless what it offers",
@@ -309,7 +309,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       name: "Explain to the camera",
       path: "{Cast} stand{s} facing the camera and deliver{s} the key line straight to the viewer — a hand on the chest on "
         + "the promise, then an open, reassuring palm and a confident nod",
-      start: "three-quarter body (head to knees) standing facing the camera on the real floor inside the business, one "
+      start: "close to the camera in a medium shot (head to mid-thigh), standing facing the camera on the real floor inside the business, one "
         + "hand caught rising toward the chest, a sincere, confident expression",
     },
     start: "three-quarter body caught mid-step on clear, open floor inside the business, facing the camera at a slight "
@@ -334,7 +334,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       + "speaking as {B} reacts; then {B} answers with a warm, confident open palm",
     deityPath: "{Cast} sweep{s} the blessing palm slowly over the place, then turn{s} the palm toward the viewer",
     deityName: "Bless the place",
-    start: "three-quarter body (head to knees) standing facing the camera beside the business's real counter, shelves or "
+    start: "close to the camera in a medium shot (head to mid-thigh), standing facing the camera beside the business's real counter, shelves or "
       + "work area, one hand beginning to open toward it, all of it fully visible",
     pairStart: "both standing close together side by side, about an arm's length apart, at the same distance from the camera, facing it, beside the business's real "
       + "counter, shelves or work area, which is fully visible",
@@ -351,7 +351,7 @@ export const STAGINGS: Record<StagingKey, Staging> = {
       name: "Invite where they stand",
       path: "{Cast} stand{s} facing the camera and invite{s} the viewer in on the invitation — both palms opening toward the "
         + "lens in a warm come-in gesture with a nod — an invitation to come, never a goodbye wave",
-      start: "three-quarter body (head to knees) standing facing the camera at the business's most inviting spot, the hands "
+      start: "close to the camera in a medium shot (head to mid-thigh), standing facing the camera at the business's most inviting spot, the hands "
         + "beginning to open — never in a doorway and never with the exit behind them",
     },
     start: "three-quarter body caught mid-step a few steps back from the camera at the business's most inviting spot, "
@@ -944,11 +944,11 @@ export function cameraShot(plan: ClipMotionPlan, cast = "The cast", plural = fal
       // In place (2026-10-22, night — the audit): she shows it FACING the camera, so a close-up of the product that
       // then "looks back to the lens" asked for a look away and a frame without her face. Both stay in the shot.
       if (product && !plan.walks) {
-        return fillCast(`Smooth, steady push-in from a three-quarter shot to a medium shot${angle} that keeps ${face} and `
+        return fillCast(`Smooth, steady push-in to a closer medium shot${angle} that keeps ${face} and `
           + `what {they} show{s} in frame`, cast, plural);
       }
       if (product) {
-        return fillCast(`Smooth, steady push-in from a three-quarter shot to a close-up of the product${angle}, the focus `
+        return fillCast(`Smooth, steady push-in to a close-up of the product${angle}, the focus `
           + `settling on ${face} as {they} look{s} back to the lens`, cast, plural);
       }
       /*
@@ -959,7 +959,7 @@ export function cameraShot(plan: ClipMotionPlan, cast = "The cast", plural = fal
       if (approaching) {
         return fillCast(`Smooth, steady push-in${angle} as {they} come{s} closer, ending in a medium shot, the sign fully in frame`, cast, plural);
       }
-      return `Smooth, steady push-in from a three-quarter shot to a medium shot${angle}, the sign fully in frame`;
+      return `Smooth, steady push-in to a closer medium shot${angle}, the sign fully in frame`;
     case "side_track":
       return fillCast("Smooth side-tracking shot from a three-quarter front angle, the camera travelling sideways "
         + "alongside {them}, the background sliding past with parallax", cast, plural);
@@ -982,6 +982,15 @@ export function cameraLabel(plan: ClipMotionPlan): string {
 }
 
 /** A deity's still, whatever the action: in place, mid-blessing — a deity never walks. */
+/**
+ * How close a person in place is framed (2026-11-05 — the owner: "in the frames the characters are far away, need them
+ * close to the screen"). Was "three-quarter body (head to knees)" at ~70% of the frame height, which, beside "feet
+ * visible", came out as small full-length figures. A drawn character or deity is framed head to feet instead
+ * (FULL_FIGURE_START) — still close, filling the frame — because their height is part of who they are.
+ */
+export const CLOSE_MEDIUM_START = "close to the camera in a medium shot (head to mid-thigh),";
+export const FULL_FIGURE_START = "the full figure from head to feet, close to the camera and filling most of the frame height,";
+
 const DEITY_START = "the full figure from head to feet inside the place, in a graceful blessing pose caught mid-gesture, "
   + "facing the viewer, with clear space around the arms";
 
@@ -989,7 +998,7 @@ const DEITY_START = "the full figure from head to feet inside the place, in a gr
  * The festival greeting's still (2026-10-22): facing the camera, hands relaxed and NOT yet joined — the
  * namaskaram comes on the wish words (wishCue); a still already in namaskaram makes Veo hold it all clip.
  */
-const WISH_START = "three-quarter body (head to knees) standing facing the camera with a warm, festive smile, the hands "
+const WISH_START = "close to the camera in a medium shot (head to mid-thigh), standing facing the camera with a warm, festive smile, the hands "
   + "relaxed at the waist — not yet joined — the festive place visible behind them";
 const WISH_PAIR_START = "both standing close together side by side, about an arm's length apart, at the same distance from the camera, facing it with festive smiles, "
   + "the hands relaxed — not yet joined — the festive place visible behind them";
@@ -1017,17 +1026,25 @@ const MID_MOVEMENT = "Caught mid-movement, like a candid frame from a premium co
 export function compositionFor(plan: ClipMotionPlan): string {
   const start = plan.performer === "deity" ? DEITY_START
     : plan.role === "wish" ? (plan.twoHander ? WISH_PAIR_START : plan.performer === "person" ? WISH_START
-      : WISH_START.replace("three-quarter body (head to knees)", "the full figure from head to feet"))
+      : WISH_START.replace(CLOSE_MEDIUM_START, FULL_FIGURE_START))
     : plan.twoHander ? plan.staging.pairStart
     : plan.performer === "person" ? plan.staging.start
-    : plan.staging.start.replace(/three-quarter body( \(head to knees\))?/, "the full figure from head to feet");
+    : plan.staging.start.replace(CLOSE_MEDIUM_START, FULL_FIGURE_START).replace(/three-quarter body( \(head to knees\))?/, "the full figure from head to feet");
   // A still camera films a walk — or a pair performing where it stands, on the floor it stands on.
   const framing = plan.camera.key === "static_locked" && !plan.walks
     ? "the photograph's own framing, with the real floor they stand on in view"
     : plan.camera.framing;
-  return `${start}; ${framing}; shot ${plan.angle.name.toLowerCase()} on a ${plan.lens} lens; every object around `
-    + `them fully inside the frame and clear of their body, and a fixed vertical reference behind them — a counter edge, `
-    + `a door frame or a shelf line — that their height can be read against, with their feet and the floor visible`;
+  /*
+   * Feet only where the full figure is the point (2026-11-05 — the owner: "the characters are far away"). This line
+   * ended "with their feet and the floor visible" for EVERY cast, so a person composed "head to knees" was also asked
+   * for her feet — the image tool resolved it by pulling back to a small full-length figure in a wide room. A drawn
+   * character or deity (whose height is the identity) and a walking clip keep the feet; a person in place does not.
+   */
+  const fullFigure = plan.performer !== "person" || plan.walks;
+  return `${start}; ${framing}; shot ${plan.angle.name.toLowerCase()} on a ${plan.lens} lens; what the line is about `
+    + `in view beside them and clear of their body, and a fixed vertical reference behind them — a counter edge, `
+    + `a door frame or a shelf line — that their height can be read against`
+    + (fullFigure ? `, with their feet and the floor visible, the figure still filling most of the frame height` : `; close to the camera, never a small figure in a wide room`);
 }
 
 /** The line a frame prompt carries so the still is ready for its clip. */
@@ -1749,20 +1766,20 @@ export function withRealPersonComposition(
     const [left, right] = options.pair;
     const framing = options.plate
       ? "the photograph's own framing and camera angle, unchanged; both placed into it on the real floor"
-      : "a two-shot of both, head to knees, at eye level, both faces large and clear";
+      : "a close two-shot of both, head to mid-thigh, at eye level, together filling about 85–90% of the frame height, both faces large and clear";
     return `${prompt.trimEnd()}\n\n${REAL_PERSON_COMPOSITION_HEADING}: the two owners say this clip's lines to the camera in turn, `
       + `with natural, appropriate gestures — ${framing}; the ${left.kind} standing on the LEFT and the ${right.kind} on the RIGHT, `
       + `side by side at a natural conversational distance and at the SAME distance from the camera, both standing in place, `
       + `turned slightly toward each other and open to the camera, relaxed, the speaker's hand caught mid-gesture at chest height, `
-      + `the other listening; feet planted; neither face hidden, cropped or overlapping the other; clear space around the arms; `
+      + `the other listening; neither face hidden, cropped or overlapping the other; clear space around the arms; `
       + `every object fully in view; never mid-step and never a stiff, posed stance.`;
   }
   const framing = options.plate
     ? "the photograph's own framing and camera angle, unchanged; the person placed into it on the real floor"
-    : "three-quarter body (head to knees) at eye level, the face large and clear";
+    : "a close medium shot (head to mid-thigh) at eye level, close to the camera, the person filling about 85–90% of the frame height, the face large and clear";
   return `${prompt.trimEnd()}\n\n${REAL_PERSON_COMPOSITION_HEADING}: the person speaks this clip's line to the camera with `
     + `natural, appropriate gestures — ${framing}; standing in place facing the camera (or turned slightly toward what the line is `
-    + `about), relaxed, one hand caught mid-gesture at chest height as if speaking, feet planted; clear space around the arms; every `
+    + `about), relaxed, one hand caught mid-gesture at chest height as if speaking; clear space around the arms; every `
     + `object fully in view; never mid-step and never a stiff, posed stance.`;
 }
 

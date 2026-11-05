@@ -16,6 +16,16 @@ export const OVERLAY_IMAGE_RULES =
   + "Tightly cropped to the lettering with only a small even margin. "
   + "Spell the text exactly as written, letter for letter, and add no other text, logo or watermark.";
 
+/**
+ * Reads over ANY picture (2026-11-05 — the owner: the text images "are coming in the same colour" as the B-roll and
+ * "mixed with" them). Both were themed to the same festival / brand palette, so gold letters sat on a gold-lit scene.
+ * The look stays the business's or the festival's; this fixed sentence guarantees the contrast whatever the look says.
+ */
+export const OVERLAY_LEGIBILITY =
+  "Stands out over any video or photograph: a bright, high-contrast letter face with a thick, clean contrasting outline "
+  + "(dark around light letters, light around dark letters) and a soft dark shadow on the letters only — never letters in "
+  + "the same deep colours as a festive or brand-coloured scene.";
+
 const MAX_DESIGN_LENGTH = 220;
 
 /**
@@ -38,7 +48,7 @@ export function cleanOverlayDesign(design: string): string {
 export function overlayImagePrompt(text: string, design: string, fallbackDesign = "glossy premium metallic lettering in the brand's colours"): string {
   const words = (text || "").replace(/\s+/g, " ").trim();
   const look = cleanOverlayDesign(design) || fallbackDesign;
-  return `Premium 3D text "${words}" — ${look}. Bold embossed 3D typography with real depth, a crisp bevel and soft studio lighting, sharp clean edges, readable at a glance on a phone. ${OVERLAY_IMAGE_RULES}`;
+  return `Premium 3D text "${words}" — ${look}. Bold embossed 3D typography with real depth, a crisp bevel and soft studio lighting, sharp clean edges, readable at a glance on a phone. ${OVERLAY_LEGIBILITY} ${OVERLAY_IMAGE_RULES}`;
 }
 
 /** The design half of a prompt this module built — for refining the look without touching the rules. */

@@ -270,7 +270,7 @@ vi.mock("@google/genai", () => ({
         const sys = String(req.config?.systemInstruction || "");
         if (/extract the following business information/i.test(sys)) return { text: JSON.stringify(extracted) };
         if (/senior creative strategist/.test(sys)) return { text: analysisReply };
-        if (/precise prompt EDITOR/.test(sys)) return { text: editorReply };
+        if (/precise prompt EDITOR|You apply a team member's change/.test(sys)) return { text: editorReply };
         if (/senior short-form video editor/.test(sys)) return { text: overlayReply };
         return { text: "{}" };
       },
@@ -340,15 +340,18 @@ describe("every deliverable prints exactly the list", () => {
       expect(contactNumbersOf(created.businessInfo).map(shown)).toEqual(s.expected);
 
       // A refine of the label that repeats the first number, invents a fourth and drops one.
-      editorReply = label
-        .replace(/^CONTACT 1 = .*$/m, (line) => `${line}\nCONTACT 2 = ${list[0]?.display ?? "98480 12345"}\nCONTACT 4 = 90000 11111`)
-        .replace(/^CONTACT 3 = .*\n?/m, "");
+      // (2026-11-05: a refine is a plan applied by code — this one tries to add contact lines and a number of its own.)
+      const contact1 = (label.match(/^CONTACT 1 = .*$/m) || [""])[0];
+      editorReply = JSON.stringify({
+        understood: "larger pills", clips: [1], changes: "Make the contact pills larger. Add a pill reading Call 90000 11111.",
+        edits: contact1 ? [{ clip: 1, find: contact1, replace: `${contact1}\nCONTACT 2 = ${list[0]?.display ?? "98480 12345"}\nCONTACT 4 = 90000 11111` }] : [],
+      });
       const refinedLabel = await gemini.refineSection("header", label, "make the pills larger", form(s.typed), profile);
       expect(contactNumberProblems(refinedLabel, list)).toEqual([]);
       expect(refinedLabel.match(/^CONTACT \d = /gm) ?? []).toHaveLength(n);
 
       // A frame refine that writes a number of its own on the shop board.
-      editorReply = "A sweet shop counter. A board reads: SRI SAI SWEETS · Call 98765 43210";
+      editorReply = JSON.stringify({ understood: "a board", clips: [1], changes: "Add a board that reads SRI SAI SWEETS · Call 98765 43210.", edits: [] });
       const frame = await gemini.refineSection("mainFrame", "A sweet shop counter.", "add a board", form(s.typed), profile);
       expect(frame).not.toContain("98765 43210");
 

@@ -6,6 +6,26 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-11-05: AdGen — ratio, subject size, colours, text vs B-roll, and a working frame / label refine**
+  (`ai-ads.md` §17.2 "Ratio, subject size, text vs B-roll" and "Editing / refine", §24). The owner's four problems plus
+  "refine was not working". (1) **Ratio:** `utils/frameFormat` `withAspectRatio` / `withRatioMentionsFixed` start every
+  frame (after all stamps, and after a frame refine) and every B-roll prompt with the ad's ratio and correct a wrong one
+  inside; the video kit's poster follows the ad's ratio (`videoPosterSizeOf`) — **reverses** the 2026-10-12 "always 9:16".
+  (2) **Framing:** "three-quarter, head to knees ~70%" → a close medium shot, head to mid-thigh ~85–90%, in `prompts.ts`,
+  `geminiService`, `prompts/motion` (full figure only for a cartoon, a deity or a walking clip) and `prompts/characterAd`;
+  a `SUBJECT SIZE` stamp on every frame (`withSubjectSize`). (3) **Colours:** `OVERLAY_LEGIBILITY` on every overlay, a
+  festival's colours as accents; B-roll rules 7–8 (true-to-life colour). (4) **Concept / timing:** `utils/brollTextPlan` —
+  overlays written first, the B-roll writer told them, one retry when a concept repeats a text, a cue moved off the text's
+  seconds in code; same order in the run, the studio's post-run step, Regenerate and Input Final Script
+  (`AIPlatformApp`). (5) **Refine:** live, a frame refine recoloured the scene and the OUTFIT stamp overrode the change; a
+  label refine changed one word. Now `refineImagePrompts` (`prompts/imageRefine` JSON plan → `utils/promptChanges` edits
+  in code, protected lines untouched, a `MEMBER'S CHANGES` line that wins, locks / ratio / numbers re-stamped); the studio
+  says what was understood, which clips changed and what was not applied. **Live (real Gemini):** 16:9 everywhere, both
+  B-roll moved off text with different concepts; 4 of 4 refine requests applied correctly in 4–9 s; voice-over, Veo,
+  B-roll, overlay and poster refines checked and working. **Tests:** new `adFormatOverlaysNov05` (19); updated
+  `adGenSept22`, `adPipelineEndToEnd`, `auditOct22`, `motionAndVeo`, `posterAdTypeOct12`, `prompts`,
+  `contactNumbersOct13`. Full suite 4800 of 4813 under load; the 11 non-SMM failures were timeouts and pass when re-run alone; the 2 left are in `smmDeliveryControlUiOct15` (the known lead view-only one plus the parallel SMM-pause work's). Typecheck 0, build ✅ (geminiService chunk 953 KB, over Vite's warning).
+
 - **2026-11-05: SMM — pause a running month** (`smm.md` §9.9 "Pause a running month", §24, §25; `data-model.md`
   `smm_campaigns.pause` / `pauses`). The owner: a client sometimes says mid-month "hold the work for some days" — the
   clock kept running (the client lost paid days), Delivery Control and the 11 AM / 5 PM check chased work nobody could do,

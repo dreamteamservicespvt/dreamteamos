@@ -225,6 +225,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-11-05)
 
+- 2026-11-05, **committed locally, not pushed** — **AdGen**: the ad's ratio on every frame, B-roll and the kit's poster
+  (no longer always 9:16), people close (head to mid-thigh), readable overlays and true colours, B-roll never on or
+  repeating the text, and the **frame / label refine rebuilt** (a JSON plan applied in code, the member's change wins)
+  (`ai-ads.md`; history 2026-11-05). Owner to try: one 16:9 ad, then refine a frame ("make her saree red").
+
 - 2026-11-05, **committed locally, not pushed** — **SMM: pause a running month** (the owner: "make yourself the best
   decision"; reverses 2026-10-15's "no mid-month pause"): Pause month on the month page (salesperson + SMM admins), a
   required restart day and reason, paused days move the renewal day, ≤ 15 days a month (main / tech admin past it), quiet

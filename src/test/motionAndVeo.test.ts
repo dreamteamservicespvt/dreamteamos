@@ -199,7 +199,7 @@ describe("the motion plan", () => {
     expect(product[1].staging.name).toBe("Show it where they stand");
     expect(product[1].walks).toBe(false);
     // In place her face and the product stay in the shot (2026-10-22, night — "looks back" asked for a look away).
-    expect(cameraShot(product[1], "She")).toBe("Smooth, steady push-in from a three-quarter shot to a medium shot that keeps her face and what she shows in frame");
+    expect(cameraShot(product[1], "She")).toBe("Smooth, steady push-in to a closer medium shot that keeps her face and what she shows in frame");
     expect(product[1].lens).toBe("50mm");
     expect(stagingPath(product[1], "She")).toBe("She stands right beside the product or display, facing the camera, and shows it with an open hand — or lifts it a little toward the camera — on the words about it, keeping her face to the viewer");
     // A scene plan's "arc" is never planned (retired 2026-10-22).
@@ -380,7 +380,7 @@ describe("frames built for each clip's action — caught mid-gesture, mid-step o
       expect(p).toContain(framingForMotion(clip));
       expect(p).toContain(`🧍 POSE: ${clip.staging.start}`);
     }
-    expect(framingForMotion(plan[1])).toContain("three-quarter body (head to knees) standing facing the camera right beside the real counter, display or shelves");
+    expect(framingForMotion(plan[1])).toContain("close to the camera in a medium shot (head to mid-thigh), standing facing the camera right beside the real counter, display or shelves");
     expect(framingForMotion(plan[1])).toContain("never a stiff, posed stance");
     expect(framingForMotion(plan[1])).not.toMatch(/mid-step/);
     // Words that take her somewhere: those clips walk, caught mid-step, and the frame asks for their floor.
@@ -479,10 +479,10 @@ describe("the composition stamped onto every frame", () => {
   // 2026-10-22: standing, facing the camera, in every clip whose words do not walk them; mid-step only on a walk.
   it("frames a drawn character head to feet, a real person three-quarter, a pair side by side, a deity in place — mid-step only on a walk", () => {
     const cartoon = planClipMotion(4, "commercial", "cartoon");
-    expect(compositionFor(cartoon[2])).toContain("the full figure from head to feet standing facing the camera on the real floor");
-    expect(compositionFor(plan[2])).toContain("three-quarter body (head to knees) standing facing the camera on the real floor");
+    expect(compositionFor(cartoon[2])).toContain("the full figure from head to feet, close to the camera and filling most of the frame height, standing facing the camera on the real floor");
+    expect(compositionFor(plan[2])).toContain("close to the camera in a medium shot (head to mid-thigh), standing facing the camera on the real floor");
     expect(compositionFor(plan[2])).toContain(`shot ${plan[2].angle.name.toLowerCase()} on a ${plan[2].lens} lens`);
-    expect(compositionFor(plan[0])).toContain("three-quarter body (head to knees) standing facing the camera on the real floor inside the business, weight relaxed, one hand caught mid-gesture at waist height");
+    expect(compositionFor(plan[0])).toContain("close to the camera in a medium shot (head to mid-thigh), standing facing the camera on the real floor inside the business, weight relaxed, one hand caught mid-gesture at waist height");
     expect(compositionFor(planClipMotion(4, "commercial", "person", { twoHander: true })[0])).toContain("both standing close together side by side, about an arm's length apart, at the same distance from the camera");
     for (const clip of [...plan, ...cartoon]) expect(compositionFor(clip), clip.staging.key).not.toMatch(/mid-step/);
     // Where the words walk them.
@@ -584,7 +584,7 @@ describe("the Veo prompt", () => {
     expect(build(null, 3, line, walking[3])).toContain("Smooth, steady push-in as she comes closer, ending in a medium shot, the sign fully in frame: she walks the last few steps toward the camera and invites the viewer in");
     expect(walking.map((c) => c.walks)).toEqual([true, true, false, true]);
     // Without such words: the same beats where she stands — a push-in or a short glide, no steps.
-    expect(build(null, 0)).toContain("Smooth, steady push-in from a three-quarter shot to a medium shot, the sign fully in frame: she stands facing the camera and speaks straight to the viewer — an open palm on the business name");
+    expect(build(null, 0)).toContain("Smooth, steady push-in to a closer medium shot, the sign fully in frame: she stands facing the camera and speaks straight to the viewer — an open palm on the business name");
     expect(build(null, 1)).toContain("Slow lateral dolly, the camera gliding a short way sideways at one distance, her seen from the same angle throughout, foreground and background sliding gently with parallax: she stands beside the counter, display or shelves, facing the camera, and presents it with one open hand on the words about it");
     for (const clip of plan) expect(build(null, clip.clip).split("\n\n")[1], `clip ${clip.clip + 1}`).not.toMatch(WALK_WORDS);
   });
@@ -596,7 +596,7 @@ describe("the Veo prompt", () => {
       expect(c.camera.key, `clip ${c.clip + 1}`).toBe("push_in");
       expect(build(null, c.clip, line, c)).toContain(`this real place exactly ${VEO_FRAME_LOCK} shows it — the same layout, fixtures, products, signage, logo, colours and light; she performs where she stands, facing the camera, and nothing new is added to it`);
     }
-    expect(build(null, 0, line, photo[0])).toContain("Smooth, steady push-in from a three-quarter shot to a medium shot, the sign fully in frame: she stands facing the camera and speaks straight to the viewer");
+    expect(build(null, 0, line, photo[0])).toContain("Smooth, steady push-in to a closer medium shot, the sign fully in frame: she stands facing the camera and speaks straight to the viewer");
     // Words that walk her: a push-in as she comes closer, or a still camera while she walks.
     const walkingPhoto = planClipMotion(4, "commercial", "person", { lines: WALK_LINES, plates: [true, true, true, true] });
     const first = build(null, 0, line, walkingPhoto[0]);

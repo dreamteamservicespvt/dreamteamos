@@ -8,7 +8,7 @@ import { parseVoiceBrief, voiceBriefAsText, voiceBriefForProfile } from "@/utils
 import { elsewhereIssue, elsewherePhrase } from "@/utils/speakingPosition";
 import { nameBoardInPlaceOfLogo, withOwnerImageDirective, OWNER_IMAGE_ATTACHMENT } from "@/utils/frameBrand";
 import { splitAttachmentDirective } from "@/utils/locationAssignment";
-import { cleanOverlayDesign, overlayDesignOf, overlayImagePrompt, OVERLAY_IMAGE_RULES } from "@/utils/overlayImage";
+import { cleanOverlayDesign, overlayDesignOf, overlayImagePrompt, OVERLAY_IMAGE_RULES, OVERLAY_LEGIBILITY } from "@/utils/overlayImage";
 import { parseClipPromptEdits, promptHeadings, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
 import { VEO_REFINE_PLAN_SYSTEM_PROMPT, VEO_REFINE_SYSTEM_PROMPT } from "@/services/prompts/refine";
 import { assembleVeoPrompt, planClipMotion } from "@/services/prompts/motion";
@@ -146,7 +146,7 @@ describe("the owner's photo on a Real Owner Face frame", () => {
 describe("the Overlay Text Image Generator", () => {
   it("assembles a short prompt with the exact text, a real transparent background and a tight crop", () => {
     const p = overlayImagePrompt("FREE DELIVERY", "polished gold letters with a fine sparkle");
-    expect(p).toBe(`Premium 3D text "FREE DELIVERY" — polished gold letters with a fine sparkle. Bold embossed 3D typography with real depth, a crisp bevel and soft studio lighting, sharp clean edges, readable at a glance on a phone. ${OVERLAY_IMAGE_RULES}`);
+    expect(p).toBe(`Premium 3D text "FREE DELIVERY" — polished gold letters with a fine sparkle. Bold embossed 3D typography with real depth, a crisp bevel and soft studio lighting, sharp clean edges, readable at a glance on a phone. ${OVERLAY_LEGIBILITY} ${OVERLAY_IMAGE_RULES}`);
     expect(OVERLAY_IMAGE_RULES).toContain("real alpha-channel PNG");
     expect(OVERLAY_IMAGE_RULES).toContain("Tightly cropped");
     expect(overlayDesignOf(p)).toBe("polished gold letters with a fine sparkle");
@@ -160,7 +160,9 @@ describe("the Overlay Text Image Generator", () => {
   it("asks the model for the look, themed to the festival or the business", () => {
     const p = OVERLAY_TEXT_SYSTEM_PROMPT("Telugu");
     expect(p).toContain('"design"');
-    expect(p).toContain("A FESTIVAL ad: the design follows THAT festival's own colours and symbols exactly");
+    expect(p).toContain("A FESTIVAL ad: the accents follow THAT festival's own colours and symbols");
+    // 2026-11-05: the face stays bright and outlined, so it reads over the festive B-roll.
+    expect(p).toContain("IT MUST STAND OUT FROM THE PICTURE BEHIND IT");
     expect(p).toContain("Never describe a background");
   });
 });

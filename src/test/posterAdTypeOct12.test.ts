@@ -294,13 +294,13 @@ describe("Poster Creation, end to end", () => {
 });
 
 describe("the video kit's poster row", () => {
-  it("is the same system: one type, the festival as the purpose, always 9:16, plain text", async () => {
+  it("is the same system: one type, the festival as the purpose, the AD's ratio (2026-11-05), plain text", async () => {
     analysisReply = JSON.stringify({ adType: "Shadow Metaphor Ads", reason: "r", businessInformation: "Sai Mobiles — smartphones for every family" });
     const prompt = await gemini.writeVideoPosterPrompt(form({ adType: "festival", festivalName: "Diwali", aspectRatio: "16:9" }), extracted, { hasLogoFile: true });
     expect(isConceptPosterPrompt(prompt)).toBe(true);
     expect(prompt).toContain("in Shadow Metaphor Ads.");
     expect(prompt).toContain("Occasion: Diwali");
-    expect(prompt.endsWith(`Format: ${FORMAT_LOGO_NO_NUMBER}`)).toBe(true);
+    expect(prompt.endsWith(`Format: ${FORMAT_LOGO_NO_NUMBER.replace("9:16 vertical", "16:9 horizontal")}`)).toBe(true);
     expect(analysisCalls()[0].user).toContain("A Diwali poster for this business");
   });
 

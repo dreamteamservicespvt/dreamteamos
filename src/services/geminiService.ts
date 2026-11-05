@@ -47,6 +47,10 @@ import { resolveModelSpec } from "@/utils/adRequirement";
 import type { AttireType, ModelGender } from "@/types/aiPlatform";
 import { parseClipPromptEdits, sameVeoPrompt, veoEditProblems } from "@/utils/veoRefine";
 import { cleanOverlayDesign, overlayDesignOf, overlayImagePrompt } from "@/utils/overlayImage";
+import { adRatioOf, frameCastOf, withAspectRatio, withSubjectSize } from "@/utils/frameFormat";
+import { brollAwayFromText, brollRepeatingText, onScreenTextBlock } from "@/utils/brollTextPlan";
+import { applyPromptChangePlan, memberChangesOf, parsePromptChangePlan } from "@/utils/promptChanges";
+import { IMAGE_REFINE_SYSTEM_PROMPT, IMAGE_REFINE_USER_PROMPT, type ImageRefineKind } from "./prompts/imageRefine";
 import { speakableLine, withoutFixedWords } from "@/utils/spokenNumbers";
 import {
   CHARACTER_VOICEOVER_SYSTEM_PROMPT,
@@ -931,8 +935,13 @@ export const buildVideoBottomLabel = (params: {
   six long art-directed concepts and the video kit's separate 150–220-word poster prompt.
 */
 
-/** The video kit's poster is always a 9:16 vertical poster (owner, 2026-10-12: "poster ratio 9:16"). */
+/**
+ * The video kit's poster takes the AD's ratio (owner, 2026-11-05: "based on the ad ratio … in the poster prompt we need
+ * to mention the aspect ratio"): a 16:9 video gets a 16:9 horizontal poster, a 9:16 one a 9:16 vertical poster. It was
+ * always 9:16 (2026-10-12), so a landscape ad came with a portrait poster.
+ */
 export const VIDEO_POSTER_SIZE = '9:16';
+export const videoPosterSizeOf = (formData: Pick<AdFormData, 'aspectRatio'>): string => adRatioOf(formData.aspectRatio);
 
 /** THE contact list (one to three, as the member gave them) and the verified address, for a poster's Business Information. */
 const posterFactsOf = (businessInfo: unknown) => ({
@@ -1016,7 +1025,7 @@ export const writeVideoPosterPrompt = async (
     analysis, businessInfo, businessName, brief: formData.textInstructions, occasion, phones, address,
     // A festival ad's poster carries the festival's own look (2026-10-22).
     festival: posterFestivalFor(occasion, true),
-    posterSize: VIDEO_POSTER_SIZE,
+    posterSize: videoPosterSizeOf(formData),
     hasLogo: !formData.noLogo && opts.hasLogoFile !== false,
     nameBoardText: formData.logoNameText?.trim() || businessName,
     textLanguage: 'English',
@@ -1105,8 +1114,8 @@ export interface PosterRefineResult {
 
 /**
  * A change asked of the video kit's poster row: the shared refine. The logo / no-logo choice is the one the
- * prompt was made with (its Format line), since the row has no logo question of its own; the canvas is always
- * the video kit's 9:16 and the words English unless a refine asked for another language.
+ * prompt was made with (its Format line), since the row has no logo question of its own; the canvas is the
+ * kit's own ratio (videoPosterSizeOf) and the words English unless a refine asked for another language.
  */
 export const refineVideoPoster = async (
   currentContent: string,
@@ -1121,7 +1130,7 @@ export const refineVideoPoster = async (
     fixedTypeId: null,
     instruction, formData, businessInfo,
     occasion: formData.adType === 'festival' ? (formData.festivalName || '').trim() : '',
-    posterSize: VIDEO_POSTER_SIZE,
+    posterSize: videoPosterSizeOf(formData),
     hasLogo: current ? /attached logo/i.test(current.format) : !formData.noLogo,
     textLanguage: 'English',
   });
@@ -1233,9 +1242,6 @@ export const refineSection = async (
   // refineVideoPoster itself, to tell the member what could not be applied.
   if (sectionType === 'poster') return (await refineVideoPoster(currentContent, additionalInstructions, formData, businessInfo)).prompt;
 
-  let systemPrompt: string;
-  let userPrompt: string;
-
   /**
    * Refining a special-category ad used to hand the content to the HUMAN-MODEL prompts, which
    * describe a single presenter in a saree. The editor was therefore being told the script it was
@@ -1261,133 +1267,92 @@ export const refineSection = async (
     return (await refineVeoPrompts({ prompts, instruction: additionalInstructions })).prompts.join('\n###SEGMENT###\n');
   }
 
-  switch (sectionType) {
-    case 'mainFrame':
-      systemPrompt = REFINE_EDIT_DIRECTIVE + (pack
-        ? CHARACTER_MULTI_FRAME_SYSTEM_PROMPT(pack, {
-            segmentCount: Math.ceil(formData.duration / 8),
-            clipSummaries: [],
-            locationMode: formData.locationMode === 'real_provided' ? 'real_provided' : 'ai_generated',
-            locationPlan: '',
-            aspectRatio: formData.aspectRatio === '16:9' ? '16:9' : '9:16',
-            adType: formData.adType,
-            festivalName: formData.festivalName,
-            festivalLook: formData.adType === 'festival' ? festivalLookLine(festivalLook(formData.festivalName)) : '',
-            businessContext: JSON.stringify(businessInfo),
-            wardrobe: packWardrobe(pack, formData),
-          })
-        : buildRatioDirective(formData) + buildNameBoardDirective(formData, businessInfo) + MAIN_FRAME_SYSTEM_PROMPT(
-            formData.attireType,
-            formData.adType,
-            formData.festivalName,
-            formData.aspectRatio,
-            JSON.stringify(businessInfo),
-            formData.gender || 'female',
-            formData.customAttire || '',
-            formData.noLogo || false,
-            resolveNameBoardText(formData, businessInfo)
-          ));
-      userPrompt = `You previously generated these Main Frame prompts (one per clip, separated by ###CLIP###):
-
----CURRENT PROMPTS---
-${currentContent}
----END CURRENT PROMPTS---
-
-The user wants the following changes/additions applied to ALL clips:
-"${additionalInstructions}"
-
-IMPORTANT: 
-- Apply ONLY the requested changes to ALL existing clip prompts
-- Maintain the ###CLIP### separator between each clip's prompt
-- Keep visual continuity between clips (same character, environment, lighting)
-${pack
-  ? `- These are ${pack.label} frames. Keep both characters named and never describe how they look; keep each clip's "ATTACH"/photograph reference and its business zone exactly as they are.`
-  : `- Clips after the first must still start with "Continuing from the previous frame…"`}
-- Keep all other aspects exactly the same
-- Output ONLY the refined prompts separated by ###CLIP###, no explanations
-- Do NOT wrap in markdown code blocks
-- Make sure each prompt is clean and copy-paste ready`;
-      break;
-
-    case 'header':
-      systemPrompt = REFINE_EDIT_DIRECTIVE
-        + buildNameBoardDirective(formData, businessInfo, 'header')
-        + LOWER_THIRD_SYSTEM_PROMPT({
-          businessType: detectBusinessType(JSON.stringify(businessInfo ?? {})),
-          adType: formData.adType,
-          festivalName: formData.festivalName,
-          noLogo: formData.noLogo || false,
-          contactCount: contactNumbersOf(businessInfo).length,
-          hasAddress: !!factsFromProfile(businessInfo).address,
-          hasWhatsApp: hasWhatsAppNumber(businessInfo),
-          ...labelDesignInputs(formData, null, null),
-        });
-      userPrompt = `You previously generated this brand label prompt:
-
----CURRENT PROMPT---
-${currentContent}
----END CURRENT PROMPT---
-
-The user wants the following changes/additions:
-"${additionalInstructions}"
-
-IMPORTANT:
-- Apply ONLY the requested changes to the existing prompt
-- Keep all other aspects exactly the same
-- Output ONLY the refined prompt, no explanations
-- Do NOT wrap in markdown code blocks
-- Make sure the output is a clean, copy-paste ready prompt`;
-      break;
-
-    default:
-      throw new Error(`Unknown section type: ${sectionType}`);
+  // The frames and the label: a plan the model answers, applied by code (refineImagePrompts, 2026-11-05).
+  if (sectionType === 'mainFrame' || sectionType === 'header') {
+    const prompts = sectionType === 'mainFrame'
+      ? currentContent.split(/\s*###\s*CLIP\s*###\s*/i).map(p => p.trim()).filter(Boolean)
+      : [currentContent];
+    const result = await refineImagePrompts({ section: sectionType, prompts, instruction: additionalInstructions, formData, businessInfo });
+    return sectionType === 'mainFrame' ? result.prompts.join('\n###CLIP###\n') : result.prompts[0];
   }
+  throw new Error(`Unknown section type: ${sectionType}`);
+};
 
-  const response = await callWithFallback(async (ai, model) => {
-    return await ai.models.generateContent({
-      model,
-      contents: [
-        { role: 'user', parts: [{ text: userPrompt }] }
-      ],
-      config: {
-        systemInstruction: systemPrompt,
-      }
-    });
-  });
+/** What a frame or label refine did, for the screen (2026-11-05). */
+export interface ImageRefineResult {
+  prompts: string[];
+  /** 0-based prompts that changed. */
+  changed: number[];
+  understood: string;
+  notApplied: string;
+}
 
-  let refined = response.text || currentContent;
+/**
+ * Refines the main frames or the video bottom label (2026-11-05 — the owner: "the platform refine was not working …
+ * required modifications also not doing correctly"). The model answers a PLAN (prompts/imageRefine): which clips, the
+ * sentences that contradict the request with their rewrites, and the change as one instruction; code applies it
+ * (utils/promptChanges) — an edit not found is skipped, the locks and the attach line are never edited — stamps the
+ * change as MEMBER'S CHANGES, the last word over every stamp, and puts back what a refine may never lose: verified
+ * numbers only, the only-text rule, the owner's face lock and photo line, the ad's ratio, the label's contact lines.
+ * It used to rewrite every prompt whole and keep whatever came back (a recoloured scene, a stamp overriding the change).
+ */
+export const refineImagePrompts = async (input: {
+  section: 'mainFrame' | 'header';
+  prompts: string[];
+  instruction: string;
+  formData: AdFormData;
+  businessInfo: any;
+  /** 0-based clip refined from its own card; null / absent = the request decides. */
+  clip?: number | null;
+}): Promise<ImageRefineResult> => {
+  const { section, formData, businessInfo, instruction } = input;
+  const prompts = input.prompts.map(p => p.trim()).filter(Boolean);
+  if (prompts.length === 0) throw new Error('There is nothing to refine yet.');
+  const kind: ImageRefineKind = section === 'header' ? 'label' : 'frames';
+  const oneClip = typeof input.clip === 'number' && input.clip >= 0 && input.clip < prompts.length ? input.clip : null;
+  const ask = (correction = '') => callWithFallback(async (ai, model) => ai.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: IMAGE_REFINE_USER_PROMPT({
+      kind, prompts, instruction, clip: oneClip === null ? null : oneClip + 1,
+      currentChanges: memberChangesOf(prompts[oneClip ?? 0]),
+    }) + correction }] }],
+    config: { systemInstruction: IMAGE_REFINE_SYSTEM_PROMPT(kind), responseMimeType: 'application/json', temperature: 0.2 },
+  }), { effort: 'standard' });
+  let plan = parsePromptChangePlan((await ask()).text || '');
+  if (!plan) plan = parsePromptChangePlan((await ask('\n\nYour last answer was not the JSON plan. Return ONLY the JSON object.')).text || '');
+  if (!plan) throw new Error('The change could not be applied — the prompts are unchanged. Please try again.');
+  if (oneClip !== null) plan = { ...plan, clips: [oneClip + 1] };
 
-  // A refine is a model rewrite like any other: a number it adds that the business never gave goes, and
-  // its contact lines are put back from THE list — it could repeat one, drop one or renumber them (2026-10-13).
-  if (sectionType === 'header') {
-    return withLabelContacts(stripUnverifiedNumbers(refined, contactKeysOf(businessInfo)), contactNumbersOf(businessInfo));
+  const applied = applyPromptChangePlan(prompts, plan);
+  const keys = contactKeysOf(businessInfo);
+  const pack = packFor(formData);
+  let out = applied.prompts.map(p => stripUnverifiedNumbers(p, keys));
+  if (section === 'header') {
+    out = out.map(p => withLabelContacts(p, contactNumbersOf(businessInfo)));
+  } else {
+    // The logo is the only writing in the picture (utils/frameBrand); a refine has no files: the frame's own words say
+    // which brand mark it carries.
+    if (!pack?.usesClientFace) {
+      const board = formData.noLogo || !out.some(p => /attached logo/i.test(p)) ? (formData.logoNameText?.trim() || businessInfo?.businessName || '') : undefined;
+      out = out.map(p => withOnlyLogoText(p, { nameBoard: board }));
+    }
+    // A Real Owner Face frame keeps its face lock; a Real Owner Duo frame its duo lock and both photos, in order.
+    if (pack?.usesClientFace) {
+      const owners = ownerPhotoSlots(pack);
+      out = out.map(p => owners.length > 1
+        ? withOwnerImageDirective(withOwnerDuoFaceLock(p, owners), owners)
+        : withOwnerFaceLock(p, packModelGender(pack)));
+    }
+    out = out.map(p => withAspectRatio(p, formData.aspectRatio));
   }
-  // A frame prints signage: a number on it is one of the business's own or nothing.
-  if (sectionType === 'mainFrame') refined = stripUnverifiedNumbers(refined, contactKeysOf(businessInfo));
-  // …and keeps "the logo is the only writing in the picture" through a refine (utils/frameBrand, 2026-10-22 night).
-  if (sectionType === 'mainFrame' && !pack?.usesClientFace) {
-    // A refine has no files: the frame's own words say which brand mark it carries.
-    const board = formData.noLogo || !/attached logo/i.test(refined) ? (formData.logoNameText?.trim() || businessInfo?.businessName || '') : undefined;
-    refined = refined
-      .split(/(\s*###\s*CLIP\s*###\s*)/i)
-      .map((part, i) => (i % 2 === 0 && part.trim() ? withOnlyLogoText(part.trim(), { nameBoard: board }) : part))
-      .join('');
-  }
-  // A Real Owner Face frame keeps its face lock through a refine — the model may drop a stamp it was
-  // given (utils/frameBrand.withOwnerFaceLock, 2026-10-08). Each clip's prompt, between the separators.
-  // A Real Owner Duo frame keeps the duo's lock (each side ↔ its own photograph) and the line asking for
-  // both photographs in order (2026-10-14).
-  if (sectionType === 'mainFrame' && pack?.usesClientFace) {
-    const owners = ownerPhotoSlots(pack);
-    const stamp = (frame: string) => owners.length > 1
-      ? withOwnerImageDirective(withOwnerDuoFaceLock(frame, owners), owners)
-      : withOwnerFaceLock(frame, packModelGender(pack));
-    return refined
-      .split(/(\s*###\s*CLIP\s*###\s*)/i)
-      .map((part, i) => (i % 2 === 0 && part.trim() ? stamp(part.trim()) : part))
-      .join('');
-  }
-  return refined;
+  const changed = out.map((p, i) => (p.trim() !== prompts[i].trim() ? i : -1)).filter(i => i >= 0);
+  const skippedNote = applied.skipped ? `${applied.skipped} edit${applied.skipped === 1 ? '' : 's'} could not be matched and ${applied.skipped === 1 ? 'was' : 'were'} skipped; the change line still applies.` : '';
+  return {
+    prompts: out,
+    changed,
+    understood: plan.understood,
+    notApplied: [plan.notApplied, changed.length ? '' : 'The request did not change any prompt.', changed.length ? skippedNote : ''].filter(Boolean).join(' '),
+  };
 };
 
 // ── Voice-over refine: understand, edit only what was asked, prove nothing else broke ─────────────
@@ -4348,17 +4313,23 @@ Segment 2: <text>`;
     written now, alongside the frames and the video prompts, instead of after the whole run. Either can
     fail on its own: its row then says Missing and offers Generate, and the kit still arrives.
   */
+  /*
+    The text first, then the pictures (2026-11-05, utils/brollTextPlan — the owner: "the same concept and at the same
+    time"): the overlays belong on the words they print, so they are written first; the B-roll is written knowing them
+    (another idea, other words). Both still run alongside the frames, which take longer, so the run is not slower.
+  */
   const extrasPromise: Promise<[any[] | null, any[] | null]> = extras && voiceOverScript
-    ? Promise.all([
-        generateStockImagePrompts(voiceOverScript, businessInfo, formData.adType, formData.festivalName,
-          extras.stockTheme || 'indian', formData.aspectRatio, segmentCount, { sceneContext, coreMessage })
-          .then(stock => { emitPartial({ stockImagePrompts: stock }); return stock; })
-          .catch(err => { console.warn('B-roll prompts failed inside the run; the row offers Generate.', err); return null; }),
-        generateOverlayTexts(voiceOverScript, businessInfo, formData.language || 'Telugu',
+    ? (async (): Promise<[any[] | null, any[] | null]> => {
+        const overlays = await generateOverlayTexts(voiceOverScript, businessInfo, formData.language || 'Telugu',
           { adType: formData.adType, festivalName: formData.festivalName, sceneContext, coreMessage })
           .then(items => { emitPartial({ overlayTexts: items }); return items; })
-          .catch(err => { console.warn('Overlay prompts failed inside the run; the row offers Generate.', err); return null; }),
-      ])
+          .catch(err => { console.warn('Overlay prompts failed inside the run; the row offers Generate.', err); return null; });
+        const stock = await generateStockImagePrompts(voiceOverScript, businessInfo, formData.adType, formData.festivalName,
+          extras.stockTheme || 'indian', formData.aspectRatio, segmentCount, { sceneContext, coreMessage, overlays })
+          .then(items => { emitPartial({ stockImagePrompts: items }); return items; })
+          .catch(err => { console.warn('B-roll prompts failed inside the run; the row offers Generate.', err); return null; });
+        return [stock, overlays];
+      })()
     : Promise.resolve([null, null]);
 
   /**
@@ -4581,10 +4552,10 @@ ${realPremisesDirective}${maleCastingOverride}${commercialMainFramePriorityNote}
   HAIR COLOR LOCK RULE: The ${p.person} must have strictly natural rich black hair in Clip 1 and that exact black hair color must stay locked for the full campaign. Reject brown, auburn, burgundy, copper, highlighted, sun-browned, or lighting-shifted hair. If any prompt drifts away from natural rich black hair, rewrite it before output.
   REALISM RULE: The environment must look like the actual business premises using extracted business/store context. In festival mode, keep the real business location dominant and layer festival cues naturally on top. In commercial mode, every clip must rebuild the real premises as the dominant base layer, then use the strongest business-proof surface for that exact voice-over segment, then premium atmosphere from real materials, real light, and real fixtures.
   COMMERCIAL QUALITY RULE: For commercial ads, strictly follow the realism formula: Face Anchor + Light Source + Skin Truth + Scene Depth + Camera Physics. If any one is missing, the frame is not acceptable.
-  ${formData.attireType === 'traditional' ? `TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage${formData.adType === 'festival' ? '' : ', never festival-styled'}. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter${formData.adType === 'festival' ? ` — and, in this ${formData.festivalName || 'festival'} ad, the festival decorations each frame's FESTIVAL DRESSING names` : ''}. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception in ${HERO_FRAME_POSE}; frame her as a three-quarter shot from head to thighs/knees clearly filling about 70% of the frame, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.` : ''}
-  ${(formData.attireType === 'professional' || formData.attireType === 'shirt_pant') ? `PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, ${formData.adType === 'festival' ? `the ${formData.festivalName || 'festival'} cues only in the decorations around her (FESTIVAL DRESSING)` : 'zero festival cues'}, and the strongest business-proof surfaces in frame. The suit ${p.person} must be strictly ${p.ageYearsWords} years old, distinctly Indian, ${p.isMale ? 'leading-man-level handsome' : 'actress-level beautiful'}, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different ${p.personYoung} — never reuse the same recurring face. ${p.Pronoun === 'He' ? 'His' : 'Her'} hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a medium full / three-quarter standing shot occupying roughly 70% of the frame, directly in front of the business's own reception, in ${HERO_FRAME_POSE}. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. ${p.isMale ? 'The man must wear only minimal masculine accessories: a wristwatch and an optional slim ring — NO necklace, NO earrings, NO bangles, and NO bindi.' : 'The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead.'} Frame ${p.object} as a three-quarter shot from head to thighs/knees so ${p.pronoun} clearly fills about 70% of the frame, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 70% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.` : ''}
-  ${isCustomAttireMainFrame ? `CUSTOM ATTIRE RULE: Dress the ${p.person} in the EXACT custom attire specified in the MODEL SPEC / ATTIRE above — same outfit, same colours, same details in every clip. Do NOT substitute a suit, saree, or any default wardrobe. Keep ${p.isMale ? 'clean masculine grooming with only a wristwatch and an optional slim ring' : 'tasteful, minimal, premium styling'}, direct eye contact, ~70% frame height, and no invented background text.` : ''}
-  MAIN FRAME FRAMING RULE: In EVERY clip, the subject must be centered, occupy roughly 70% of the frame, and maintain direct eye contact with the camera.
+  ${formData.attireType === 'traditional' ? `TRADITIONAL ATTIRE RULE: When ATTIRE = Traditional, keep the saree business-specific, commercial, premium, and realistic — never bridal, never wedding-stage${formData.adType === 'festival' ? '' : ', never festival-styled'}. Use polished real business zones, premium counters, refined décor, believable glass/reflection behavior, and strong category proof instead of decorative clutter${formData.adType === 'festival' ? ` — and, in this ${formData.festivalName || 'festival'} ad, the festival decorations each frame's FESTIVAL DRESSING names` : ''}. Every business should get a NEW, different girl in an elegant designer saree (brand-derived colour) with elegant traditional jewellery — a necklace/chain, earrings, bangles, a finger ring, and a small bindi. For Clip 1 the girl stands centered in front of the business's own reception in ${HERO_FRAME_POSE}; frame her as a close medium shot from head to mid-thigh clearly filling about 85–90% of the frame height, never a small full head-to-feet shot. The background must be 100% relatable to THIS exact business. The attached logo must be the ONLY text in the frame (kept small-to-medium, sharp, in focus and clearly readable, never large enough to shrink the girl); do NOT invent any other text, and do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens — keep walls and surfaces clean.` : ''}
+  ${(formData.attireType === 'professional' || formData.attireType === 'shirt_pant') ? `PROFESSIONAL ATTIRE RULE: When ATTIRE = Professional, build the frame in a bright contemporary corporate-facing or consultation-facing business zone with a business-specific premium suit palette. For this business, the preferred suit palette is ${professionalSuitPalette}. Do NOT reuse the same beige/pastel suit family across unrelated businesses unless the brand cues clearly justify it. Also do NOT force one identical suit tone into every clip: keep the same premium wardrobe family, but allow clip-to-clip shade shifts inside this approved business palette when the exact location, script beat, or brand materials support it. Keep semi-jewellery only, ${formData.adType === 'festival' ? `the ${formData.festivalName || 'festival'} cues only in the decorations around her (FESTIVAL DRESSING)` : 'zero festival cues'}, and the strongest business-proof surfaces in frame. The suit ${p.person} must be strictly ${p.ageYearsWords} years old, distinctly Indian, ${p.isMale ? 'leading-man-level handsome' : 'actress-level beautiful'}, smiling warmly, and impossible to confuse with a generic employee portrait. Every business should get a NEW, different ${p.personYoung} — never reuse the same recurring face. ${p.Pronoun === 'He' ? 'His' : 'Her'} hair in Clip 1 must read as unmistakably natural rich black only, never soft brown or highlighted under warm light. For Clip 1, the girl stands in the exact center of the frame as a close medium shot (head to mid-thigh) occupying about 85–90% of the frame height, directly in front of the business's own reception, in ${HERO_FRAME_POSE}. From Clip 2 onward, the hand position and pose must change according to that clip's exact voice-over script and location. The attached logo must be the ONLY text anywhere in the frame — do NOT invent any other wall text, signage, banners, posters, taglines, mission lines, service lists, certificate text, dates, or academic years. ${p.isMale ? 'The man must wear only minimal masculine accessories: a wristwatch and an optional slim ring — NO necklace, NO earrings, NO bangles, and NO bindi.' : 'The girl must wear simple jewellery: a finger ring, a thin necklace or chain, earrings, a wristwatch, and a small bindi on the forehead.'} Frame ${p.object} as a close medium shot from head to mid-thigh so ${p.pronoun} clearly fills about 85–90% of the frame height, never a small full head-to-feet shot. Keep the attached logo small-to-medium and clearly secondary — dynamically sized to the free wall space and never large enough to shrink the girl or steal her 85–90% dominance. Keep the logo perfectly sharp and in focus (not blurred by depth of field) so every letter and all text on it is crisp and clearly readable. The background must be 100% relatable to THIS exact business — fill the reception with the real equipment, products, displays, and service cues of this specific business (from the provided business details) so a viewer instantly recognises what it does; never a generic or unrelated office. Keep walls and surfaces clean — do NOT add empty/blank boards, picture frames, certificates, brochures, posters, standees, or blank screens (empty placeholders look like cardboard); the only branding is the attached logo.` : ''}
+  ${isCustomAttireMainFrame ? `CUSTOM ATTIRE RULE: Dress the ${p.person} in the EXACT custom attire specified in the MODEL SPEC / ATTIRE above — same outfit, same colours, same details in every clip. Do NOT substitute a suit, saree, or any default wardrobe. Keep ${p.isMale ? 'clean masculine grooming with only a wristwatch and an optional slim ring' : 'tasteful, minimal, premium styling'}, direct eye contact, ~85–90% frame height, and no invented background text.` : ''}
+  MAIN FRAME FRAMING RULE: In EVERY clip, the subject must be centered, occupy about 85–90% of the frame height, and maintain direct eye contact with the camera.
   LOGO RULE: Use only the attached logo exactly as provided, installed on the most believable physical surface for that clip's zone, kept small-to-medium, sharp and clearly readable, fully visible and never cropped, blocked, blurred, stretched, tilted, redesigned, or pasted like an overlay. Prioritize these surface types: ${realisticLogoPlacementGuidance}
   NO BACKGROUND TEXT RULE (ALL CLIPS — STRICT): In EVERY clip (Clip 1 and all continuation clips), the attached logo is the ONLY text anywhere in the image. NEVER invent or render any other text on walls, desks, screens, boards, or props — no signage, banners, posters, notice boards, brochures, application forms, department lists, course / curriculum lists, certificates, taglines, slogans, dates, or years. The image generator mis-spells such text, so it must not appear. Also do NOT add blank/empty boards, frames, or screens. Each continuation clip's background must be a REAL location/zone of the same business that matches that clip's voice-over line, built only from real physical objects (equipment, products, counters, furniture, fixtures, plants${formData.adType === 'festival' ? `, and the ${formData.festivalName || 'festival'} decorations FESTIVAL DRESSING names` : ''}).
   CONTINUATION FRAME RULE: For every clip after Clip 1, write the prompt as if the image generator is also receiving the attached Clip 1 reference frame image.
@@ -4884,6 +4855,15 @@ ${sceneContext ? `
     }
     // Last, so it joins the photo line: the member attaches the owner's face — a duo's two faces, in order — to every frame.
     if (ownerFace) mainFramePrompts = mainFramePrompts.map(prompt => withOwnerImageDirective(prompt, ownerDuo ? ownerSlots : []));
+    /*
+      The cast close to the camera and the ad's own canvas, said in the copied prompt (utils/frameFormat, owner
+      2026-11-05: "the characters are far away" and "mention the aspect ratio" — the templates said 9:16 in a 16:9 ad).
+    */
+    mainFramePrompts = mainFramePrompts.map((prompt, i) => withAspectRatio(withSubjectSize(prompt, {
+      cast: frameCastOf(realPerson ? undefined : motionPlan[i], { realPerson, ownerPair: !!ownerSeats }),
+      walks: !!motionPlan[i]?.walks,
+      plate: clipPhotoPlan[i] !== undefined && clipPhotoPlan[i]?.photoIndex !== null,
+    }), formData.aspectRatio));
 
     emitPartial({ mainFramePrompts });
     return mainFramePrompts;
@@ -5200,7 +5180,15 @@ export const generateStockImagePrompts = async (
    * What the video is about, from the same run: the scene plan's motive and world, and the core
    * message. With them, B-roll for an annadanam video shows the food being served rather than a shop.
    */
-  context: { sceneContext?: SceneContext | null; coreMessage?: CoreMessageBrief | null } = {},
+  context: {
+    sceneContext?: SceneContext | null;
+    coreMessage?: CoreMessageBrief | null;
+    /**
+     * The on-screen text overlays already planned for this script (2026-11-05, utils/brollTextPlan): each image shows a
+     * different idea of its line and comes up on other words, so the text and the picture are never on screen together.
+     */
+    overlays?: any[] | null;
+  } = {},
 ): Promise<any[]> => {
   if (API_KEYS.length === 0) {
     throw new Error("No API keys configured. Please set API_KEY_1, API_KEY_2, etc. in your environment.");
@@ -5231,10 +5219,12 @@ export const generateStockImagePrompts = async (
   /** The ad's own world — the festival's exact imagery, or the business's, or the event the video is about. */
   const festivalTheme = adType === 'festival' && festivalName?.trim() ? getFestivalTheme(festivalName) : null;
   const { sceneContext, coreMessage } = context;
+  const overlays = Array.isArray(context.overlays) ? context.overlays : [];
+  const onScreenText = onScreenTextBlock(overlays);
   const worldBlock = [
     festivalTheme ? `FESTIVAL: ${festivalName}
 FESTIVAL IMAGERY (use these exact symbols and colours): ${festivalTheme.culturalElements}
-FESTIVAL COLOURS: ${festivalTheme.headerColors}
+FESTIVAL COLOURS (only in the real objects that carry them — never a colour wash over the picture): ${festivalTheme.headerColors}
 FESTIVAL MOOD: ${festivalTheme.mood}` : '',
     sceneContext ? `WHAT THIS VIDEO IS ABOUT: ${sceneContext.motive}${sceneContext.setting ? `
 THE WORLD OF THIS AD: ${sceneContext.setting}` : ''}${sceneContext.avoid.length ? `
@@ -5266,31 +5256,57 @@ EVERY IMAGE MUST BELONG TO ITS CLIP:
 • Keep it in the same world as the ad (above). Never a stock cliché that could sit in any other ad — no boardroom handshakes, no skyscrapers, no foreign offices, no unrelated lifestyle shots — and no text in the image.
 • Say in "whyItFits" which words of that clip's line the image is showing.
 
-For each item return an object with: "id" (clip number), "concept" (short label), "prompt" (the full image prompt), "usage" (how the editor uses it, e.g. "full-screen B-roll for 2 seconds"), "whyItFits" (the words of that clip's line this image shows).`;
+For each item return an object with: "id" (clip number), "concept" (short label), "prompt" (the full image prompt), "usage" (how the editor uses it, e.g. "full-screen B-roll for 2 seconds"), "whyItFits" (the words of that clip's line this image shows), "fromWord", "toWord".${onScreenText ? `
 
-  const response = await callWithFallback(async (ai, model) => {
-    return await ai.models.generateContent({
-      model,
-      contents: [
-        { role: 'user', parts: [{ text: userPrompt }] }
-      ],
-      config: {
-        systemInstruction: `OUTPUT ASPECT RATIO OVERRIDE: every image MUST be ${ratio} ${orient}; ignore any "9:16" mention and use ${ratio}.\n\n` + STOCK_IMAGE_SYSTEM_PROMPT,
-        responseMimeType: "application/json"
-      }
-    });
-  }, { effort: 'fast' });
+ON-SCREEN TEXT ALREADY PLANNED (3D text the editor lays over the video — it is NOT yours to show):
+${onScreenText}
+For every clip listed: the image shows a DIFFERENT idea of the line than its text (never the thing the text says), and its fromWord / toWord are OTHER words of the line, before or after the text — the picture and the text are never on screen at the same time.` : ''}`;
 
-  const text = response.text || "[]";
-  try {
-    const parsed = JSON.parse(text);
-    const items = Array.isArray(parsed) ? parsed : [parsed];
-    // Which clip each image plays over, the line it plays under, and the exact seconds its words fall
-    // in — all stamped from the script itself (utils/clipPlacement, utils/wordTiming).
-    return withCues(withPlacements(items, placements));
-  } catch {
-    return [{ id: 1, concept: "Parse Error", prompt: text, usage: "Manual review needed", ...(placements[0] || {}) }];
+  const ask = async (correction = ''): Promise<any[] | null> => {
+    const response = await callWithFallback(async (ai, model) => {
+      return await ai.models.generateContent({
+        model,
+        contents: [
+          { role: 'user', parts: [{ text: userPrompt + correction }] }
+        ],
+        config: {
+          systemInstruction: `OUTPUT ASPECT RATIO OVERRIDE: every image MUST be ${ratio} ${orient}; ignore any "9:16" mention and use ${ratio}.\n\n` + STOCK_IMAGE_SYSTEM_PROMPT,
+          responseMimeType: "application/json"
+        }
+      });
+    }, { effort: 'fast' });
+    lastText = response.text || "[]";
+    try {
+      const parsed = JSON.parse(lastText);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      return null;
+    }
+  };
+  let lastText = '';
+  let items = await ask();
+  /*
+    The same idea twice (2026-11-05): an image whose concept is its clip's text ("Free Home Delivery" under "FREE
+    DELIVERY") is asked again ONCE, naming each clash; the answer with fewer clashes is kept. Only when it happens.
+  */
+  if (items && overlays.length) {
+    const clashes = brollRepeatingText(withPlacements(items, placements), overlays);
+    if (clashes.length) {
+      const retry = await ask(`\n\nYOUR LAST ANSWER SHOWED WHAT THE ON-SCREEN TEXT ALREADY SAYS — show another idea of the line for:\n${clashes
+        .map((c) => `• Clip ${c.clip}: your "${c.concept}" repeats its text "${c.text}"`).join('\n')}\nKeep every other image as it was.`)
+        .catch(() => null);
+      if (retry && brollRepeatingText(withPlacements(retry, placements), overlays).length < clashes.length) items = retry;
+    }
   }
+  if (!items) {
+    return [{ id: 1, concept: "Parse Error", prompt: lastText, usage: "Manual review needed", ...(placements[0] || {}) }];
+  }
+  // The ad's canvas on every prompt, whatever the model wrote (utils/frameFormat, 2026-11-05).
+  const stamped = items.map((item) => (typeof item?.prompt === 'string' ? { ...item, prompt: withAspectRatio(item.prompt, ratio) } : item));
+  // Which clip each image plays over, the line it plays under, and the exact seconds its words fall
+  // in — all stamped from the script itself (utils/clipPlacement, utils/wordTiming) — then kept off the
+  // seconds its clip's text is on screen (utils/brollTextPlan).
+  return brollAwayFromText(withCues(withPlacements(stamped, placements)), overlays);
 };
 
 // Refine a SINGLE B-roll stock image prompt (per-image refine) — applies only the requested change.
@@ -5317,10 +5333,11 @@ The image MUST stay ${ratio} ${orient} and hyper-realistic / highly relatable. O
       config: { systemInstruction: REFINE_EDIT_DIRECTIVE + `You refine single hyper-realistic ${ratio} ${orient} B-roll image prompts.` }
     });
   }, { effort: 'fast' });
-  return (response.text || currentPrompt)
+  // The ad's canvas, whatever the refine wrote (utils/frameFormat, 2026-11-05).
+  return withAspectRatio((response.text || currentPrompt)
     .replace(/^```(?:json|text|plaintext)?\s*\n?/gim, '')
     .replace(/\n?```\s*$/gim, '')
-    .trim();
+    .trim(), ratio);
 };
 
 // The canonical voice-over format (see formatVoiceOverScript) labels each clip with its
@@ -5407,11 +5424,11 @@ const overlayTheme = (context: OverlayDesignContext, businessInfo: any): { block
   if (festival) {
     return {
       block: `AD TYPE: festival greeting — ${context.festivalName}
-FESTIVAL COLOURS (the lettering uses exactly these): ${festival.headerColors}
+FESTIVAL COLOURS (for the lettering's outline, bevel, edge and glow — the letter face stays bright and high-contrast so it reads over the festive video and B-roll): ${festival.headerColors}
 FESTIVAL SYMBOLS (one small accent may come from these): ${festival.culturalElements}
 FESTIVAL ACCENTS: ${festival.headerAccents}
 FESTIVAL MOOD: ${festival.mood}`,
-      fallback: `premium lettering in ${festival.headerColors.split(/[—,]/)[0].trim()} with a soft festive glow`,
+      fallback: `bright ivory lettering with a ${festival.headerColors.split(/[—,]/)[0].trim()} outline and a soft festive glow`,
     };
   }
   const brandColours = brandPaletteOf(businessInfo);
@@ -5422,7 +5439,7 @@ FESTIVAL MOOD: ${festival.mood}`,
       brandColours ? `BRAND COLOURS: ${brandColours}` : '',
       context.sceneContext?.mood ? `MOOD OF THE AD: ${context.sceneContext.mood}` : '',
     ].filter(Boolean).join('\n'),
-    fallback: brandColours ? `glossy premium lettering in ${brandColours}` : "glossy premium metallic lettering in the brand's colours",
+    fallback: brandColours ? `bright glossy lettering with an outline in ${brandColours}` : "bright glossy metallic lettering with a deep contrasting outline in the brand's colours",
   };
 };
 

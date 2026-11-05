@@ -1265,7 +1265,7 @@ const SHOT_DESIGNS = [
   {
     name: "ESTABLISHING SHOT — ALREADY INSIDE",
     zone: "well inside the business on its main floor, facing INTO the premises — the counter, stock or work area behind them; the entrance, the door and the street are NOT in frame",
-    camera: "wide enough to establish the place, the cast full-figure, the business clearly readable behind them",
+    camera: "close to the camera, the cast full-figure yet filling most of the frame height — never small in a wide room — the business clearly readable behind them",
     staging: "already standing inside, settled and at home here — open, welcoming body language turned towards camera; they are not arriving, not entering and not about to leave",
     purpose: "establish WHERE we are and WHOSE business this is, in one glance",
   },
@@ -1293,7 +1293,7 @@ const SHOT_DESIGNS = [
   {
     name: "THE CLOSING INVITATION",
     zone: "back at the main counter or the most inviting spot inside the premises — full circle, still indoors",
-    camera: "clean, warm, slightly wider composition with the business unmistakable around them",
+    camera: "clean, warm composition, the cast still close to the camera and filling most of the frame height, with the business unmistakable around them",
     staging: "both turned to camera, openly inviting the viewer in — the final impression",
     purpose: "end on 'come and visit' — the call to action needs a welcoming frame behind it",
   },
@@ -1438,12 +1438,12 @@ export const CHARACTER_MULTI_FRAME_SYSTEM_PROMPT = (
   /** "characters" everywhere else; two real owners are people (2026-10-14). */
   const pairNoun = ownerDuo ? "owners" : "characters";
   /**
-   * A real owner is framed three-quarter (head to knees) in every clip — the COMPOSITION FOR THE VIDEO stamp
+   * A real owner is framed in a close medium shot (head to mid-thigh; three-quarter until 2026-11-05) in every clip — the COMPOSITION FOR THE VIDEO stamp
    * (geminiService withRealPersonComposition) says so, and clip 1's "the cast full-figure" (written for drawn pairs, whose
    * height anchor needs their feet) made the live owner frame say both (2026-10-23).
    */
   const shots: ShotDesign[] = shotsForClipCount(segmentCount).map((shot) => (pack.usesClientFace && shot === SHOT_DESIGNS[0]
-    ? { ...shot, camera: `wide enough to establish the place, ${solo ? "the owner three-quarter (head to knees) with the face" : "both owners three-quarter (head to knees) with their faces"} large and clear, the business clearly readable behind them` }
+    ? { ...shot, camera: `close to the camera, ${solo ? "the owner in a close medium shot (head to mid-thigh) with the face" : "both owners in a close medium two-shot (head to mid-thigh) with their faces"} large and clear, the business clearly readable behind them` }
     : shot));
   /**
    * Every cast walks only where a clip's words take them somewhere (Motu and Patlu from 2026-10-10, every cast since

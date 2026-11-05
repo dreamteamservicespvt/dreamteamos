@@ -45,12 +45,12 @@ describe("professional main-frame prompts", () => {
     expect(prompt).toContain("Composition:");
     expect(prompt).toContain(HERO_FRAME_POSE.slice(2));
     expect(prompt).not.toContain("front-clasp");
-    expect(prompt).toContain("fill about 70% of the frame height");
+    expect(prompt).toContain("fill about 85–90% of the frame height");
     expect(prompt).toContain("(not saree)");
     expect(prompt).toContain("avoid a repetitive plain blue corporate suit");
     expect(prompt).toContain("never reuse the same recurring face");
     expect(prompt).toContain("reception");
-    expect(prompt).toContain("Three-quarter shot");
+    expect(prompt).toContain("Close medium shot");
     expect(prompt).toContain("finger ring");
     expect(prompt).toContain("The logo is the ONLY text anywhere in the image");
     expect(prompt).toContain("clearly secondary to the girl — small-to-medium");
@@ -107,7 +107,7 @@ describe("professional main-frame prompts", () => {
     expect(prompt).toContain("Wearing elegant traditional semi-jewellery (MANDATORY)");
     expect(prompt).toContain(HERO_FRAME_POSE.slice(2));
     expect(prompt).not.toContain("front-clasp");
-    expect(prompt).toContain("fill about 70% of the frame height");
+    expect(prompt).toContain("fill about 85–90% of the frame height");
     expect(prompt).toContain("NO FRAMES / DISPLAYS / PLACEHOLDERS");
     expect(prompt).toContain("The logo is the ONLY text anywhere in the image");
     // saree compact must NOT fall back to the suit branch or the old verbose template
