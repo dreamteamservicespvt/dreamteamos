@@ -94,6 +94,7 @@ import {
   type BusinessFacts,
 } from "@/utils/businessFacts";
 import { finalBusinessName, needsNativeName, saleBusinessNameIn, withFinalBusinessName, withNativeName, withoutSaleNameLine } from "@/utils/businessName";
+import { nameWithTeluguInitials, teluguInitialRuns, titleCaseName, withNameInitialsInLine, withSpokenInitials } from "@/utils/nameInitials";
 import { SCRIPT_QA_SYSTEM_PROMPT } from "./prompts/scriptQa";
 import {
   isBetterDraft, isPerfect, nextImprovement, parseScriptQa, qaInstructions, qaSummary, unscoredSummary, withMechanicalChecks,
@@ -2989,12 +2990,18 @@ export const generateAdAssets = async (
       const res = await callWithFallback(async (ai, model) => ai.models.generateContent({
         model,
         contents: [{ role: 'user', parts: [{ text:
-          `Write this Indian business name in ${lang} script, exactly as a local person says it aloud: "${latinName}". `
+          `Write this Indian business name in ${lang} script, exactly as a local person says it aloud: "${nameWithTeluguInitials(latinName, lang)}". `
           + `Keep every word of the name (an English word such as Infra, Enterprises or Traders is written as it sounds). `
+          // 2026-11-05 ("A S Aqua Solutions" came back as ఎస్ …): initials are the owner's letters, each one said, never dropped.
+          + (teluguInitialRuns(latinName).length && /telugu/i.test(lang)
+            ? `The initials are already in Telugu letters (${teluguInitialRuns(latinName).join(', ')}) — keep them exactly, letter by letter, with spaces, never dropped or joined. `
+            : `A single capital letter or a group of capitals is the owner's initials: say each letter by its English letter name, every one of them, with spaces between. `)
           + `Reply with the name only — one line, no explanation, no Latin letters, no digits.` }] }],
       }), { effort: 'fast' });
       const first = (res.text || '').trim().split(/\r?\n/)[0] || '';
-      const cleaned = first.replace(/["'`.:;!?()\[\]*]/g, '').trim();
+      // A dot becomes a space, never nothing: "ఏ.ఎస్." was cleaned to "ఏఎస్", read as one word (2026-11-05);
+      // the initials are then checked against the code's own (utils/nameInitials).
+      const cleaned = withSpokenInitials(first.replace(/["'`:;!?()\[\]*]/g, ' '), latinName, lang);
       return cleaned && !/[A-Za-z0-9]/.test(cleaned) ? cleaned : '';
     } catch {
       return '';
@@ -3059,10 +3066,11 @@ export const generateAdAssets = async (
   const englishAd = (formData.language || 'Telugu').trim().toLowerCase() === 'english';
   const sayName = englishAd
     ? (!customScript?.trim() && /[A-Z]{2}/.test(latinName) && latinName === latinName.toUpperCase()
-      ? latinName.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase())
+      ? titleCaseName(latinName)
       : '')
     : await nativeNamePromise;
-  const withSaidName = (text: string) => withNativeName(text, latinName, sayName);
+  // The initials put right where a line wrote them wrong ("ఎస్ ఆక్వా సొల్యూషన్స్" → "ఏ ఎస్ ఆక్వా సొల్యూషన్స్", utils/nameInitials).
+  const withSaidName = (text: string) => withNameInitialsInLine(withNativeName(text, latinName, sayName), sayName, latinName);
   /** True when the client's data carries an address — then the last clip says it, else none is spoken. */
   const addressGiven = !!latinAddress;
 

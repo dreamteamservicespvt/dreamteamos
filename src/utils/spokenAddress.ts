@@ -18,7 +18,8 @@
 import { withoutUnspokenNumbers } from "./unspokenNumbers";
 
 /** Parts of an address that are read, never spoken. */
-const DOOR_NUMBER = /^(?:(?:d|h|s)\.?\s*no\b|(?:door|plot|flat|shop|house|survey|unit|block)\.?\s*(?:no\.?)?\s*[:-]?\s*[\da-z]{0,2}\d|no\.\s*\d|#)/i;
+// 2026-11-05: an address part that opens with "No 12" (no dot), "Sy.No", "Ward No" is a number too.
+const DOOR_NUMBER = /^(?:(?:d|h|s|sy)\.?\s*no\b|(?:door|plot|flat|shop|house|survey|unit|block|ward)\.?\s*(?:no\.?)?\s*[:-]?\s*[\da-z]{0,2}\d|no\.?\s*\d|#)/i;
 /** What a form or a model writes when there is no address at all. */
 const NO_ADDRESS = /^(?:not\s+provided|not\s+available|n\/?a|nil|none|-+|unknown)$/i;
 /** A landmark a person gives directions by — said first when the words run short. */
@@ -27,8 +28,15 @@ const LANDMARK = /^(?:opposite|near|beside|behind|next to|in front of|above|belo
 const AREA = /(?:nagar|peta?|pet|puram|palem|wada|guda|colony|layout|street|road|junction|centre|center|bazaar|market|cross roads)\b/i;
 const NUMBER_ONLY = /^[#\d\s\-/.,]+[a-z]?$/i;
 const PINCODE = /\b\d{6}\b/g;
-const FLOOR = /\b(?:\d+(?:st|nd|rd|th)|ground|first|second|third|top)\s+floor\b/i;
+const FLOOR = /\b(?:\d+(?:st|nd|rd|th)|ground|gr\.?|grnd|first|second|third|top)\s+floor\b/i;
 const REGION = /^(?:andhra\s*pradesh|a\.?\s*p\.?|telangana|t\.?\s*s\.?|t\.?\s*g\.?|india|tamil\s*nadu|karnataka|kerala|odisha|orissa|maharashtra|pin(?:\s*code)?)$/i;
+/**
+ * A district written without "Dist" (2026-11-05: "Main Road, Jagannaickpur, Kakinada, East Godavari" said the
+ * district as the town). Only names that are never the town itself — "Kakinada" and "Krishna" are kept.
+ */
+const DISTRICT_NAME = /^(?:east\s+godavari|west\s+godavari|(?:dr\.?\s*b\.?\s*r\.?\s*)?(?:ambedkar\s+)?konaseema|alluri\s+sitharama\s+raju|parvathipuram\s+manyam|ysr(?:\s+kadapa)?|sri\s+potti\s+sriramulu\s+nellore|ranga\s*reddy|medchal(?:[\s-]+malkajgiri)?|bhadradri(?:\s+kothagudem)?|yadadri(?:\s+bhuvanagiri)?)$/i;
+/** A state left at the end of a part with no comma: "Near Bus Stand Kakinada Andhra Pradesh". */
+const TRAILING_STATE = /\s+(?:[Aa]ndhra\s*[Pp]radesh|ANDHRA\s*PRADESH|[Tt]elangana|TELANGANA|[Ii]ndia|INDIA|A\.?P\.?|T\.?S\.?)$/;
 const DISTRICT = /\b(?:dist\.?|district|mandal|taluk|tehsil|state)\b/i;
 
 /** Abbreviations written on cards, expanded the way they are said. */
@@ -64,11 +72,12 @@ export function spokenAddressOf(address: string | null | undefined, maxWords = M
     // "D.No 12-3-45 Main Road" / "5-87 Main Road" → "Main Road": a door number glued to the street is cut
     // off it — labelled, or unlabelled when it has a hyphen or slash ("100 Feet Road" keeps its 100).
     part = part
-      .replace(/^(?:d\.?\s*no|h\.?\s*no|door\s*no|plot\s*no|flat\s*no|shop\s*no|house\s*no|#)\.?\s*[:-]?\s*[\d\-/.]+[a-z]?\b\s*/i, "")
+      .replace(/^(?:d\.?\s*no|h\.?\s*no|sy\.?\s*no|door\s*no|plot\s*no|flat\s*no|shop\s*no|house\s*no|survey\s*no|ward\s*no|no|#)\.?\s*[:-]?\s*[\d\-/.]+[a-z]?\b\s*(?:\d+\b\s*)*/i, "")
       .replace(/^\d+[a-z]?[-/][\d\-/]*\d[a-z]?\s+(?=[a-z])/i, "")
+      .replace(TRAILING_STATE, "")
       .trim();
     part = part.replace(/^[.\-–:\s]+|[.\-–:\s]+$/g, "");
-    if (!part || DOOR_NUMBER.test(part) || NUMBER_ONLY.test(part) || REGION.test(part) || DISTRICT.test(part) || FLOOR.test(part)) continue;
+    if (!part || DOOR_NUMBER.test(part) || NUMBER_ONLY.test(part) || REGION.test(part) || DISTRICT.test(part) || DISTRICT_NAME.test(part) || FLOOR.test(part)) continue;
     for (const [pattern, said] of EXPANSIONS) part = part.replace(pattern, said);
     if (!parts.some((p) => p.toLowerCase() === part.toLowerCase())) parts.push(part);
   }

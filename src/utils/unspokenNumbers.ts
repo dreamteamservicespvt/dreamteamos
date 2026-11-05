@@ -54,10 +54,30 @@ const PINCODE_LABELLED = new RegExp(
  */
 const PINCODE = /(?<![\d₹,.]|rs\.?\s?|inr\s?|mrp\s?)[1-9]\d{2}\s?\d{3}(?![\d,]|\.\d|\s*(?:\/-|%|rupee|rs\b|రూ|లక్ష|వేల))/giu;
 
-/** What a door number is called. Never a bare "No." or "#" — "No.1 showroom", "#1 in town" are rankings. */
-const DOOR_LABEL = String.raw`(?:d\.?\s*no|h\.?\s*no|s\.?\s*no|(?:door|house|plot|flat|shop|survey|block|site)\s*(?:no|number)|(?:డోర్|ఇంటి|ప్లాట్|ఫ్లాట్|షాప్)\s*${TE_NUMBER}|డి\.?\s*నెం)`;
-/** "D.No 5-87/1", "Door No: 12-3-45A", "ఇంటి నంబర్ 4-12" — the label goes with it. */
-const DOOR_LABELLED = new RegExp(String.raw`${NOT_AFTER_WORD}${DOOR_LABEL}\.?\s*[:\-–]?\s*\d[\dA-Za-z]*(?:[-/][\dA-Za-z]+)*`, "giu");
+/**
+ * What a door number is called. Never a bare "No." or "#" — "No.1 showroom", "#1 in town" are rankings.
+ * 2026-11-05 (the owner: "no need to come pincodes or door numbers in script, just cover the main address clearly"):
+ * "Sy.No" / survey, ward, and a Latin label with the Telugu "నంబర్" ("plot నంబర్" — how withEnglishWords writes it).
+ */
+const DOOR_LABEL = String.raw`(?:d\.?\s*no|h\.?\s*no|s\.?\s*no|sy\.?\s*no|(?:door|house|plot|flat|shop|survey|block|site|ward)\s*(?:no|number|${TE_NUMBER})|(?:డోర్|ఇంటి|ప్లాట్|ఫ్లాట్|షాప్|సర్వే|వార్డ్?|వార్డు)\s*${TE_NUMBER}|డి\.?\s*నెం)`;
+/**
+ * "D.No 5-87/1", "Door No: 12-3-45A", "ఇంటి నంబర్ 4-12", "D No 2 45" — the label goes with it (a group after a space is
+ * taken only when it is digits alone, so "D.No 12 3rd Cross" keeps its cross road).
+ */
+const DOOR_LABELLED = new RegExp(String.raw`${NOT_AFTER_WORD}${DOOR_LABEL}\.?\s*[:\-–]?\s*\d[\dA-Za-z]*(?:[-/][\dA-Za-z]+|\s+\d+(?![\p{L}\p{M}\d]))*`, "giu");
+
+/**
+ * ── A door number or pincode already written as WORDS (2026-11-05) ──
+ * The writer reads the full address in the business information and sometimes says it in Telugu words —
+ * "డోర్ నంబర్ రెండు నలభై ఐదు", "పిన్ కోడ్ ఐదు లక్షల ముప్పై మూడు వేల ఒకటి" — which no digit pattern sees. After its
+ * label, a run of number words (and dash / slash / "by") is the number itself, so it goes with the label.
+ */
+const NUMBER_WORD = String.raw`(?:సున్నా|ఒకటి|ఒక|రెండు|మూడు|నాలుగు|ఐదు|ఆరు|ఏడు|ఎనిమిది|తొమ్మిది|పది|పదకొండు|పన్నెండు|పదమూడు|పద్నాలుగు|పదిహేను|పదహారు|పదిహేడు|పద్దెనిమిది|పందొమ్మిది|ఇరవై|ముప్పై|ముప్ఫై|నలభై|యాభై|అరవై|డెబ్బై|ఎనభై|ఎనబై|తొంభై|వంద|వందల|నూట|నూరు|వెయ్యి|వేల|వేలు|లక్ష|లక్షల|జీరో|వన్|టూ|త్రీ|ఫోర్|ఫైవ్|సిక్స్|సెవెన్|ఎయిట్|నైన్|టెన్|zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|lakhs|double|triple)`;
+const NUMBER_JOIN = String.raw`(?:[\s,]+|\s*[-–/]\s*|\s+(?:డాష్|స్లాష్|బై|dash|slash|by|and)\s+)`;
+const NUMBER_WORDS = String.raw`${NUMBER_WORD}(?:${NUMBER_JOIN}${NUMBER_WORD})*${NOT_BEFORE_WORD}`;
+const PIN_LABEL = String.raw`(?:pin\s*code|pincode|zip\s*code|పిన్\s*\u{200C}?\s*కోడ్|పిన్‌కోడ్)`;
+const DOOR_IN_WORDS = new RegExp(String.raw`${NOT_AFTER_WORD}${DOOR_LABEL}\.?\s*[:\-–]?\s*${NUMBER_WORDS}`, "giu");
+const PINCODE_IN_WORDS = new RegExp(String.raw`${NOT_AFTER_WORD}${PIN_LABEL}\.?\s*(?:no\.?|number|${TE_NUMBER})?\s*[:\-–]?\s*${NUMBER_WORDS}`, "giu");
 /**
  * A door number written without its label, by its shape: two hyphens ("12-3-45") or a hyphen and a slash
  * ("5-87/1"). One hyphen ("10-20") is a range and "24/7" is a phrase; a date with its year is kept.
@@ -81,7 +101,7 @@ const DIGIT_WORD_RUN = new RegExp(String.raw`${NOT_AFTER_WORD}${DIGIT_WORD}(?:[\
  * "Contact" and "WhatsApp" need their colon or "No." for that, since bare they can be the action itself.
  */
 const LABEL_BEFORE = new RegExp(
-  String.raw`(?:${NOT_AFTER_WORD}(?:(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*(?:no\.?|number|num)\.?\s*[:\-–]?|(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*[:\-–]|(?:ph|phone|mobile|mob|cell|tel|landline|helpline)\.?|(?:ఫోన్|మొబైల్|వాట్సా?ప్|కాంటాక్ట్|సెల్)\s*${TE_NUMBER}?\s*[:\-–]?|${TE_NUMBER}\s*[:\-–]?)|📞|☎️?|📱)\s*${G}`,
+  String.raw`(?:${NOT_AFTER_WORD}(?:(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*(?:no\.?|number|num)\.?\s*[:\-–]?|(?:ph|phone|mobile|mob|cell|tel|contact|whats\s*app|landline|helpline)\.?\s*[:\-–]|(?:ph|phone|mobile|mob|cell|tel|landline|helpline)\.?|(?:ఫోన్|మొబైల్|వాట్సా?ప్|కాంటాక్ట్|సెల్)\s*${TE_NUMBER}?\s*[:\-–]?|${TE_NUMBER}\s*[:\-–]?|${PIN_LABEL}\.?\s*[:\-–]?)|📞|☎️?|📱)\s*${G}`,
   "giu",
 );
 /*
@@ -99,7 +119,8 @@ const OWNED_LABEL_BEFORE = new RegExp(
   "giu",
 );
 /** A Telugu case ending after a removed pincode belongs to the town before it. */
-const TOWN_ENDING_AFTER_GONE = new RegExp(String.raw`([\u{0C00}-\u{0C7F}])[ \t]*${G}[ \t]*(లోని|లో|కి|కు|నుండి|నుంచి|దగ్గర)${NOT_BEFORE_WORD}`, "gu");
+// "కాకినాడ, పిన్ కోడ్ … కి రండి" → "కాకినాడకి రండి": the comma before the removed pincode goes too (2026-11-05).
+const TOWN_ENDING_AFTER_GONE = new RegExp(String.raw`([\u{0C00}-\u{0C7F}])[ \t]*,?[ \t]*${G}[ \t]*(లోని|లో|కి|కు|నుండి|నుంచి|దగ్గర)${NOT_BEFORE_WORD}`, "gu");
 /** A dash gluing a word to a removed number. */
 const DASH_BEFORE = new RegExp(String.raw`(?<=[\p{L}\p{M}])[ \t]*[-–][ \t]*${G}`, "gu");
 /** "on" / "at" before a removed phone number. */
@@ -110,7 +131,7 @@ const SUFFIX_AFTER_PHONE = new RegExp(String.raw`\u{E002}\s*\u{200C}?(?:కు|�
 const JOIN = String.raw`(?:[,/&|\-–]|(?<![\p{L}])(?:or|and|లేదా|మరియు|mariyu)(?![\p{L}\p{M}]))`;
 const GONE_RUN = new RegExp(String.raw`${G}(?:\s*${JOIN}\s*${G})+`, "giu");
 /** A removed number opening an address or a clause, and its comma: "at D.No 5-87, Main Road" → "at Main Road". */
-const GONE_BEFORE_TEXT = new RegExp(String.raw`(^|[,.!?:;(]\s*|${NOT_AFTER_WORD}(?:at|on)\s+)${G}\s*[,;\-–]\s*`, "giu");
+const GONE_BEFORE_TEXT = new RegExp(String.raw`(^|[,.!?:;(]\s*|${NOT_AFTER_WORD}(?:at|on|to)\s+)${G}\s*[,;\-–]\s*`, "giu");
 /** "Call us on X." → "Call us." */
 const PREP_BEFORE_END = new RegExp(String.raw`\s*${NOT_AFTER_WORD}(?:on|at)\s*${G}(?=\s*(?:[.!?,;)]|$))`, "giu");
 /** "Kakinada, 533001." → "Kakinada."; "Kakinada-533001" → "Kakinada"; "Call X or Y." → "Call." */
@@ -133,6 +154,8 @@ export function withoutUnspokenNumbers(text: string): string {
   let out = text
     .replace(PINCODE_LABELLED, mark)
     .replace(DOOR_LABELLED, mark)
+    .replace(PINCODE_IN_WORDS, mark)
+    .replace(DOOR_IN_WORDS, mark)
     // Phones before the door-number shape: "+91-98480-12345" has two hyphens too.
     .replace(PHONE, markPhone)
     .replace(LABELLED_LANDLINE, markPhone)

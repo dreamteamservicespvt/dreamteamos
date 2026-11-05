@@ -225,6 +225,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-11-05)
 
+- 2026-11-05 (night), **committed locally, not pushed** — **AdGen script**: no pincode / door / survey / ward number,
+  floor, district or state spoken (also when written in words) — only the main address; a name's initials ("A S Aqua
+  Solutions" → ఏ ఎస్ …) spelt in code and kept in every line (`ai-ads.md` §24; history 2026-11-05 night). Owner to try:
+  one Telugu ad for a business with initials and a full address (door no + pincode) — listen to the last clip.
+
 - 2026-11-05, **committed locally, not pushed** — **AdGen**: the ad's ratio on every frame, B-roll and the kit's poster
   (no longer always 9:16), people close (head to mid-thigh), readable overlays and true colours, B-roll never on or
   repeating the text, and the **frame / label refine rebuilt** (a JSON plan applied in code, the member's change wins)

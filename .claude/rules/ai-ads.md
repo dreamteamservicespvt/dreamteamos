@@ -1090,6 +1090,13 @@ attribution (`Clip.voScript` is one string).
   language); its business information keeps the business's real facts and only its verified contact numbers and
   address. A poster run writes one prompt. Posters are 9:16 unless a size is chosen; the video kit's poster has the ad's
   own ratio (owner, 2026-11-05 — it was always 9:16).
+- **AI ads — the spoken address and the name's initials (owner, 2026-11-05, night):** a script never speaks a pincode,
+  door / plot / survey / ward number, floor, district or state — only the main address (road, landmark, area, town);
+  enforced in code also when the writer says them in WORDS (`utils/unspokenNumbers` DOOR_IN_WORDS / PINCODE_IN_WORDS,
+  `utils/spokenAddress` DISTRICT_NAME / TRAILING_STATE). A business name's initials ("A S Aqua Solutions") are said
+  letter by letter, spelt in code (`utils/nameInitials`: A → ఏ, S → ఎస్), given to the name-spelling call as fixed, put
+  back in its answer (`withSpokenInitials` — a dot is a space, never nothing) and in every spoken line
+  (`withNameInitialsInLine`, via `withSaidName`); an English ad keeps them as capitals (`titleCaseName`).
 - **AI ads — overlay texts (owner, 2026-11-05, evening):** an overlay text image is a transparent PNG cropped to its words,
   ready to download and drop on the video — never a frame of the ad's ratio, never a white or coloured background.
 - **AI ads — ratio, size, colour, text vs B-roll (owner, 2026-11-05):** every frame and B-roll prompt says the ad's

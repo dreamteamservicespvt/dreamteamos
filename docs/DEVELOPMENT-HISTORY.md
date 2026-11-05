@@ -6,6 +6,18 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-11-05 (night): AdGen script — the main address only; a name's initials said letter by letter** (`ai-ads.md`).
+  The owner: "in script no need to come pincodes or door numbers, just need to cover main address clearly" and "if the
+  business name is A S aqua solutions it was giving like ఎస్". Probed 19 real-shaped addresses and 10 lines: "Sy.No",
+  "Ward No", "No 12", "Gr Floor", "D No 2 45", a district without "Dist" (East Godavari) and a state glued to the town
+  reached the spoken address, and a door number / pincode the writer said in Telugu WORDS ("డోర్ నంబర్ రెండు నలభై ఐదు",
+  "పిన్ కోడ్ ఐదు లక్షల …") passed every check (a bare "పిన్ కోడ్" was also left behind). Fixed in `utils/spokenAddress`
+  and `utils/unspokenNumbers`. Initials: the name-spelling call's clean-up deleted dots ("ఏ.ఎస్." → "ఏఎస్", one word)
+  and nothing checked the letters; new `utils/nameInitials` spells them in code, the call is given them fixed, its
+  answer and every spoken line are corrected, and an English ad keeps "SVR" in capitals (was "Svr"). Files:
+  `utils/nameInitials.ts` (new), `utils/unspokenNumbers.ts`, `utils/spokenAddress.ts`, `services/geminiService.ts`,
+  test `addressNameInitialsNov05`. Tested: vitest 295 files / 4842 of 4842, tsc 0 errors, build ok. Not seen live.
+
 - **2026-11-05 (night): AdGen — the footer (Video Bottom Label) refine reverted to its own code** (`ai-ads.md`). The owner:
   "don't touch the footer code, revert back". `f11c8fa` had routed the label's Refine through the new frame planner
   (`refineImagePrompts`); `refineSection('header')` is back to the pre-`f11c8fa` code (`LOWER_THIRD_SYSTEM_PROMPT`,
