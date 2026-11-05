@@ -5341,6 +5341,9 @@ For every clip listed: the image shows a DIFFERENT idea of the line than its tex
   };
   let lastText = '';
   let items = await ask();
+  // An unreadable or empty answer is asked once more (2026-11-05), then it is an error the studio retries — it used to
+  // ship as one "Parse Error" image, which counted as B-roll written, so row 6 was never filled automatically.
+  if (!items?.length) items = await ask();
   /*
     The same idea twice (2026-11-05): an image whose concept is its clip's text ("Free Home Delivery" under "FREE
     DELIVERY") is asked again ONCE, naming each clash; the answer with fewer clashes is kept. Only when it happens.
@@ -5354,9 +5357,7 @@ For every clip listed: the image shows a DIFFERENT idea of the line than its tex
       if (retry && brollRepeatingText(withPlacements(retry, placements), overlays).length < clashes.length) items = retry;
     }
   }
-  if (!items) {
-    return [{ id: 1, concept: "Parse Error", prompt: lastText, usage: "Manual review needed", ...(placements[0] || {}) }];
-  }
+  if (!items?.length) throw new Error('The B-roll prompts came back empty. Press Generate to try again.');
   // The ad's canvas on every prompt, whatever the model wrote (utils/frameFormat, 2026-11-05).
   const stamped = items.map((item) => (typeof item?.prompt === 'string' ? { ...item, prompt: withAspectRatio(item.prompt, ratio) } : item));
   // Which clip each image plays over, the line it plays under, and the exact seconds its words fall
@@ -5513,6 +5514,7 @@ export const generateOverlayTexts = async (
   const theme = overlayTheme(context, businessInfo);
   const allowedNumbers = contactKeysOf(businessInfo);
 
+  const ask = async (): Promise<any[]> => {
   const response = await callWithFallback(async (ai, model) => {
     return await ai.models.generateContent({
       model,
@@ -5532,14 +5534,22 @@ Generate the on-screen overlay texts now.` }] }],
       config: { systemInstruction: OVERLAY_TEXT_SYSTEM_PROMPT(language), responseMimeType: "application/json" }
     });
   }, { effort: 'fast' });
-  const text = response.text || "[]";
-  let parsed: any[];
   try {
-    const raw = JSON.parse(text);
-    parsed = Array.isArray(raw) ? raw : [];
+    const raw = JSON.parse(response.text || "[]");
+    return Array.isArray(raw) ? raw : [];
   } catch {
-    parsed = [];
+    return [];
   }
+  };
+  /*
+    ── Why an empty answer is asked again, then an error (2026-11-05) ──
+    The owner: "after generating 1 to 5, automatically generate the remaining 6, 7". An unreadable reply used to
+    become an empty list in silence — the kit then HAD overlays (none), so neither the run nor the studio asked again
+    and row 7 stayed empty. Now it is asked once more, and still nothing is an error the studio retries.
+  */
+  let parsed = await ask();
+  if (!parsed.length) parsed = await ask();
+  if (!parsed.length) throw new Error('The overlay texts came back empty. Press Generate to try again.');
 
   // Self-healing pass: guarantee every item carries a real integer clip number within
   // range, regardless of what the model actually returned. If an item's clip is missing,

@@ -225,6 +225,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-11-05)
 
+- 2026-11-05 (late night), **committed locally, not pushed** — **AdGen: B-roll (6) and overlays (7) are written by
+  themselves** after 1 – 5 (after a run, and on reopening a saved kit without them), tried twice; an empty answer is no
+  longer taken as done (`ai-ads.md`; history 2026-11-05 late night). Owner to try: one video ad — rows 6 and 7 fill without
+  pressing Generate; reopen an older kit with no B-roll and watch them appear.
+
 - 2026-11-05 (night), **committed locally, not pushed** — **AdGen script**: no pincode / door / survey / ward number,
   floor, district or state spoken (also when written in words) — only the main address; a name's initials ("A S Aqua
   Solutions" → ఏ ఎస్ …) spelt in code and kept in every line (`ai-ads.md` §24; history 2026-11-05 night). Owner to try:

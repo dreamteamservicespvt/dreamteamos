@@ -6,6 +6,17 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-11-05 (late night): AdGen — deliverables 6 and 7 follow 1 – 5 by themselves** (`ai-ads.md` §17.2, §24). The
+  owner: "after generating the 1 to 5 deliverables then automatically generate the remaining 6, 7". Root causes: the
+  overlay writer turned an unreadable answer into `[]` and the B-roll writer into one "Parse Error" image, so a kit
+  counted as HAVING them and nothing asked again; the one post-run retry was a single attempt; a reopened kit without
+  them stayed without them. Fixed: both writers ask once more, then throw (`geminiService`); one studio step
+  `fillMissingExtras` (overlays first, then B-roll knowing them; two tries each) runs after every video run and on
+  reopening a saved video kit (`AIPlatformApp`, `restoreGeneration`). Files: `services/geminiService.ts`,
+  `components/ai-platform/AIPlatformApp.tsx`, tests `autoExtrasNov05.test.tsx`, `autoExtrasServiceNov05.test.ts`.
+  Tested: the new tests (run, empty list, a failed first try, nothing to do, reopen) + the kit-integrity, inputs and
+  contact-number suites, full vitest, typecheck 0, build. No live Gemini run.
+
 - **2026-11-05 (night): AdGen script — the main address only; a name's initials said letter by letter** (`ai-ads.md`).
   The owner: "in script no need to come pincodes or door numbers, just need to cover main address clearly" and "if the
   business name is A S aqua solutions it was giving like ఎస్". Probed 19 real-shaped addresses and 10 lines: "Sy.No",

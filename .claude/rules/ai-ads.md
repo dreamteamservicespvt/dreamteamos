@@ -735,9 +735,15 @@ how an educated person from Andhra Pradesh speaks English — Indian expressions
 Indian places and festivals, never American or British slang, idioms, spellings or culture.
 
 Directives are prepended for ratio, name board, language, casting and wardrobe. `onPartialResult`
-streams sections as they arrive. **B-roll and overlay images run automatically at the end of a video
-run** (`handleGenerate` → `handleGenerateStockImages`/`handleGenerateOverlayTexts` with the run's own
-result; their buttons remain for a regenerate, 2026-09-25). The two extras: the **Overlay Text Image Generator**
+streams sections as they arrive. **B-roll (6) and overlays (7) follow 1 – 5 by themselves** (the run writes them
+alongside the frames, geminiService `extras`). **2026-11-05 (owner: "after generating the 1 to 5 deliverables then
+automatically generate the remaining 6, 7"):** whichever is still missing — the run could not write it, a busy model, an
+empty answer — is filled by ONE studio step, `AIPlatformApp.fillMissingExtras` (overlays first, then the B-roll knowing
+them; each tried twice, 2.5 s apart; one fill per script at a time), after every finished video run AND when a saved
+video kit is reopened (`restoreGeneration`); the auto-save keeps what arrives. An empty overlay list counts as missing.
+The writers no longer hide a bad answer: `generateOverlayTexts` (it returned `[]`) and `generateStockImagePrompts` (it
+returned one "Parse Error" image) ask once more, then throw "… came back empty. Press Generate to try again." — the row
+shows Failed with its Generate (`autoExtrasNov05`, `autoExtrasServiceNov05` tests). The buttons remain for a regenerate. The two extras: the **Overlay Text Image Generator**
 (`generateOverlayTexts` + `utils/overlayImage.ts`: each overlay gets a model-written `design` and a
 code-assembled `imagePrompt` for a premium 3D transparent PNG — exact text, real alpha channel,
 tightly cropped to the words and NEVER a ratio (2026-11-05, evening — first line `OVERLAY_TRANSPARENT_LINE`, "TRANSPARENT PNG: only the lettering …"); festival palette for festival ads; `refineOverlayImagePrompt` changes only the
@@ -1097,6 +1103,9 @@ attribution (`Clip.voScript` is one string).
   letter by letter, spelt in code (`utils/nameInitials`: A → ఏ, S → ఎస్), given to the name-spelling call as fixed, put
   back in its answer (`withSpokenInitials` — a dot is a space, never nothing) and in every spoken line
   (`withNameInitialsInLine`, via `withSaidName`); an English ad keeps them as capitals (`titleCaseName`).
+- **AI ads — 6 and 7 come by themselves (owner, 2026-11-05):** once 1 – 5 of a video kit are written, the B-roll (6)
+  and overlays (7) are written automatically — also on a saved kit reopened without them — tried twice before the row
+  says Failed; the member never has to press their Generate for a normal kit.
 - **AI ads — overlay texts (owner, 2026-11-05, evening):** an overlay text image is a transparent PNG cropped to its words,
   ready to download and drop on the video — never a frame of the ad's ratio, never a white or coloured background.
 - **AI ads — ratio, size, colour, text vs B-roll (owner, 2026-11-05):** every frame and B-roll prompt says the ad's

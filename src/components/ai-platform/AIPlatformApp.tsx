@@ -665,7 +665,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       ? { mainFramePrompts: item.mainFramePrompts || [], stockImagePrompts: item.stockImagePrompts || null, overlayTexts: item.overlayTexts || null }
       : withKitImageRatio({ mainFramePrompts: item.mainFramePrompts || [], stockImagePrompts: item.stockImagePrompts || null, overlayTexts: item.overlayTexts || null },
         savedKitSpec?.aspectRatio || item.aspectRatio);
-    setOutputs({
+    const restored: GeneratedOutputs = {
       businessInfo: item.businessInfo,
       mainFramePrompts: ratioStamped.mainFramePrompts || [],
       headerPrompt: item.headerPrompt,
@@ -683,7 +683,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       scriptQa: item.scriptQa || null,
       // What the kit was made for — its own record, or (saved before 2026-10-08) its stored settings.
       spec: savedKitSpec,
-    });
+    };
+    setOutputs(restored);
+    // A saved video kit with 1 – 5 but no B-roll or overlays gets them now (fillMissingExtras, 2026-11-05).
+    if (item.creationMode !== 'poster' && !status.isProcessing) void fillMissingExtras(restored);
     setFormData(prev => ({
       ...prev,
       adType: item.adType as AdType,
@@ -1138,13 +1141,7 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       setStatus(prev => ({ ...prev, isProcessing: false, step: 'Completed', progress: 100 }));
       // Part of the kit, not an afterthought. They are written inside the run now; only one the run
       // could not write is asked for again here — from this run's result, not state.
-      if (creationMode === 'video' && generatedResult.voiceOverScript) {
-        // The text first, then the pictures that keep clear of it (utils/brollTextPlan, 2026-11-05).
-        void (async () => {
-          const overlays = generatedResult.overlayTexts ?? await handleGenerateOverlayTexts(generatedResult);
-          if (!generatedResult.stockImagePrompts?.length) await handleGenerateStockImages(generatedResult, overlays);
-        })().catch(() => { /* each one already surfaces its own error in its section */ });
-      }
+      if (creationMode === 'video') void fillMissingExtras(generatedResult);
       // Teach the countdown how long this browser's runs really take. See utils/generationEta.
       const timing = measureRun(runProfile, checkpoints, Date.now());
       if (timing) saveRunTiming(timing);
@@ -1280,6 +1277,42 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
       return null;
     } finally {
       setIsGeneratingOverlay(false);
+    }
+  };
+
+  /**
+   * ── 6 · 7 follow 1 – 5 by themselves (owner, 2026-11-05: "after generating the 1 to 5 deliverables then
+   * automatically generate the remaining 6, 7") ──
+   * The run writes the overlays (7) and the B-roll (6) alongside the frames; whichever it could not write — a busy
+   * model, an unreadable answer — used to wait on the row's Generate button, and a kit reopened without them stayed
+   * without them. This is the one place that fills them: the text first, then the pictures that keep clear of it
+   * (utils/brollTextPlan), each tried twice. Called after every finished video run and when a saved video kit is
+   * reopened; a kit that already has both makes no call. The rows show Writing… while it works (rowState), and the
+   * auto-save keeps what arrives.
+   */
+  const extrasFillRef = useRef(new Set<string>());
+  const fillMissingExtras = async (kit: GeneratedOutputs) => {
+    const script = kit.voiceOverScript;
+    const needOverlays = !kit.overlayTexts?.length;
+    const needStock = !kit.stockImagePrompts?.length;
+    if (!script || (!needOverlays && !needStock) || extrasFillRef.current.has(script)) return;
+    // One fill per script at a time — a reopen right after the run must not ask twice.
+    extrasFillRef.current.add(script);
+    const twice = async <T,>(attempt: () => Promise<T>, ok: (r: T) => boolean): Promise<T> => {
+      const first = await attempt();
+      if (ok(first)) return first;
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      return attempt();
+    };
+    try {
+      const overlays = needOverlays
+        ? await twice(() => handleGenerateOverlayTexts(kit), r => !!r?.length)
+        : kit.overlayTexts;
+      if (needStock) await twice(() => handleGenerateStockImages(kit, overlays ?? null), r => r);
+    } catch {
+      /* each one already surfaces its own error in its row, with Generate */
+    } finally {
+      extrasFillRef.current.delete(script);
     }
   };
 
