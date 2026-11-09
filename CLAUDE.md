@@ -4,7 +4,7 @@
 > Code loads automatically when you read or edit a matching file. The history lives in
 > `docs/DEVELOPMENT-HISTORY.md`.  Together the three are the project context: in the rules below,
 > "CLAUDE.md" or "this file" means all three. The section numbers §1–§34 never change, and the Context
-> map below says where each section lives. For cross-module orientation, read the repository-wide
+> map below says where each section lives. For cross-module orientation, read the repository-wide 
 > system-navigation section in `.claude/rules/architecture.md`, then read the relevant module guide(s)
 > and verify details against current code. The **source code wins** over the context; when they disagree,
 > fix the context in the same task. 
