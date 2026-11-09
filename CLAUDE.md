@@ -225,10 +225,11 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ## 32. CURRENT PROJECT STATE (as of 2026-11-09)
 
-- 2026-11-09, **committed locally, not pushed** — **Team Attendance**: each tech member's salary for the period (₹,
+- 2026-11-09, **on `main`** (`5372173`) — **Team Attendance**: each tech member's salary for the period (₹,
   days paid, Est. / Due / Paid — Payroll's own figure) under their totals for the tech team leader (and tech / main
   admin), view only; **🎉 in amber for a holiday**, Sundays keep "—", on every attendance calendar (`people.md` §9.13;
-  history 2026-11-09). Owner to try: open Team Attendance as the team leader and compare one member's amount with Payroll.
+  history 2026-11-09). Checked live (local dev, real data, 10 Oct – 9 Nov): as the team leader all 14 amounts equal
+  Payroll's (3 with deductions; sum ₹1,15,481 = Payroll's total).
 
 - 2026-11-05 (late night), **committed locally, not pushed** — **AdGen: B-roll (6) and overlays (7) are written by
   themselves** after 1 – 5 (after a run, and on reopening a saved kit without them), tried twice; an empty answer is no
