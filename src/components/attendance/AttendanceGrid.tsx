@@ -9,7 +9,7 @@
 import type { ReactNode } from "react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { ATTENDANCE_META, isSunday, summarize, type AttendanceStatus } from "@/services/techAttendance";
+import { ATTENDANCE_META, dayLabel, dayMark, dayTone, HOLIDAY_MARK, isSunday, summarize, type AttendanceStatus } from "@/services/techAttendance";
 import { formatDayCount } from "@/utils/payrollEngine";
 import type { PayrollConfig } from "@/types/payroll";
 
@@ -34,14 +34,16 @@ interface Props<M extends AttendanceGridMember> {
   renderBadge?: (member: M, layout: "card" | "table") => ReactNode;
   /** The live payroll policy — the leave allowance the totals count against. Defaults to the documented one. */
   payrollConfig?: Partial<PayrollConfig>;
+  /** What sits under a member's totals — Team Attendance's salary line for the period (2026-11-09). Absent → nothing. */
+  renderPay?: (member: M, layout: "card" | "table") => ReactNode;
 }
 
 /**
  * A cell's tooltip. A Sunday says it is not counted: the weekly off is paid either way, so a mark on
  * one changes neither the totals beside it nor the salary (owner, 2026-10-09).
  */
-const cellTitle = (date: string, status: AttendanceStatus | null, manual: boolean) =>
-  `${format(new Date(date), "EEE dd MMM")}${status ? " · " + ATTENDANCE_META[status].label : ""}${manual ? " (manual)" : ""}${
+const cellTitle = (date: string, status: AttendanceStatus | null, manual: boolean, announced: boolean) =>
+  `${format(new Date(date), "EEE dd MMM")}${status ? " · " + dayLabel(status, date, announced) : ""}${manual ? " (manual)" : ""}${
     manual && isSunday(date) ? " · Sunday, not counted in salary" : ""}`;
 
 /**
@@ -81,7 +83,7 @@ function Totals({ days, statuses, size, config }: {
 }
 
 export default function AttendanceGrid<M extends AttendanceGridMember>({
-  members, days, todayStr, isHoliday, statusFor, isOverride, onCellClick, renderBadge, payrollConfig,
+  members, days, todayStr, isHoliday, statusFor, isOverride, onCellClick, renderBadge, payrollConfig, renderPay,
 }: Props<M>) {
   const readOnly = !onCellClick;
   return (
@@ -101,6 +103,7 @@ export default function AttendanceGrid<M extends AttendanceGridMember>({
                 </div>
                 <div className="text-right shrink-0">
                   <Totals days={days} statuses={statuses} size="card" config={payrollConfig} />
+                  {renderPay?.(m, "card")}
                 </div>
               </div>
               <div className="grid grid-cols-7 gap-1">
@@ -114,20 +117,20 @@ export default function AttendanceGrid<M extends AttendanceGridMember>({
                   const tone = cn(
                     "aspect-square rounded-md flex flex-col items-center justify-center gap-0.5 border text-[11px] font-bold",
                     !readOnly && "active:scale-95 transition-transform",
-                    st ? ATTENDANCE_META[st].tone : "bg-transparent text-muted-foreground/40 border-dashed border-border",
+                    st ? dayTone(st, d, isHoliday(d)) : "bg-transparent text-muted-foreground/40 border-dashed border-border",
                     manual && "ring-1 ring-primary/50",
                     d === todayStr && "outline outline-1 outline-primary outline-offset-1",
                   );
                   const body = (
                     <>
                       <span className="text-[9px] font-medium leading-none opacity-70">{d.slice(-2)}</span>
-                      <span className="leading-none">{st ? ATTENDANCE_META[st].short : "·"}</span>
+                      <span className={cn("leading-none", st && dayMark(st, d, isHoliday(d)) === HOLIDAY_MARK && "text-[13px]")}>{st ? dayMark(st, d, isHoliday(d)) : "·"}</span>
                     </>
                   );
                   return readOnly ? (
-                    <span key={d} title={cellTitle(d, st, manual)} className={tone}>{body}</span>
+                    <span key={d} title={cellTitle(d, st, manual, isHoliday(d))} className={tone}>{body}</span>
                   ) : (
-                    <button key={d} onClick={() => onCellClick!(m, d, st)} title={cellTitle(d, st, manual)} className={tone}>{body}</button>
+                    <button key={d} onClick={() => onCellClick!(m, d, st)} title={cellTitle(d, st, manual, isHoliday(d))} className={tone}>{body}</button>
                   );
                 })}
               </div>
@@ -178,6 +181,7 @@ export default function AttendanceGrid<M extends AttendanceGridMember>({
                     </td>
                     <td className="px-1 py-2 text-center align-top">
                       <Totals days={days} statuses={statuses} size="table" config={payrollConfig} />
+                      {renderPay?.(m, "table")}
                     </td>
                     {days.map((d, i) => {
                       const st = statuses[i];
@@ -185,16 +189,17 @@ export default function AttendanceGrid<M extends AttendanceGridMember>({
                       const tone = cn(
                         "w-full max-w-[30px] h-6 rounded text-[10px] font-bold border mx-auto block",
                         readOnly ? "leading-[22px] text-center" : "transition-all hover:scale-110",
-                        st ? ATTENDANCE_META[st].tone : "bg-transparent text-muted-foreground/40 border-dashed border-border",
+                        st ? dayTone(st, d, isHoliday(d)) : "bg-transparent text-muted-foreground/40 border-dashed border-border",
                         manual && "ring-1 ring-primary/50",
+                        st && dayMark(st, d, isHoliday(d)) === HOLIDAY_MARK && "text-[12px]",
                       );
                       return (
                         <td key={d} className="px-[1px] py-1 text-center">
                           {readOnly ? (
-                            <span className={tone} title={cellTitle(d, st, manual)}>{st ? ATTENDANCE_META[st].short : "·"}</span>
+                            <span className={tone} title={cellTitle(d, st, manual, isHoliday(d))}>{st ? dayMark(st, d, isHoliday(d)) : "·"}</span>
                           ) : (
-                            <button onClick={() => onCellClick!(m, d, st)} className={tone} title={cellTitle(d, st, manual)}>
-                              {st ? ATTENDANCE_META[st].short : "·"}
+                            <button onClick={() => onCellClick!(m, d, st)} className={tone} title={cellTitle(d, st, manual, isHoliday(d))}>
+                              {st ? dayMark(st, d, isHoliday(d)) : "·"}
                             </button>
                           )}
                         </td>

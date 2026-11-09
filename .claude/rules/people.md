@@ -96,6 +96,25 @@ deductions, Payroll's deduction rows and CSV (two columns), Sales Payroll's brea
 Media TODAY board (`half_leave` / a pending half-day request → the away group, "Half-day leave" / "Asked for a half-day
 leave — not approved yet", `smmAttendance.halfDayLeaveAskedOn`).
 
+**Team Attendance salary line + 🎉 holidays (owner, 2026-11-09: "show salary count to the tech lead, based on the
+attendance of the tech team members"; "represent the holiday with some other emoji (🎉)"; then "don't ask, take the
+best decision").** Under each member's totals on the TECH side of Team Attendance (the tech team leader, and the tech /
+main admin who open the same page; never the sales side, whose pay adds an incentive the grid does not know) a
+`grid-pay` block: the amount (`grid-pay-amount`, "No salary set" without one), "N / M days paid" (`grid-pay-days`) and
+a note (`grid-pay-note`: "Est. · N days to go" while the period runs — those days count as worked, as in Payroll —,
+"Due" once ended, "Paid" once Payroll paid it). The figures are Payroll's own: `utils/teamAttendancePay.memberPeriodPay`
+= `computeSalary` on the grid's resolved days with `payTerms.salaryFor(member, month)`, `netPayable` for the amount,
+the new `payrollEngine.payableDays` (working days − Σ deduction days × their new `DeductionRow.weight`, salary-free)
+for the days; a paid `payroll_lines` (one `watchPayrollLines(month)` listener on the page) shows the amount paid and its
+frozen computation's days. View only: no salary, rate or pay button reaches the team leader (they could already read
+`payroll_lines` under the coarse rules). **Holiday mark:** `techAttendance.dayMark` / `dayLabel` / `dayTone` — a
+`holiday` day that is announced (`holidays/{date}`) or a weekday hand-marked holiday prints **🎉** (`HOLIDAY_MARK`) in
+the announced-holiday amber (`HOLIDAY_TONE`) and says "Holiday"; a plain Sunday keeps the grey "—" and says "Sunday".
+Used by `AttendanceGrid` (Team Attendance and Social Media → Attendance), `MyDayCalendar`, `SalesDayCalendar` (cells,
+tooltips, day-story chip); the Team Attendance legend shows "— · Sunday" and "🎉 · Holiday". Tests:
+`teamAttendancePayNov09` (engine + util + marks), `teamAttendanceSalaryNov09` (the page as team leader on the in-memory
+Firestore, paid line, sales side without the line).
+
 **9.14 Payroll, salary, commission** ✅. Tech payroll `pages/shared/Payroll.tsx`,
 `services/payroll.ts` (salary packages, config, bank/payout accounts), `services/payrollRun.ts`
 (month runs and lines, mark paid/undo), `utils/payrollEngine.ts` (pay periods, day credit,

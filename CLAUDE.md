@@ -223,7 +223,12 @@ errors:** done means every listed item is fully resolved with no build, console 
 
 ---
 
-## 32. CURRENT PROJECT STATE (as of 2026-11-05)
+## 32. CURRENT PROJECT STATE (as of 2026-11-09)
+
+- 2026-11-09, **committed locally, not pushed** — **Team Attendance**: each tech member's salary for the period (₹,
+  days paid, Est. / Due / Paid — Payroll's own figure) under their totals for the tech team leader (and tech / main
+  admin), view only; **🎉 in amber for a holiday**, Sundays keep "—", on every attendance calendar (`people.md` §9.13;
+  history 2026-11-09). Owner to try: open Team Attendance as the team leader and compare one member's amount with Payroll.
 
 - 2026-11-05 (late night), **committed locally, not pushed** — **AdGen: B-roll (6) and overlays (7) are written by
   themselves** after 1 – 5 (after a run, and on reopening a saved kit without them), tried twice; an empty answer is no
@@ -431,7 +436,8 @@ errors:** done means every listed item is fully resolved with no build, console 
   2026-10-22, over Vite's 900 KB warning; lazy pages for
   AI Accounts, Invoices, SMM Delivery Control and its AI / alert parts, and the Development OS — its question engine never
   ships to the browser).
-- `npx vitest run` ✅ 286 files, 4745 of 4745 (2026-10-23 night, with Pro proof; the SMM test below passed — flaky).
+- `npx vitest run` ✅ 298 files, 4866 of 4866 (2026-11-09, Team Attendance salary line).
+  Before: 286 files, 4745 of 4745 (2026-10-23 night, with Pro proof; the SMM test below passed — flaky).
   Before: 283 files, 4711 of 4711 (2026-10-23 morning).
   Before: 4706 of 4707 (2026-10-23, after the AI-ads audit). The one failure,
   `smmDeliveryControlUiOct15` "Live, the view-only Social Media Team Lead…" (cannot find "View only — only the people on

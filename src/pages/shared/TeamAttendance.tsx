@@ -25,8 +25,13 @@ import {
   watchOverridesInRange,
   attendanceKey,
   Holiday,
+  HOLIDAY_MARK,
+  HOLIDAY_TONE,
 } from "@/services/techAttendance";
-import { currentPayMonth, payPeriodForMonth } from "@/utils/payrollEngine";
+import { currentPayMonth, formatDayCount, payPeriodForMonth } from "@/utils/payrollEngine";
+import { watchPayrollLines } from "@/services/payrollRun";
+import { memberPeriodPay } from "@/utils/teamAttendancePay";
+import type { PayrollLine } from "@/types/payroll";
 import { periodMonthFor } from "@/services/leave";
 import { useToday } from "@/hooks/useToday";
 import { usePayrollConfig } from "@/hooks/usePayrollConfig";
@@ -114,6 +119,23 @@ export default function TeamAttendance() {
    */
   const isSalesSide = user?.role === "sales_admin";
   const managedRole = isSalesSide ? "sales_member" : "tech_member";
+
+  /**
+   * ── The salary line (owner, 2026-11-09: "show salary count to the tech lead, based on the attendance of the tech
+   * team members") ──
+   * Under each tech member's totals: the days this period pays and the amount, Payroll's own figures from this very
+   * attendance (`utils/teamAttendancePay`), live as a cell is marked — the paid amount once Payroll has paid. Shown on
+   * the tech side (the team leader, and the tech / main admin who open the same page); the sales side's pay adds a
+   * sales incentive this grid does not know, so a figure there would mislead. View only: no salary, no rate, no pay.
+   */
+  const showPay = !isSalesSide;
+  const [payLines, setPayLines] = useState<Map<string, PayrollLine>>(new Map());
+  useEffect(() => {
+    if (!showPay) return;
+    setPayLines(new Map());
+    // One equality listener on the period's payment records. Unreadable → the live figure (never a wrong "paid").
+    return watchPayrollLines(month, setPayLines, (error) => console.error("[attendance] payroll lines:", error));
+  }, [month, showPay]);
   const statusOptions = useMemo(
     () => (isSalesSide ? STATUS_ORDER.filter((s) => s !== "half") : STATUS_ORDER),
     [isSalesSide],
@@ -161,6 +183,17 @@ export default function TeamAttendance() {
       dateStr: date,
       hasFestivalHoliday: holidays.has(date),
       todayStr,
+    });
+
+  const payFor = (member: AppUser) =>
+    memberPeriodPay({
+      member,
+      month,
+      period,
+      days: days.map((d) => ({ date: d, status: statusFor(member, d) })),
+      todayStr,
+      config: payrollConfig,
+      line: payLines.get(member.uid) ?? null,
     });
 
   /** For the open editor: is the day a Sunday / holiday (W can be marked), and how many comp-off credits are left. */
@@ -263,6 +296,7 @@ export default function TeamAttendance() {
           <p className="text-muted-foreground text-xs md:text-sm mt-1">
             Auto-marked from daily check-ins — Full Day on check-in, Absent otherwise. Click any cell to override.
             {isSalesSide && " Sales days are marked whole — a half day comes only from a half-day leave."}
+            {showPay && " Under each name: this period's salary from this attendance, the same figure Payroll pays."}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -303,9 +337,13 @@ export default function TeamAttendance() {
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {[...STATUS_ORDER, "holiday_work" as const, "comp_off" as const].map((s) => (
           <span key={s} className={cn("text-[11px] px-2 py-0.5 rounded-full border", ATTENDANCE_META[s].tone)}>
-            {ATTENDANCE_META[s].short} · {ATTENDANCE_META[s].label}
+            {/* A Sunday keeps "—"; an announced holiday shows 🎉 (2026-11-09, `techAttendance.dayMark`). */}
+            {s === "holiday" ? "— · Sunday" : `${ATTENDANCE_META[s].short} · ${ATTENDANCE_META[s].label}`}
           </span>
         ))}
+        <span data-test="legend-holiday" className={cn("text-[11px] px-2 py-0.5 rounded-full border", HOLIDAY_TONE)}>
+          {HOLIDAY_MARK} · Holiday
+        </span>
         {monthHolidays.map((h) => (
           <span key={h.date} className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-600 border-amber-500/30 inline-flex items-center gap-1">
             <PartyPopper className="w-3 h-3" /> {h.label} · {format(new Date(h.date), "dd MMM")}
@@ -352,6 +390,32 @@ export default function TeamAttendance() {
           isOverride={(m, d) => overrides.has(attendanceKey(m.uid, d))}
           onCellClick={(member, date, current) => setEditing({ member, date, current })}
           payrollConfig={payrollConfig}
+          renderPay={showPay ? (m) => {
+            const pay = payFor(m);
+            const note = pay.paid
+              ? "Paid"
+              : pay.running && pay.daysToCome > 0
+                ? `Est. · ${pay.daysToCome} day${pay.daysToCome === 1 ? "" : "s"} to go`
+                : "Due";
+            return (
+              <div data-test="grid-pay" className="mt-1.5 pt-1.5 border-t border-border/60 whitespace-nowrap"
+                title={pay.paid
+                  ? "Paid in Payroll for this period — the amount paid."
+                  : pay.running && pay.daysToCome > 0
+                    ? `Salary for this period from this attendance. The ${pay.daysToCome} day(s) still to come are counted as worked, as in Payroll.`
+                    : "Salary for this period from this attendance — the amount Payroll will pay."}>
+                <div className="text-[11px] font-semibold text-foreground tabular-nums" data-test="grid-pay-amount">
+                  {pay.noSalary ? <span className="font-normal text-muted-foreground">No salary set</span> : `₹${pay.amount.toLocaleString("en-IN")}`}
+                </div>
+                <div className="text-[9px] text-muted-foreground tabular-nums" data-test="grid-pay-days">
+                  {formatDayCount(pay.payableDays)} / {pay.workingDays} days paid
+                </div>
+                <div className={cn("text-[9px] font-medium", pay.paid ? "text-emerald-600" : "text-muted-foreground")} data-test="grid-pay-note">
+                  {note}
+                </div>
+              </div>
+            );
+          } : undefined}
           renderBadge={(m, layout) => {
             const emp = employmentOf(m.employmentType);
             return (

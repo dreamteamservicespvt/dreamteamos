@@ -6,6 +6,21 @@
 
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
+- **2026-11-09: Team Attendance — salary for the tech team leader, 🎉 for holidays** (`people.md` §9.13). The owner:
+  "show salary count to the tech lead, based on the attendance of the tech team members"; "Sunday and Holiday is
+  showing with same character … represent the holiday with … 🎉"; then "don't ask me anything, take the best
+  decision". Decisions taken: show the amount AND the days paid, view only, on the tech side only (sales pay has an
+  incentive the grid does not know); the figure is Payroll's own (`computeSalary` + `netPayable` on the grid's days,
+  the period's salary; the payment record once paid), never a second rule; 🎉 on every calendar that draws a day mark,
+  in amber, Sundays keep "—". Added `utils/teamAttendancePay.ts`, `payrollEngine.payableDays` + `DeductionRow.weight`,
+  `techAttendance.dayMark` / `dayLabel` / `dayTone` / `HOLIDAY_MARK` / `HOLIDAY_TONE`; changed `AttendanceGrid`
+  (`renderPay` slot, marks, tones, tooltips), `TeamAttendance` (salary line, `watchPayrollLines`, legend, subtitle),
+  `MyDayCalendar`, `SalesDayCalendar`. Tested: 18 new tests (`teamAttendancePayNov09`, `teamAttendanceSalaryNov09`),
+  full vitest 298 files / 4866 of 4866, typecheck 0 errors, build OK; real Chrome on a throwaway harness (the real page
+  on the in-memory Firestore, as team leader) at 1440 and 390 px, light and dark: amounts, "25½ / 26 days paid",
+  "Est. · 1 day to go", "No salary set", amber 🎉 on the announced day, "—" on Sundays, no overflow. Not checked against
+  live Firebase.
+
 - **2026-11-05 (late night): AdGen — deliverables 6 and 7 follow 1 – 5 by themselves** (`ai-ads.md` §17.2, §24). The
   owner: "after generating the 1 to 5 deliverables then automatically generate the remaining 6, 7". Root causes: the
   overlay writer turned an unreadable answer into `[]` and the B-roll writer into one "Parse Error" image, so a kit

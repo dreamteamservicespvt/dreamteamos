@@ -718,6 +718,8 @@ export interface DeductionRow {
   label: string;
   /** Days behind the row — may end in a half for unpaid leave (2026-10-12): show it with `formatDays`. */
   days: number;
+  /** The share of a day's pay each of those days costs (1 for an absence, 1 − the half-day factor for a half day). */
+  weight: number;
   amount: number;
 }
 
@@ -737,21 +739,24 @@ export function deductionsFor(c: SalaryComputation): { rows: DeductionRow[]; tot
   const unpaidHalfLeave = c.unpaidHalfLeaveDays ?? 0; // absent on computations frozen before half-day leave
 
   const rows: DeductionRow[] = [
-    { key: "absent", label: "Absent", days: c.absentDays, amount: c.absentDays * rate },
-    { key: "half", label: "Half days", days: c.halfDays, amount: c.halfDays * rate * (1 - halfFactor) },
+    { key: "absent", label: "Absent", days: c.absentDays, weight: 1, amount: c.absentDays * rate },
+    { key: "half", label: "Half days", days: c.halfDays, weight: 1 - halfFactor, amount: c.halfDays * rate * (1 - halfFactor) },
     // Whole days, or ½ for a day of leave the allowance ran out halfway through.
-    { key: "unpaid_leave", label: "Unpaid leave", days: c.unpaidLeaveDays, amount: c.unpaidLeaveDays * rate },
+    { key: "unpaid_leave", label: "Unpaid leave", days: c.unpaidLeaveDays, weight: 1, amount: c.unpaidLeaveDays * rate },
     {
-      key: "half_leave_unpaid", label: "Half-day leave without pay", days: unpaidHalfLeave,
+      key: "half_leave_unpaid", label: "Half-day leave without pay", days: unpaidHalfLeave, weight: 1 - halfLeaveFactor,
       amount: unpaidHalfLeave * rate * (1 - halfLeaveFactor),
     },
     // A Comp Off day no holiday-work credit covers (absent on computations frozen before comp-off existed).
-    { key: "comp_off_unpaid", label: "Comp off without credit", days: c.compOffUnpaidDays ?? 0, amount: (c.compOffUnpaidDays ?? 0) * rate },
+    {
+      key: "comp_off_unpaid", label: "Comp off without credit", days: c.compOffUnpaidDays ?? 0, weight: 1,
+      amount: (c.compOffUnpaidDays ?? 0) * rate,
+    },
   ];
 
   // Holidays only cost the employee when company policy says they're unpaid.
   if (c.lines.some(l => l.key === "holiday" && l.factor === 0)) {
-    rows.push({ key: "unpaid_holiday", label: "Unpaid holidays", days: c.holidayDays, amount: c.holidayDays * rate });
+    rows.push({ key: "unpaid_holiday", label: "Unpaid holidays", days: c.holidayDays, weight: 1, amount: c.holidayDays * rate });
   }
 
   const kept = rows.filter(r => r.days > 0);
@@ -768,6 +773,17 @@ export function deductionsFor(c: SalaryComputation): { rows: DeductionRow[]; tot
  */
 export function netPayable(c: SalaryComputation): number {
   return Math.max(0, c.monthlySalary - deductionsFor(c).total + (c.adjustmentTotal || 0));
+}
+
+/**
+ * The days a period pays (2026-11-09): its working days less the days attendance cost, weighted exactly as
+ * `deductionsFor` weights them — so `payableDays × dailySalary` is `netPayable` before adjustments. It does not depend
+ * on the salary, so it is right for a member with no salary set too. Days not reached yet count as payable, as in
+ * `netPayable` (Team Attendance's salary line says so while a period runs).
+ */
+export function payableDays(c: SalaryComputation): number {
+  const lost = deductionsFor(c).rows.reduce((sum, r) => sum + r.days * r.weight, 0);
+  return Math.round(Math.max(0, c.workingDays - lost) * 100) / 100;
 }
 
 /**

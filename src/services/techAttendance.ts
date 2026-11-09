@@ -74,6 +74,35 @@ export interface Holiday {
 const attendanceId = (memberId: string, date: string) => `${memberId}_${date}`;
 
 /** True when the given yyyy-MM-dd is a Sunday. */
+/**
+ * ── Sunday vs holiday on the calendars (owner, 2026-11-09) ──
+ * Both resolve to `holiday` (paid, not a working day), and both printed "—", so a festival or company holiday could not
+ * be told from the weekly off. A Sunday keeps "—"; an announced holiday (`holidays/{date}`) or a hand-marked holiday on
+ * a weekday shows 🎉, with its own label. Every calendar that draws a day's mark (Team Attendance's grid, Social Media →
+ * Attendance, My Day, the sales calendar) reads it here, so they all say the same.
+ */
+export const HOLIDAY_MARK = "🎉";
+
+/** The mark a day's cell prints: `ATTENDANCE_META[status].short`, except 🎉 for a holiday that is not a plain Sunday. */
+export function dayMark(status: AttendanceStatus, dateStr: string, announcedHoliday: boolean): string {
+  if (status === "holiday" && (announcedHoliday || !isSunday(dateStr))) return HOLIDAY_MARK;
+  return ATTENDANCE_META[status].short;
+}
+
+/** A 🎉 day is drawn in the announced-holiday amber (the colour of its chip), so it never reads as a grey Sunday. */
+export const HOLIDAY_TONE = "bg-amber-500/15 text-amber-600 border-amber-500/30";
+
+/** The colours of a day's cell: `ATTENDANCE_META[status].tone`, the holiday amber for a 🎉 day. */
+export function dayTone(status: AttendanceStatus, dateStr: string, announcedHoliday: boolean): string {
+  return dayMark(status, dateStr, announcedHoliday) === HOLIDAY_MARK ? HOLIDAY_TONE : ATTENDANCE_META[status].tone;
+}
+
+/** The label a day's tooltip / chip says: "Sunday" for the weekly off, "Holiday" for an announced one. */
+export function dayLabel(status: AttendanceStatus, dateStr: string, announcedHoliday: boolean): string {
+  if (status === "holiday" && !announcedHoliday && isSunday(dateStr)) return "Sunday";
+  return ATTENDANCE_META[status].label;
+}
+
 export const isSunday = (dateStr: string): boolean => {
   const [y, m, d] = dateStr.split("-").map(Number);
   return getDay(new Date(y, m - 1, d)) === 0;

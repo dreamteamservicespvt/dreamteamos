@@ -24,7 +24,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, LogIn, LogOut, PartyPopper, In
 import type { SalesCheckin } from "@/services/salesCheckin";
 import {
   ATTENDANCE_META, AttendanceStatus, attendanceKey, daysBetween, isCheckInRecord, resolveStatus, summarize,
-  todayDate, watchHolidayRecordsInRange, watchOverridesInRange, Holiday,
+  todayDate, watchHolidayRecordsInRange, watchOverridesInRange, Holiday, dayLabel, dayMark, dayTone
 } from "@/services/techAttendance";
 import { currentPayMonth, formatDayCount, payPeriodForMonth } from "@/utils/payrollEngine";
 import { useToday } from "@/hooks/useToday";
@@ -159,15 +159,15 @@ export default function SalesDayCalendar({ memberId }: { memberId: string }) {
           return (
             <button key={dateStr} onClick={() => setSelected(dateStr)}
               data-test="sales-attendance-day"
-              title={`${format(new Date(dateStr), "EEE dd MMM")}${st ? " · " + ATTENDANCE_META[st].label : ""}`}
+              title={`${format(new Date(dateStr), "EEE dd MMM")}${st ? " · " + dayLabel(st, dateStr, holidays.has(dateStr)) : ""}`}
               className={cn(
                 "aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-mono transition-all relative border",
-                st ? ATTENDANCE_META[st].tone : "text-muted-foreground border-transparent hover:bg-accent",
+                st ? dayTone(st, dateStr, holidays.has(dateStr)) : "text-muted-foreground border-transparent hover:bg-accent",
                 isToday(new Date(dateStr)) && "font-bold",
                 isSel ? "ring-2 ring-primary scale-105 z-10" : "hover:scale-105",
               )}>
               <span>{Number(dateStr.slice(-2))}</span>
-              {st && <span className="text-[8px] font-bold leading-none">{ATTENDANCE_META[st].short}</span>}
+              {st && <span className="text-[8px] font-bold leading-none">{dayMark(st, dateStr, holidays.has(dateStr))}</span>}
               {sold && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />}
               {ci && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-current opacity-60" />}
             </button>
@@ -192,7 +192,7 @@ export default function SalesDayCalendar({ memberId }: { memberId: string }) {
           </div>
           {selStatus && (
             <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full border", ATTENDANCE_META[selStatus].tone)}>
-              {ATTENDANCE_META[selStatus].label}
+              {dayLabel(selStatus, selected, holidays.has(selected))}
             </span>
           )}
         </div>
