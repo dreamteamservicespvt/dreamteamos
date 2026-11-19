@@ -27,5 +27,16 @@ describe("Forever Invitations (2026-11-19)", () => {
     expect(msg).toContain("within 24 hours");
     expect(msg).toContain("share your invitation soon. 🚀");
     expect(msg).not.toContain("Your ad details");
+    expect(msg).toContain("💰 *PRICE: ₹999*");
+  });
+  it("still shows the price when the amount is missing, from the money collected", () => {
+    const msg = buildClientSaleMessage({ phone: "+919876543210" } as never,
+      { category: "forever_invitations", amount: 0, partialPayment: true, payments: [{ id: "p", amount: 1499, collectedAt: new Date() }], invitation: inv } as never);
+    expect(msg).toContain("💰 *PRICE: ₹1,499*");
+  });
+  it("shows the balance when the client paid part", () => {
+    const msg = buildClientSaleMessage({ phone: "+919876543210" } as never,
+      { category: "forever_invitations", amount: 2000, partialPayment: true, payments: [{ id: "p", amount: 500, collectedAt: new Date() }], invitation: inv } as never);
+    expect(msg).toContain("⏳ *Balance:* ₹1,500");
   });
 });

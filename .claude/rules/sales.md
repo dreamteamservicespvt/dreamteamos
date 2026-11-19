@@ -138,7 +138,7 @@ window, with NO 75% target check** (owner, 2026-10-19 — the board as before 20
 2026-10-15 to 10-19 it was gated, so members with a target read ₹0 mid-month. The gate still decides what is PAID
 (Sales Payroll, Settlements, My Salary); the revenue ranking is unchanged.
 
-**Forever Invitations (owner, 2026-11-19).** A service in the sale form (`forever_invitations`, no packages: the member types the amount paid + payment screenshot; no video brief). Only for it the form asks Client name, Client number, Invitation type (`utils/foreverInvitations.INVITATION_TYPES`, Custom → typed) and Template name (`data-test="sale-invitation"`, all required); saved as `SaleDetail.invitation`. The client's WhatsApp confirmation (`salesMessage`) is its own: name, template, occasion, amount paid, delivery within 24 hours.
+**Forever Invitations (owner, 2026-11-19).** A service in the sale form (`forever_invitations`, no packages: the member types the amount paid + payment screenshot; no video brief). Only for it the form asks Client name, Client number, Invitation type (`utils/foreverInvitations.INVITATION_TYPES`, Custom → typed) and Template name (`data-test="sale-invitation"`, all required); saved as `SaleDetail.invitation`. The client's WhatsApp confirmation (`salesMessage`) is its own: name, template, occasion, delivery within 24 hours, then a framed **price block** (`💰 *PRICE: ₹X*`, Paid, Balance only when owed) that always prints — the price falls back to the money collected (`salePayments.collectedOf`) when `amount` is missing (2026-11-19). The client number is saved as digits only (`/\D/g`; it was `/D/g`).
 
 **9.11 Clients, feedback & upsell, reviews** ✅. `pages/shared/Clients.tsx`,
 `pages/shared/FeedbackUpsell.tsx`, `pages/sales-admin/ClientLookup.tsx`,

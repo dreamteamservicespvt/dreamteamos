@@ -16,6 +16,7 @@
  */
 import { categoryLabel } from "@/utils/serviceCatalog";
 import { invitationTypeLabel } from "@/utils/foreverInvitations";
+import { collectedOf } from "@/utils/salePayments";
 import { packagePlatforms } from "@/utils/serviceCatalog";
 import { attireLabel } from "@/utils/adRequirement";
 import { getCharacterPack, isHumanPack, ownerPhotoSlots, packHighlight } from "@/services/characterPacks";
@@ -43,6 +44,21 @@ function backgroundLine(realLocationProvided: boolean): string {
     : `🏙️ *Background:* a custom AI background built for your business`;
 }
 
+function invitationPriceBlock(lead: Lead, item: SaleDetail): string[] {
+  const paid = collectedOf(item, lead);
+  const total = item.amount || paid;
+  if (!total) return [];
+  const due = Math.max(0, total - paid);
+  return [
+    ``,
+    `━━━━━━━━━━━━━━━`,
+    `💰 *PRICE: ${formatCurrency(total)}*`,
+    paid ? `✅ *Paid:* ${formatCurrency(Math.min(paid, total))}` : null,
+    due ? `⏳ *Balance:* ${formatCurrency(due)}` : null,
+    `━━━━━━━━━━━━━━━`,
+  ].filter((l): l is string => l !== null);
+}
+
 /** The client's confirmation for a Forever Invitations sale (owner, 2026-11-19). */
 function buildInvitationMessage(lead: Lead, item: SaleDetail): string {
   const inv = item.invitation!;
@@ -56,8 +72,12 @@ function buildInvitationMessage(lead: Lead, item: SaleDetail): string {
     name ? `👤 *Name:* ${name}` : null,
     `🎨 *Template:* ${inv.templateName.trim()}`,
     occasion ? `🎊 *Invitation:* ${occasion}` : null,
-    item.amount ? `💰 *Amount paid:* ${formatCurrency(item.amount)}` : null,
     `⏰ *Delivery:* within 24 hours`,
+    // ── The price, as its own block (owner, 2026-11-19: "sometimes the price is not showing") ──
+    // It used to be one line shown only when `amount` was set, so a sale whose amount was
+    // missing sent no price at all. Now the price falls back to what was collected, and the
+    // block always prints: total, paid, and the balance only when something is still owed.
+    ...invitationPriceBlock(lead, item),
     ``,
     `We'll get started right away and share your invitation soon. 🚀`,
     `For anything at all, just reply here. 💬`,

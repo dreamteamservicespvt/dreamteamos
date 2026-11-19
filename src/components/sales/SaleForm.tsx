@@ -931,7 +931,7 @@ export default function SaleForm({
     const saleShape = {
       invitation: isInvitation ? {
         clientName: invitation.clientName.trim(),
-        clientPhone: invitation.clientPhone.replace(/D/g, "").slice(-10),
+        clientPhone: invitation.clientPhone.replace(/\D/g, "").slice(-10),
         type: invitation.type,
         customType: invitation.type === "custom" ? (invitation.customType || "").trim() : null,
         templateName: invitation.templateName.trim(),
