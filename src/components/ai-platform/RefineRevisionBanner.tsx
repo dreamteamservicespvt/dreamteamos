@@ -21,6 +21,8 @@ export interface VoiceOverRevision {
   changed: number[];
   /** The video prompts before the refine, restored by Undo. */
   previousVeo: string[];
+  /** The overlay texts (row 7) before the refine, restored by Undo — the refine rewrites them from the new script. */
+  previousOverlays?: any[] | null;
 }
 
 export const RefineRevisionBanner: React.FC<{

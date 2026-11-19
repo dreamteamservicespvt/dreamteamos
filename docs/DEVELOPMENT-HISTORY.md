@@ -4,6 +4,9 @@
 > the reason behind earlier work. Every finished task adds a dated entry at the TOP of the list below
 > (CLAUDE.md §30 step 8). Detailed notes up to 2026-09-19 are in `docs/AI-MEMORY.md` (historical, read-only).
 
+## 2026-11-19 — AdGen: overlay stickers (row 7) follow the refined voice-over
+A row-4 refine rewrote only the Veo prompts, so the overlays kept printing the old lines. Now the refine rewrites the overlays from the new script, and Undo puts the old ones back. Files: `AIPlatformApp.tsx`, `RefineRevisionBanner.tsx`. Tested with tsc (0 errors) and the autoExtras tests (10/10); not run live.
+
 ## 2026-11-19 — Forever Invitations sale type
 New service in the sale form with client name / number, invitation type (12 + Custom), template name, typed amount + screenshot, no video brief; its own client WhatsApp confirmation. Files: `utils/foreverInvitations.ts` (new), `serviceCatalog`, `types` (`SaleInvitation`), `SaleForm`, `salesMessage`, test `foreverInvitations.test.ts`. Tested: typecheck 0, build, sale-form + message tests (91 pass).
 

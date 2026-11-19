@@ -833,6 +833,10 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         }
       });
       if (posterNotApplied.length) await showAlert(posterRefinePartlyAlert(posterNotApplied));
+      // A voice-over changed here rewrites the overlays from it too (see handleRefineVoiceOver, 2026-11-19).
+      if (section === 'voiceOver' && creationMode === 'video') {
+        void handleGenerateOverlayTexts({ ...outputs, voiceOverScript: refinedContent });
+      }
 
     } catch (error: any) {
       // Silently swallowed until now: the spinner stopped, the content did not move, and nobody
@@ -878,8 +882,17 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
         });
         return;
       }
+      const previousOverlays = outputs.overlayTexts ?? null;
       setOutputs(prev => (prev ? { ...prev, voiceOverScript: result.script } : prev));
-      setVoiceOverRevision({ instruction, understood: result.understood, before, after: result.script, changed: result.changed, previousVeo });
+      setVoiceOverRevision({ instruction, understood: result.understood, before, after: result.script, changed: result.changed, previousVeo, previousOverlays });
+
+      /* ── The overlays follow the script (2026-11-19 — the owner: "sticker images are not coming correctly based on
+         the latest voice over script") ── An overlay prints the words of its clip and sits on their seconds, so a
+         refined script left row 7 printing the OLD lines. Rewritten from the new script (handleGenerateOverlayTexts
+         drops the answer if the script changed again meanwhile); Undo puts the previous overlays back. */
+      if (creationMode === 'video' && outputs.voiceOverScript) {
+        void handleGenerateOverlayTexts({ ...outputs, voiceOverScript: result.script });
+      }
 
       if (creationMode === 'video' && previousVeo.length > 0) {
         try {
@@ -911,8 +924,11 @@ const AIPlatformApp: React.FC<AIPlatformAppProps> = ({
   /** Puts the script and the video prompts back exactly as they were before the last refine. */
   const handleUndoVoiceOverRevision = () => {
     if (!voiceOverRevision) return;
-    const { before, previousVeo } = voiceOverRevision;
-    setOutputs(prev => (prev ? { ...prev, voiceOverScript: before, veoPrompts: previousVeo } : prev));
+    const { before, previousVeo, previousOverlays } = voiceOverRevision;
+    setOutputs(prev => (prev ? {
+      ...prev, voiceOverScript: before, veoPrompts: previousVeo,
+      ...(previousOverlays !== undefined ? { overlayTexts: previousOverlays } : {}),
+    } : prev));
     setVoiceOverRevision(null);
   };
 

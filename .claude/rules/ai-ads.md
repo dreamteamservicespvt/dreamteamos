@@ -1106,6 +1106,7 @@ attribution (`Clip.voScript` is one string).
 - **AI ads — 6 and 7 come by themselves (owner, 2026-11-05):** once 1 – 5 of a video kit are written, the B-roll (6)
   and overlays (7) are written automatically — also on a saved kit reopened without them — tried twice before the row
   says Failed; the member never has to press their Generate for a normal kit.
+- **AI ads — overlays follow the latest script (owner, 2026-11-19):** a voice-over refine (whole or one clip) rewrites row 7 from the new script (`AIPlatformApp.handleRefineVoiceOver` / `handleRefine` → `handleGenerateOverlayTexts`); Undo restores the previous overlays (`VoiceOverRevision.previousOverlays`). Input Final Script already did this.
 - **AI ads — overlay texts (owner, 2026-11-05, evening):** an overlay text image is a transparent PNG cropped to its words,
   ready to download and drop on the video — never a frame of the ad's ratio, never a white or coloured background.
 - **AI ads — ratio, size, colour, text vs B-roll (owner, 2026-11-05):** every frame and B-roll prompt says the ad's
