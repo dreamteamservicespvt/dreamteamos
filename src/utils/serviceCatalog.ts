@@ -271,6 +271,8 @@ export const SERVICE_CATALOG: ServiceCategory[] = [
    */
   { key: "banner", label: "Banner Design", billing: "one_time", fromAd: false, packages: [], needsDescription: true },
   { key: "social_accounts", label: "Social Media Accounts", billing: "one_time", fromAd: false, packages: [], needsDescription: true },
+  /** Digital invitations from a template; the amount is whatever the client paid (2026-11-19). */
+  { key: "forever_invitations", label: "Forever Invitations", billing: "one_time", fromAd: false, packages: [] },
   { key: "custom", label: "Custom", billing: "one_time", fromAd: false, packages: [], needsDescription: true },
 ];
 

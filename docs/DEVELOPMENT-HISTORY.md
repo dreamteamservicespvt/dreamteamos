@@ -4,6 +4,9 @@
 > the reason behind earlier work. Every finished task adds a dated entry at the TOP of the list below
 > (CLAUDE.md §30 step 8). Detailed notes up to 2026-09-19 are in `docs/AI-MEMORY.md` (historical, read-only).
 
+## 2026-11-19 — Forever Invitations sale type
+New service in the sale form with client name / number, invitation type (12 + Custom), template name, typed amount + screenshot, no video brief; its own client WhatsApp confirmation. Files: `utils/foreverInvitations.ts` (new), `serviceCatalog`, `types` (`SaleInvitation`), `SaleForm`, `salesMessage`, test `foreverInvitations.test.ts`. Tested: typecheck 0, build, sale-form + message tests (91 pass).
+
 ## 31. DEVELOPMENT HISTORY (concise; newest first)
 
 - **2026-11-09: Team Attendance — salary for the tech team leader, 🎉 for holidays** (`people.md` §9.13). The owner:

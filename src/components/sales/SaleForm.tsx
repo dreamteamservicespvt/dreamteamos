@@ -64,7 +64,8 @@ import FieldHint from "@/components/common/FieldHint";
 import { DEFAULT_SMM_CLIPS_PER_VIDEO, dayLabel, normaliseClipsPerVideo } from "@/utils/smmPackage";
 import { saleMonthStartCheck, saleMonthStartDefault } from "@/utils/smmMonthDates";
 import { isoDay } from "@/utils/smmPlan";
-import type { AppUser, Lead, Order, SaleDetail, SaleEditEntry, SalePayment } from "@/types";
+import { INVITATION_TYPES, invitationProblem, isForeverInvitations } from "@/utils/foreverInvitations";
+import type { AppUser, Lead, Order, SaleDetail, SaleInvitation, SaleEditEntry, SalePayment } from "@/types";
 import type { SmmRenewalPrefill } from "@/types/smm";
 
 type TimestampLike = { toMillis?: () => number; seconds?: number } | null | undefined;
@@ -190,6 +191,13 @@ export default function SaleForm({
    * sale reached the tech team as the string "Custom custom" and somebody had to ring back to ask.
    */
   const [description, setDescription] = useState(ed?.customDescription || "");
+  // Forever Invitations (2026-11-19): who it is for, the occasion and the template.
+  const [invitation, setInvitation] = useState<SaleInvitation>(() => ed?.invitation || {
+    clientName: lead.realName || lead.displayName || "",
+    clientPhone: (lead.phone || "").replace(/D/g, "").slice(-10),
+    type: "", customType: "", templateName: "",
+  });
+  const isInvitation = isForeverInvitations(category);
   /**
    * Bulk videos: which kind, how many, and the discount given. The kind is chosen first because
    * it decides the price list — a bulk order of cinematic ads is priced as cinematic ads.
@@ -795,6 +803,10 @@ export default function SaleForm({
       toast({ title: "Error", description: "Please enter a valid amount.", variant: "destructive" });
       return;
     }
+    if (isInvitation) {
+      const problem = invitationProblem(invitation);
+      if (problem) { toast({ title: "Invitation details", description: problem, variant: "destructive" }); return; }
+    }
     if (descriptionMissing) {
       toast({ title: "Say what was sold", description: `Type what this ${categoryLabel(category)} sale is for — the tech team has no package name to go on.`, variant: "destructive" });
       return;
@@ -917,6 +929,13 @@ export default function SaleForm({
      * auditable: without them, "₹7,592" is a number nobody can check a year later.
      */
     const saleShape = {
+      invitation: isInvitation ? {
+        clientName: invitation.clientName.trim(),
+        clientPhone: invitation.clientPhone.replace(/D/g, "").slice(-10),
+        type: invitation.type,
+        customType: invitation.type === "custom" ? (invitation.customType || "").trim() : null,
+        templateName: invitation.templateName.trim(),
+      } : null,
       customDescription: showDescription ? description.trim() || null : null,
       /*
         A Custom sale that names a real service and a length stops being a note somebody has to
@@ -1879,6 +1898,40 @@ export default function SaleForm({
             placeholder={`e.g. Two-day event shoot with edited highlights`}
             className={`w-full px-3 py-2 rounded-md bg-card border text-foreground text-sm outline-none focus:border-primary resize-none ${descriptionMissing ? "border-destructive/60" : "border-border"}`}
           />
+        </div>
+      )}
+
+      {isInvitation && (
+        <div data-test="sale-invitation" className="space-y-2 rounded-md border border-primary/25 bg-primary/5 p-2.5">
+          <div className="text-xs font-medium text-primary">💌 Forever Invitation</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="min-w-0">
+              <label className="text-[11px] text-muted-foreground">Client name <span className="text-destructive">*</span></label>
+              <input data-test="inv-client-name" value={invitation.clientName} onChange={(e) => setInvitation((v) => ({ ...v, clientName: e.target.value }))} className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary" />
+            </div>
+            <div className="min-w-0">
+              <label className="text-[11px] text-muted-foreground">Client number <span className="text-destructive">*</span></label>
+              <input data-test="inv-client-phone" type="tel" inputMode="numeric" value={invitation.clientPhone} onChange={(e) => setInvitation((v) => ({ ...v, clientPhone: e.target.value }))} placeholder="e.g. 9876543210" className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary font-mono" />
+            </div>
+            <div className="min-w-0">
+              <label className="text-[11px] text-muted-foreground">Invitation type <span className="text-destructive">*</span></label>
+              <select data-test="inv-type" value={invitation.type} onChange={(e) => setInvitation((v) => ({ ...v, type: e.target.value }))} className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary">
+                <option value="">Select…</option>
+                {INVITATION_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            </div>
+            {invitation.type === "custom" && (
+              <div className="min-w-0">
+                <label className="text-[11px] text-muted-foreground">Custom type <span className="text-destructive">*</span></label>
+                <input data-test="inv-custom-type" value={invitation.customType || ""} onChange={(e) => setInvitation((v) => ({ ...v, customType: e.target.value }))} placeholder="e.g. Retirement function" className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary" />
+              </div>
+            )}
+            <div className="min-w-0 sm:col-span-2">
+              <label className="text-[11px] text-muted-foreground">Template name <span className="text-destructive">*</span></label>
+              <input data-test="inv-template" value={invitation.templateName} onChange={(e) => setInvitation((v) => ({ ...v, templateName: e.target.value }))} placeholder="e.g. Royal Gold Wedding" className="w-full h-9 px-3 rounded-md bg-card border border-border text-foreground text-sm outline-none focus:border-primary" />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Type the amount the client paid below and upload the payment screenshot. Delivery: within 24 hours.</p>
         </div>
       )}
 

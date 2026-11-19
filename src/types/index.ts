@@ -411,7 +411,19 @@ export interface SalePayment {
   byName?: string;
 }
 
+/** A Forever Invitations sale's details (2026-11-19, `utils/foreverInvitations`). */
+export interface SaleInvitation {
+  clientName: string;
+  clientPhone: string;
+  /** `INVITATION_TYPES` key; "custom" uses `customType`. */
+  type: string;
+  customType?: string | null;
+  templateName: string;
+}
+
 export interface SaleDetail {
+  /** Only on a Forever Invitations sale. */
+  invitation?: SaleInvitation | null;
   /**
    * The sale's one permanent id (2026-10-08) — `<leadId>_<ms it was recorded>`; its order is
    * `o_<saleId>`. Set when the sale is created and never changed: every edit, delete and tech-side

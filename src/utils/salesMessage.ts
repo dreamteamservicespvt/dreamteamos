@@ -15,6 +15,7 @@
  * note going out in the customer's own receipt.
  */
 import { categoryLabel } from "@/utils/serviceCatalog";
+import { invitationTypeLabel } from "@/utils/foreverInvitations";
 import { packagePlatforms } from "@/utils/serviceCatalog";
 import { attireLabel } from "@/utils/adRequirement";
 import { getCharacterPack, isHumanPack, ownerPhotoSlots, packHighlight } from "@/services/characterPacks";
@@ -42,7 +43,32 @@ function backgroundLine(realLocationProvided: boolean): string {
     : `🏙️ *Background:* a custom AI background built for your business`;
 }
 
+/** The client's confirmation for a Forever Invitations sale (owner, 2026-11-19). */
+function buildInvitationMessage(lead: Lead, item: SaleDetail): string {
+  const inv = item.invitation!;
+  const name = inv.clientName.trim() || lead.realName || lead.displayName || "";
+  const occasion = invitationTypeLabel(inv);
+  const lines: (string | null)[] = [
+    `🎉 *Thank you for choosing Dream Team Services!* 💌`,
+    ``,
+    `Here's a quick confirmation of your *Forever Invitation*:`,
+    ``,
+    name ? `👤 *Name:* ${name}` : null,
+    `🎨 *Template:* ${inv.templateName.trim()}`,
+    occasion ? `🎊 *Invitation:* ${occasion}` : null,
+    item.amount ? `💰 *Amount paid:* ${formatCurrency(item.amount)}` : null,
+    `⏰ *Delivery:* within 24 hours`,
+    ``,
+    `We'll get started right away and share your invitation soon. 🚀`,
+    `For anything at all, just reply here. 💬`,
+    ``,
+    `✨ Thank you! 🙏`,
+  ];
+  return lines.filter((l): l is string => l !== null).join("\n");
+}
+
 export function buildClientSaleMessage(lead: Lead, item: SaleDetail): string {
+  if (item.invitation) return buildInvitationMessage(lead, item);
   const businessName = item.requirement?.businessName || lead.realName || lead.displayName || "";
   const r = item.requirement;
   const isAd = !!r;
